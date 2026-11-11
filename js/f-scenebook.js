@@ -208,7 +208,7 @@ function extras(art, main, m, sw, jobs) {
     failed.map(j => h('div.sb-note.bad', icon('x', 15), h('span', `${j.label} · ${j.error}`), btn('다시 요청', { cls: 'ghost', onclick: guard(() => { j.seen = true; draw(m, [j.scene], j.config, j.slot, true); }) }), iconBtn('x', '닫기', () => { j.seen = true; schedule(); }, 'tiny'))),
     drafts.length ? h('div.sb-note.draft', icon('sparkle', 15), h('span', h('b', `장면 ${drafts.length}개 준비됨`), ' ', drafts.map(d => shownTitle(d.title)).filter(Boolean).join(' · ')),
       btn('그리기', { ic: 'image', cls: 'primary', onclick: guard(() => quickDraw(m)) }), btn('장면 편집', { ic: 'edit', cls: 'ghost', onclick: guard(() => compose(m)) }),
-      iconBtn('trash', '초안 버리기', async () => { sw.illustDraft = []; delete sw.illustDraftConfig; await chatApi.save(); schedule(); }, 'tiny')) : null,
+      iconBtn('trash', '초안 버리기', async () => { if (!(await confirmBox('이 초안을 버릴까요?', '버리기', true))) return; sw.illustDraft = []; delete sw.illustDraftConfig; await chatApi.save(); schedule(); }, 'tiny')) : null,
     note ? h('div.sb-note', icon('image', 15), h('span', plan.error || '삽화 지시를 읽지 못했어요.'), btn('장면 분석', { ic: 'sparkle', cls: 'ghost', onclick: guard(() => compose(m, { manual: false })) }), btn('지시 기록', { cls: 'ghost', onclick: showPlans }), iconBtn('x', '닫기', async () => { plan.seen = true; await chatApi.save(); schedule(); }, 'tiny')) : null,
     hidden ? h('button.chip.sb-hidden-chip', { type: 'button', onclick: async () => { for (const it of sw.illust) it.hidden = false; await chatApi.save(); chatApi.redraw(); } }, `숨긴 삽화 ${hidden}개 다시 보기`) : null);
   (main.querySelector(':scope > .msg-tools') || main.lastChild)?.before(node);

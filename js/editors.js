@@ -162,7 +162,7 @@ export function charEditor(c) {
     h('label.field', h('span.field-label', '첫 인사'), h('textarea.inp', { rows: 7, value: c.firstMes, spellcheck: false, oninput: e => { c.firstMes = e.target.value; saveNow(); } })),
     h('p.hint', '다른 인사를 넣어 두면 새 대화의 첫 메시지를 좌우로 넘겨 고를 수 있어요.'),
     ...c.altGreetings.map((g, i) => h('label.field', h('span.field-label', `다른 인사 ${i + 1}`, h('em.tok', g ? `≈${tokens(g).toLocaleString()} 토큰` : ''),
-      iconBtn('up', '위로', () => { if (i > 0) swap(i, i - 1); }, 'tiny'), iconBtn('down', '아래로', () => { if (i < c.altGreetings.length - 1) swap(i, i + 1); }, 'tiny'), iconBtn('trash', '삭제', () => { c.altGreetings.splice(i, 1); saveNow(); drawGreets(); }, 'tiny')),
+      iconBtn('up', '위로', () => { if (i > 0) swap(i, i - 1); }, 'tiny'), iconBtn('down', '아래로', () => { if (i < c.altGreetings.length - 1) swap(i, i + 1); }, 'tiny'), iconBtn('trash', '삭제', async () => { if ((c.altGreetings[i] || '').trim() && !(await confirmBox('이 첫 메시지를 삭제할까요?', '삭제', true))) return; c.altGreetings.splice(i, 1); saveNow(); drawGreets(); }, 'tiny')),
       h('textarea.inp', { rows: 5, value: g, spellcheck: false, oninput: e => { c.altGreetings[i] = e.target.value; saveNow(); } }))),
     btn('다른 인사 추가', { ic: 'plus', cls: 'ghost', onclick: () => { c.altGreetings.push(''); drawGreets(); } }));
   drawGreets();
@@ -234,7 +234,7 @@ registerPage('presets', root => libraryPage(root, {
           icon(marker ? 'sparkle' : 'note', 15), h('b', b.name || MARKERS[b.kind] || '프롬프트'),
           b.depth != null && b.depth !== '' ? h('em.badge', `깊이 ${b.depth}`) : null, b.when ? h('em.badge', { title: b.when }, '조건') : null,
           b.kind !== 'chatHistory' && h('span.tokbadge', b.content ? `≈${tokens(b.content)}` : (marker ? '자동' : '비어 있음')),
-          !marker && iconBtn('trash', '블록 삭제', () => { p.blocks.splice(i, 1); sv(); drawBlocks(); redraw(); }, 'tiny')));
+          !marker && iconBtn('trash', '블록 삭제', async () => { if (!(await confirmBox('이 블록을 삭제할까요?', '삭제', true))) return; p.blocks.splice(p.blocks.indexOf(b), 1); sv(); drawBlocks(); redraw(); }, 'tiny')));
       if (open.has(b.id)) row.append(h('div.block-body', form(b, [
         !marker && { k: 'name', label: '이름', half: true }, { k: 'role', label: '역할', type: 'select', opts: ['system', 'user', 'assistant'], half: true },
         { k: 'content', label: marker && b.kind !== 'main' && b.kind !== 'jailbreak' ? '감싸는 틀' : '내용', type: 'area', rows: marker && b.kind !== 'main' && b.kind !== 'jailbreak' ? 3 : 9, hint: marker && b.kind !== 'main' && b.kind !== 'jailbreak' ? '{{slot}} 자리에 실제 내용이 들어갑니다. 비워 두면 내용만 넣어요.' : '{{char}} {{user}} {{random::a::b}} {{getvar::이름}} 같은 매크로를 쓸 수 있어요.' },
@@ -323,7 +323,7 @@ registerPage('regex', root => libraryPage(root, {
     };
     sample.addEventListener('input', test);
     return h('div.editor',
-      h('header.editor-head', h('h2', r.name), h('div.row', iconBtn('import', '실리태번 형식으로 내보내기', () => download(`${r.name}.json`, JSON.stringify(regexToSt(r), null, 2))), iconBtn('trash', '삭제', async () => { await S.remove('regex', r.id); refresh(); }))),
+      h('header.editor-head', h('h2', r.name), h('div.row', iconBtn('import', '실리태번 형식으로 내보내기', () => download(`${r.name}.json`, JSON.stringify(regexToSt(r), null, 2))), iconBtn('trash', '삭제', async () => { if (!(await confirmBox(`"${r.name}" 정규식을 삭제할까요?`, '삭제', true))) return; await S.remove('regex', r.id); refresh(); }))),
       form(r, [{ k: 'name', label: '이름', half: true }, { k: 'scope', label: '적용 범위', type: 'select', opts: [['global', '모든 캐릭터'], ...S.chars.map(c => [c.id, c.name])], half: true },
         { k: 'find', label: '찾기', ph: '/패턴/플래그  또는  패턴', hint: '슬래시 형식이 아니면 전체(g) 검색으로 처리합니다.' }, { k: 'replace', label: '바꾸기', type: 'area', rows: 4, hint: '$1, $2 … 캡처 그룹 · {{match}} 전체 일치 · HTML 사용 가능' },
         { k: 'mode', label: '적용 방식', type: 'select', opts: [['display', '화면에 보일 때만'], ['prompt', 'AI 에게 보낼 때만'], ['both', '화면 + 전송 (원문은 유지)'], ['store', '원문 자체를 바꿔 저장']], half: true }, { k: 'trim', label: '캡처에서 지울 문자열', type: 'lines', rows: 2, half: true },

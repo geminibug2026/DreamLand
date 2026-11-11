@@ -1,6 +1,6 @@
 // ── Dreamland studio: 내장 기능 (번역 · 삽화 · 에셋) 설정과 프롬프트 연결 ──
 import { S, h, on, pickFiles } from './core.js';
-import { icon, btn, iconBtn, toast, modal, promptBox, form, registerPage, refresh, pageHead } from './ui.js';
+import { icon, btn, iconBtn, toast, modal, confirmBox, promptBox, form, registerPage, refresh, pageHead } from './ui.js';
 import { X } from './hooks.js';
 import { macro } from './engine.js';
 import { Assets, ASSET_PROMPT } from './assets.js';
@@ -29,7 +29,7 @@ export function assetsPane(owner, holder, saveHolder) {
     h('div.asset-name', h('span', { title: '눌러서 태그 복사', onclick: () => { navigator.clipboard.writeText(`{{img::${a.name}}}`); toast('태그를 복사했어요'); } }, a.name),
       iconBtn('edit', '이름 바꾸기', async () => { const v = await promptBox('에셋 이름', a.name); if (v?.trim()) { a.name = v.trim().toLowerCase().replace(/\s+/g, '_'); await Assets.update(a); draw(); } }, 'tiny'),
       iconBtn(a.disabled ? 'eyeoff' : 'eye', '쓰지 않기 / 다시 쓰기', async () => { a.disabled = !a.disabled; await Assets.update(a); draw(); }, 'tiny'),
-      iconBtn('trash', '삭제', async () => { await Assets.remove(a); draw(); }, 'tiny')))),
+      iconBtn('trash', '삭제', async () => { if (!(await confirmBox(`"${a.name}" 에셋을 삭제할까요?`, '삭제', true))) return; await Assets.remove(a); draw(); }, 'tiny')))),
     !Assets.list(owner).length && h('p.dim', '아직 에셋이 없어요. 이미지나 ZIP 을 올려 주세요.'));
   const add = async files => { const n = await Assets.addFiles(owner, files); toast(n ? `에셋 ${n}개를 넣었어요` : '넣을 이미지가 없어요', n ? 'ok' : ''); draw(); };
   const drop = h('div.dropzone.small', { onclick: async () => add(await pickFiles({ accept: 'image/*,.zip', multiple: true })) }, icon('image', 24), h('b', '이미지 · ZIP 올리기'), h('span', '파일 이름이 곧 키워드입니다 (joy_1, joy_2 처럼 번호를 붙이면 한 묶음).'));

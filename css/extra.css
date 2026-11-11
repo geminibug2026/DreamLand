@@ -112,3 +112,25 @@
 .vec-status > small { padding: 8px 12px; }
 .vec-last > div { grid-column: 2 / -1; display: flex; flex-direction: column; gap: 4px; min-width: 0; } .vec-last p { margin: 0; font-size: .84em; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vec-last em { font: 600 .82em ui-monospace, Consolas, monospace; font-style: normal; color: var(--accent); margin-right: 8px; }
+
+/* 답변 넘기기 번호는 한 줄로 */
+.swipe span { white-space: nowrap; padding: 0 3px; }
+/* 입력창 오른쪽 단추는 같은 크기로 */
+.composer .composer-box .trx-quick, .composer .composer-box .send { width: 42px; height: 42px; box-sizing: border-box; }
+/* 휴대폰 · 터치: 메시지 도구가 글 위를 덮지 않게, 누른 메시지 아래에 펼친다 */
+@media (max-width: 820px), (hover: none) {
+  .msg:not(:last-child):not(.sys) .msg-tools { position: static; display: none; margin-top: 6px; padding: 0; border: 0; background: none; flex-wrap: wrap; pointer-events: auto; opacity: 1; }
+  .msg.picked:not(:last-child):not(.sys) .msg-tools { display: flex; }
+  .msg.sys .msg-tools { display: none !important; opacity: 1; } .msg.sys.picked .msg-tools { display: flex !important; }
+  .msg:last-child .msg-tools { flex-wrap: wrap; row-gap: 4px; }
+}
+/* 휴대폰 RP: 글이 더 많이 보이게 여백과 글줄을 조인다 */
+@media (max-width: 820px) {
+  .mode-rp .msgs { gap: 22px; padding: 14px 16px 8px; }
+  .mode-rp .msg-body { font-size: var(--fs); line-height: var(--lh); } .mode-rp .msg-body p.nar { margin: .75em 0; }
+  .mode-rp .msg-head time { font-size: .68em; }
+  .sys-line { padding: 5px 12px; max-width: 100%; }
+  .composer { gap: 6px; } .quick .chip { padding: 3px 10px; }
+}
+.mode-rp .sys-line .msg-body p.nar { margin: 0; }
+@media (max-width: 820px) { .composer-input::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } }

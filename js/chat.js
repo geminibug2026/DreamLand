@@ -62,6 +62,10 @@ registerPage('chat', async (root, arg) => {
   }
   const list = cur.gen?.chat === chat ? cur.gen.msgs : await S.msgs(chat.id);
   cur.chat = chat; cur.msgs = list; cur.shown = 60; cur.lastPrompt = null; cur.openedAt = now(); cur.chimeRun = 0;
+  if (!S.get('personas', chat.personaId)) {   // 정해 둔 페르소나가 없으면 이 방에서 마지막으로 쓴 이름, 그것도 없으면 지금 기본 페르소나로
+    const last = [...list].reverse().find(m => m.role === 'user' && m.name), p = (last && S.personas.find(x => x.name === last.name)) || S.persona(chat);
+    if (p) { chat.personaId = p.id; await S.save('chats', chat, true); }
+  }
   await Promise.all([Assets.load(assetOwners()), Memory.load(chat.id), Illust.load(chat.id)]).catch(e => console.warn(e));
   route.arg = chat.id; S.set({ lastChat: chat.id });
   drawMain(); drawSide(); if (cur.drawer) drawDrawer();
@@ -155,6 +159,12 @@ function groupDialog() {
 // ════════ 메인 영역 ════════
 function drawMain() {
   ui.top = h('header.chat-top'); ui.hud = h('div.hud-slot'); ui.scroll = h('div.chat-scroll'); ui.msgs = h('div.msgs'); ui.composer = h('footer.composer');
+  ui.msgs.addEventListener('click', e => {   // 누른 메시지 하나만 고른다 (좁은 화면 · 터치에서 도구를 여는 방법)
+    if (e.target.closest('button, a, input, textarea, select, summary, label, img, figure, .msg-tools') || String(getSelection())) return;
+    const el = e.target.closest('.msg'), was = el?.classList.contains('picked');
+    ui.msgs.querySelectorAll('.msg.picked').forEach(x => x.classList.remove('picked'));
+    if (el && !was) el.classList.add('picked');
+  });
   ui.scroll.append(ui.msgs);
   ui.main.replaceChildren(ui.top, ui.hud, ui.scroll, ui.composer);
   ui.main.style.setProperty('--chat-bg', cur.chat.bg ? `url("${cur.chat.bg}")` : 'none');
@@ -302,7 +312,7 @@ function msgEl(m, idx) {
 }
 function redraw(m) {
   const old = ui.msgs?.querySelector(`[data-id="${m.id}"]`); const idx = cur.msgs.indexOf(m);
-  if (old && idx >= 0) old.replaceWith(msgEl(m, idx)); else drawMsgs();
+  if (old && idx >= 0) { const el = msgEl(m, idx); if (old.classList.contains('picked')) el.classList.add('picked'); old.replaceWith(el); } else drawMsgs();
 }
 const nearBottom = () => ui.scroll.scrollHeight - ui.scroll.scrollTop - ui.scroll.clientHeight < 160;
 const toBottom = () => { ui.scroll.scrollTop = ui.scroll.scrollHeight; };
@@ -318,7 +328,7 @@ function editMsg(m, el) {
   body.replaceWith(h('div.edit-box', ta, h('div.row.end', btn('취소', { cls: 'ghost', onclick: () => done(false) }), btn('저장', { cls: 'primary', ic: 'check', onclick: () => done(true) }))));
   fit(); ta.focus();
 }
-async function delMsg(m) { const i = cur.msgs.indexOf(m); if (i < 0) return; cur.msgs.splice(i, 1); const sc = syncScene(cur.chat, cur.msgs); rewindState(); await save(); emit('message:deleted', { chat: cur.chat, msgs: cur.msgs }); if (sc) drawMain(); else drawMsgs(); drawSide(); }
+async function delMsg(m) { if (cur.msgs.indexOf(m) < 0 || !(await confirmBox('이 메시지를 삭제할까요?', '삭제', true))) return; const i = cur.msgs.indexOf(m); if (i < 0) return; cur.msgs.splice(i, 1); const sc = syncScene(cur.chat, cur.msgs); rewindState(); await save(); emit('message:deleted', { chat: cur.chat, msgs: cur.msgs }); if (sc) drawMain(); else drawMsgs(); drawSide(); }
 /** 장면 상태를 남아 있는 메시지에 맞춘다 (막을 올린 표시가 지워졌으면 장면도 닫힌 것). 바뀌었으면 true */
 function syncScene(chat, list) {
   const k = [...list].reverse().find(m => m.curtain)?.curtain, on = k?.kind === 'open'; if (!!chat.scene?.on === on) return false;
@@ -381,7 +391,7 @@ function illustEls(m, s) {
   if (!s.illust?.length) return null;
   return h('div.illusts', s.illust.map((it, i) => h('figure.illust',
     h('img', { src: Illust.data(it.id), alt: '삽화', loading: 'lazy', onclick: () => modal({ title: '', wide: true, body: h('div.col', h('img.full-img', { src: Illust.data(it.id) }), it.title && h('b', it.title), h('p.hint', [it.camera, it.prompt, ...(it.characters || []).map(x => typeof x === 'string' ? x : `${x.name || ''}: ${[x.outfit, x.action].filter(Boolean).join(', ')}`)].filter(Boolean).join(' · '))) }) }),
-    h('figcaption', iconBtn('refresh', '다시 그리기', () => drawScene(m, { title: it.title, camera: it.camera, prompt: it.prompt, negative: it.negative, characters: it.characters }), 'tiny'), iconBtn('edit', '프롬프트 고쳐서 그리기', () => illustDialog(m, it.prompt), 'tiny'), iconBtn('trash', '삽화 지우기', async () => { s.illust.splice(i, 1); await Illust.remove(it.id); await save(); redraw(m); }, 'tiny')))));
+    h('figcaption', iconBtn('refresh', '다시 그리기', () => drawScene(m, { title: it.title, camera: it.camera, prompt: it.prompt, negative: it.negative, characters: it.characters }), 'tiny'), iconBtn('edit', '프롬프트 고쳐서 그리기', () => illustDialog(m, it.prompt), 'tiny'), iconBtn('trash', '삽화 지우기', async () => { if (!(await confirmBox('이 삽화를 지울까요?', '지우기', true))) return; s.illust.splice(s.illust.indexOf(it), 1); await Illust.remove(it.id); await save(); redraw(m); }, 'tiny')))));
 }
 function drawScene(m, scene, at) {
   setStatus('삽화 그리는 중…');
@@ -849,7 +859,7 @@ function drawDrawer() {
   const scene = sec('연결과 화자', 'plug', true,
     sel('API 연결', S.settings.activeConn, S.conns.length ? S.conns.map(x => [x.id, `${x.name}${x.model ? ' · ' + x.model : ''}`]) : [['', '연결 없음']], v => { S.set({ activeConn: v }); drawTop(); }),
     sel('프리셋', S.settings.activePreset, S.presets.map(x => [x.id, x.name]), v => { S.set({ activePreset: v }); drawGauge(); }),
-    sel('이 대화의 페르소나', c.personaId || '', [['', `기본 (${S.get('personas', S.settings.activePersona)?.name || '나'})`], ...S.personas.map(x => [x.id, x.name])], v => { c.personaId = v; saveChat(); drawMsgs(); }));
+    sel('이 대화의 페르소나', S.persona(c)?.id || '', S.personas.map(x => [x.id, x.name]), v => { c.personaId = v; saveChat(); drawMsgs(); }));
 
   const group = sec('등장인물', 'users', chars.length > 1,
     h('div.members', chars.map(ch => h(`div.member${(c.muted || []).includes(ch.id) ? '.muted' : ''}`, avatar(ch, 'xs'), h('span', ch.name), chars.length > 1 && iconBtn((c.muted || []).includes(ch.id) ? 'eyeoff' : 'eye', '잠시 쉬게 하기 / 다시 부르기', () => { const mu = new Set(c.muted || []); mu.has(ch.id) ? mu.delete(ch.id) : mu.add(ch.id); c.muted = [...mu]; saveChat(); drawDrawer(); }), chars.length > 1 && iconBtn('x', '대화에서 빼기', async () => { c.charIds = c.charIds.filter(i => i !== ch.id); await S.save('chats', c, true); drawMain(); drawDrawer(); drawSide(); })))),
