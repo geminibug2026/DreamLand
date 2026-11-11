@@ -154,3 +154,11 @@
 .sorting { -webkit-user-select: none; user-select: none; } .sorting > * { transition: transform .16s var(--ease); }
 .sorting > .dragging { transition: none; position: relative; z-index: 5; border-color: var(--ink); box-shadow: 5px 5px 0 var(--surface3); opacity: 1; } .sorting .grip { cursor: grabbing; }
 .grip { color: var(--dim); } .grip .ic { width: 18px; height: 18px; stroke-width: 3.6; stroke-linecap: round; }
+/* 휴대폰 일기장: 두 쪽을 위아래 한 장처럼 (책 옆면 그림자가 한쪽씩 삐져나오지 않게), 아래 도구 줄 뒤로 글이 비치지 않게 */
+@media (max-width: 820px) {
+  .book .book-page.left, .book .book-page.right, .book.is-dream .book-page.left, .book.is-dream .book-page.right { box-shadow: none !important; }
+  .book.is-dream .book-page.left { border-bottom-color: rgba(255, 255, 255, .22) !important; }
+  .book-wrap { padding-bottom: 0; gap: 12px; }
+  .book-wrap .book-bar { box-shadow: 0 -12px 0 0 #0b0b10, 0 0 0 12px #0b0b10; margin-bottom: 0; }
+  .book { filter: none; }
+}
