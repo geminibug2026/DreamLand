@@ -70,6 +70,7 @@ function paragraph(line, style) {
   if (style === 'chat') {   // 메신저: *행동* 만 지문으로, 나머지는 한 줄이 곧 말풍선
     const t = line.trim();
     if (/^\*[^*]+\*$/.test(t) || /^\([^)]*\)$/.test(t)) return `<p class="nar act">${inline(t.replace(/^\*|\*$/g, ''))}</p>`;
+    if (isThink(t) && t.length > 2 && !/['‘’]/.test(t.slice(1, -1))) return `<div class="think"><span>${inline(t.slice(1, -1))}</span></div>`;   // 줄 전체가 '속마음' 이면 생각 풍선
     return `<div class="say"><span>${inline(isSay(t) ? t.slice(1, -1) : t)}</span></div>`;
   }
   if (style === 'novel') {  // 소설: 흐름을 끊지 않고 대사와 속마음에 색만 입힌다

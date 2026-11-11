@@ -8,7 +8,7 @@ import { applyTheme } from './theme.js';
 import { Assets } from './assets.js';
 import { assetsPane, TALK_PROMPT } from './studio.js';
 import { X } from './hooks.js';
-import { loreEditor, lorePicker, loreSettingsDialog, loreLinks, loreSwitch } from './f-lore.js';
+import { loreEditor, lorePicker, loreSettingsDialog, loreLinks, loreSwitch, loreLinker } from './f-lore.js';
 import { presetVarsEditor } from './f-presetvars.js';
 import { AF, KINDS, TEXT_PROVIDER_KINDS, tplList, tplCurrent, tplSave, tplDelete, tplApply, tplDirty, tplIsBuiltin, tplImport, masterExport, resolve, instructName } from './advanced.js';
 
@@ -195,7 +195,7 @@ export function charEditor(c) {
       { section: '대화 예시' },
       { k: 'mesExample', label: '말투와 문체를 잡는 데 중요합니다', type: 'area', rows: 6, count: true, ph: '(대화 예시. 예시마다 새 줄에 <START> 로 시작합니다.)\n<START>\n{{user}}: …\n{{char}}: …' },
       { section: '로어북' },
-      { el: h('div.field', h('span.field-label', '연결된 로어북'), S.lore.length ? h('div.checks', S.lore.map(b => h('label.check', h('input', { type: 'checkbox', checked: c.loreIds.includes(b.id), onchange: e => { c.loreIds = e.target.checked ? [...c.loreIds, b.id] : c.loreIds.filter(i => i !== b.id); saveNow(); } }), h('i'), h('span', b.name)))) : h('small.hint', '로어북을 만들면 여기서 연결할 수 있어요.'), h('small.hint', '맨 처음 연결한 로어북은 카드를 내보낼 때 카드 안에 함께 담깁니다.')) },
+      { el: h('div.field', h('span.field-label', '연결된 로어북'), loreLinker(c, saveNow), h('small.hint', '맨 처음 연결한 로어북은 카드를 내보낼 때 카드 안에 함께 담깁니다.')) },
       { section: '이 캐릭터 전용 설정' },
       { k: 'bind.connId', label: 'API 연결', type: 'select', opts: [['', '기본 연결을 따름'], ...S.conns.map(x => [x.id, x.name])], third: true }, { k: 'bind.presetId', label: '프리셋', type: 'select', opts: [['', '기본 프리셋을 따름'], ...S.presets.map(x => [x.id, x.name])], third: true }, { k: 'bind.personaId', label: '페르소나', type: 'select', opts: [['', '기본 페르소나를 따름'], ...S.personas.map(x => [x.id, x.name])], third: true },
       { section: '카드의 나머지 필드' },

@@ -139,9 +139,6 @@
 .inspect-group > summary .role.history { background: var(--ink); color: var(--bg); }
 .inspect-list { display: flex; flex-direction: column; gap: 4px; padding: 8px; border-top: 1px solid var(--line); max-height: 60vh; overflow: auto; background: var(--surface); }
 .inspect-list .inspect-row .src { color: var(--dim); }
-/* 체크 항목: 설명은 이름 옆이 아니라 아래에 (이름이 한 글자씩 꺾이지 않게) */
-.check.has-hint { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; row-gap: 2px; align-items: center; }
-.check.has-hint > small { grid-column: 2; line-height: 1.5; padding-left: 0 !important; margin-top: 0 !important; }
 /* 꼬리표와 숫자는 꺾이지 않게 */
 .inspect-row .role, .inspect-row summary small { white-space: nowrap; flex: none; }
 /* 숨긴 입력 칸은 제 이름표 안에 붙들어 둔다 (누를 때 화면 전체가 밀려 올라가지 않게) */
@@ -162,3 +159,21 @@
   .book-wrap .book-bar { box-shadow: 0 -12px 0 0 #0b0b10, 0 0 0 12px #0b0b10; margin-bottom: 0; }
   .book { filter: none; }
 }
+
+/* 설명은 ? 단추 뒤에 접어 둔다 (이름 옆 자리를 차지하지 않게) */
+.tip { flex: none; width: 20px; height: 20px; padding: 0; border-radius: 50%; border: 1px solid var(--ink-line); color: var(--dim); background: none; font: 700 11px/1 var(--display); display: inline-grid; place-items: center; cursor: help; }
+.tip:hover, .tip-open > .tip, .tip-open > .field-label > .tip { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.tip-text { display: none !important; } .tip-open > .tip-text { display: block !important; }
+.check.tip-open { flex-wrap: wrap; } .check.tip-open > small.tip-text { flex: 1 1 100%; padding-left: 31px !important; margin-top: -2px !important; line-height: 1.5; color: var(--dim); }
+/* 로어북 연결: 연결한 것만 꼬리표로 */
+.lore-linked { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+.lore-chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; white-space: normal; } .lore-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.lore-chip > button { flex: none; width: 18px; height: 18px; line-height: 1; font-size: 15px; color: inherit; opacity: .7; padding: 0; } .lore-chip > button:hover { opacity: 1; }
+.lore-chip.fixed { color: var(--dim); } .lore-chip > small { flex: none; font-size: .78em; opacity: .7; padding-left: 6px; border-left: 1px solid var(--ink-line); }
+.lore-picklist { display: flex; flex-direction: column; max-height: min(52vh, 100vh - 380px); min-height: 140px; overflow: auto; border: 1px solid var(--ink-line); }
+.lore-pickrow { padding: 9px 12px; border-bottom: 1px solid var(--line); flex: none; } .lore-pickrow:last-child { border-bottom: 0; } .lore-pickrow:hover { background: var(--surface2); }
+.lore-pickrow > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .lore-pickrow > small { flex: none; }
+
+/* 대화 모드의 생각 풍선 */
+.mode-talk .think { margin: 6px 0 18px 12px; } .mode-talk .think > span { padding: .5em 1em; line-height: 1.5; max-width: min(84%, 440px); }
+.mode-talk .msg.user .think { margin: 6px 12px 18px 0; }

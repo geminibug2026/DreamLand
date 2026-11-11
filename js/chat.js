@@ -9,6 +9,7 @@ import { Assets } from './assets.js';
 import { Memory } from './memory.js';
 import { Illust, translateText } from './illust.js';
 import { die3d } from './dice3d.js';
+import { loreLinker } from './f-lore.js';
 import { slashPopup } from './slash.js';
 import { clockLabel, clockHint, clockDialog, Clock } from './clock.js';
 import { Live, newLater, inQuietHours, mo, cdHours, quietLeft } from './live.js';
@@ -898,7 +899,7 @@ function drawDrawer() {
   const globals = new Set(S.settings.activeLore), charBooks = new Set(chars.flatMap(x => x.loreIds || []));
   const hits = cur.lastPrompt?.lore || [];
   const lore = sec('로어북', 'book', false,
-    S.lore.length ? h('div.checks', S.lore.map(b => { const fixed = globals.has(b.id) || charBooks.has(b.id); return h('label.check', h('input', { type: 'checkbox', checked: fixed || (c.loreIds || []).includes(b.id), disabled: fixed, onchange: e => { c.loreIds = e.target.checked ? [...(c.loreIds || []), b.id] : (c.loreIds || []).filter(i => i !== b.id); saveChat(); } }), h('i'), h('span', b.name), fixed && h('small', globals.has(b.id) ? '전역' : '캐릭터')); })) : h('p.dim', '로어북이 아직 없어요.'),
+    loreLinker(c, saveChat, { fixed: () => S.lore.filter(b => globals.has(b.id) || charBooks.has(b.id)).map(b => [b, globals.has(b.id) ? '전역' : '캐릭터']) }),
     hits.length ? h('div.hits', h('small.hint', `마지막 생성에서 발동한 항목 ${hits.length}개`), hits.map(e => h('span.chip.static', e.name || e.keys?.[0] || e.book))) : null);
 
   const varsTa = h('textarea.inp', { rows: 3, placeholder: '호감도=50', value: Object.entries(c.vars || {}).map(([k, v]) => `${k}=${v}`).join('\n'), oninput: e => { c.vars = Object.fromEntries(e.target.value.split('\n').map(l => l.split('=')).filter(p => p[0].trim()).map(p => [p[0].trim(), p.slice(1).join('=')])); saveChat(); } });

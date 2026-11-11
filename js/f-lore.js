@@ -194,9 +194,36 @@ export function loreSwitch(b, after) {
 
 /** 로어북 고르기 (페르소나 · 그 밖의 묶을 곳). holder.loreIds 를 고친다 */
 export function lorePicker(holder, save, hint = '') {
+  return h('div.card.lore-link', h('h3.form-sec', '로어북'), hint && h('p.hint', hint), loreLinker(holder, save));
+}
+
+/** 연결한 로어북만 꼬리표로 보여 주고, 더 고를 때는 찾기 창을 연다 (로어북이 아주 많아도 화면이 길어지지 않게).
+ *  fixed(): 여기서 끊을 수 없는 것들 [[로어북, '전역' | '캐릭터'], …] */
+export function loreLinker(holder, save, { fixed = () => [] } = {}) {
   holder.loreIds ||= [];
-  const box = h('div.card.lore-link');
-  const draw = () => box.replaceChildren(h('h3.form-sec', '로어북'), hint && h('p.hint', hint),
-    S.lore.length ? h('div.lore-chips', S.lore.map(l => h(`button.chip${holder.loreIds.includes(l.id) ? '.on' : ''}`, { type: 'button', title: `항목 ${l.entries.length}개`, onclick: () => { holder.loreIds = holder.loreIds.includes(l.id) ? holder.loreIds.filter(i => i !== l.id) : [...holder.loreIds, l.id]; save(); draw(); } }, l.name))) : h('p.dim', '로어북이 아직 없어요.'));
+  const box = h('div.lore-linked');
+  const mine = () => { const fx = new Set(fixed().map(([b]) => b.id)); return holder.loreIds.filter(id => S.get('lore', id) && !fx.has(id)); };
+  const toggle = id => { holder.loreIds = holder.loreIds.includes(id) ? holder.loreIds.filter(i => i !== id) : [...holder.loreIds, id]; save(); };
+  const draw = () => {
+    const fx = fixed(), ids = mine();
+    box.replaceChildren(
+      fx.length || ids.length ? h('div.lore-chips', fx.map(([b, tag]) => h('span.chip.lore-chip.fixed', { title: `${tag} 로어북이라 여기서는 끊을 수 없어요` }, h('span', b.name), h('small', tag))),
+        ids.map(id => h('span.chip.on.lore-chip', h('span', S.get('lore', id).name), h('button', { type: 'button', title: '연결 끊기', 'aria-label': '연결 끊기', onclick: () => { toggle(id); draw(); } }, '×')))) : h('small.hint', '연결한 로어북이 없어요.'),
+      btn(ids.length ? '로어북 고르기' : '로어북 연결', { ic: 'plus', cls: 'ghost', onclick: open }));
+  };
+  const open = () => {
+    if (!S.lore.length) return toast('로어북이 아직 없어요. 로어북 화면에서 먼저 만들어 주세요.');
+    const fx = new Map(fixed().map(([b, tag]) => [b.id, tag])), on = new Set(holder.loreIds);
+    const all = [...S.lore].sort((a, b) => (on.has(b.id) || fx.has(b.id)) - (on.has(a.id) || fx.has(a.id)));   // 열 때 한 번만: 연결된 것 먼저
+    const list = h('div.lore-picklist'), count = h('small.hint'); let q = '';
+    const drawList = () => {
+      const hit = all.filter(b => !q || `${b.name} ${b.description || ''}`.toLowerCase().includes(q));
+      count.textContent = `${S.lore.length}개 중 ${mine().length}개 연결됨${q ? ` · 찾은 것 ${hit.length}개` : ''}`;
+      list.replaceChildren(...(hit.length ? hit.map(b => h('label.check.lore-pickrow', h('input', { type: 'checkbox', checked: fx.has(b.id) || holder.loreIds.includes(b.id), disabled: fx.has(b.id), onchange: () => { toggle(b.id); count.textContent = `${S.lore.length}개 중 ${mine().length}개 연결됨${q ? ` · 찾은 것 ${hit.length}개` : ''}`; } }), h('i'),
+        h('span', b.name), h('small', fx.get(b.id) || `항목 ${b.entries.length}개`))) : [h('p.dim', '찾는 로어북이 없어요.')]));
+    };
+    drawList();
+    modal({ title: '로어북 고르기', body: h('div.col', h('input.inp', { placeholder: '이름 · 설명으로 찾기', oninput: e => { q = e.target.value.trim().toLowerCase(); drawList(); } }), count, list), onClose: draw, actions: [{ label: '닫기', cls: 'primary' }] });
+  };
   draw(); return box;
 }

@@ -114,6 +114,12 @@ export function menu(anchor, items) {
 const getPath = (o, p) => p.split('.').reduce((a, k) => a?.[k], o);
 const setPath = (o, p, v) => { const ks = p.split('.'); const last = ks.pop(); ks.reduce((a, k) => a[k] ||= {}, o)[last] = v; };
 /** defs: [{k, label, type: text|area|num|check|select|tags|image|range|lines, hint, opts, ...}] */
+/** 설명 보기 단추: 누르면 그 항목의 설명(.tip-text)이 펼쳐진다 */
+export const tipBtn = () => h('button.tip', { type: 'button', title: '설명 보기', 'aria-label': '설명 보기', onclick: e => { e.preventDefault(); e.stopPropagation(); e.currentTarget.closest('.check, .field')?.classList.toggle('tip-open'); } }, '?');
+// 폼 밖에서 직접 만든 체크 항목의 긴 설명도 같은 단추 뒤로 접는다 (짧은 꼬리표는 그대로 둔다)
+const tipify = el => { for (const s of el.querySelectorAll?.('label.check > small:not(.tip-text)') || []) { if (s.closest('.checks, .lore-picklist') || s.textContent.trim().length < 16 || s.parentElement.querySelector(':scope > .tip')) continue; s.classList.add('tip-text'); s.before(tipBtn()); } };
+new MutationObserver(list => { for (const m of list) for (const n of m.addedNodes) if (n.nodeType === 1) tipify(n.parentElement || n); }).observe(document.documentElement, { childList: true, subtree: true });
+
 export function form(obj, defs, onChange = () => { }) {
   const fire = debounce(() => onChange(obj), 250);
   const row = d => {
@@ -125,7 +131,7 @@ export function form(obj, defs, onChange = () => { }) {
     switch (d.type) {
       case 'area': ctl = h('textarea.inp', { value: v ?? '', rows: d.rows || 4, placeholder: d.ph || '', spellcheck: false, oninput: e => set(e.target.value) }); break;
       case 'num': ctl = h('input.inp', { type: 'number', value: v ?? '', min: d.min, max: d.max, step: d.step ?? 'any', placeholder: d.ph || '', oninput: e => set(e.target.value === '' ? (d.nullable ? null : 0) : +e.target.value) }); break;
-      case 'check': return h(`label.check${d.hint ? '.has-hint' : ''}`, h('input', { type: 'checkbox', checked: !!v, onchange: e => set(e.target.checked) }), h('i'), h('span', d.label), d.hint && h('small', d.hint));
+      case 'check': return h('label.check', h('input', { type: 'checkbox', checked: !!v, onchange: e => set(e.target.checked) }), h('i'), h('span', d.label), d.hint && tipBtn(), d.hint && h('small.tip-text', d.hint));
       case 'select': ctl = h('select.inp', { onchange: e => set(e.target.value) }, d.opts.map(o => { const [val, lab] = Array.isArray(o) ? o : [o, o]; return h('option', { value: val, selected: String(v ?? '') === String(val) }, lab); })); break;
       case 'tags': ctl = h('input.inp', { value: (v || []).join(', '), placeholder: d.ph || '쉼표로 구분', oninput: e => set(e.target.value.split(',').map(s => s.trim()).filter(Boolean)) }); break;
       case 'lines': ctl = h('textarea.inp', { value: (v || []).join('\n'), rows: d.rows || 3, placeholder: d.ph || '한 줄에 하나씩', oninput: e => set(e.target.value.split('\n').map(s => s.trim()).filter(Boolean)) }); break;
@@ -139,7 +145,7 @@ export function form(obj, defs, onChange = () => { }) {
       }
       default: ctl = h('input.inp', { type: d.type === 'password' ? 'password' : 'text', value: v ?? '', placeholder: d.ph || '', autocomplete: 'off', spellcheck: false, oninput: e => set(e.target.value) });
     }
-    return h(`label.field${d.half ? '.half' : ''}${d.third ? '.third' : ''}`, h('span.field-label', d.label, d.count && h('em.tok', { dataset: { for: d.k } })), ctl, d.hint && h('small.hint', d.hint));
+    return h(`label.field${d.half ? '.half' : ''}${d.third ? '.third' : ''}`, h('span.field-label', d.label, d.hint && tipBtn(), d.count && h('em.tok', { dataset: { for: d.k } })), ctl, d.hint && h('small.hint.tip-text', d.hint));
   };
   return h('div.form', defs.filter(Boolean).map(row));
 }
