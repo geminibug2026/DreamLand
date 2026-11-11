@@ -268,7 +268,7 @@ const bodyHtml = (m) => {
   const raw = s.showTr && s.tr ? s.tr : s.text;
   const text = runFilters(applyRegex(raw, { who: m.role === 'user' ? 'user' : 'ai', target: 'display', depth, charId: m.charId }), { role: m.role, msg: m, chat: cur.chat });
   const style = m.role === 'system' ? 'plain' : modeOf(cur.chat) === 'talk' && !m.scene ? 'chat' : S.settings.rpBubbles ? 'bubbles' : 'novel';
-  return render(Assets.expand(Illust.strip(text), assetOwners(), `${m.id}:${m.sw}`), { style });
+  return render(Assets.expand(Illust.strip(text), assetOwners(), `${m.id}:${m.sw}`), { style, prose: m.role !== 'user' });
 };
 
 function msgEl(m, idx) {

@@ -65,13 +65,21 @@ const SEG1 = new RegExp(SEG.source);
 
 const isSay = t => /^["“「『]/.test(t[0]) && /["”」』]$/.test(t), isThink = t => /^['‘]/.test(t[0]) && /['’]$/.test(t);
 /** style: bubbles(지문 + 대사 말풍선) · chat(메신저: 줄마다 말풍선) · novel(소설: 말풍선 없이 대사만 강조) · plain */
+/** 소설처럼 쓴 줄인지: 아주 길거나, '~다.' 로 끝나는 문장이 이어진다 (메신저 글은 짧고 마침표가 드물다) */
+const isProse = s => s.length >= 140 || (s.match(/[가-힣]다\.(?=\s|$|["”’'])/g) || []).length >= 2 || (s.length >= 60 && /[가-힣]다\.["”’']?$/.test(s));
+let chatProse = true;   // 긴 줄을 지문으로 볼지 (내가 쓴 글에는 적용하지 않는다)
 function paragraph(line, style) {
   if (style === 'plain' || /<[a-zA-Z/]/.test(line)) return `<p class="nar">${inline(line)}</p>`;
-  if (style === 'chat') {   // 메신저: *행동* 만 지문으로, 나머지는 한 줄이 곧 말풍선
-    const t = line.trim();
+  if (style === 'chat') {   // 메신저: 그냥 쓴 줄 = 문자 · "…" = 소리 내어 한 말 · '…' = 속마음 · *…* 이나 소설처럼 쓴 줄 = 지문
+    const t = line.trim(), one = (a, z) => t.length > 2 && !new RegExp(`[${a}${z}]`).test(t.slice(1, -1));
     if (/^\*[^*]+\*$/.test(t) || /^\([^)]*\)$/.test(t)) return `<p class="nar act">${inline(t.replace(/^\*|\*$/g, ''))}</p>`;
-    if (isThink(t) && t.length > 2 && !/['‘’]/.test(t.slice(1, -1))) return `<div class="think"><span>${inline(t.slice(1, -1))}</span></div>`;   // 줄 전체가 '속마음' 이면 생각 풍선
-    return `<div class="say"><span>${inline(isSay(t) ? t.slice(1, -1) : t)}</span></div>`;
+    if (isThink(t) && one("'‘", '’')) return `<div class="think"><span>${inline(t.slice(1, -1))}</span></div>`;
+    if (isSay(t) && one('"“「『', '”」』')) return `<div class="say voice"><span>${inline(t)}</span></div>`;
+    if (chatProse && SEG1.test(t) && isProse(t.replace(SEG, ' ').trim())) {   // 지문 사이에 대사가 낀 줄: 조각마다 나눈다
+      return t.split(SEG).filter(p => p && p.trim()).map(p => { const x = p.trim(); return isSay(x) ? `<div class="say voice"><span>${inline(x)}</span></div>` : isThink(x) ? `<div class="think"><span>${inline(x.slice(1, -1))}</span></div>` : /[^\s.,!?…~\-—*]/.test(x) ? `<p class="nar">${inline(x)}</p>` : ''; }).join('');
+    }
+    if (chatProse && isProse(t)) return `<p class="nar">${inline(t)}</p>`;
+    return `<div class="say"><span>${inline(t)}</span></div>`;
   }
   if (style === 'novel') {  // 소설: 흐름을 끊지 않고 대사와 속마음에 색만 입힌다
     if (!SEG1.test(line)) return `<p class="nar">${inline(line)}</p>`;
@@ -89,8 +97,8 @@ function paragraph(line, style) {
   return out;
 }
 
-export function render(text, { bubbles = true, style } = {}) {
-  style ||= bubbles ? 'bubbles' : 'plain';
+export function render(text, { bubbles = true, style, prose = true } = {}) {
+  style ||= bubbles ? 'bubbles' : 'plain'; chatProse = prose;
   if (!text) return '';
   const lines = String(text).replace(/\r\n?/g, '\n').split('\n');
   let html = '', i = 0;

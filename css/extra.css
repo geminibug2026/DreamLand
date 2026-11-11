@@ -177,3 +177,9 @@
 /* 대화 모드의 생각 풍선 */
 .mode-talk .think { margin: 6px 0 18px 12px; } .mode-talk .think > span { padding: .5em 1em; line-height: 1.5; max-width: min(84%, 440px); }
 .mode-talk .msg.user .think { margin: 6px 12px 18px 0; }
+
+/* 대화 모드: 소리 내어 한 말은 테두리만 있는 풍선, 지문은 풍선 없이 */
+.mode-talk .say.voice > span, .mode-talk .msg.user .say.voice > span { background: transparent; color: var(--text); border: 1px solid var(--ink); border-radius: 1.3em; }
+.mode-talk .msg-body > p.nar:not(.act) { margin: 8px 2px; line-height: 1.7; color: var(--nar); max-width: 44em; }
+.mode-talk .msg.user .msg-body > p.nar:not(.act) { text-align: left; }
+.mode-talk .say.voice > span { font-weight: 600; box-shadow: 3px 3px 0 var(--surface3); }
