@@ -1,0 +1,114 @@
+/* ── Dreamland 덧붙임 ── 명령어 목록 · 대화 화면 상단(좁은 화면) · 방의 시계 · 캐릭터 폴더 · 벡터 검색 */
+
+/* 입력창의 명령어 목록 */
+.composer { position: relative; }
+.slash-pop { position: absolute; left: 18px; right: 18px; bottom: calc(100% - 2px); max-height: min(320px, 46vh); overflow-y: auto; z-index: 30; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--ink); box-shadow: 5px 5px 0 color-mix(in srgb, var(--ink) 12%, transparent); scrollbar-width: thin; }
+.slash-pop[hidden] { display: none; }
+.slash-row { display: grid; grid-template-columns: minmax(96px, auto) auto minmax(0, 1fr) auto; gap: 10px; align-items: baseline; text-align: left; padding: 8px 12px; border-bottom: 1px dashed var(--ink-line); }
+.slash-row:last-child { border-bottom: 0; }
+.slash-row code { font: 600 .86em ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--accent); background: none; padding: 0; white-space: nowrap; }
+.slash-row i { font-style: normal; color: var(--faint); font: 500 .78em ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: nowrap; }
+.slash-row span { color: var(--dim); font-size: .84em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slash-row small { color: var(--faint); font: 500 .72em ui-monospace, Consolas, monospace; white-space: nowrap; }
+.slash-row.on, .slash-row:hover { background: var(--surface2); } .slash-row.on { box-shadow: inset 3px 0 0 var(--accent); } .slash-row.on span { color: var(--text); }
+.slash-pop.one .slash-row span { white-space: normal; }
+
+/* 대화 화면 상단: 좁은 화면에서는 제목과 꼭 필요한 단추만 */
+.top-sub { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: .8em; color: var(--dim); }
+.top-pres { display: flex; align-items: center; gap: 5px; min-width: 0; flex: 0 1 auto; padding: 0; color: inherit; font: inherit; } .top-pres .presence { flex: none; } .top-pres .presence + .presence { margin-left: -6px; }
+.top-pres span, .top-room { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .top-pres:hover span { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+.top-room { flex: 0 1 auto; min-width: 0; color: var(--faint); } .top-room::before { content: "·"; margin-right: 7px; } .top-sub .top-branch { margin-right: 0; flex: none; }
+.top-clock { font: 600 .92em var(--display); color: var(--accent); margin-right: 6px; letter-spacing: .02em; }
+@media (max-width: 820px) {
+  .chat-top .top-wide { display: none !important; }
+  .chat-top .status:not(.on) { display: none; }
+  .chat-top { gap: 2px; } .chat-top .top-title { padding-left: 6px; }
+  .top-room, .top-sub .top-branch { display: none; }
+  .slash-pop { left: 10px; right: 10px; }
+  .slash-row { grid-template-columns: auto minmax(0, 1fr); row-gap: 2px; } .slash-row span { grid-column: 1 / -1; white-space: normal; } .slash-row small { display: none; }
+}
+
+/* 이 방의 시각 */
+.clock-dlg { display: flex; flex-direction: column; gap: 14px; min-width: min(540px, 78vw); }
+.clock-opts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.clock-opt { text-align: left; border: 1px solid var(--ink-line); padding: 12px 12px 13px; display: flex; flex-direction: column; gap: 5px; }
+.clock-opt i { width: 10px; height: 10px; border: 1px solid var(--ink); border-radius: 50%; margin-bottom: 3px; }
+.clock-opt b { font: 700 .95em var(--display); } .clock-opt small { color: var(--dim); font-size: .78em; line-height: 1.5; }
+.clock-opt:hover { border-color: var(--ink); } .clock-opt.on { border-color: var(--ink); background: var(--handles), var(--surface); } .clock-opt.on i { background: var(--accent); border-color: var(--accent); }
+.clock-story { display: flex; flex-direction: column; gap: 10px; border-top: 1px dashed var(--ink-line); padding-top: 14px; }
+.clock-jump { display: flex; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 820px) { .clock-dlg { min-width: 0; } .clock-opts { grid-template-columns: 1fr; } }
+
+/* 캐릭터 폴더 */
+.folder-row { display: flex; align-items: flex-end; gap: 4px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--ink); margin-bottom: 20px; padding-top: 2px; }
+.folder-tab { flex: none; display: flex; align-items: center; gap: 7px; padding: 7px 17px 6px 12px; border: 1px solid var(--ink-line); border-bottom: 0; font: 600 .84em var(--display); color: var(--dim); background: var(--surface);
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%); transition: background .2s, color .2s; }
+.folder-tab span { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-tab em { font-style: normal; font-size: .82em; color: var(--faint); font-variant-numeric: tabular-nums; }
+.folder-tab:hover { color: var(--text); }
+.folder-tab.on { background: var(--ink); color: var(--bg); border-color: var(--ink); } .folder-tab.on em { color: color-mix(in srgb, var(--bg) 68%, transparent); }
+.folder-tab.over { background: var(--soft); color: var(--accent); }
+.folder-tab.add { border-style: dashed; clip-path: none; padding: 7px 10px 6px; }
+.folder-bar { display: flex; align-items: center; gap: 8px; margin: -6px 0 20px; } .folder-bar b { font: 800 1.05em var(--display); margin-right: auto; }
+.arch-card .arch { position: relative; }
+.in-folder { position: absolute; left: 6px; bottom: 6px; display: flex; gap: 4px; align-items: center; font: 600 11px/1.5 var(--display); font-style: normal; letter-spacing: 0; background: var(--surface); color: var(--text); border: 1px solid var(--ink); padding: 0 6px; max-width: calc(100% - 12px); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.folder-empty { grid-column: 1 / -1; }
+
+/* 일기장 아래 줄: 넘기기 · 쓰기 · 덮기 */
+.book-wrap .book-bar { display: flex; align-items: center; gap: 8px; padding: 4px 6px; flex-wrap: nowrap; justify-content: center; background: var(--surface); border: 1px solid var(--ink); max-width: 100%; }
+.bk-nav { display: flex; align-items: center; gap: 2px; flex: none; }
+.bk-count { font: 600 .78em var(--display); color: var(--dim); min-width: 56px; text-align: center; font-variant-numeric: tabular-nums; letter-spacing: .05em; }
+.bk-tools { display: flex; gap: 4px; padding: 0 10px; border-left: 1px solid var(--ink-line); border-right: 1px solid var(--ink-line); }
+.bk-tool { display: flex; align-items: center; gap: 6px; padding: 6px 11px; font: 600 .82em var(--display); color: var(--text); border: 1px solid transparent; white-space: nowrap; transition: background .2s, color .2s, border-color .2s; }
+.bk-tool:hover { border-color: var(--ink); } .bk-tool[disabled] { opacity: .5; pointer-events: none; }
+.bk-tool.ink { background: var(--ink); color: var(--bg); } .bk-tool.ink:hover { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.bk-tool em { font-style: normal; font-weight: 500; font-size: .78em; opacity: .62; } .bk-tool.done { color: var(--accent); }
+
+/* 책장 넘기기: 종이 한 장이 책등을 축으로 돈다 */
+.book { perspective: 2600px; }
+.bk-under { position: absolute; top: 0; bottom: 0; width: calc(50% - 9px); z-index: 10; pointer-events: none; } .bk-under.left { left: 0; } .bk-under.right { right: 0; }
+.bk-leaf { position: absolute; top: 0; bottom: 0; width: calc(50% - 9px); transform-style: preserve-3d; pointer-events: none; animation: var(--dur, .8s) cubic-bezier(.42, .04, .28, 1) var(--delay, 0s) both; will-change: transform; }
+.bk-leaf.right { right: 0; transform-origin: -9px 50%; animation-name: leaf-next; }
+.bk-leaf.left { left: 0; transform-origin: calc(100% + 9px) 50%; animation-name: leaf-prev; }
+.bk-face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; overflow: hidden; }
+.bk-face.back { transform: rotateY(180deg); }
+.book.bk-skin { position: absolute; inset: 0; display: block; width: auto; height: auto; perspective: none; }
+.book.bk-skin > .book-page { position: absolute; inset: 0; }
+.bk-shade { position: absolute; inset: 0; pointer-events: none; opacity: 0; animation: leaf-shade var(--dur, .8s) ease-in-out var(--delay, 0s) both; }
+.bk-leaf.right .front .bk-shade, .bk-leaf.left .back .bk-shade { background: linear-gradient(90deg, rgba(20, 12, 4, .34), rgba(20, 12, 4, .05) 34%, rgba(255, 255, 255, .22) 62%, rgba(20, 12, 4, .16)); }
+.bk-leaf.right .back .bk-shade, .bk-leaf.left .front .bk-shade { background: linear-gradient(270deg, rgba(20, 12, 4, .34), rgba(20, 12, 4, .05) 34%, rgba(255, 255, 255, .22) 62%, rgba(20, 12, 4, .16)); }
+.bk-blank::before, .bk-blank::after { display: none; }
+.bk-cast { position: absolute; top: 0; bottom: 0; left: 50%; width: 50%; z-index: 15; pointer-events: none; transform-origin: left center; background: linear-gradient(90deg, rgba(20, 12, 4, .3), rgba(20, 12, 4, .1) 45%, transparent 80%); animation: leaf-cast var(--dur, .8s) cubic-bezier(.42, .04, .28, 1) both; }
+.bk-cast.prev { animation-direction: reverse; }
+@keyframes leaf-next { 0% { transform: rotateY(0deg) skewY(0deg); } 28% { transform: rotateY(-42deg) skewY(-2.6deg); } 62% { transform: rotateY(-124deg) skewY(2.2deg); } 100% { transform: rotateY(-180deg) skewY(0deg); } }
+@keyframes leaf-prev { 0% { transform: rotateY(0deg) skewY(0deg); } 28% { transform: rotateY(42deg) skewY(2.6deg); } 62% { transform: rotateY(124deg) skewY(-2.2deg); } 100% { transform: rotateY(180deg) skewY(0deg); } }
+@keyframes leaf-shade { 0%, 100% { opacity: 0; } 45%, 55% { opacity: 1; } }
+@keyframes leaf-cast { 0% { opacity: 0; transform: scaleX(1); } 30% { opacity: 1; transform: scaleX(.62); } 49% { opacity: .9; transform: scaleX(.04); } 51% { opacity: .9; transform: scaleX(-.04); } 72% { opacity: 1; transform: scaleX(-.62); } 100% { opacity: 0; transform: scaleX(-1); } }
+.book.swap-next .book-page { animation: page-in-next .5s var(--ease) both; } .book.swap-prev .book-page { animation: page-in-prev .5s var(--ease) both; }
+.book.swap-next .book-page.right, .book.swap-prev .book-page.right { animation-delay: .06s; }
+@keyframes page-in-next { from { opacity: 0; transform: translateX(34px) rotate(1.2deg); } } @keyframes page-in-prev { from { opacity: 0; transform: translateX(-34px) rotate(-1.2deg); } }
+
+/* 기억에 올리기 */
+.memo-dlg { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+.memo-src, .memo-out { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.memo-page { max-height: 46vh; overflow-y: auto; padding: 14px 16px; border: 1px solid var(--ink-line); background: linear-gradient(transparent calc(1.9em - 1px), color-mix(in srgb, var(--text) 9%, transparent) 0) 0 14px / 100% 1.9em; line-height: 1.9; font-size: .92em; color: var(--dim); scrollbar-width: thin; }
+.memo-page p { margin: 0 0 1.9em; }
+.memo-text { min-height: 150px; line-height: 1.7; resize: vertical; }
+.memo-state:empty { display: none; }
+
+@media (max-width: 820px) {
+  .book-wrap .book-bar { position: sticky; bottom: 0; width: 100%; justify-content: space-between; gap: 2px; padding: 3px 4px; }
+  .bk-tools { padding: 0 3px; gap: 1px; flex: 1; min-width: 0; justify-content: center; } .bk-tool { padding: 6px 5px; gap: 4px; } .bk-tool svg { display: none; } .bk-count { min-width: 34px; letter-spacing: 0; }
+  .book-wrap .book-bar .ibtn { width: 30px; min-width: 30px; padding: 0; }
+  .memo-dlg { grid-template-columns: 1fr; } .memo-page { max-height: 26vh; }
+}
+
+/* 벡터 검색 */
+.vec-card { display: flex; flex-direction: column; gap: 14px; }
+.vec-status { display: flex; flex-direction: column; border: 1px solid var(--ink-line); }
+.vec-status > div { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 8px 12px; border-bottom: 1px dashed var(--ink-line); } .vec-status > div:last-child { border-bottom: 0; }
+.vec-status span { font: 600 .76em var(--display); color: var(--dim); letter-spacing: .04em; } .vec-status b { font-weight: 600; font-size: .9em; } .vec-status small { color: var(--faint); font-size: .78em; }
+.vec-status > small { padding: 8px 12px; }
+.vec-last > div { grid-column: 2 / -1; display: flex; flex-direction: column; gap: 4px; min-width: 0; } .vec-last p { margin: 0; font-size: .84em; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vec-last em { font: 600 .82em ui-monospace, Consolas, monospace; font-style: normal; color: var(--accent); margin-right: 8px; }

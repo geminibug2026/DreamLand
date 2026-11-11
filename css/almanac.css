@@ -1,0 +1,208 @@
+/* ── Dreamland almanac: 달이 차오르는 달력 · 약속 수첩 · 일기장 책의 덧쪽(교환 일기 · 꿈 · 기념품 · 편지) · 글씨체 ──
+   색은 테마 변수만 쓴다. 종이로 된 것(책 · 편지 · 글씨 견본)만 책 화면과 같은 종이 · 잉크 변수를 따로 둔다. */
+.book, .alm-letter, .alm-font-paper { --paper: #f7f2e7; --pen: #2b2622; --rule: rgba(60, 60, 110, .17); --bk-font: "Gaegu"; --bk-size: 1.3rem; --bk-ink: var(--pen); }
+.book-wrap { z-index: 58; }   /* 책 위에서 여는 창(고치기 · 글씨체 · 묶기)이 책 뒤로 숨지 않게: 모달(60)보다 아래 */
+.alm-page { max-width: 1080px; }
+.alm-tabs { margin-bottom: 0; }
+.alm-host { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.alm-loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 70px 0; color: var(--dim); }
+.alm-sp { flex: 1; }
+.alm-tag { font: 600 .68em var(--display); letter-spacing: .2em; text-transform: uppercase; }
+.alm-chip { font: 600 .7em var(--display); font-style: normal; letter-spacing: .04em; padding: 1px 7px; border: 1px solid var(--ink-line); color: var(--dim); white-space: nowrap; flex: none; }
+.alm-g { width: 12px; height: 12px; flex: none; color: var(--text); } .alm-g.g-scene { color: var(--accent); } .alm-g.g-missed { color: var(--bad); } .alm-g.g-dream, .alm-g.g-letter { color: var(--dim); }
+.alm-mini { flex: none; color: var(--ink); }
+.alm-flash { animation: alm-flash 2s var(--ease); } @keyframes alm-flash { 0%, 55% { background: color-mix(in srgb, var(--accent) 16%, transparent); } }
+
+/* 누구와의 달력인가 */
+.alm-who { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.alm-me { display: flex; align-items: center; gap: 12px; padding: 7px 12px 7px 7px; border: 1px solid var(--ink); background: var(--surface); text-align: left; min-width: 0; flex: 0 1 auto; }
+.alm-me:hover { background: var(--surface2); } .alm-me > div:not(.avatar) { display: flex; flex-direction: column; min-width: 0; }
+.alm-me b { font: 700 1.02em var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .alm-me small { color: var(--dim); font-size: .8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alm-others { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; flex: 1 1 0; min-width: 0; padding: 2px; }
+.alm-others button { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 54px; flex: none; opacity: .62; transition: opacity .2s; } .alm-others button:hover { opacity: 1; }
+.alm-others span { font-size: .68em; color: var(--dim); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alm-who-side { display: flex; gap: 2px; flex: none; }
+
+/* 지면: 왼쪽에 그달의 달, 오른쪽에 달력 */
+.alm-sheet { position: relative; display: grid; grid-template-columns: 264px minmax(0, 1fr); border: 1px solid var(--ink); background: var(--surface); }
+.alm-sheet::before { content: ""; position: absolute; inset: -4px; background: var(--handles); pointer-events: none; z-index: 2; }
+.alm-moon { display: flex; flex-direction: column; gap: 12px; padding: 20px 20px 18px; border-right: 1px solid var(--ink); min-width: 0;
+  background: linear-gradient(var(--line) 1px, transparent 1px) 0 -1px / 100% 22px, linear-gradient(90deg, var(--line) 1px, transparent 1px) -1px 0 / 22px 100%; }
+.alm-moon-head { display: flex; align-items: flex-end; gap: 10px; } .alm-moon-head b { font: 800 3.5em/.8 var(--display); letter-spacing: -.04em; }
+.alm-moon-head span { display: flex; flex-direction: column; font: 600 .72em/1.35 var(--display); letter-spacing: .2em; } .alm-moon-head small { font-weight: 400; color: var(--dim); letter-spacing: .1em; }
+.alm-dial { width: min(100%, 196px); margin: 2px auto 0; } .alm-dial svg { display: block; width: 100%; height: auto; overflow: visible; }
+.alm-dial .ticks line { stroke: var(--ink-line); stroke-width: 1; } .alm-dial .ticks line.on { stroke: var(--ink); stroke-width: 1.3; } .alm-dial .ticks .end { fill: var(--ink); }
+.alm-dial .dark { color: var(--ink); opacity: .26; } .alm-dial .lit { fill: var(--ink); } .alm-dial .edge { fill: none; stroke: var(--ink); stroke-width: 1; }
+.alm-dial .st { fill: var(--accent); } .alm-dial .st.dim { fill: var(--ink-line); } .alm-dial.small { width: 132px; }
+.alm-moon-cap { display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 2px 10px; }
+.alm-moon-cap b { font: 800 1.7em/1 var(--display); letter-spacing: -.02em; } .alm-moon-cap b i { font: 500 .5em var(--display); font-style: normal; color: var(--dim); letter-spacing: 0; }
+.alm-moon-cap span { justify-self: end; font-size: .78em; font-weight: 600; padding: 1px 8px; border: 1px solid var(--ink); background: var(--surface); } .alm-moon-cap small { grid-column: 1 / -1; color: var(--dim); font-size: .84em; }
+.alm-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 6px; margin: 0; padding: 10px 0 0; border-top: 1px solid var(--ink); }
+.alm-stats div { display: flex; flex-direction: column; } .alm-stats dt { font-size: .68em; color: var(--dim); } .alm-stats dd { margin: 0; font: 700 1.02em var(--display); }
+.alm-env { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--surface); text-align: left; min-width: 0; }
+.alm-env > div { display: flex; flex-direction: column; min-width: 0; } .alm-env b { font-size: .9em; } .alm-env small { color: var(--dim); font-size: .78em; line-height: 1.45; }
+.alm-env .alm-g { width: 22px; height: 22px; }
+.alm-env.locked { border: 1px dashed var(--ink-line); color: var(--dim); } .alm-env.has { border: 1px solid var(--ink); width: 100%; } .alm-env.has:hover { background: var(--surface2); } .alm-env.has .alm-g { color: var(--accent); }
+.alm-env.ready { flex-wrap: wrap; padding: 0; background: none; gap: 6px; } .alm-env.ready .btn { flex: 1 1 auto; white-space: normal; text-align: left; } .alm-env.ready small { flex: 1 1 100%; }
+
+.alm-cal { display: flex; flex-direction: column; min-width: 0; }
+.alm-cal-head { display: flex; align-items: center; gap: 4px; padding: 12px 14px 10px; flex-wrap: wrap; } .alm-cal-head h2 { font: 800 1.3em var(--display); letter-spacing: -.01em; padding: 0 6px; min-width: 7.2em; text-align: center; }
+.alm-cal-head .btn { min-height: 34px; padding: 5px 12px; }
+.alm-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
+.alm-week span { padding: 5px 8px; font: 600 .7em var(--display); letter-spacing: .14em; color: var(--dim); } .alm-week .sun, .alm-day.sun .alm-n { color: var(--bad); }
+.alm-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-auto-rows: minmax(86px, 1fr); flex: 1; }
+.alm-day { position: relative; text-align: left; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); min-width: 0; overflow: hidden; transition: background .15s; }
+.alm-day:nth-child(7n) { border-right: 0; } .alm-day:hover { background: var(--surface2); }
+.alm-day.out { color: var(--faint); background: repeating-linear-gradient(135deg, transparent 0 6px, var(--line) 6px 7px); } .alm-day.out .alm-n { color: var(--faint); }
+.alm-n { position: absolute; top: 5px; left: 7px; font: 600 .82em var(--display); min-width: 20px; height: 20px; display: grid; place-items: center; z-index: 1; }
+.alm-day.today .alm-n { background: var(--ink); color: var(--bg); }
+.alm-day.sel { background: var(--surface2); box-shadow: inset 0 0 0 1px var(--ink); }.alm-dot { position: absolute; left: 50%; top: 47%; width: var(--d, 9px); height: var(--d, 9px); margin: calc(var(--d, 9px) / -2) 0 0 calc(var(--d, 9px) / -2); border-radius: 50%; background: var(--ink); z-index: 1; }
+.alm-day.lv2 .alm-dot { --d: 14px; } .alm-day.lv3 .alm-dot { --d: 20px; }
+.alm-day.link-r::after, .alm-day.link-l::before { content: ""; position: absolute; top: 47%; height: 1px; background: var(--ink); } .alm-day.link-r::after { left: 50%; right: 0; } .alm-day.link-l::before { left: 0; right: 50%; }
+.alm-cnt { position: absolute; top: 7px; right: 7px; font: 500 .66em var(--display); color: var(--faint); font-variant-numeric: tabular-nums; }
+.alm-marks { position: absolute; left: 6px; right: 4px; bottom: 5px; display: flex; align-items: center; gap: 3px; } .alm-marks .alm-g { width: 11px; height: 11px; } .alm-marks em { font: 600 .7em var(--display); font-style: normal; color: var(--dim); }
+.alm-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 9px 14px 11px; border-top: 1px solid var(--ink); font-size: .74em; color: var(--dim); } .alm-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.alm-dot.demo { position: static; margin: 0; --d: 8px; display: inline-block; } .alm-dot.demo.d2 { --d: 6px; } .alm-dot.demo { --d: 4px; } .alm-dot.demo.d3 { --d: 9px; } .alm-legend .alm-dots { gap: 3px; } .alm-legend .alm-dots .d3 { margin-right: 3px; }
+.alm-g.g-kept { color: var(--accent); }
+
+/* 한 해의 달들 */
+.alm-year { display: flex; align-items: center; gap: 4px; padding: 8px 10px; border: 1px solid var(--ink-line); background: var(--surface); min-width: 0; } .alm-year > b { font: 800 1.05em var(--display); padding: 0 4px; }
+.alm-months { display: grid; grid-template-columns: repeat(12, minmax(34px, 1fr)); flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; margin-left: 8px; }
+.alm-months button { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 5px 0 4px; color: var(--faint); } .alm-months button.has { color: var(--text); } .alm-months button:hover { background: var(--surface2); }
+.alm-months span { font: 600 .7em var(--display); padding: 0 5px; } .alm-months .on span { background: var(--ink); color: var(--bg); }
+.alm-months i { position: absolute; top: 4px; right: calc(50% - 16px); width: 6px; height: 6px; background: var(--accent); transform: rotate(45deg); }
+
+/* 고른 날 */
+.alm-detail { border: 1px solid var(--ink-line); background: var(--surface); padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 14px; min-width: 0; --notch: var(--surface); } .alm-detail.none { padding: 14px 18px; border-style: dashed; }
+.alm-detail-head { display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap; padding-bottom: 12px; border-bottom: 1px solid var(--ink); }
+.alm-date { display: flex; align-items: flex-end; gap: 10px; } .alm-date b { font: 800 2.7em/.82 var(--display); letter-spacing: -.04em; } .alm-date span { display: flex; flex-direction: column; font: 600 .82em/1.35 var(--display); } .alm-date small { font-weight: 400; color: var(--dim); }
+.alm-phase { display: flex; align-items: center; gap: 6px; font-size: .8em; color: var(--dim); padding-bottom: 2px; }
+.alm-count { display: flex; flex-direction: column; align-items: flex-end; font: 700 .9em var(--display); } .alm-count small { font-weight: 400; color: var(--dim); font-size: .84em; }
+.alm-acts { display: flex; flex-wrap: wrap; gap: 6px; } .alm-acts .btn { min-height: 34px; padding: 5px 13px; }
+.alm-sec { display: flex; flex-direction: column; gap: 6px; min-width: 0; } .alm-sec h4 { margin: 0; display: flex; align-items: center; gap: 8px; font: 700 .76em var(--display); letter-spacing: .14em; color: var(--dim); }
+.alm-sec h4::after { content: ""; flex: 1; height: 1px; background: var(--line); } .alm-sec h4 i { font-style: normal; color: var(--text); letter-spacing: 0; }
+.alm-pr, .alm-entry { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border: 1px solid var(--line); text-align: left; min-width: 0; width: 100%; } .alm-entry:hover { background: var(--surface2); border-color: var(--ink-line); }
+.alm-entry > div, .alm-pr-text { flex: 1; min-width: 0; display: flex; flex-direction: column; } .alm-entry b, .alm-pr-text b { font-size: .95em; } .alm-pr-text small { color: var(--dim); font-size: .78em; }
+.alm-entry p { color: var(--dim); font-size: .84em; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } .alm-entry .alm-g { width: 16px; height: 16px; align-self: flex-start; margin-top: 3px; }
+.alm-pr-check { width: 30px; height: 30px; display: grid; place-items: center; flex: none; } .alm-pr-check .alm-g { width: 17px; height: 17px; } .alm-pr-check:hover { background: var(--surface2); } .alm-pr > .alm-g { width: 17px; height: 17px; margin: 0 6px; }
+.alm-pr.missed .alm-pr-text b, .alm-prow.missed .alm-ptext b { text-decoration: line-through; text-decoration-thickness: 1px; color: var(--dim); } .alm-pr.kept, .alm-prow.kept { color: var(--dim); }
+.alm-keeps { display: flex; flex-direction: column; gap: 12px; } .alm-keep { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; } .alm-keep .alm-ticket { flex: 1 1 320px; max-width: 520px; }
+.alm-pics { display: flex; flex-wrap: wrap; gap: 14px 16px; padding: 8px 4px 2px; align-items: flex-start; }
+
+/* 티켓 반쪽 · 인화 사진 */
+.alm-ticket { position: relative; display: flex; text-align: left; border: 1px solid var(--ink); background: var(--surface); color: var(--text); min-width: 0; width: 100%; }
+button.alm-ticket { transition: transform .2s var(--ease); } button.alm-ticket:hover { transform: translateY(-2px) rotate(-.4deg); }
+.alm-ticket .t-main { flex: 1; min-width: 0; padding: 11px 16px 13px; display: flex; flex-direction: column; gap: 2px; }
+.alm-ticket .t-main small, .alm-ticket .t-stub small { font: 600 .62em var(--display); letter-spacing: .22em; color: var(--dim); } .alm-ticket .t-main b { font: 800 1.12em/1.3 var(--display); overflow-wrap: anywhere; }
+.alm-ticket .t-main span { font-size: .8em; color: var(--dim); } .alm-ticket .t-main p { font-size: .86em; line-height: 1.5; margin-top: 4px; }
+.alm-ticket .t-stub { flex: none; width: 88px; border-left: 1px dashed var(--ink); padding: 11px 6px; display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 4px; text-align: center;
+  background: radial-gradient(color-mix(in srgb, var(--ink) 55%, transparent) 30%, transparent 33%) 0 0 / 6px 6px; }
+.alm-ticket .t-stub > * { background: var(--surface); padding: 0 5px; } .alm-ticket .t-stub b { font: 800 1.25em/1.1 var(--display); } .alm-ticket .t-stub span { font: 600 .72em var(--display); letter-spacing: .1em; }
+.alm-ticket::before, .alm-ticket::after { content: ""; position: absolute; right: 82px; width: 12px; height: 12px; border-radius: 50%; background: var(--notch, var(--bg)); border: 1px solid var(--ink); }
+.alm-ticket::before { top: -7px; clip-path: inset(50% -1px -1px -1px); } .alm-ticket::after { bottom: -7px; clip-path: inset(-1px -1px 50% -1px); }
+.alm-ticket.small .t-main { padding: 8px 12px; } .alm-ticket.small .t-stub { width: 70px; } .alm-ticket.small::before, .alm-ticket.small::after { right: 64px; }
+.alm-polaroid { position: relative; display: flex; flex-direction: column; width: 112px; padding: 6px 6px 20px; background: var(--alm-photo, #fdfdfb); border: 1px solid var(--line); box-shadow: 0 5px 14px color-mix(in srgb, var(--text) 16%, transparent); transform: rotate(-2.5deg); flex: none; transition: transform .2s var(--ease); }
+.alm-polaroid:nth-child(even) { transform: rotate(1.8deg); } .alm-polaroid:nth-child(3n) { transform: rotate(-.8deg); } button.alm-polaroid:hover { transform: rotate(0) translateY(-3px); z-index: 1; }
+.alm-polaroid::before { content: ""; position: absolute; top: -8px; left: 50%; width: 46px; height: 15px; margin-left: -23px; background: color-mix(in srgb, var(--accent) 42%, transparent); transform: rotate(-3deg); }
+.alm-polaroid img { display: block; width: 100%; aspect-ratio: 4 / 5; object-fit: cover; } .alm-polaroid.big { width: min(72%, 250px); padding: 8px 8px 26px; } .alm-polaroid.big img { aspect-ratio: auto; max-height: 300px; }
+.alm-polaroid span { position: absolute; left: 6px; right: 6px; bottom: 3px; font-size: .62em; color: #6b6b72; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 편지 */
+.alm-letter { padding: 22px; background: linear-gradient(var(--line) 1px, transparent 1px) 0 0 / 100% 22px, linear-gradient(90deg, var(--line) 1px, transparent 1px) 0 0 / 22px 100%; border: 1px solid var(--ink); }
+.alm-letter-in { background: var(--paper); color: var(--pen); padding: 26px 30px 24px; box-shadow: 0 8px 22px color-mix(in srgb, var(--text) 14%, transparent); display: flex; flex-direction: column; gap: 10px; }
+.alm-letter-in header { display: flex; justify-content: space-between; align-items: center; color: var(--pen); } .alm-letter-in .alm-mini { color: var(--pen); } .alm-letter-in h3 { font: 800 1.35em/1.3 var(--display); }
+.alm-letter-text, .alm-ps, .alm-sign { font-family: var(--bk-font), "Gaegu", var(--font); color: var(--bk-ink); } .alm-letter-text { font-size: var(--bk-size); line-height: 1.75; } .alm-letter-text p { margin: 0 0 .9em; }
+.alm-ps { font-size: calc(var(--bk-size) * .9); opacity: .8; } .alm-sign { align-self: flex-end; font-size: var(--bk-size); font-weight: 700; transform: rotate(-2deg); }
+
+/* 대화 고르기 */
+.alm-pick .picker-row { width: 100%; } .alm-caret { color: var(--dim); display: grid; place-items: center; flex: none; }
+.alm-rooms { display: flex; flex-direction: column; padding: 2px 0 8px 58px; border-bottom: 1px solid var(--line); background: var(--surface2); }
+.alm-room { display: flex; align-items: baseline; gap: 10px; padding: 7px 10px; text-align: left; min-width: 0; } .alm-room:hover { background: var(--surface3); }
+.alm-room b { font-size: .92em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; } .alm-room small { color: var(--dim); font-size: .78em; white-space: nowrap; margin-left: auto; }
+.alm-room i { font: 600 .68em var(--display); font-style: normal; background: var(--ink); color: var(--bg); padding: 0 6px; flex: none; }
+
+/* 약속 수첩 */
+.alm-ptop { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .alm-scope { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; } .alm-scope .chip { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.alm-psec { display: flex; flex-direction: column; gap: 6px; } .alm-psec .form-sec { margin-bottom: 2px; }
+.alm-prow { display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 0; border-bottom: 1px solid var(--line); min-width: 0; }
+.alm-pdate { display: flex; flex-direction: column; align-items: center; width: 78px; flex: none; padding: 5px 0; border: 1px solid var(--ink); background: var(--surface); } .alm-pdate:hover { background: var(--surface2); }
+.alm-pdate b { font: 800 1.08em/1.15 var(--display); } .alm-pdate small { font-size: .7em; color: var(--dim); } .alm-prow.today .alm-pdate { background: var(--ink); color: var(--bg); } .alm-prow.today .alm-pdate small { color: inherit; opacity: .75; }
+.alm-prow.missed .alm-pdate, .alm-prow.kept .alm-pdate { border-color: var(--ink-line); }
+.alm-ptext { flex: 1; min-width: 0; display: flex; flex-direction: column; } .alm-ptext small { color: var(--dim); font-size: .8em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .alm-prow > .alm-g { width: 16px; height: 16px; }
+
+/* 장면 패널(대화 화면) */
+.alm-panel { display: flex; flex-direction: column; gap: 10px; }
+.alm-pmoon { display: flex; align-items: center; gap: 12px; text-align: left; padding: 8px 10px; border: 1px solid var(--ink-line); } .alm-pmoon:hover { background: var(--surface2); }
+.alm-pmoon div { display: flex; flex-direction: column; min-width: 0; } .alm-pmoon b { font: 700 .95em var(--display); } .alm-pmoon small { color: var(--dim); font-size: .8em; }
+.alm-plist { display: flex; flex-direction: column; } .alm-pmini { display: flex; align-items: center; gap: 8px; padding: 6px 4px; text-align: left; border-bottom: 1px solid var(--line); font-size: .9em; min-width: 0; } .alm-pmini:hover { background: var(--surface2); }
+.alm-pmini span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .alm-pmini small { color: var(--dim); font: 600 .8em var(--display); flex: none; } .alm-pmini.missed span { text-decoration: line-through; color: var(--dim); }
+
+/* 글씨체 고르기 */
+.alm-fonts { display: flex; flex-direction: column; gap: 16px; }
+.alm-font-top { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; align-items: stretch; }
+.alm-font-paper { background: var(--paper); color: var(--bk-ink); padding: 18px 20px 14px 34px; position: relative; box-shadow: 0 6px 16px color-mix(in srgb, var(--text) 14%, transparent); font: 400 var(--bk-size)/var(--blh, 2.05rem) var(--bk-font), "Gaegu", var(--font);
+  background-image: repeating-linear-gradient(transparent 0 calc(var(--blh, 2.05rem) - 1px), var(--rule) calc(var(--blh, 2.05rem) - 1px) var(--blh, 2.05rem)); background-position: 0 18px; min-height: 130px; }
+.alm-font-paper::before { content: ""; position: absolute; top: 0; bottom: 0; left: 22px; width: 1px; background: rgba(200, 70, 70, .38); } .alm-font-paper p { margin: 0; } .alm-font-paper p + p { text-align: right; font-weight: 700; }
+.alm-font-side { display: flex; flex-direction: column; gap: 10px; justify-content: center; min-width: 0; } .alm-font-side .btn { white-space: normal; text-align: left; }
+.alm-font-why { padding: 10px 12px; border: 1px solid var(--ink); line-height: 1.55; font-size: .92em; } .alm-font-why small { display: block; font: 600 .72em var(--display); letter-spacing: .14em; color: var(--dim); margin-bottom: 2px; }
+.alm-font-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+.alm-font { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px 10px; border: 1px solid var(--ink-line); background: var(--surface); text-align: left; min-width: 0; } .alm-font:hover { background: var(--surface2); }
+.alm-font.on { border-color: var(--ink); } .alm-font.on::before { content: ""; position: absolute; inset: -4px; background: var(--handles); pointer-events: none; }
+.alm-font-s { line-height: 1.35; min-height: 2.7em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.alm-font-n { display: flex; align-items: baseline; gap: 8px; min-width: 0; padding-top: 6px; border-top: 1px solid var(--line); } .alm-font-n b { font-size: .86em; white-space: nowrap; } .alm-font-n small { color: var(--dim); font-size: .74em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alm-font .alm-chip { position: absolute; top: 6px; right: 6px; background: var(--surface); }
+.alm-inks { display: flex; flex-wrap: wrap; gap: 6px; } .alm-inks button { display: flex; align-items: center; gap: 7px; padding: 5px 11px 5px 7px; border: 1px solid var(--ink-line); font-size: .84em; } .alm-inks button.on { border-color: var(--ink); background: var(--surface2); font-weight: 600; }
+.alm-inks i { width: 16px; height: 16px; border-radius: 50%; background: var(--c); flex: none; }
+
+/* ── 일기장 책의 덧쪽 ── (기본 모양은 css/detail.css 의 .book*) */
+.book { --ink: var(--pen); --ink-line: color-mix(in srgb, var(--pen) 28%, transparent); --line: color-mix(in srgb, var(--pen) 14%, transparent); --surface: var(--paper); --surface2: color-mix(in srgb, var(--pen) 7%, var(--paper)); --text: var(--pen); --dim: color-mix(in srgb, var(--pen) 62%, var(--paper)); --notch: var(--paper); --bg: var(--paper); }
+.book .book-text, .book .book-head, .book .book-chips, .book .book-sign, .book .book-empty, .bk-note, .bk-ans, .bk-sum, .bk-memo, .bk-ps, .bk-note-inp, .bk-ex-add span { font-family: var(--bk-font), "Gaegu", var(--font); }
+.book .book-text { font-size: var(--bk-size); color: var(--bk-ink); } .book .book-sign { font-size: var(--bk-size); color: var(--bk-ink); }
+.bk-scroll { flex: 1; min-height: 0; overflow: auto; padding-right: 6px; display: flex; flex-direction: column; } .bk-scroll .book-text { flex: none; overflow: visible; padding-right: 0; }
+.bk-kind { font: 600 .82em var(--display); font-style: normal; letter-spacing: .04em; margin-right: 6px; padding: 0 4px; border: 1px solid currentColor; opacity: .7; }
+.bk-ex { margin-top: calc(var(--blh) * .6); padding-top: 10px; border-top: 1px dashed var(--ink-line); display: flex; flex-direction: column; gap: 8px; flex: none; }
+.bk-ex-head { display: flex; justify-content: space-between; align-items: baseline; font: 600 .66em var(--display); letter-spacing: .2em; } .bk-ex-head small { letter-spacing: .06em; opacity: .6; }
+.bk-ex-add { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px dashed var(--ink-line); color: var(--dim); text-align: left; } .bk-ex-add:hover { border-style: solid; color: var(--pen); background: var(--surface2); }
+.bk-ex-add span { font-size: 1.15rem; flex: 1; } .bk-ex-add small { font: 600 .62em var(--display); letter-spacing: .16em; }
+.bk-note { position: relative; color: var(--accent); font-size: calc(var(--bk-size) * .94); line-height: 1.55; padding-right: 26px; } .bk-note p, .bk-ans p { margin: 0 0 .35em; }
+.bk-by { display: block; text-align: right; font-size: .82em; opacity: .75; }
+.bk-mini { position: absolute; top: 0; right: 0; width: 24px; height: 24px; display: grid; place-items: center; color: var(--dim); } .bk-mini:hover { color: var(--pen); background: var(--surface2); }
+.bk-ans { position: relative; align-self: flex-end; max-width: 86%; margin: 6px 4px 2px 0; padding: 12px 14px 8px; background: color-mix(in srgb, var(--paper) 86%, var(--pen)); color: var(--bk-ink); font-size: calc(var(--bk-size) * .9); line-height: 1.5; transform: rotate(-1.4deg); box-shadow: 0 3px 8px rgba(0, 0, 0, .12); }
+.bk-ans::before { content: ""; position: absolute; top: -7px; left: 18px; width: 52px; height: 15px; background: color-mix(in srgb, var(--accent) 42%, transparent); transform: rotate(-3deg); }
+.bk-note-inp { width: 100%; min-height: 84px; resize: vertical; padding: 8px 10px; border: 1px solid var(--ink-line); background: color-mix(in srgb, var(--paper) 70%, #fff); color: var(--accent); font-size: calc(var(--bk-size) * .94); line-height: 1.5; outline: none; } .bk-note-inp:focus { border-color: var(--pen); }
+.bk-ex-acts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.bk-btn { font: 600 .78em var(--display); padding: 5px 11px; border: 1px solid var(--pen); color: var(--pen); background: transparent; } .bk-btn:hover { background: var(--surface2); } .bk-btn.ink { background: var(--pen); color: var(--paper); } .bk-btn.ink:hover { opacity: .88; } .bk-btn:disabled { opacity: .55; pointer-events: none; }
+.bk-stamp { font: 700 .62em var(--display); letter-spacing: .16em; padding: 2px 8px; border: 1.5px solid currentColor; transform: rotate(-3deg); opacity: .72; white-space: nowrap; }
+.bk-ps { opacity: .8; font-size: .92em; }
+.bk-keep { align-items: center; gap: 14px; padding: 16px 6px 6px 0; } .bk-keep .bk-ex-acts { align-self: stretch; margin-top: auto; }
+.bk-sum { font-size: var(--bk-size); line-height: 1.5; text-align: center; color: var(--bk-ink); margin: 0; } .bk-memo { font-size: calc(var(--bk-size) * .9); line-height: 1.5; text-align: center; color: var(--accent); margin: 0; }
+.bk-nophoto { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 26px 0; opacity: .6; } .bk-nophoto small { font-size: .8em; }
+.bk-seal { display: grid; place-items: center; } .book-mid .alm-ticket { max-width: 100%; transform: rotate(-2deg); box-shadow: 0 6px 14px rgba(0, 0, 0, .16); }
+/* 꿈: 밤의 종이 */
+.book.is-dream { --paper: #181b2e; --pen: #e9e7f2; --rule: rgba(255, 255, 255, .13); }
+.book.is-dream .book-page.left { box-shadow: inset -18px 0 26px -18px rgba(0, 0, 0, .6), -3px 0 0 #23263c, -6px 0 0 #1d2034, -9px 0 0 #15172a; background-image: radial-gradient(rgba(255, 255, 255, .5) 1px, transparent 1.3px), radial-gradient(rgba(255, 255, 255, .28) 1px, transparent 1.2px); background-size: 83px 97px, 47px 61px; background-position: 12px 20px, 30px 44px; }
+.book.is-dream .book-page.right { box-shadow: inset 18px 0 26px -18px rgba(0, 0, 0, .6), 3px 0 0 #23263c, 6px 0 0 #1d2034, 9px 0 0 #15172a; } .book.is-dream .book-page.right::before { background: rgba(255, 255, 255, .16); } .book.is-dream .book-page.right::after { background: rgba(255, 255, 255, .12); box-shadow: 0 150px 0 rgba(255, 255, 255, .12), 0 300px 0 rgba(255, 255, 255, .12); }
+.book.is-dream .book-spine { background: linear-gradient(90deg, #0f1120, #2a2d47 45%, #0f1120); } .book.is-dream .book-index { border-top-color: rgba(255, 255, 255, .3); } .book.is-dream .book-idx:hover { background: rgba(255, 255, 255, .08); }
+.book.is-letter .book-page.right::before, .book.is-keepsake .book-page.right::before { opacity: .5; }
+
+@media (max-width: 820px) {
+  .alm-page { padding-left: 14px; padding-right: 14px; }
+  .alm-who { flex-wrap: wrap; gap: 8px; } .alm-me { flex: 1 1 100%; } .alm-others { order: 3; flex: 1 1 100%; } .alm-who-side { order: 2; margin-left: auto; }
+  .alm-sheet { grid-template-columns: minmax(0, 1fr); }
+  .alm-moon { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 6px 14px; padding: 14px; border-right: 0; border-bottom: 1px solid var(--ink); align-items: center; }
+  .alm-moon-head { grid-column: 2; } .alm-moon-head b { font-size: 2.5em; } .alm-dial { grid-column: 1; grid-row: 1 / span 2; width: 112px; margin: 0; } .alm-moon-cap { grid-column: 2; } .alm-moon-cap b { font-size: 1.35em; }
+  .alm-stats { grid-column: 1 / -1; grid-template-columns: repeat(6, auto); justify-content: space-between; padding-top: 8px; } .alm-env { grid-column: 1 / -1; margin-top: 2px; }
+  .alm-cal-head { padding: 10px 8px 8px; } .alm-cal-head h2 { font-size: 1.1em; min-width: 6.4em; padding: 0 2px; } .alm-cal-head .btn span { display: inline; }
+  .alm-week span { padding: 4px 0; text-align: center; letter-spacing: 0; } .alm-grid { grid-auto-rows: minmax(60px, 1fr); }
+  .alm-n { top: 3px; left: 3px; font-size: .74em; min-width: 18px; height: 18px; } .alm-cnt { display: none; } .alm-dot { top: 50%; } .alm-day.link-r::after, .alm-day.link-l::before { top: 50%; }
+  .alm-day.lv2 .alm-dot { --d: 12px; } .alm-day.lv3 .alm-dot { --d: 16px; } .alm-marks { left: 3px; right: 2px; bottom: 3px; gap: 2px; } .alm-marks .alm-g { width: 9px; height: 9px; }
+  .alm-legend { padding: 8px 10px 10px; gap: 4px 10px; }
+  .alm-year { padding: 6px; } .alm-months { grid-template-columns: repeat(12, 38px); margin-left: 4px; }
+  .alm-detail { padding: 14px; } .alm-date b { font-size: 2.2em; } .alm-count { align-items: flex-start; flex: 1 1 100%; flex-direction: row; gap: 8px; align-items: baseline; }
+  .alm-keep { gap: 12px; } .alm-keep .alm-ticket { flex-basis: 100%; } .alm-ticket .t-stub { width: 72px; } .alm-ticket::before, .alm-ticket::after { right: 66px; } .alm-polaroid { width: 96px; }
+  .alm-letter { padding: 10px; } .alm-letter-in { padding: 18px 18px 16px; }
+  .alm-rooms { padding-left: 16px; } .alm-room { flex-wrap: wrap; gap: 2px 8px; } .alm-room small { margin-left: 0; flex: 1 1 100%; }
+  .alm-ptop .btn { flex: 1 1 auto; white-space: normal; } .alm-scope { flex: 1 1 100%; } .alm-pdate { width: 64px; } .alm-prow { gap: 8px; }
+  .alm-font-top { grid-template-columns: minmax(0, 1fr); } .alm-font-grid { grid-template-columns: minmax(0, 1fr); } .alm-font-s { min-height: 0; }
+  .bk-scroll { overflow: visible; padding-right: 0; } .book-bar .btn { white-space: normal; min-height: 34px; padding: 5px 11px; } .bk-ans { max-width: 94%; } .alm-polaroid.big { width: min(80%, 240px); }
+}

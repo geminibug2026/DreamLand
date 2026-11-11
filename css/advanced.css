@@ -1,0 +1,50 @@
+/* ── 고급 포맷팅 화면 · 캐릭터 편집의 고급 정의 ── */
+.af .tabs { margin-bottom: 0; }
+.af-pane { display: flex; flex-direction: column; gap: 18px; }
+.af-status { border: 1px solid var(--ink-line); padding: 10px 14px; line-height: 1.9; }
+.af-status b { color: var(--text); font-weight: 700; }
+.af-status .badge { margin: 0 2px; }
+.af-card.af-dim { opacity: .55; transition: opacity .2s; }
+.af-card.af-dim:hover, .af-card.af-dim:focus-within { opacity: 1; }
+
+/* 템플릿 고르기 줄 */
+.af-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.af-bar > select.inp { flex: 1 1 220px; min-width: 0; }
+.af-dirty[hidden] { display: none; }
+.af-tools { display: flex; border: 1px solid var(--ink-line); border-radius: var(--r-xs); }
+.af-tools .ibtn { border-radius: 0; width: 38px; height: 38px; }
+.af-tools .ibtn + .ibtn { border-left: 1px solid var(--line); }
+
+/* 스토리 스트링 · 시퀀스처럼 글자 하나하나가 중요한 칸 */
+.af textarea.inp, .af input.inp[placeholder^="예: /"], textarea.af-json { font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace; font-size: .9em; line-height: 1.6; tab-size: 2; }
+.af-seq textarea.inp { white-space: pre; overflow-x: auto; min-height: 58px; }
+.af-map { display: flex; flex-wrap: wrap; gap: 6px; }
+.af .check small { flex: 1 1 auto; }
+
+/* 캐릭터 편집 */
+.field-label em.tok { font-style: normal; font-weight: 500; font-size: .92em; color: var(--faint); margin-left: auto; font-variant-numeric: tabular-nums; }
+.field-label em.tok + .ibtn { margin-left: 4px; }
+.af-talk { flex: 1 1 100%; display: flex; justify-content: space-between; font-size: .82em; color: var(--faint); margin-top: -8px; padding-right: 54px; }
+small.hint.bad { color: var(--bad); }
+
+@media (max-width: 820px) {
+  .af-bar > select.inp { flex-basis: 100%; }
+  .af-tools { width: 100%; }
+  .af-tools .ibtn { flex: 1; width: auto; }
+  .af-status { line-height: 1.7; }
+}
+
+/* 키 보호 표시 */
+.key-state { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 12px; border: 1px solid var(--ink); background: var(--surface); font-size: .9em; } .key-state .ic { flex: none; } .key-state b { font: 700 .86em var(--display); letter-spacing: .06em; }
+.key-state code { font-family: ui-monospace, Consolas, monospace; font-size: .9em; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; } .key-where { font: 600 .68em var(--display); letter-spacing: .1em; padding: 2px 7px 1px; background: var(--ink); color: var(--bg); white-space: nowrap; }
+.key-state .btn { margin-left: auto; padding: 4px 10px; } .key-state.wide { margin-bottom: 8px; } .key-field { gap: 6px; }
+
+/* 저장 상태 표시 */
+.save-pill { position: fixed; z-index: 90; left: 14px; bottom: 14px; display: flex; align-items: center; gap: 7px; padding: 5px 11px 4px; border: 1px solid var(--ink-line); background: var(--surface); font: 600 .7em var(--display); letter-spacing: .06em; color: var(--dim); pointer-events: none; opacity: 0; transform: translateY(4px); transition: opacity .35s, transform .35s, border-color .2s; white-space: nowrap; }
+.save-pill.on { opacity: 1; transform: none; } .save-pill.dim { opacity: .5; } .save-pill i { font-style: normal; color: var(--faint); }
+.save-pill[data-state="dirty"] { border-style: dashed; } .save-pill[data-state="saving"] { border-color: var(--ink); color: var(--text); } .save-pill[data-state="saving"] i { animation: save-spin 1s linear infinite; display: inline-block; }
+.save-pill[data-state="saved"] { border-color: var(--ink); color: var(--text); } .save-pill[data-state="saved"] i { color: var(--accent); }
+.save-pill[data-state="error"] { border-color: var(--bad); color: var(--bad); opacity: 1; }
+@keyframes save-spin { to { transform: rotate(360deg); } }
+@media (max-width: 820px) { .save-pill { left: 8px; bottom: calc(66px + env(safe-area-inset-bottom, 0px)); font-size: .66em; padding: 4px 9px 3px; } }
+@media (prefers-reduced-motion: reduce) { .save-pill[data-state="saving"] i { animation: none; } }

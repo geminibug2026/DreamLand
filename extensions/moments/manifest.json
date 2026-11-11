@@ -1,0 +1,8 @@
+{
+  "id": "moments",
+  "name": "명장면 책갈피",
+  "version": "1.0.0",
+  "author": "Dreamland",
+  "description": "마음에 든 메시지에 책갈피를 꽂아 두고, 장면 패널에서 모아 봅니다. /moments 로도 열 수 있어요.",
+  "main": "index.js"
+}
