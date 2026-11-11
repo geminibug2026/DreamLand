@@ -1,7 +1,7 @@
 // ── Dreamland editors: 홈(캐릭터) · 로어북 · 프리셋 · 페르소나 · 정규식 · API · 설정 ──
 import { Vault, S, DB, h, uid, now, on, emit, download, pickFiles, debounce, fmtTime, newChar, newPersona, newLore, newEntry, newRegex, newConn, defaultPreset, defaultSettings, MARKERS, msgText, Secrets } from './core.js';
 import { TALK_DEFAULT, tokens, PROVIDERS, listModels, streamChat, applyRegex, compileRegex, CONTINUE_NUDGE, IMPERSONATE_NUDGE, GROUP_NUDGE, parseServiceAccount } from './engine.js';
-import { icon, btn, iconBtn, avatar, toast, modal, menu, confirmBox, promptBox, form, registerPage, go, refresh, libraryPage, route, pageHead, moonIcon, moonPhase, charPicker } from './ui.js';
+import { icon, btn, iconBtn, avatar, toast, modal, menu, confirmBox, promptBox, form, registerPage, go, refresh, libraryPage, route, pageHead, moonIcon, moonPhase, charPicker, dragSort } from './ui.js';
 import { importFiles, summarize, charToCard, exportCharPng, worldToLore, loreToWorld, stPresetToPreset, stRegexToRegex, regexToSt } from './cards.js';
 import { startChat, startMenu } from './chat.js';
 import { applyTheme } from './theme.js';
@@ -225,11 +225,13 @@ registerPage('presets', root => libraryPage(root, {
   editor: (p, { redraw, save }) => {
     const sv = debounce(save, 300);
     const list = h('div.blocks'); const open = new Set();
+    const moveBlock = (from, to, focus) => { if (to < 0 || to >= p.blocks.length || to === from) return; const [x] = p.blocks.splice(from, 1); p.blocks.splice(to, 0, x); sv(); drawBlocks(); if (focus) list.children[to]?.querySelector('.grip')?.focus(); };
+    dragSort(list, (from, to) => moveBlock(from, to));
     const drawBlocks = () => list.replaceChildren(...p.blocks.map((b, i) => {
       const marker = b.kind !== 'text';
       const row = h(`div.block${b.enabled ? '' : '.off'}${open.has(b.id) ? '.open' : ''}${marker ? '.marker' : ''}`,
         h('div.block-head', { onclick: ev => { if (ev.target.closest('button,label,select')) return; if (b.kind === 'chatHistory') return; open.has(b.id) ? open.delete(b.id) : open.add(b.id); drawBlocks(); } },
-          h('div.col.move', iconBtn('up', '위로', () => { if (i > 0) { [p.blocks[i - 1], p.blocks[i]] = [p.blocks[i], p.blocks[i - 1]]; sv(); drawBlocks(); } }, 'tiny'), iconBtn('down', '아래로', () => { if (i < p.blocks.length - 1) { [p.blocks[i + 1], p.blocks[i]] = [p.blocks[i], p.blocks[i + 1]]; sv(); drawBlocks(); } }, 'tiny')),
+          h('button.grip', { type: 'button', title: '잡고 끌어서 순서 바꾸기 (방향키 ↑ ↓ 로도)', 'aria-label': '순서 바꾸기', onkeydown: ev => { if (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') { ev.preventDefault(); moveBlock(i, i + (ev.key === 'ArrowUp' ? -1 : 1), true); } } }, icon('grip', 16)),
           h('label.switch', h('input', { type: 'checkbox', checked: b.enabled, onchange: ev => { b.enabled = ev.target.checked; sv(); row.classList.toggle('off', !b.enabled); redraw(); } }), h('i')),
           icon(marker ? 'sparkle' : 'note', 15), h('b', b.name || MARKERS[b.kind] || '프롬프트'),
           b.depth != null && b.depth !== '' ? h('em.badge', `깊이 ${b.depth}`) : null, b.when ? h('em.badge', { title: b.when }, '조건') : null,

@@ -195,3 +195,35 @@ addEventListener('popstate', e => {
   for (const m of document.querySelectorAll('.modal-wrap')) { const x = m.querySelector('button[title="닫기"]'); if (x) x.click(); else m.remove(); }
   go(st.page, st.arg ?? undefined, true);
 });
+
+/** 손잡이를 잡고 끌어서 목록 순서 바꾸기. 손잡이(handle)를 누른 채 위아래로 끌면 onMove(원래 자리, 새 자리) 를 부른다 */
+export function dragSort(listEl, onMove, handle = '.grip') {
+  listEl.addEventListener('pointerdown', e => {
+    const hd = e.target.closest(handle); if (!hd || !listEl.contains(hd) || e.button > 0) return;
+    const rows = [...listEl.children], row = rows.find(r => r.contains(hd)), from = rows.indexOf(row); if (from < 0 || rows.length < 2) return;
+    e.preventDefault();
+    const box = rows.map(r => r.getBoundingClientRect()), me = box[from], step = me.height + (box[1].top - box[0].bottom);
+    let scroller = listEl.parentElement; while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+    const scroll0 = scroller ? scroller.scrollTop : 0, startY = e.clientY; let lastY = startY, to = from, raf = 0;
+    const place = () => {
+      const dy = lastY - startY + ((scroller ? scroller.scrollTop : 0) - scroll0), mid = me.top + me.height / 2 + dy; let n = from;
+      row.style.transform = `translateY(${dy}px)`;
+      rows.forEach((r, i) => { if (i === from) return; const c = box[i].top + box[i].height / 2, down = i > from && mid > c, up = i < from && mid < c; n += down ? 1 : up ? -1 : 0; r.style.transform = down ? `translateY(${-step}px)` : up ? `translateY(${step}px)` : ''; });
+      to = n;
+    };
+    const tick = () => {   // 가장자리 가까이 끌면 목록이 따라 움직인다
+      raf = 0; if (!scroller) return; const b = scroller.getBoundingClientRect(), edge = 56;
+      const v = lastY < b.top + edge ? -Math.ceil((b.top + edge - lastY) / 5) : lastY > b.bottom - edge ? Math.ceil((lastY - (b.bottom - edge)) / 5) : 0;
+      if (!v) return; const was = scroller.scrollTop; scroller.scrollTop += Math.max(-18, Math.min(18, v)); if (scroller.scrollTop !== was) { place(); raf = requestAnimationFrame(tick); }
+    };
+    const move = ev => { lastY = ev.clientY; place(); if (!raf) raf = requestAnimationFrame(tick); };
+    const end = ev => {
+      hd.removeEventListener('pointermove', move); hd.removeEventListener('pointerup', end); hd.removeEventListener('pointercancel', end); cancelAnimationFrame(raf);
+      listEl.classList.remove('sorting'); rows.forEach(r => { r.style.transform = ''; r.classList.remove('dragging'); });
+      if (ev.type === 'pointerup' && to !== from) onMove(from, to);
+    };
+    try { hd.setPointerCapture(e.pointerId); } catch { }
+    listEl.classList.add('sorting'); row.classList.add('dragging');
+    hd.addEventListener('pointermove', move); hd.addEventListener('pointerup', end); hd.addEventListener('pointercancel', end);
+  });
+}

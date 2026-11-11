@@ -147,3 +147,10 @@
 /* 숨긴 입력 칸은 제 이름표 안에 붙들어 둔다 (누를 때 화면 전체가 밀려 올라가지 않게) */
 .check, .switch, .pv-radio { position: relative; }
 .check input, .switch input, .pv-radio input { top: 0; left: 0; width: 1px; height: 1px; margin: 0; }
+
+/* 손잡이를 잡고 끌어서 순서 바꾸기 */
+.grip { flex: none; width: 30px; height: 34px; display: grid; place-items: center; color: var(--faint); cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; }
+.grip:hover, .grip:focus-visible { color: var(--text); background: var(--surface2); } .grip .ic { stroke-width: 3; pointer-events: none; }
+.sorting { -webkit-user-select: none; user-select: none; } .sorting > * { transition: transform .16s var(--ease); }
+.sorting > .dragging { transition: none; position: relative; z-index: 5; border-color: var(--ink); box-shadow: 5px 5px 0 var(--surface3); opacity: 1; } .sorting .grip { cursor: grabbing; }
+.grip { color: var(--dim); } .grip .ic { width: 18px; height: 18px; stroke-width: 3.6; stroke-linecap: round; }
