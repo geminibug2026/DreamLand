@@ -251,6 +251,7 @@ registerPage('presets', root => libraryPage(root, {
       h('header.editor-head', h('h2', p.name), h('div.row',
         active ? h('em.badge.on', '사용 중') : btn('이 프리셋 사용', { ic: 'check', cls: 'primary', onclick: () => { S.set({ activePreset: p.id }); refresh(); } }),
         iconBtn('copy', '복제', async () => { await S.save('presets', { ...structuredClone(p), id: uid(), name: p.name + ' (사본)', src: '' }, true); refresh(); }),
+        iconBtn('code', `이 프리셋의 정규식 (${(p.regex || []).length})`, () => go('regex', 'preset:' + p.id)),
         iconBtn('import', '내보내기', () => download(`${p.name}.dreamland-preset.json`, JSON.stringify(p, null, 2))),
         iconBtn('trash', '삭제', async () => { if (S.presets.length < 2) return toast('마지막 프리셋은 지울 수 없어요'); if (await confirmBox(`"${p.name}" 프리셋을 삭제할까요?`, '삭제', true)) { await S.remove('presets', p.id); if (active) S.set({ activePreset: S.presets[0].id }); refresh(); } }))),
       form(p, [{ k: 'name', label: '이름' },
@@ -287,6 +288,33 @@ registerPage('personas', root => libraryPage(root, {
 }));
 
 /** 페르소나 연결: 대화 > 캐릭터 > 기본 순으로 적용된다 */
+/** 대화방 이름: 가져온 이름 앞의 캐릭터 이름은 떼고, 이름이 없으면 날짜로 */
+const roomLabel = c => { const t = c.charIds.map(i => S.get('chars', i)?.name).filter(Boolean).join(', '), n = String(c.name || '').trim(); const cut = t && n.toLowerCase().startsWith(t.toLowerCase()) ? n.slice(t.length).replace(/^[\s\-–—·:@]+/, '') : n; return cut || new Date(c.createdAt || 0).toLocaleDateString('ko-KR', { year: '2-digit', month: 'numeric', day: 'numeric' }) + ' 대화'; };
+/** 대화방 여러 개 고르기: 캐릭터별로 묶고, 찾고, 묶음째 고른다. 방이 아주 많아도 쓸 수 있게 묶음은 접혀 있다 */
+function chatPicker({ title = '대화방 고르기', selected = [], note = () => '', onDone }) {
+  const picked = new Set(selected), open = new Set(); let q = '';
+  const list = h('div.picker-list.cpick'), count = h('small.hint');
+  const keyOf = c => [...c.charIds].sort().join('+') || '-', titleOf = c => c.charIds.map(i => S.get('chars', i)?.name).filter(Boolean).join(', ') || '삭제된 캐릭터';
+  const day = t => new Date(t || 0).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+  const draw = () => {
+    const t = q.trim().toLowerCase(), groups = new Map();
+    for (const c of S.chats) { if (t && !(titleOf(c) + ' ' + roomLabel(c) + ' ' + (c.preview || '')).toLowerCase().includes(t)) continue; const k = keyOf(c); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); }
+    const sorted = [...groups.entries()].sort((a, b) => b[1].some(c => picked.has(c.id)) - a[1].some(c => picked.has(c.id)) || Math.max(...b[1].map(c => c.updatedAt || 0)) - Math.max(...a[1].map(c => c.updatedAt || 0)));
+    count.textContent = `${picked.size}개 선택 · 전체 ${S.chats.length}개`;
+    list.replaceChildren(...sorted.slice(0, 120).flatMap(([k, rooms]) => {
+      const n = rooms.filter(c => picked.has(c.id)).length, all = n === rooms.length, show = !!t || open.has(k) || sorted.length <= 3, chars = rooms[0].charIds.map(i => S.get('chars', i)).filter(Boolean);
+      rooms.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      return [h(`div.cpick-group${show ? '.open' : ''}`,
+        h('button.cpick-head', { onclick: () => { open.has(k) ? open.delete(k) : open.add(k); draw(); } }, chars[0] ? avatar(chars[0], 'sm') : null, h('div.picker-text', h('b', titleOf(rooms[0])), h('small', `대화방 ${rooms.length}개${n ? ` · ${n}개 선택` : ''}`)), icon(show ? 'down' : 'right', 15)),
+        h('button.cpick-all', { title: all ? '이 캐릭터의 대화방 모두 빼기' : '이 캐릭터의 대화방 모두 고르기', onclick: () => { for (const c of rooms) all ? picked.delete(c.id) : picked.add(c.id); draw(); } }, all ? '모두 빼기' : '모두')),
+        ...(show ? rooms.slice(0, 80).map(c => h(`button.picker-row.cpick-room${picked.has(c.id) ? '.on' : ''}`, { onclick: () => { picked.has(c.id) ? picked.delete(c.id) : picked.add(c.id); draw(); } },
+          h('div.picker-text', h('b', roomLabel(c)), h('small', [note(c), `${c.count || 0}개`, day(c.updatedAt), c.mode === 'talk' ? '대화 모드' : 'RP', (c.preview || '').slice(0, 40)].filter(Boolean).join(' · '))), h('i.picker-check', icon('check', 14)))) : [])];
+    }), !sorted.length && h('p.dim', '찾는 대화방이 없어요.'), sorted.length > 120 && h('p.dim', '검색어를 더 넣어 좁혀 주세요.'));
+  };
+  const search = h('input.inp.search', { placeholder: '캐릭터 · 대화방 이름 · 내용으로 찾기', oninput: e => { q = e.target.value; draw(); } });
+  const box = modal({ title, body: h('div.col', search, count, list), actions: [{ label: '취소' }, { label: '확인', cls: 'primary', onclick: () => onDone([...picked]) }] });
+  draw(); return box;
+}
 function personaLinks(p) {
   const box = h('div.card.links');
   const draw = () => {
@@ -301,9 +329,11 @@ function personaLinks(p) {
         btn('캐릭터 고르기', { ic: 'search', cls: 'ghost', onclick: () => charPicker({ title: `${p.name}(으)로 말할 캐릭터`, selected: chars.filter(c => c.bind?.personaId === p.id).map(c => c.id), note: c => { const o = c.bind?.personaId && c.bind.personaId !== p.id ? S.get('personas', c.bind.personaId)?.name : ''; return o ? `지금은 "${o}"` : ''; },
           onDone: async ids => { for (const c of S.chars) { const want = ids.includes(c.id), has = c.bind?.personaId === p.id; if (want !== has) { c.bind = { connId: '', presetId: '', ...(c.bind || {}), personaId: want ? p.id : '' }; await S.save('chars', c, true); } } draw(); } }) }))),
       h('div.link-row', h('span.field-label', '대화'), h('div.link-chips',
-        chats.map(c => h('button.chip.on', { title: '눌러서 연결 풀기', onclick: async () => { c.personaId = ''; await S.save('chats', c, true); draw(); } }, nameOf(c), c.name ? ' · ' + c.name.slice(0, 16) : '', ' ✕')),
-        cur && cur.personaId !== p.id ? btn(`지금 대화(${nameOf(cur)})에 연결`, { ic: 'plus', cls: 'ghost', onclick: async () => { cur.personaId = p.id; await S.save('chats', cur, true); draw(); } }) : null,
-        !chats.length && !cur ? h('small.hint', '대화 화면의 장면 패널에서도 연결할 수 있어요.') : null)));
+        chats.slice(0, 8).map(c => h('button.chip.on', { title: '눌러서 연결 풀기', onclick: async () => { c.personaId = ''; await S.save('chats', c, true); draw(); } }, nameOf(c), ' · ', roomLabel(c).slice(0, 18), ' ✕')),
+        chats.length > 8 ? h('small.hint', `외 ${chats.length - 8}개`) : null,
+        btn(chats.length ? `대화방 고르기 (${chats.length})` : '대화방 고르기', { ic: 'search', cls: 'ghost', onclick: () => chatPicker({ title: `${p.name}(으)로 말할 대화방`, selected: chats.map(c => c.id), note: c => { const o = c.personaId && c.personaId !== p.id ? S.get('personas', c.personaId)?.name : ''; return o ? `지금은 "${o}"` : ''; },
+          onDone: async ids => { for (const c of S.chats) { const want = ids.includes(c.id), has = c.personaId === p.id; if (want !== has) { c.personaId = want ? p.id : ''; await S.save('chats', c, true); } } draw(); } }) }),
+        cur && cur.personaId !== p.id ? btn(`지금 대화(${nameOf(cur)})에 연결`, { ic: 'plus', cls: 'ghost', onclick: async () => { cur.personaId = p.id; await S.save('chats', cur, true); draw(); } }) : null)));
   };
   draw(); return box;
 }

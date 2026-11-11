@@ -13,7 +13,7 @@ import './savestate.js';
 import { initExtensions } from './ext.js';
 
 // 기능 모듈: 하나가 깨져도 나머지와 본체는 뜨도록 따로 불러온다. 새 기능 모듈은 이 목록에 이름만 더하면 된다
-const FEATURES = ['diary', 'f-memoria', 'f-scenebook', 'f-translate', 'f-assets', 'f-expressions', 'f-vectors', 'f-modules'];
+const FEATURES = ['diary', 'f-memoria', 'f-scenebook', 'f-translate', 'f-assets', 'f-expressions', 'f-vectors', 'f-modules', 'f-regex'];
 const failed = [];
 async function loadFeatures() { await Promise.all(FEATURES.map(m => import(`./${m}.js`).catch(e => { console.error('[기능 모듈]', m, e); failed.push(m); }))); }
 
@@ -82,6 +82,8 @@ addEventListener('unhandledrejection', e => { console.error(e.reason); toast(Str
     await S.load();
     // 프리셋의 옛 '요약 메모리' 칸은 이제 장기기억이 들어가는 자리다
     for (const p of S.presets || []) { let ch = false; for (const b of p.blocks || []) if (b.kind === 'summary' && (b.name === '요약 메모리' || b.content === '[Story so far]\n{{slot}}')) { b.name = '장기기억 자리'; if (b.content === '[Story so far]\n{{slot}}') b.content = '{{slot}}'; ch = true; } if (ch) await S.save('presets', p, true); }
+    // RP 는 소설처럼 보이는 것이 기본: 예전 판의 기본값(말풍선)이 저장돼 남아 있으면 한 번만 되돌린다. 꾸미기에서 다시 켤 수 있다
+    if (!S.settings.migr?.rpNovel) { S.set({ rpBubbles: false, migr: { ...(S.settings.migr || {}), rpNovel: 1 } }); }
     await loadFeatures();
     applyTheme(); initFx();
     on('settings', p => { if ('motion' in p || 'theme' in p) { applyTheme(); buildRail(); } });

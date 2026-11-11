@@ -55,7 +55,6 @@ registerPage('chat', async (root, arg) => {
   const drawer = h('aside.drawer');
   root.append(h('section.chat-layout', { class: cur.drawer ? 'with-drawer' : '' }, side, dossier, main, drawer));
   ui.layout = root.firstChild; ui.side = side; ui.main = main; ui.drawer = drawer; ui.dossier = dossier;
-  if (!arg && S.chats.length > 1) ui.layout.classList.add('show-side'); // 휴대폰: 탭으로 들어오면 대화 목록부터
   drawSide();
   if (!chat) {
     main.append(h('div.empty.big', icon('moon', 46), h('p', '아직 대화가 없어요. 캐릭터를 골라 첫 장면을 열어 보세요.'), btn('캐릭터 보러 가기', { ic: 'home', cls: 'primary', onclick: () => go('home') })));
@@ -76,12 +75,13 @@ registerPage('chat', async (root, arg) => {
 
 // 대화방 목록: 캐릭터(또는 그룹)별로 묶고, 방마다 분량·기간·분기 관계를 보여 준다
 const groupKey = c => [...c.charIds].sort().join('+') || '-';
-const roomNo = c => S.chats.filter(x => groupKey(x) === groupKey(c)).sort((x, y) => x.createdAt - y.createdAt).indexOf(c) + 1;
+let roomIdx = null, roomIdxKey = '';
+const roomNo = c => { const key = S.chats.length + ':' + (S.chats[S.chats.length - 1]?.id || ''); if (!roomIdx || roomIdxKey !== key || !roomIdx.has(c.id)) { roomIdx = new Map(); roomIdxKey = key; const seen = new Map(); for (const x of [...S.chats].sort((a, b) => a.createdAt - b.createdAt)) { const k = groupKey(x), n = (seen.get(k) || 0) + 1; seen.set(k, n); roomIdx.set(x.id, n); } } return roomIdx.get(c.id) || 1; };
 const roomName = c => { const t = titleOf(c), n = String(c.name || '').trim(); const cut = n.toLowerCase().startsWith(t.toLowerCase()) ? n.slice(t.length).replace(/^[\s\-–—·:@]+/, '') : n; return cut || `대화 ${roomNo(c)}`; };
 const daysOf = c => Math.max(1, Math.round(((c.updatedAt || c.createdAt) - c.createdAt) / 86400000) + 1);
 const ago = t => { const d = (now() - t) / 60000; return d < 1 ? '방금' : d < 60 ? `${Math.floor(d)}분 전` : d < 1440 ? `${Math.floor(d / 60)}시간 전` : d < 43200 ? `${Math.floor(d / 1440)}일 전` : new Date(t).toLocaleDateString('ko-KR', { year: '2-digit', month: 'numeric', day: 'numeric' }); };
 function drawSide() {
-  const q = h('input.inp.search', { placeholder: '캐릭터 · 대화방 · 내용 찾기', oninput: () => list() });
+  const q = h('input.inp.search', { placeholder: '캐릭터 · 대화방 · 내용 찾기', oninput: debounce(() => list(), 140) });
   const listEl = h('div.chat-list');
   const fold = cur.fold ||= new Set(), more = cur.more ||= new Map(), PAGE = 6;
   const room = (c, max, depth = 0, flat = false) => {
@@ -99,7 +99,8 @@ function drawSide() {
     else {
       const groups = new Map(); for (const c of all) { const k = groupKey(c); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(c); }
       const sorted = [...groups.entries()].sort((a, b) => Math.max(...b[1].map(c => c.updatedAt)) - Math.max(...a[1].map(c => c.updatedAt)));
-      for (const [k, rooms] of sorted) {
+      const gLim = term ? 60 : (more.get('#groups') || 40);   // 캐릭터가 아주 많으면 묶음도 나눠서 그린다
+      for (const [k, rooms] of sorted.slice(0, gLim)) {
         const chars = charsOf(rooms[0]), total = rooms.reduce((n, c) => n + (c.count || 0), 0), max = Math.max(1, ...rooms.map(c => c.count || 0));
         const here = rooms.some(c => c.id === cur.chat?.id), open = term ? true : fold.has(k) ? false : fold.has('+' + k) ? true : (here || sorted.length === 1);
         // 분기한 방은 원래 방 바로 아래에 들여 쓴다
@@ -118,6 +119,7 @@ function drawSide() {
             iconBtn('plus', '이 캐릭터와 새 대화방', e => startMenu(e.currentTarget, rooms[0].charIds))),
           open ? h('div.cgroup-rooms', shown.flatMap(c => walk(c, 0)), rest > 0 ? h('button.room-more', { onclick: () => { more.set(k, lim + PAGE * 2); list(); } }, `이 캐릭터의 대화방 ${rest}개 더 보기`) : (lim > PAGE && roots.length > PAGE && !term ? h('button.room-more', { onclick: () => { more.delete(k); list(); } }, '접기') : null)) : null));
       }
+      if (sorted.length > gLim) els.push(h('button.room-more', { onclick: () => { more.set('#groups', gLim + 60); list(); } }, term ? `캐릭터 ${sorted.length - gLim}명 더 있어요 — 검색어를 더 넣어 좁혀 주세요` : `캐릭터 ${sorted.length - gLim}명 더 보기`));
     }
     listEl.replaceChildren(...els);
     if (!els.length) listEl.append(h('p.dim.pad', term ? '검색 결과가 없어요.' : '대화가 여기에 쌓여요.'));
@@ -264,9 +266,9 @@ function drawMsgs() {
 
 const bodyHtml = (m) => {
   const s = m.swipes[m.sw] || { text: '' };
-  const depth = cur.msgs.length - 1 - cur.msgs.indexOf(m);
+  let depth; if (!m.hidden) { depth = 0; for (let i = cur.msgs.length - 1; i >= 0 && cur.msgs[i] !== m; i--) if (!cur.msgs[i].hidden) depth++; }
   const raw = s.showTr && s.tr ? s.tr : s.text;
-  const text = runFilters(applyRegex(raw, { who: m.role === 'user' ? 'user' : 'ai', target: 'display', depth, charId: m.charId }), { role: m.role, msg: m, chat: cur.chat });
+  const text = runFilters(applyRegex(raw, { who: m.role === 'user' ? 'user' : 'ai', target: 'display', depth, charId: m.charId, chat: cur.chat }), { role: m.role, msg: m, chat: cur.chat });
   const style = m.role === 'system' ? 'plain' : modeOf(cur.chat) === 'talk' && !m.scene ? 'chat' : S.settings.rpBubbles ? 'bubbles' : 'novel';
   return render(Assets.expand(Illust.strip(text), assetOwners(), `${m.id}:${m.sw}`), { style, prose: m.role !== 'user' });
 };
@@ -323,7 +325,7 @@ function editMsg(m, el) {
   const s = m.swipes[m.sw]; const body = el.querySelector('.msg-body');
   const ta = h('textarea.inp.edit-area', { value: s.text, spellcheck: false });
   const fit = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight + 4, innerHeight * 0.6) + 'px'; };
-  const done = async ok => { const changed = ok && s.text !== ta.value; if (ok) { s.text = ta.value; delete s.tr; s.showTr = false; await save(); } redraw(m); if (changed) emit('message:edited', { chat: cur.chat, msg: m, msgs: cur.msgs }); };
+  const done = async ok => { const changed = ok && s.text !== ta.value; if (ok) { s.text = m.role === 'system' ? ta.value : applyRegex(ta.value, { who: m.role === 'user' ? 'user' : 'ai', target: 'store', edit: true, charId: m.charId, chat: cur.chat }); delete s.tr; s.showTr = false; await save(); } redraw(m); if (changed) emit('message:edited', { chat: cur.chat, msg: m, msgs: cur.msgs }); };
   ta.addEventListener('input', fit);
   ta.addEventListener('keydown', e => { if (e.key === 'Escape') done(false); if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) done(true); });
   body.replaceWith(h('div.edit-box', ta, h('div.row.end', btn('취소', { cls: 'ghost', onclick: () => done(false) }), btn('저장', { cls: 'primary', ic: 'check', onclick: () => done(true) }))));
@@ -501,7 +503,7 @@ async function command(line) {
       const m = newMsg('system', `${who}의 주사위 ${r.expr} → ${r.rolls.join(', ')}${r.mod ? ` (${r.mod > 0 ? '+' : ''}${r.mod})` : ''} = ${r.total}`, { dice: { expr: r.expr, rolls: r.rolls, mod: r.mod, total: r.total, sides }, diceBy: who });
       cur.msgs.push(m); ui.msgs.append(msgEl(m, cur.msgs.length - 1)); toBottom(); return save();
     }
-    case '/sys': case '/narrate': return arg ? sys(arg) : null;
+    case '/sys': case '/narrate': return arg ? sys(applyRegex(arg, { who: 'slash', target: 'store', chat: cur.chat })) : null;
     case '/continue': case '/cont': return generate('continue');
     case '/regen': return generate('regen');
     case '/imp': case '/impersonate': return generate('impersonate');
@@ -914,28 +916,54 @@ function drawDrawer() {
 function inspector() {
   const chat = cur.chat; if (!chat) return;
   const chars = charsOf(chat);
-  let built;
+  let built, fine;
   const talkNow = modeOf(chat) === 'talk' && !chat.scene?.on, keep = chat.presence, pres = talkNow ? presenceOf(chat, chars[0]) : null;
   if (pres) chat.presence = { status: pres.status, activity: pres.activity };
   const inScene = modeOf(chat) === 'talk' && !!chat.scene?.on, pchat = inScene ? Object.assign(Object.create(chat), { mode: 'rp', sceneLive: true }) : chat;
-  try { built = buildPrompt({ chat: pchat, char: chars[0], chars, persona: S.persona(chat), preset: S.presetFor(chat), msgs: cur.msgs, type: 'normal' }); } catch (e) { return toast(e.message, 'err'); }
+  try {
+    const pz = S.presetFor(chat), args = { chat: pchat, char: chars[0], chars, persona: S.persona(chat), msgs: cur.msgs, type: 'normal' };
+    built = buildPrompt({ ...args, preset: pz });
+    // 구성 보기용: 같은 역할끼리 합치기 전의 조각으로 한 번 더 조립해야 갈래별 크기가 정확하다
+    try { fine = buildPrompt({ ...args, preset: { ...pz, params: { ...pz.params, squash: false } } }); } catch { fine = built; }
+  } catch (e) { return toast(e.message, 'err'); }
   finally { if (pres) { if (keep === undefined) delete chat.presence; else chat.presence = keep; } }
   cur.lastPrompt = built; drawGauge();
   const max = S.presetFor(chat).params.contextSize || 128000;
-  modal({
-    title: '전송될 프롬프트', wide: true,
-    body: h('div.inspect',
-      h('div.inspect-sum', h('b', `≈${built.total.toLocaleString()} 토큰`), h('span', ` / ${max.toLocaleString()} · 메시지 ${built.messages.length}개 · 로어북 ${built.lore.length}개 발동`), built.dropped ? h('em.badge', `오래된 기록 ${built.dropped}개 제외`) : null),
-      (() => {   // 채팅 기록은 이어진 것끼리 한 묶음으로 접어 둔다 (길어져도 한눈에 보이게)
-        const row = (m, label) => h('details.inspect-row', h('summary', h(`span.role.${m.role}`, m.role), h('span.src', label || m.src), h('small', `≈${tokens(m.content).toLocaleString()}`)), h('pre', m.content));
-        const out = []; let run = [];
-        const flush = () => { if (!run.length) return; const list = run; run = []; if (list.length === 1) return out.push(row(list[0], '채팅 기록'));
-          const first = built.messages.filter(m => m.src === 'history').indexOf(list[0]);
-          out.push(h('details.inspect-row.inspect-group', h('summary', h('span.role.history', 'HISTORY'), h('span.src', `채팅 기록 ${list.length}개`), h('small', `≈${list.reduce((n, m) => n + tokens(m.content), 0).toLocaleString()}`)), h('div.inspect-list', list.map((m, i) => row(m, `#${first + i + 1} · ${m.content.replace(/\s+/g, ' ').slice(0, 60)}`))))); };
-        for (const m of built.messages) { if (m.src === 'history') run.push(m); else { flush(); out.push(row(m)); } }
-        flush(); return out;
-      })()),
-  });
+  // 어디가 얼마를 차지하는지: 갈래별로 모아 한 줄 띠와 표로 보여 준다
+  const CATS = [['history', '대화 기록'], ['preset', '프리셋 지시문'], ['char', '캐릭터'], ['persona', '페르소나'], ['lore', '로어북'], ['memory', '장기기억'], ['note', '노트'], ['feature', '기능이 덧붙인 것'], ['prefill', '응답 시작']];
+  const catOf = m => { const s = String(m.src || ''); return m.src === 'history' ? 'history' : m.prefill || /응답 시작/.test(s) ? 'prefill' : /작가 노트|캐릭터 노트/.test(s) ? 'note' : /로어북/.test(s) ? 'lore' : /장기기억|옛 요약|벡터 검색/.test(s) ? 'memory' : /페르소나/.test(s) ? 'persona' : /캐릭터|시나리오|대화 예시|스토리 스트링|인물 카드/.test(s) ? 'char' : /삽화|에셋|상태창|트래커|지금 상태|장면|약속|표정|일정|끼어들기|교환 일기|읽지 않음|읽고 답|자리를 비운|재생성 이유|명령 안내|모듈/.test(s) ? 'feature' : 'preset'; };
+  const P = S.presetFor(chat).params, reserve = Math.min(P.maxTokens || 4096, max), sum = {};
+  for (const m of fine.messages) { const k = catOf(m), t = tokens(m.content) + 4; (sum[k] ||= { t: 0, n: 0, parts: new Map() }); sum[k].t += t; sum[k].n++; const label = m.src === 'history' ? '채팅 기록' : (m.src || '이름 없는 조각'); const p = sum[k].parts.get(label) || { t: 0, n: 0 }; p.t += t; p.n++; sum[k].parts.set(label, p); }
+  const used = built.total, free = Math.max(0, max - used - reserve), over = used + reserve > max, pct = n => Math.round(n / max * 1000) / 10, share = n => Math.round(n / Math.max(1, cats.reduce((x, [k]) => x + sum[k].t, 0)) * 100);
+  const cats = CATS.filter(([k]) => sum[k]).sort((x, y) => sum[y[0]].t - sum[x[0]].t);
+  const fill = Math.min(1, used / max), moon = h('span.pm-moon', { html: `<svg viewBox="0 0 40 40" aria-hidden="true"><defs><clipPath id="pm-clip"><rect x="0" y="${40 - 40 * fill}" width="40" height="40"/></clipPath></defs><circle cx="20" cy="20" r="18" class="pm-ring"/><circle cx="20" cy="20" r="18" class="pm-fill" clip-path="url(#pm-clip)"/></svg>` });
+  const band = h('div.pm-band', { role: 'img', 'aria-label': '프롬프트 구성' }, cats.map(([k, l]) => h(`i.pm-seg.pm-${k}`, { style: { flexGrow: sum[k].t }, title: `${l} · ${sum[k].t.toLocaleString()} 토큰 · ${share(sum[k].t)}%` }, share(sum[k].t) >= 12 ? h('span', `${share(sum[k].t)}%`) : null)));
+  const rows = cats.map(([k, l]) => { const c = sum[k], parts = [...c.parts.entries()].sort((x, y) => y[1].t - x[1].t);
+    return h('details.pm-row', h('summary', h(`i.pm-key.pm-${k}`), h('b', l), h('span.pm-meter', h('i', { style: { width: Math.max(1, c.t / Math.max(1, used) * 100) + '%' } })), h('span.pm-num', c.t.toLocaleString()), h('small', `${share(c.t)}%`)),
+      h('div.pm-parts', parts.map(([name, p]) => h('div.pm-part', h('span', name.replace(/^로어북: /, ''), p.n > 1 ? h('em', ` ×${p.n}`) : null), h('span.pm-num', p.t.toLocaleString()), h('small', `${Math.round(p.t / Math.max(1, c.t) * 100)}%`))))); });
+  const tail = [['pm-reserve', '답변 몫', reserve, '프리셋의 최대 응답 토큰만큼 비워 둡니다'], ['pm-free', '남은 자리', free, over ? '자리가 모자라 오래된 기록부터 빠집니다' : '']].map(([cls, l, n, hint]) => h('div.pm-row.flat', h(`i.pm-key.${cls}`), h('b', l), h('span.pm-hint', hint), h('span.pm-num', n.toLocaleString()), h('small', `${pct(n)}%`)));
+  const ctx = h('div.pm-ctx', { title: '컨텍스트에서 차지하는 자리' }, h('i.pm-ctx-used', { style: { width: Math.min(100, pct(used)) + '%' } }), h('i.pm-ctx-res', { style: { width: Math.min(100 - Math.min(100, pct(used)), pct(reserve)) + '%' } }));
+  let view = 'map';
+  const body = h('div.inspect'), tabs = h('div.tabs.pm-tabs');
+  const listView = () => {   // 채팅 기록은 이어진 것끼리 한 묶음으로 접어 둔다 (길어져도 한눈에 보이게)
+    const row = (m, label) => h('details.inspect-row', h('summary', h(`i.pm-key.pm-${catOf(m)}`), h(`span.role.${m.role}`, m.role), h('span.src', label || m.src), h('small', `≈${tokens(m.content).toLocaleString()}`)), h('pre', m.content));
+    const out = []; let run = [];
+    const flush = () => { if (!run.length) return; const list = run; run = []; if (list.length === 1) return out.push(row(list[0], '채팅 기록'));
+      const first = built.messages.filter(m => m.src === 'history').indexOf(list[0]);
+      out.push(h('details.inspect-row.inspect-group', h('summary', h('i.pm-key.pm-history'), h('span.role.history', 'HISTORY'), h('span.src', `채팅 기록 ${list.length}개`), h('small', `≈${list.reduce((n, m) => n + tokens(m.content), 0).toLocaleString()}`)), h('div.inspect-list', list.map((m, i) => row(m, `#${first + i + 1} · ${m.content.replace(/\s+/g, ' ').slice(0, 60)}`))))); };
+    for (const m of built.messages) { if (m.src === 'history') run.push(m); else { flush(); out.push(row(m)); } }
+    flush(); return out;
+  };
+  const draw = () => {
+    tabs.replaceChildren(...[['map', '구성'], ['list', '보내는 순서대로']].map(([k, l]) => h(`button.tab${view === k ? '.on' : ''}`, { onclick: () => { view = k; draw(); } }, l)));
+    body.replaceChildren(
+      h('div.pm-head', moon, h('div.pm-total', h('b', `≈${used.toLocaleString()}`), h('span', ` / ${max.toLocaleString()} 토큰`), h('small', `${pct(used)}% 참 · 메시지 ${built.messages.length}개 · 로어북 ${built.lore.length}개 발동`)),
+        built.dropped ? h('em.badge', `오래된 기록 ${built.dropped}개 제외`) : null, over ? h('em.badge.warn', '답변 몫까지 넣으면 넘쳐요') : null),
+      h('div.pm-cap', h('span', '보내는 것의 구성'), h('span', `≈${used.toLocaleString()} 토큰`)), band, tabs,
+      ...(view === 'map' ? [h('div.pm-table', rows), h('div.pm-cap', h('span', '컨텍스트에서 차지하는 자리'), h('span', `${pct(used)}% 참`)), ctx, h('div.pm-table.pm-tail', tail), h('p.hint', '갈래를 누르면 그 안의 조각별 크기가 펼쳐집니다. 퍼센트는 보내는 것 안에서의 비율이고, 토큰 수는 어림값이에요.')] : listView()));
+  };
+  draw();
+  modal({ title: '전송될 프롬프트', wide: true, body });
 }
 
 function findInChat() {

@@ -144,14 +144,35 @@ export function loreToCardBook(book) {
   };
 }
 
+// ── 실리태번 정규식 스크립트 ↔ 드림랜드 ──
+// placement: 1 사용자 입력 · 2 AI 응답 · 3 슬래시 명령 · 5 월드 인포 · 6 생각 과정 (0 은 옛 'MD 표시', 4 는 옛 sendAs)
+const depthNum = v => (v == null || v === '' || isNaN(+v) ? null : +v);
+/** 실리태번은 /…/플래그 꼴이 아니면 플래그 없이(처음 한 곳만) 돌린다. 드림랜드의 맨 패턴은 전체 검색이라 슬래시로 감싸 뜻을 지킨다 */
+const stFind = s => { s = String(s ?? ''); return !s || /^\/[\s\S]+\/[a-z]*$/i.test(s) ? s : `/${s}/`; };
 export function stRegexToRegex(r, scope = 'global') {
-  const pl = arr(r.placement);
+  let pl = arr(r.placement), md = !!r.markdownOnly, pr = bool(r.promptOnly);
+  if (pl.includes(0)) { pl = pl.length === 1 ? [1, 2, 3, 5, 6] : pl.filter(x => x !== 0); md = pr = true; }        // 옛 형식: 표시 전용이었다
+  if (pl.includes(4)) pl = pl.length === 1 ? [3] : pl.filter(x => x !== 4);
+  const has = (n, word) => pl.includes(n) || pl.includes(String(n)) || pl.includes(word);
+  const sub = Number(r.substituteRegex);
   return newRegex({
-    name: r.scriptName || r.name || '정규식', find: r.findRegex || '', replace: r.replaceString || '', trim: arr(r.trimStrings),
-    onUser: pl.includes(1) || pl.includes('user_input'), onAI: pl.includes(2) || pl.includes('ai_output'),
-    mode: r.applyMode ? r.applyMode : (r.markdownOnly && r.promptOnly ? 'both' : r.markdownOnly ? 'display' : bool(r.promptOnly) ? 'prompt' : 'store'),
-    enabled: r.enabled != null ? bool(r.enabled) : !r.disabled, minDepth: r.minDepth ?? null, maxDepth: r.maxDepth ?? null, scope,
+    name: r.scriptName || r.name || '정규식', find: stFind(r.findRegex), replace: String(r.replaceString ?? ''), trim: arr(r.trimStrings).map(String).filter(Boolean),
+    onUser: has(1, 'user_input'), onAI: has(2, 'ai_output'), onSlash: has(3, 'slash_command'), onLore: has(5, 'world_info'), onReason: has(6, 'reasoning'),
+    mode: r.applyMode ? r.applyMode : (md && pr ? 'both' : md ? 'display' : pr ? 'prompt' : 'store'),
+    enabled: r.enabled != null ? bool(r.enabled) : !r.disabled, runOnEdit: !!r.runOnEdit, subst: sub === 1 || sub === 2 ? sub : 0,
+    minDepth: depthNum(r.minDepth), maxDepth: depthNum(r.maxDepth), scope,
   });
+}
+/** JSON 에서 정규식 스크립트들을 찾아낸다: 실리태번 낱개 · 묶음(배열), 드림랜드 형식, 그리고 프리셋(extensions.regex_scripts) · 캐릭터 카드에 실린 것 */
+export function regexFromJson(j, scope = 'global') {
+  const list = Array.isArray(j) ? j : Array.isArray(j?.extensions?.regex_scripts) ? j.extensions.regex_scripts : Array.isArray(j?.data?.extensions?.regex_scripts) ? j.data.extensions.regex_scripts : Array.isArray(j?.regex) ? j.regex : [j];
+  const out = [];
+  for (const r of list) {
+    if (!r || typeof r !== 'object') continue;
+    if (typeof r.findRegex === 'string' || r.scriptName !== undefined) out.push(stRegexToRegex(r, scope));
+    else if (typeof r.find === 'string') { const { id, createdAt, updatedAt, src, mod, ...rest } = r; out.push(newRegex({ ...rest, trim: arr(r.trim).map(String).filter(Boolean), scope })); }
+  }
+  return out;
 }
 
 /** 캐릭터 카드(V1/V2/V3) → 드림랜드 캐릭터 (+내장 로어북, 정규식) */
@@ -188,12 +209,29 @@ export function charToCard(ch, v3 = false) {
       name: ch.name, description: ch.description, personality: ch.personality, scenario: ch.scenario, first_mes: ch.firstMes, mes_example: ch.mesExample,
       creator_notes: ch.creatorNotes, system_prompt: ch.systemPrompt, post_history_instructions: ch.postHistory, alternate_greetings: ch.altGreetings, tags: ch.tags,
       creator: ch.creator, character_version: ch.version,
-      extensions: { ...(ch.ext || {}), talkativeness: ch.talk, fav: ch.fav, world: book?.name || '', depth_prompt: ch.depthPrompt, regex_scripts: S.regex.filter(r => r.scope === ch.id).map(regexToSt) },
+      extensions: { ...(ch.ext || {}), talkativeness: ch.talk, fav: ch.fav, world: book?.name || '', depth_prompt: ch.depthPrompt, regex_scripts: scopedRegex(ch.id).map(regexToSt) },
       ...(book ? { character_book: loreToCardBook(book) } : {}),
     },
   };
 }
-export const regexToSt = r => ({ id: r.id, scriptName: r.name, findRegex: r.find, replaceString: r.replace, trimStrings: r.trim, placement: [r.onUser && 1, r.onAI && 2].filter(Boolean), disabled: !r.enabled, markdownOnly: r.mode === 'display' || r.mode === 'both', promptOnly: r.mode === 'prompt' || r.mode === 'both', minDepth: r.minDepth, maxDepth: r.maxDepth });
+/** 캐릭터에 묶인 정규식을 순서대로 */
+export const scopedRegex = charId => S.regex.map((r, i) => [r, i]).filter(([r]) => r.scope === charId).sort((a, b) => (+a[0].order || 0) - (+b[0].order || 0) || a[1] - b[1]).map(x => x[0]);
+/** 드림랜드 → 실리태번 정규식 스크립트. 맨 패턴(전체 검색)은 /…/g 로 적어 뜻을 지킨다 */
+export const regexToSt = r => {
+  const find = String(r.find || ''), slashed = !find || /^\/[\s\S]+\/[a-z]*$/i.test(find);
+  return {
+    id: r.id, scriptName: r.name, findRegex: slashed ? find : `/${find}/g`, replaceString: r.replace || '', trimStrings: arr(r.trim).filter(Boolean),
+    placement: [r.onUser && 1, r.onAI && 2, r.onSlash && 3, r.onLore && 5, r.onReason && 6].filter(Boolean), disabled: !r.enabled,
+    markdownOnly: r.mode === 'display' || r.mode === 'both', promptOnly: r.mode === 'prompt' || r.mode === 'both', runOnEdit: r.runOnEdit === true,
+    substituteRegex: Number(r.subst ?? (find.includes('{{') ? 1 : 0)) || 0, minDepth: depthNum(r.minDepth), maxDepth: depthNum(r.maxDepth),
+  };
+};
+/** 캐릭터 · 프리셋에 실려 들어온 정규식은 처음 쓸 때 한 번 물어본다 (실리태번과 같은 절차). kind: 'chars' | 'presets' */
+function askRegexLater(kind, id) {
+  const a = S.settings.regexAllow || {}, cur = a[kind] || {};
+  if (cur[id] !== undefined) return;
+  S.set({ regexAllow: { ...a, [kind]: { ...cur, [id]: 'ask' } } });
+}
 
 export async function exportCharPng(ch) {
   const img = new Image();
@@ -233,8 +271,36 @@ export function stPresetToPreset(j, name) {
   }
   if (!blocks.some(b => b.kind === 'chatHistory')) blocks.push({ id: uid(), kind: 'chatHistory', name: MARKERS.chatHistory, role: 'system', content: '', enabled: true, depth: null });
   p.blocks = blocks;
-  return { preset: p, regex: arr(j.extensions?.regex_scripts).map(r => stRegexToRegex(r)) };
+  p.regex = arr(j.extensions?.regex_scripts).filter(r => r && typeof r === 'object').map((r, i) => ({ ...stRegexToRegex(r, 'preset'), order: i }));   // 프리셋에 실린 정규식은 프리셋과 함께 다닌다
+  return { preset: p, regex: [] };
 }
+/** 드림랜드 프리셋 → 실리태번 Chat Completion 프리셋 JSON. 프리셋에 실린 정규식은 extensions.regex_scripts 로 함께 나간다 */
+export function presetToSt(p) {
+  const P = p.params || {}, prompts = [], order = [], seen = new Set();
+  const fmtOf = (kind, key) => { const c = (p.blocks || []).find(b => b.kind === kind)?.content || ''; return c.includes('{{slot}}') ? c.replace(/\{\{slot\}\}/g, () => key) : key; };
+  for (const b of p.blocks || []) {
+    const text = b.kind === 'text' || b.kind === 'main' || b.kind === 'jailbreak';
+    if (!text && !ST_KIND[b.kind]) continue;                       // 장기기억 자리처럼 드림랜드에만 있는 칸
+    const identifier = b.kind === 'text' ? String(b.id) : b.kind;
+    if (seen.has(identifier)) continue; seen.add(identifier);
+    const depth = b.depth != null && b.depth !== '' && !isNaN(+b.depth) ? +b.depth : null;
+    prompts.push(text
+      ? { identifier, name: b.name || identifier, system_prompt: b.kind !== 'text', role: b.role || 'system', content: b.content || '', injection_position: depth === null ? 0 : 1, injection_depth: depth ?? 4, forbid_overrides: false }
+      : { identifier, name: b.name || identifier, system_prompt: true, marker: true });
+    order.push({ identifier, enabled: b.enabled !== false });
+  }
+  const out = {
+    temperature: P.temperature ?? 1, frequency_penalty: P.freqPen ?? 0, presence_penalty: P.presPen ?? 0, top_p: P.topP ?? 1, top_k: P.topK ?? 0,
+    openai_max_context: P.contextSize ?? 128000, openai_max_tokens: P.maxTokens ?? 4096, stream_openai: P.stream !== false, squash_system_messages: P.squash !== false,
+    assistant_prefill: P.prefill || '', personality_format: fmtOf('charPersonality', '{{personality}}'), scenario_format: fmtOf('scenario', '{{scenario}}'), wi_format: fmtOf('worldInfoBefore', '{0}'),
+    prompts, prompt_order: [{ character_id: 100001, order }],
+    extensions: { regex_scripts: arr(p.regex).map(regexToSt) },
+  };
+  if (['low', 'medium', 'high'].includes(P.effort)) out.reasoning_effort = P.effort;
+  return out;
+}
+/** 이미 가진 실리태번 프리셋 JSON 에 정규식만 갈아 끼운다 (다른 설정은 그대로) */
+export const stPresetWithRegex = (j, scripts) => ({ ...j, extensions: { ...(j.extensions && typeof j.extensions === 'object' && !Array.isArray(j.extensions) ? j.extensions : {}), regex_scripts: arr(scripts).map(regexToSt) } });
 
 /** .jsonl 채팅 → { chat, msgs }.  resolve(m) 은 그룹 채팅에서 화자 캐릭터를 찾는다 */
 export function stChatToChat(text, { charIds, name, resolve }) {
@@ -410,8 +476,11 @@ const safe = async (T, label, fn) => { try { return await fn(); } catch (e) { co
 async function saveCard(card, avatar, src, T) {
   const { char, lore, regex } = cardToChar(card, avatar);
   if (lore) { const lb = await upsert('lore', lore, src ? src + '#book' : ''); char.loreIds = [lb.id]; T.lore++; }
+  const fresh = !(src && S.chars.some(x => x.src === src));
   const saved = await upsert('chars', char, src);
-  for (const r of regex) { r.scope = saved.id; await upsert('regex', r, src ? `${src}#re:${r.name}` : ''); T.regex++; }
+  let n = 0;
+  for (const r of regex) { r.scope = saved.id; r.order = n++; await upsert('regex', r, src ? `${src}#re:${r.name}` : ''); T.regex++; }
+  if (regex.length && fresh) askRegexLater('chars', saved.id);
   T.chars++;
   return saved;
 }
@@ -497,8 +566,10 @@ export async function importST(src, want, progress = () => { }) {
     progress(`프리셋 · ${f}`);
     await safe(T, f, async () => {
       const { preset, regex } = stPresetToPreset(JSON.parse(await src.text('OpenAI Settings/' + f)), f.replace(/\.json$/i, ''));
-      await upsert('presets', preset, tag('preset/' + f)); T.presets++;
-      if (want.regex) for (const r of regex) { await upsert('regex', r, tag(`preset/${f}#re:${r.name}`)); T.regex++; }
+      if (!want.regex) preset.regex = [];
+      const fresh = !S.presets.some(x => x.src === tag('preset/' + f));
+      const sp = await upsert('presets', preset, tag('preset/' + f)); T.presets++; T.regex += preset.regex.length;
+      if (preset.regex.length && fresh) askRegexLater('presets', sp.id);
     });
   }
 
@@ -671,11 +742,12 @@ export async function importFiles(files, progress = () => { }) {
       if (j.spec || (j.name && (j.first_mes !== undefined || j.description !== undefined)) || j.data?.first_mes !== undefined) { await saveCard(j, '', '', T); return; }
       if (j.entries && typeof j.entries === 'object') { const b = worldToLore(j, base); if (!j.name) b.name = base; await S.save('lore', b, true); T.lore++; return; }
       if (Array.isArray(j.prompts) || j.prompt_order || j.openai_max_tokens !== undefined) {
-        const { preset, regex } = stPresetToPreset(j, base); await S.save('presets', preset, true); T.presets++;
-        for (const r of regex) { await S.save('regex', r, true); T.regex++; } return;
+        const { preset } = stPresetToPreset(j, base); await S.save('presets', preset, true); T.presets++; T.regex += preset.regex.length;
+        if (preset.regex.length) askRegexLater('presets', preset.id);
+        return;
       }
       const rs = Array.isArray(j) ? j : [j];
-      if (rs.every(r => r && (r.findRegex !== undefined || r.find !== undefined))) { for (const r of rs) { await S.save('regex', r.find !== undefined ? newRegex(r) : stRegexToRegex(r), true); T.regex++; } return; }
+      if (rs.length && rs.every(r => r && (r.findRegex !== undefined || r.find !== undefined))) { let n = S.regex.reduce((m, r) => Math.max(m, +r.order || 0), 0); for (const r of regexFromJson(rs)) { r.order = ++n; await S.save('regex', r, true); T.regex++; } return; }
       if (tplKind(j) || Object.keys(KINDS).some(k => tplKind(j[k]) === k)) { T.templates += tplImport(j, base).length; return; }   // 고급 포맷팅 템플릿 (낱개 · 전체 내보내기)
       if (Array.isArray(j.qrList)) { T.quick += qrAddSet(stQrToSet(j, base)); return; }   // Quick Reply 세트
       throw new Error('알 수 없는 형식의 파일입니다');

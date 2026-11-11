@@ -222,7 +222,9 @@ export const newEntry = (o = {}) => ({
   matchPersona: false, matchCharDesc: false, matchCharPersonality: false, matchCharNote: false, matchScenario: false, matchCreatorNotes: false,
   charFilter: { names: [], tags: [], exclude: false }, triggers: [], automationId: '', ...o,
 });
-export const newRegex = (o = {}) => ({ id: uid(), name: '새 정규식', find: '', replace: '', trim: [], onUser: false, onAI: true, mode: 'display', enabled: true, minDepth: null, maxDepth: null, scope: 'global', ...o });
+// 정규식 스크립트. scope: 'global' 전역 · 캐릭터 id · 'preset'(프리셋의 regex 배열 안에 산다). 대상: onUser · onAI · onSlash(명령어로 넣은 글) · onLore(로어북 내용) · onReason(생각 과정).
+// mode: display 화면만 · prompt 전송만 · both 둘 다 · store 원문을 바꿔 저장. subst: 찾기 안의 매크로 0 그대로 · 1 값 넣기 · 2 기호를 글자로 바꿔 넣기. order: 같은 범위 안의 순서
+export const newRegex = (o = {}) => ({ id: uid(), name: '새 정규식', find: '', replace: '', trim: [], onUser: false, onAI: true, onSlash: false, onLore: false, onReason: false, mode: 'display', enabled: true, runOnEdit: true, subst: 0, minDepth: null, maxDepth: null, scope: 'global', order: 0, ...o });
 export const newConn = (o = {}) => ({ id: uid(), name: '새 연결', provider: 'openai', baseUrl: '', apiKey: '', model: '', proxy: false, postProcess: 'none', extraHeaders: '', extraBody: '', cache: false, ...o });
 export const newChat = (o = {}) => ({
   id: uid(), name: '', charIds: [], personaId: '', note: { text: '', depth: 4, role: 'system' }, summary: '', summaryAt: 0, vars: {}, loreIds: [],
@@ -347,7 +349,13 @@ export const S = {
     if (!this.get('personas', this.settings.activePersona)) this.settings.activePersona = this.personas[0].id;
     if (!this.get('conns', this.settings.activeConn)) this.settings.activeConn = this.conns[0]?.id || '';
   },
-  get(coll, id) { return this[coll].find(x => x.id === id); },
+  get(coll, id) {
+    const arr = this[coll]; if (!arr || id == null || id === '') return undefined;
+    if (arr.length < 24) return arr.find(x => x.id === id);
+    let ix = this._ix?.[coll]; if (ix) { const p = ix.get(id); if (p !== undefined && arr[p]?.id === id) return arr[p]; }
+    ix = new Map(); for (let i = 0; i < arr.length; i++) ix.set(arr[i].id, i); (this._ix ||= {})[coll] = ix;
+    const p = ix.get(id); return p === undefined ? undefined : arr[p];
+  },
   async save(coll, obj, silent) {
     if (coll !== 'chats') obj.updatedAt = now(); // 대화의 시각은 마지막 메시지 기준 (saveMsgs)
     const i = this[coll].findIndex(x => x.id === obj.id);

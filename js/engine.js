@@ -1,5 +1,5 @@
 // ── Dreamland engine: 토큰 추정 · 매크로 · 정규식 · 로어북 · 프롬프트 조립 · API ──
-import { S, msgText, arr, Secrets } from './core.js';
+import { S, msgText, arr, Secrets, on } from './core.js';
 import { X } from './hooks.js';
 import { condBlocks, evalCond, pvResolve } from './cond.js';
 import { Clock } from './clock.js';
@@ -82,6 +82,8 @@ export const condEnv = c => ({ pv: c.pv, vars: c.vars, gvars: S.settings.globalV
 export const testCond = (expr, c) => evalCond(macro(String(expr || ''), c), condEnv(c));
 
 // ── 정규식 스크립트 ──
+// 범위는 셋: 전역(S.regex 의 scope 'global') · 프리셋(preset.regex — 프리셋에 실려 다닌다) · 캐릭터(S.regex 의 scope = 캐릭터 id).
+// 적용 순서는 실리태번과 같다: 전역 → 프리셋 → 캐릭터, 한 범위 안에서는 order 순(같으면 만든 순).
 const reCache = new Map();
 export function compileRegex(src) {
   if (reCache.has(src)) return reCache.get(src);
@@ -90,36 +92,117 @@ export function compileRegex(src) {
     const m = String(src).match(/^\/([\s\S]+)\/([a-z]*)$/);
     re = m ? new RegExp(m[1], m[2]) : new RegExp(src, 'g');
   } catch { re = null; }
+  if (reCache.size > 2000) reCache.clear();
   reCache.set(src, re);
   return re;
 }
-/** target: 'display' | 'prompt' | 'store',  who: 'user' | 'ai' */
-export function applyRegex(text, { who, target, depth = 0, charId, ctx }) {
-  if (!text) return text;
-  for (const r of S.regex) {
-    if (!r.enabled || !r.find) continue;
-    if (r.scope && r.scope !== 'global' && r.scope !== charId) continue;
-    if (who === 'user' ? !r.onUser : !r.onAI) continue;
-    // mode: store(저장되는 원문 변경) · display(화면만) · prompt(전송만) · both(화면+전송)
-    if (target === 'store' ? r.mode !== 'store' : (r.mode !== target && r.mode !== 'both')) continue;
-    if (r.minDepth != null && r.minDepth !== '' && depth < r.minDepth) continue;
-    if (r.maxDepth != null && r.maxDepth !== '' && depth > r.maxDepth) continue;
-    const re = compileRegex(ctx ? macro(r.find, ctx) : r.find);
-    if (!re) continue;
-    re.lastIndex = 0;
-    const rep = (ctx ? macro(r.replace || '', ctx) : (r.replace || ''));
-    text = text.replace(re, (...a) => {
-      const groups = typeof a[a.length - 1] === 'object' ? a.pop() : null;
-      const caps = a.slice(1, -2);
-      let out = rep.replace(/\{\{match\}\}/gi, '$0').replace(/\$(\d+)|\$<([^>]+)>/g, (_, n, name) => {
-        let v = name ? groups?.[name] : (n === '0' ? a[0] : caps[+n - 1]);
-        v = v ?? '';
-        for (const t of arr(r.trim)) if (t) v = v.split(t).join('');
-        return v;
-      });
-      return out;
-    });
+let regexChat = null;   // 지금 열려 있는 대화 — 화면 표시처럼 대화를 넘겨받지 못한 호출이 범위(캐릭터 · 프리셋)를 알 수 있게
+on('chat:open', c => { regexChat = c || null; }); on('chat:deleted', id => { if (regexChat?.id === id) regexChat = null; });
+const REGEX_ON = { user: 'onUser', ai: 'onAI', slash: 'onSlash', lore: 'onLore', reason: 'onReason' };
+const reNum = v => (v == null || v === '' || isNaN(+v) ? null : +v);
+const byOrder = list => list.map((r, i) => [r, i]).sort((a, b) => (+a[0].order || 0) - (+b[0].order || 0) || a[1] - b[1]).map(x => x[0]);
+/** 캐릭터 · 프리셋에 실린 정규식을 써도 되는가. kind: 'chars' | 'presets'. 값이 없으면 허용(직접 만든 것), 'ask' 는 가져온 뒤 아직 묻지 않은 것 */
+export const regexAllowed = (kind, id) => { const v = S.settings.regexAllow?.[kind]?.[id]; return v === undefined || v === true; };
+/** 적용 순서대로 줄 세운 스크립트 [{ r, kind: 'global'|'preset'|'char', owner, skip }]. all 이면 지금 범위가 아닌 것도 이유(skip)를 달아 함께 돌려준다 */
+export function regexScripts({ chat, charId, preset, all = false } = {}) {
+  if (chat === undefined) chat = regexChat;
+  const ids = chat?.charIds?.length ? chat.charIds : (charId ? [charId] : []), solo = ids.length === 1;
+  const pre = preset === undefined ? (chat ? S.presetFor(chat) : S.preset()) : preset;
+  const out = [];
+  for (const r of byOrder(S.regex.filter(r => !r.scope || r.scope === 'global'))) out.push({ r, kind: 'global', owner: '', skip: '' });
+  for (const p of all ? [pre, ...S.presets.filter(x => x !== pre)].filter(Boolean) : [pre].filter(Boolean)) {
+    const skip = p !== pre ? 'scope:preset' : regexAllowed('presets', p.id) ? '' : 'blocked:preset';
+    if (skip && !all) continue;
+    for (const r of arr(p.regex)) if (r && typeof r === 'object') out.push({ r, kind: 'preset', owner: p.id, skip });
   }
+  // 1:1 대화에서는 그 캐릭터의 스크립트가 방 전체에, 그룹에서는 그 캐릭터가 쓴 메시지에만 적용된다
+  const mine = r => ids.includes(r.scope) && (solo || r.scope === charId);
+  const scoped = byOrder(S.regex.filter(r => r.scope && r.scope !== 'global'));
+  for (const r of [...scoped.filter(mine), ...(all ? scoped.filter(r => !mine(r)) : [])]) {
+    const skip = !mine(r) ? 'scope:char' : regexAllowed('chars', r.scope) ? '' : 'blocked:char';
+    if (skip && !all) continue;
+    out.push({ r, kind: 'char', owner: r.scope, skip });
+  }
+  return out;
+}
+/** 이 스크립트를 건너뛰는 이유. 돌려도 되면 ''. off 꺼짐 · nofind 찾기 없음 · place 대상 아님 · mode 적용 방식 다름 · edit 고칠 때 안 돎 · min/max 깊이 밖 */
+export function regexSkip(r, { who = 'ai', target = 'display', depth, edit = false } = {}) {
+  if (!r.enabled) return 'off';
+  if (!r.find) return 'nofind';
+  if (!r[REGEX_ON[who] || 'onAI']) return 'place';
+  // mode: store(저장되는 원문 변경) · display(화면만) · prompt(전송만) · both(화면+전송)
+  if (target === 'store' ? r.mode !== 'store' : (r.mode !== target && r.mode !== 'both')) return 'mode';
+  if (edit && r.runOnEdit !== true) return 'edit';
+  if (target !== 'store' && typeof depth === 'number') {
+    const lo = reNum(r.minDepth), hi = reNum(r.maxDepth);
+    if (lo !== null && lo >= -1 && depth < lo) return 'min';
+    if (hi !== null && hi >= 0 && depth > hi) return 'max';
+  }
+  return '';
+}
+const escMacro = x => String(x).replace(/[\n\r\t\v\f\0.^$*+?{}[\]\\/|()]/g, s => ({ '\n': '\\n', '\r': '\\r', '\t': '\\t', '\v': '\\v', '\f': '\\f', '\0': '\\0' }[s] || '\\' + s));
+/** 찾기 문장에 매크로를 넣은 결과. subst: 0 그대로 · 1 값을 그대로 넣기 · 2 정규식 기호를 글자로 바꿔 넣기 (값이 없는 옛 스크립트는 매크로가 보이면 1) */
+export function regexFind(r, ctx) {
+  const find = String(r.find || ''), mode = Number(r.subst ?? (find.includes('{{') ? 1 : 0));
+  if (!mode || !ctx || !find.includes('{{')) return find;
+  return mode === 2 ? find.replace(/\{\{[^{}]*\}\}/g, t => { const v = macro(t, ctx); return v === t ? t : escMacro(v); }) : macro(find, ctx);
+}
+/** 스크립트 하나를 글에 돌린다. trace(빈 객체)를 주면 source · error · matches[{ index, match, groups, named, raw, cut, out }] 를 채운다 */
+export function runRegexScript(r, text, ctx, trace) {
+  const src = regexFind(r, ctx), re = compileRegex(src);
+  if (trace) { trace.source = src; trace.matches = []; trace.error = re ? '' : 'compile'; }
+  if (!re || !text) return text;
+  re.lastIndex = 0;
+  const rep = String(r.replace ?? '').replace(/\{\{match\}\}/gi, '$0');
+  const trims = arr(r.trim).filter(t => typeof t === 'string' && t).map(t => (ctx ? macro(t, ctx) : t)).filter(Boolean);
+  return text.replace(re, (...a) => {
+    const named = typeof a[a.length - 1] === 'object' ? a.pop() : null;
+    a.pop(); const index = a.pop(), caps = a.slice(1);
+    const fill = cutting => rep.replace(/\$(\d+)|\$<([^>]+)>/g, (_, n, name) => {
+      let v = name ? named?.[name] : (+n === 0 ? a[0] : caps[+n - 1]);
+      if (!v) return '';
+      if (cutting) for (const t of trims) v = v.split(t).join('');   // 다듬기 문자열은 가져온 부분($n · {{match}})에서만 지운다
+      return v;
+    });
+    const cut = fill(true), out = ctx ? macro(cut, ctx) : cut;         // 매크로는 맨 마지막에 (실리태번과 같은 순서)
+    if (trace && trace.matches.length < 2000) trace.matches.push({ index, match: a[0], groups: caps, named, raw: trims.length ? fill(false) : cut, cut, out });
+    return out;
+  });
+}
+let autoCtx = null;   // 매크로 문맥을 넘겨받지 못한 호출(화면 표시)을 위해 한 번 만들어 같은 틱 동안 돌려쓴다
+function regexCtx(chat, charId) {
+  if (!chat) return null;
+  if (autoCtx && autoCtx.chat === chat && autoCtx.charId === charId) return autoCtx.ctx;
+  const chars = arr(chat.charIds).map(id => S.get('chars', id)).filter(Boolean);
+  const ctx = makeCtx({ chat, char: chars.find(c => c.id === charId) || chars[0], chars, persona: S.persona(chat), msgs: [] });
+  if (!autoCtx) queueMicrotask(() => { autoCtx = null; });
+  autoCtx = { chat, charId, ctx };
+  return ctx;
+}
+/** 호출 인자를 한 벌의 조건으로. who: 'user'|'ai'|'slash'|'lore'|'reason', target: 'display'|'prompt'|'store', edit: 메시지를 고쳐 저장할 때 */
+export function regexEnv({ who = 'ai', target = 'display', depth, charId, ctx, chat, preset, edit = false } = {}) {
+  if (chat === undefined) chat = ctx?.chat || regexChat;
+  if (target === 'prompt' && ctx?.type === 'continue' && typeof depth === 'number' && who !== 'lore') depth -= 1;   // 이어 쓰는 메시지는 깊이 -1
+  let made;
+  return { who, target, depth, charId, chat, preset, edit, get ctx() { return ctx || (made === undefined ? (made = regexCtx(chat, charId)) : made); } };
+}
+/** 파이프라인의 한 단계: 건너뛰면 { skip }, 돌리면 { before, after, source, matches } */
+export function regexStep(it, text, env) {
+  const base = { id: it.r.id, name: it.r.name, kind: it.kind, owner: it.owner, r: it.r }, skip = it.skip || regexSkip(it.r, env);
+  if (skip) return { ...base, skip };
+  const t = {}, after = runRegexScript(it.r, text, env.ctx, t);
+  return { ...base, skip: t.error ? 'badregex' : '', before: text, after, source: t.source, matches: t.matches };
+}
+/** 글 하나가 어떤 스크립트를 어떤 순서로 거치는지 (디버거용). applyRegex 와 같은 판정 · 같은 실행을 쓴다 */
+export function traceRegex(text, opts = {}) {
+  const env = regexEnv(opts), steps = [];
+  for (const it of regexScripts({ chat: env.chat, charId: env.charId, preset: env.preset, all: true })) { const s = regexStep(it, text, env); steps.push(s); if (!s.skip) text = s.after; }
+  return { out: text, steps };
+}
+export function applyRegex(text, opts = {}) {
+  if (!text || typeof text !== 'string') return text;
+  const env = regexEnv(opts);
+  for (const it of regexScripts(env)) { if (regexSkip(it.r, env)) continue; text = runRegexScript(it.r, text, env.ctx); if (!text) break; }
   return text;
 }
 
@@ -262,7 +345,7 @@ export function scanLore(books, history, ctx, { state = {}, count = history.leng
     for (const it of now) {
       const e = it.e, bid = it.book.id;
       if ((e.probability ?? 100) < 100 && !isSticky(e) && Math.random() * 100 > +e.probability) { failed.add(e.id); continue; }
-      const text = macro(e.content, ctx), t = tokens(text), u = used.get(bid) || 0;
+      const text = applyRegex(macro(e.content, ctx), { who: 'lore', target: 'prompt', depth: e.position === 'depth' ? +(e.depth ?? 4) : undefined, ctx }), t = tokens(text), u = used.get(bid) || 0;
       if (!e.ignoreBudget) { if (u + t > (it.book.tokenBudget || 2048) && u > 0) continue; used.set(bid, u + t); }
       activated.set(e.id, { it, text, tok: t }); fresh.push(it);
     }
@@ -436,7 +519,7 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
     const depth = source.length - 1 - i;
     let text = applyRegex(msgText(m), { who: m.role === 'user' ? 'user' : 'ai', target: 'prompt', depth, charId: m.charId, ctx });
     if (m.direct && m.role === 'user') { const dt = directText(text, depth === 0, mx); return R ? { role: 'system', content: dt, name: '', src: 'history' } : { role: 'user', content: dt, src: 'history', images: m.images?.length ? m.images : undefined }; }
-    if (withThink.has(m)) text = `${mx(rz.prefix)}${m.swipes[m.sw].reasoning}${mx(rz.suffix)}${mx(rz.separator)}${text}`;
+    if (withThink.has(m)) text = `${mx(rz.prefix)}${applyRegex(m.swipes[m.sw].reasoning, { who: 'reason', target: 'prompt', depth, charId: m.charId, ctx })}${mx(rz.suffix)}${mx(rz.separator)}${text}`;
     if (R) return { role: m.role, content: text, name: m.role === 'system' ? '' : m.role === 'user' ? ctx.user : (m.name || char.name), src: 'history' };
     if (m.role === 'assistant' && isGroup && P.namesInGroup !== false) text = `${m.name || char.name}: ${text}`;
     if (m.role === 'system') text = `[${text}]`;
