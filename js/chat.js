@@ -925,7 +925,15 @@ function inspector() {
     title: '전송될 프롬프트', wide: true,
     body: h('div.inspect',
       h('div.inspect-sum', h('b', `≈${built.total.toLocaleString()} 토큰`), h('span', ` / ${max.toLocaleString()} · 메시지 ${built.messages.length}개 · 로어북 ${built.lore.length}개 발동`), built.dropped ? h('em.badge', `오래된 기록 ${built.dropped}개 제외`) : null),
-      built.messages.map(m => h('details.inspect-row', h('summary', h(`span.role.${m.role}`, m.role), h('span.src', m.src === 'history' ? '채팅 기록' : m.src), h('small', `≈${tokens(m.content)}`)), h('pre', m.content)))),
+      (() => {   // 채팅 기록은 이어진 것끼리 한 묶음으로 접어 둔다 (길어져도 한눈에 보이게)
+        const row = (m, label) => h('details.inspect-row', h('summary', h(`span.role.${m.role}`, m.role), h('span.src', label || m.src), h('small', `≈${tokens(m.content).toLocaleString()}`)), h('pre', m.content));
+        const out = []; let run = [];
+        const flush = () => { if (!run.length) return; const list = run; run = []; if (list.length === 1) return out.push(row(list[0], '채팅 기록'));
+          const first = built.messages.filter(m => m.src === 'history').indexOf(list[0]);
+          out.push(h('details.inspect-row.inspect-group', h('summary', h('span.role.history', 'HISTORY'), h('span.src', `채팅 기록 ${list.length}개`), h('small', `≈${list.reduce((n, m) => n + tokens(m.content), 0).toLocaleString()}`)), h('div.inspect-list', list.map((m, i) => row(m, `#${first + i + 1} · ${m.content.replace(/\s+/g, ' ').slice(0, 60)}`))))); };
+        for (const m of built.messages) { if (m.src === 'history') run.push(m); else { flush(); out.push(row(m)); } }
+        flush(); return out;
+      })()),
   });
 }
 

@@ -125,7 +125,7 @@ export function form(obj, defs, onChange = () => { }) {
     switch (d.type) {
       case 'area': ctl = h('textarea.inp', { value: v ?? '', rows: d.rows || 4, placeholder: d.ph || '', spellcheck: false, oninput: e => set(e.target.value) }); break;
       case 'num': ctl = h('input.inp', { type: 'number', value: v ?? '', min: d.min, max: d.max, step: d.step ?? 'any', placeholder: d.ph || '', oninput: e => set(e.target.value === '' ? (d.nullable ? null : 0) : +e.target.value) }); break;
-      case 'check': return h('label.check', h('input', { type: 'checkbox', checked: !!v, onchange: e => set(e.target.checked) }), h('i'), h('span', d.label), d.hint && h('small', d.hint));
+      case 'check': return h(`label.check${d.hint ? '.has-hint' : ''}`, h('input', { type: 'checkbox', checked: !!v, onchange: e => set(e.target.checked) }), h('i'), h('span', d.label), d.hint && h('small', d.hint));
       case 'select': ctl = h('select.inp', { onchange: e => set(e.target.value) }, d.opts.map(o => { const [val, lab] = Array.isArray(o) ? o : [o, o]; return h('option', { value: val, selected: String(v ?? '') === String(val) }, lab); })); break;
       case 'tags': ctl = h('input.inp', { value: (v || []).join(', '), placeholder: d.ph || '쉼표로 구분', oninput: e => set(e.target.value.split(',').map(s => s.trim()).filter(Boolean)) }); break;
       case 'lines': ctl = h('textarea.inp', { value: (v || []).join('\n'), rows: d.rows || 3, placeholder: d.ph || '한 줄에 하나씩', oninput: e => set(e.target.value.split('\n').map(s => s.trim()).filter(Boolean)) }); break;

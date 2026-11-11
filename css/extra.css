@@ -134,3 +134,15 @@
 }
 .mode-rp .sys-line .msg-body p.nar { margin: 0; }
 @media (max-width: 820px) { .composer-input::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } }
+
+/* 프롬프트 살펴보기: 채팅 기록 묶음 */
+.inspect-group > summary .role.history { background: var(--ink); color: var(--bg); }
+.inspect-list { display: flex; flex-direction: column; gap: 4px; padding: 8px; border-top: 1px solid var(--line); max-height: 60vh; overflow: auto; background: var(--surface); }
+.inspect-list .inspect-row .src { color: var(--dim); }
+/* 체크 항목: 설명은 이름 옆이 아니라 아래에 (이름이 한 글자씩 꺾이지 않게) */
+.check.has-hint { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; row-gap: 2px; align-items: center; }
+.check.has-hint > small { grid-column: 2; line-height: 1.5; padding-left: 0 !important; margin-top: 0 !important; }
+.check:not(.has-hint) { flex-wrap: wrap; } .check:not(.has-hint) > span { min-width: min(8em, 100%); flex: 0 1 auto; }
+.check:not(.has-hint) > small { flex: 1 1 14em; min-width: 0; line-height: 1.5; } .checks .check > small, .check.pill > small { flex: 0 0 auto; }
+/* 꼬리표와 숫자는 꺾이지 않게 */
+.role, .inspect-row summary small, .tokbadge, .badge { white-space: nowrap; flex: none; }
