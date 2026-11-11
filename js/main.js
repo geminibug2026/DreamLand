@@ -102,3 +102,10 @@ addEventListener('unhandledrejection', e => { console.error(e.reason); toast(Str
     document.getElementById('page').append(h('div.empty.big', h('p', '시작하지 못했어요: ' + e.message)));
   }
 })();
+
+// 화면은 안쪽 칸만 스크롤한다. 문서 자체가 밀려 올라가면 제자리로 돌린다 (글을 쓰는 중에는 자판 때문에 밀린 것이니 둔다)
+addEventListener('scroll', () => {
+  if (!scrollY && !scrollX) return;
+  const a = document.activeElement, typing = a && (a.tagName === 'TEXTAREA' || a.isContentEditable || (a.tagName === 'INPUT' && !['checkbox', 'radio', 'range', 'color', 'file', 'button'].includes(a.type)));
+  if (!typing) scrollTo(0, 0);
+}, { passive: true });

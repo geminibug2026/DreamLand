@@ -148,8 +148,12 @@ export function form(obj, defs, onChange = () => { }) {
 const pages = {};
 export const route = { page: '', arg: null };
 export const registerPage = (name, render) => { pages[name] = render; };
-export function go(page, arg) {
+export function go(page, arg, fromHistory) {
   if (!pages[page]) page = 'home';
+  if (!fromHistory) try {   // 뒤로 가기가 앱 밖으로 나가지 않고 앞 화면으로 돌아가게 기록해 둔다 (같은 화면을 다시 그릴 때는 쌓지 않는다)
+    const st = history.state, next = { dl: 1, page, arg: arg ?? null };
+    if (st?.dl !== 1) history.replaceState(next, ''); else if (st.page !== page || st.arg !== next.arg) history.pushState(next, '');
+  } catch { }
   route.page = page; route.arg = arg;
   const root = document.getElementById('page');
   root.className = 'page-' + page; root.replaceChildren();
@@ -185,3 +189,9 @@ export function libraryPage(root, { title, eyebrow, coll, ic, create, label, sub
 }
 
 export const tokBadge = n => h('span.tokbadge', `≈${n.toLocaleString()} 토큰`);
+
+addEventListener('popstate', e => {
+  const st = e.state; if (st?.dl !== 1) return;
+  for (const m of document.querySelectorAll('.modal-wrap')) { const x = m.querySelector('button[title="닫기"]'); if (x) x.click(); else m.remove(); }
+  go(st.page, st.arg ?? undefined, true);
+});

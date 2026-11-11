@@ -144,3 +144,6 @@
 .check.has-hint > small { grid-column: 2; line-height: 1.5; padding-left: 0 !important; margin-top: 0 !important; }
 /* 꼬리표와 숫자는 꺾이지 않게 */
 .inspect-row .role, .inspect-row summary small { white-space: nowrap; flex: none; }
+/* 숨긴 입력 칸은 제 이름표 안에 붙들어 둔다 (누를 때 화면 전체가 밀려 올라가지 않게) */
+.check, .switch, .pv-radio { position: relative; }
+.check input, .switch input, .pv-radio input { top: 0; left: 0; width: 1px; height: 1px; margin: 0; }
