@@ -72,6 +72,11 @@ registerPage('home', root => {
   drawStage();
 
   const grid = h('div.arch-grid'), count = h('span.count', ''), shelf = h('div.folder-row');
+  // 카드 크기: 크게(기본) → 보통 → 작게. 휴대폰에서는 한 줄에 2 · 3 · 4장
+  const SIZES = [['', '크게'], ['cols-3', '보통'], ['cols-4', '작게']];
+  const sizeBtn = h('button.btn.ghost.size-btn', { onclick: () => { S.set({ homeCols: ((S.settings.homeCols || 0) + 1) % SIZES.length }); applySize(); } });
+  const applySize = () => { const i = Math.min(SIZES.length - 1, S.settings.homeCols || 0); grid.className = 'arch-grid' + (SIZES[i][0] ? ' ' + SIZES[i][0] : ''); sizeBtn.title = `카드 크기: ${SIZES[i][1]} (누르면 바뀝니다)`; sizeBtn.replaceChildren(icon('grip', 15), h('span', SIZES[i][1])); };
+  applySize();
   if (homeState.folder && homeState.folder !== '-' && !folders().some(f => f.id === homeState.folder)) homeState.folder = '';
   const inFolder = c => !homeState.folder || (homeState.folder === '-' ? !folderOf(c) : folderOf(c) === homeState.folder);
   // 폴더 탭: 누르면 그 폴더만, 카드를 끌어다 놓으면 담긴다
@@ -116,7 +121,7 @@ registerPage('home', root => {
   root.append(h('section.home',
     stage,
     recent.length ? h('div', secHead('이어서'), h('div.threads', recent.map(c => { const chars = c.charIds.map(id => S.get('chars', id)).filter(Boolean); return h('button.thread', { onclick: () => go('chat', c.id) }, h('div.arch.sm', { style: artStyle(chars[0]) }, !chars[0]?.avatar && h('span', (chars[0]?.name || '?').slice(0, 1))), h('div.thread-text', h('b', chars.map(x => x.name).join(', ') || '삭제된 캐릭터'), h('small', c.preview || '새 대화'), h('time', fmtTime(c.updatedAt)))); }))) : null,
-    h('div', secHead('캐릭터', count, btn('가져오기', { ic: 'import', cls: 'ghost', onclick: () => importDialog() })),
+    h('div', secHead('캐릭터', count, sizeBtn, btn('가져오기', { ic: 'import', cls: 'ghost', onclick: () => importDialog() })),
       h('div.filter-row', sortBtn('recent', '최근'), sortBtn('new', '신규'), sortBtn('name', '이름'), h(`button.chip${homeState.fav ? '.on' : ''}`, { onclick: () => { homeState.fav = !homeState.fav; refresh(); } }, '즐겨찾기'),
         ...tags.map(t => h(`button.chip${homeState.tag === t ? '.on' : ''}`, { onclick: () => { homeState.tag = homeState.tag === t ? '' : t; refresh(); } }, '#' + t)),
         h('div.search-wrap', icon('search', 15), h('input.inp.search', { placeholder: '캐릭터 검색', value: homeState.q, oninput: e => { homeState.q = e.target.value; draw(); } }))),

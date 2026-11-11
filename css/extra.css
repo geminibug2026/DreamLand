@@ -223,3 +223,18 @@
 .pm-ctx { display: flex; height: 10px; border: 1px solid var(--ink, var(--text)); background: var(--surface); margin-top: 2px; } .pm-ctx-used { background: var(--ink, var(--text)); min-width: 2px; } .pm-ctx-res { background: repeating-linear-gradient(45deg, var(--surface3) 0 4px, var(--surface) 4px 8px); }
 .pm-tail { border-top: 0; }
 @media (max-width: 820px) { .pm-band { height: 30px; } }
+
+/* 홈: 카드 크기 고르기 */
+.arch-grid.cols-3 { grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 24px 16px; }
+.arch-grid.cols-4 { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 18px 12px; }
+.arch-grid.cols-3 .arch-card b { font-size: .92em; }
+.arch-grid.cols-4 .arch-card b { font-size: .84em; gap: 5px; } .arch-grid.cols-4 .arch-card b::before { width: 5px; height: 5px; }
+.arch-grid.cols-4 .arch-card small, .arch-grid.cols-4 .in-folder { display: none; }
+.arch-grid.cols-4 .arch-card .arch { margin-bottom: 6px; }
+.size-btn { padding: 6px 10px; }
+@media (max-width: 820px) {
+  .arch-grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px 10px; }
+  .arch-grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 8px; }
+  .arch-grid.cols-3 .arch-card small { display: none; }
+  .arch-grid.cols-4 .arch-card b { font-size: .78em; } .arch-grid.cols-4 .arch-card b::before { display: none; }
+}
