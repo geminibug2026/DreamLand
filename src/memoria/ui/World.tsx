@@ -1,12 +1,13 @@
 // 장기기억 — 세계 탭: 인물 도감 · 관계선 · 아이템 도감 · 서약 · 캐논 · 상태 보드 · 자료실 (옛 memoria-views.js 의 vWorld)
 import { Children, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Btn } from '../../kit';
-import { confirmBox, openModal, type FormDefs } from '../../ui';
-import { core, memMod, toast } from '../bridge';
+import { confirmBox, openModal, type FormDefs, toast } from '../../ui';
 import { bondMapSvg } from '../story';
 import type { Bond, BondStep, CanonRow, CastCard, CastNote, DossierDoc, Item, Pledge, StatusRow } from '../types';
 import { Chip, Del, Ib, Ico, Meter, None, SceneLine, Sec, editBox, mergeCast, safe, type StOpen } from './parts';
 import { GROWTH_MAX, Gi, HAND, LINES_MAX, Mx, bondNow, bondViewRows, cut, storyState } from './viewsShared';
+import * as memMod from '../../lib/memory';
+import * as core from '../../lib/core';
 
 /** 인물 편집 — 칸과 상한.
  *  달라진 점 · 남긴 말은 문구가 그대로면 원래 적힌 턴을 지키고, 새로 적은 것은 직접 적음으로 둔다 — 직접 적은 남긴 말은 고정이라 밀려나지 않는다. */
@@ -32,7 +33,7 @@ async function editCard(st: StOpen, c?: CastCard) {
   const lines: CastNote[] = (d.lineTexts || []).map(t => cut(t, 160)).filter(Boolean).map(t => oldL.get(t) || { text: t, turn: HAND, pinned: true }).slice(-LINES_MAX);
   const wasLocked = c?.locked;
   if (c) { Object.assign(c, prof, { growth, lines, manual: true }); if (!c.core) c.coreTurn = null; if (M.cfg().lockEdited !== false) c.locked = true; }   // 직접 고친 프로필은 기본적으로 잠근다 — 애써 고쳐 놔도 사서가 되돌려 놓는 일을 막는다
-  else { mem.cast.push({ id: core().uid(), ...prof, growth, lines, coreTurn: null, manual: true, first: T, updated: T }); toast('인물을 추가했습니다.', 'ok'); }
+  else { mem.cast.push({ id: core.uid(), ...prof, growth, lines, coreTurn: null, manual: true, first: T, updated: T }); toast('인물을 추가했습니다.', 'ok'); }
   const folded = M.foldAliases(mem);   // 별칭을 손봤다면 그 이름으로 갈라져 있던 상태 · 기억도 바로 이 카드로 접는다
   await M.save(mem); st.draw();
   if (folded.states || folded.memories) toast(`별칭으로 갈라져 있던 기록을 합쳤습니다 — 상태 ${folded.states}건 · 기억 ${folded.memories}건`, 'ok');
@@ -64,7 +65,7 @@ const pline = (ic: ReactNode, title: string, ...body: ReactNode[]) => <p classNa
 const row = (key: string, cls: string, text: ReactNode, ...tools: ReactNode[]) => <div key={key} className={`mm-row${cls ? ' ' + cls : ''}`}><div className="mm-row-text">{text}</div>{Children.toArray(tools)}</div>;
 
 export function World({ st }: { st: StOpen }) {
-  const { LOCKS, SCOPES, DOSSIER_MAX, chunkDossier } = memMod(), { uid, now, pickFiles } = core(), M = Mx();
+  const { LOCKS, SCOPES, DOSSIER_MAX, chunkDossier } = memMod, { uid, now, pickFiles } = core, M = Mx();
   const LOCK_KO: Record<string, string> = { ...LOCKS, foreshadow: LOCKS.foreshadow || '복선' };
   const mem = st.mem, cfg = M.cfg(), T = mem.turns.length, bonds = mem.bonds || [];
   type Flag = 'locked' | 'disabled';

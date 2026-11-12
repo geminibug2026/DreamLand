@@ -3,7 +3,7 @@ import { useEffect, useReducer, useRef, useState, type DragEvent } from 'react';
 import { pickFiles } from '../lib/core';
 import { Assets, type AssetRec as Asset } from '../lib/assets';
 import { Form, confirmBox, openModal, promptBox, toast, type FormDefs } from '../ui';
-import { Icon, IconBtn, mountInto } from '../kit';
+import { Icon, IconBtn } from '../kit';
 
 interface Holder { visual?: { appearance?: string; outfit?: string; negative?: string }; [k: string]: unknown }
 
@@ -46,9 +46,3 @@ export function AssetsPane({ owner, holder, save }: { owner: string; holder: Hol
   </div>;
 }
 
-/** 옛 assetsPane(owner, holder, saveHolder) 와 같은 꼴: 요소를 돌려준다 (편집기의 <Dom node={…} /> 자리에 그대로 들어간다) */
-export function assetsPane(owner: string, holder: Holder, saveHolder: () => void): HTMLElement {
-  const box = document.createElement('div'); box.style.display = 'contents';
-  mountInto(box, <AssetsPane owner={owner} holder={holder} save={saveHolder} />);
-  return box;
-}

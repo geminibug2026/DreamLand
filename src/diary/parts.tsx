@@ -1,9 +1,10 @@
 // 일기장 묶음의 작은 그림 조각: 표식 · 그달의 달 · 작은 달 · 티켓 반쪽 · 인화 사진 · 기다리는 버튼
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../kit';
-import { K, core } from './bridge';
 import { tellErr } from './logic';
 import type { Keepsake } from './types';
+import * as core from '../lib/core';
+import * as K from '../lib/f-keepsake';
 
 const star4 = (x: number, y: number, s: number) => `M${x} ${y - s}L${x + s * .22} ${y - s * .22}L${x + s} ${y}L${x + s * .22} ${y + s * .22}L${x} ${y + s}L${x - s * .22} ${y + s * .22}L${x - s} ${y}L${x - s * .22} ${y - s * .22}Z`;
 const GLYPH: Record<string, string> = {
@@ -25,8 +26,8 @@ export const Glyph = ({ name, title }: { name: string; title?: string }) =>
 export interface DialStats { target: number; active: number; fill: number; full: boolean }
 /** 그달의 달: 대화한 날만큼 차오른다. 둘레의 눈금은 보름까지의 날 수 */
 export function MoonDial({ st, cls = '' }: { st: DialStats; cls?: string }) {
-  const id = useMemo(() => 'aht' + core().uid(), []);
-  const k = K(), c = 100, R = 60, n = st.target, p = k.fillToPhase(st.fill);
+  const id = useMemo(() => 'aht' + core.uid(), []);
+  const k = K, c = 100, R = 60, n = st.target, p = k.fillToPhase(st.fill);
   const ticks = Array.from({ length: n }, (_, i) => { const a = i / n * 2 * Math.PI - Math.PI / 2, on = i < st.active, r1 = 76, r2 = on ? 90 : 83, x = (r: number) => (c + r * Math.cos(a)).toFixed(2), y = (r: number) => (c + r * Math.sin(a)).toFixed(2); return `<line class="${on ? 'on' : ''}" x1="${x(r1)}" y1="${y(r1)}" x2="${x(r2)}" y2="${y(r2)}"/>${on ? `<circle class="end" cx="${x(r2)}" cy="${y(r2)}" r="1.9"/>` : ''}`; }).join('');
   const lit = st.fill >= 0.999 ? `<circle class="lit" cx="${c}" cy="${c}" r="${R}"/>` : st.fill > 0.004 ? `<path class="lit" d="${k.moonPath(p, R, c, c)}"/>` : '';
   const stars = st.full ? `<path class="st" d="${star4(170, 34, 11)}"/><path class="st" d="${star4(28, 158, 7)}"/><path class="st" d="${star4(182, 76, 4)}"/>` : `<path class="st dim" d="${star4(170, 34, 6)}"/>`;
@@ -34,11 +35,11 @@ export function MoonDial({ st, cls = '' }: { st: DialStats; cls?: string }) {
 }
 /** 작은 달 (연간 띠 · 패널용) */
 export const MoonMini = ({ fill, size = 22 }: { fill: number; size?: number }) =>
-  <svg viewBox="0 0 24 24" width={size} height={size} className="alm-mini" aria-hidden="true" dangerouslySetInnerHTML={{ __html: `<circle cx="12" cy="12" r="10" fill="currentColor" opacity=".16"/>${fill >= 0.999 ? '<circle cx="12" cy="12" r="10" fill="currentColor"/>' : fill > 0.004 ? `<path d="${K().moonPath(K().fillToPhase(fill))}" fill="currentColor"/>` : ''}<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width=".8"/>` }} />;
+  <svg viewBox="0 0 24 24" width={size} height={size} className="alm-mini" aria-hidden="true" dangerouslySetInnerHTML={{ __html: `<circle cx="12" cy="12" r="10" fill="currentColor" opacity=".16"/>${fill >= 0.999 ? '<circle cx="12" cy="12" r="10" fill="currentColor"/>' : fill > 0.004 ? `<path d="${K.moonPath(K.fillToPhase(fill))}" fill="currentColor"/>` : ''}<circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width=".8"/>` }} />;
 
 /** 티켓 반쪽: 장면 기념품 */
 export function Ticket({ k, onClick, small }: { k: Keepsake; onClick?: () => void; small?: boolean }) {
-  const kk = K(), d = new Date(k.ts || core().now()), cls = `alm-ticket${small ? ' small' : ''}`;
+  const kk = K, d = new Date(k.ts || core.now()), cls = `alm-ticket${small ? ' small' : ''}`;
   const kids = <>
     <div className="t-main"><small>{`SCENE No. ${kk.pad(k.no || 1)}`}</small><b>{k.title || '이름 없는 장면'}</b>{(k.place || k.time) ? <span>{[k.place, k.time].filter(Boolean).join(' · ')}</span> : null}{!small && k.summary ? <p>{k.summary}</p> : null}</div>
     <div className="t-stub"><small>ADMIT ONE</small><b>{`${kk.pad(d.getMonth() + 1)}.${kk.pad(d.getDate())}`}</b><span>{kk.seatOf(k.id)}</span></div>

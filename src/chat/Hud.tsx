@@ -2,11 +2,13 @@
 import { useReducer, useRef, type MouseEvent } from 'react';
 import { Avatar, Btn, Icon, IconBtn } from '../kit';
 import { confirmBox, menu, openModal, promptBox } from '../ui';
-import { B } from './bridge';
+import * as live from '../lib/live';
 import { cur, useCh } from './store';
 import { hudOpts, type HudOpts } from './actions';
 import { liveSettings } from './LiveSettings';
 import type { Cast, Field, Msg, Room } from './types';
+import { S } from '../lib/core';
+import { Live } from '../lib/live';
 
 const THINK = /속마음|생각|독백|thought|mind/i;
 const lastAi = (msgs: Msg[]) => [...msgs].reverse().find(m => m.role === 'assistant');
@@ -17,8 +19,8 @@ const Lock = () => <Icon name="lock" size={10} />;
 export function Hud() {
   useCh('hud');
   const chat = cur.chat; if (!chat) return null;
-  const st = B.S.settings.tracker || {}; if (!st.enabled || st.hud === false) return null;
-  const Live = B.Live, { timeline, snapOf, stateAt, copyState, rewound } = B.live;
+  const st = S.settings.tracker || {}; if (!st.enabled || st.hud === false) return null;
+  const { timeline, snapOf, stateAt, copyState, rewound } = live;
   const opt = hudOpts(), msgs = opt.msgs, fields = Live.fields(), cf = Live.castFields(), lock = chat.trackLock || {}, hide = chat.trackHide || {};
   const tl = timeline(msgs), vi = Live.view?.chat === chat.id && tl.includes(Live.view.i) ? Live.view.i : -1, past = vi >= 0;
   const state = past ? copyState(snapOf(msgs[vi])) : Live.state(chat), before = past ? (stateAt(msgs, vi)?.state || copyState(chat.snap0)) : null;
@@ -37,7 +39,7 @@ export function Hud() {
       { label: '숨기기', ic: 'eyeoff', hint: '띠에서만', onclick: () => { Live.toggle(chat, 'trackHide', key); done(false); } }]);
   };
   const cell = (k: string) => {
-    const f = fields.find(x => x.key === k) || { key: k }, v = state.w[k] ?? '', d = diff[k], meter = f.max != null && isFinite(parseFloat(v)), fr = fresh(k);
+    const f = fields.find(x => x.key === k) || ({ key: k } as Field), v = state.w[k] ?? '', d = diff[k], meter = f.max != null && isFinite(parseFloat(v)), fr = fresh(k);
     const dv = before ? parseFloat(v) - parseFloat(before.w[k]) : d?.d, was = before ? before.w[k] : d?.from;
     return <button key={k} type="button" className={['hud-cell', meter && 'meter', fr && 'fresh', lock['w:' + k] && 'locked'].filter(Boolean).join(' ')}
       title={[f.desc, fr && was ? `이전: ${was}` : '', lock['w:' + k] ? '잠겨 있어요' : ''].filter(Boolean).join(' · ')} onClick={e => cellMenu(e.currentTarget, 'w:' + k, k, v)}>
@@ -92,7 +94,7 @@ export function Hud() {
 function StateEdit({ chat, opt }: { chat: Room; opt: HudOpts }) {
   const [gen, draw] = useReducer((x: number) => x + 1, 0);
   const timer = useRef(0);
-  const Live = B.Live, lock = chat.trackLock ||= {}, hide = chat.trackHide ||= {};
+  const lock = chat.trackLock ||= {}, hide = chat.trackHide ||= {};
   const flush = () => { clearTimeout(timer.current); timer.current = window.setTimeout(() => { const last = lastAi(opt.msgs); if (last) Live.stamp(chat, last); opt.saved(); opt.redraw(); }, 300); };
   const fields = Live.fields(), cf = Live.castFields(), w = chat.tracker || {}, c = chat.cast || {};
   const keys = fields.length ? fields.map(f => f.key) : Object.keys(w), people = cf.length ? [...new Set([...opt.chars.map(x => x.name), ...Object.keys(c)])] : [];

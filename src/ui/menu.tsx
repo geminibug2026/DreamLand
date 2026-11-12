@@ -4,7 +4,8 @@ import { createRoot } from 'react-dom/client';
 import { Icon } from '../kit';
 
 /** 메뉴 한 줄. '-' 는 구분선, 거짓 값(조건 && { … } 의 결과)은 건너뛴다 */
-export type MenuItem = { label: string; ic?: string; hint?: string; danger?: boolean; onclick: () => unknown } | '-' | null | false | undefined | '' | 0;
+import type { MenuItem } from '../lib/types';
+export type { MenuItem };
 
 let closeCur: (() => void) | null = null;
 

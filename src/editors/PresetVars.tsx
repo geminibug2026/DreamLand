@@ -1,13 +1,16 @@
 // 프리셋 변수 — 프리셋에 정의하고, 대화방마다 값을 고른다
 // 블록 안에서는 {{var::이름}} 과 {{#if 이름}}…{{else}}…{{/if}} 로 쓴다. 계산은 js/cond.js · js/engine.js(macro).
 import { useRef, useState, type ReactNode } from 'react';
-import { L } from '../legacy';
 import { Btn, Icon, IconBtn } from '../kit';
 import { Form, menu, openModal, toast } from '../ui';
-import { cond, core, store, type PVar, type Preset, type XChat } from './bridge';
+import type { PVar, Preset, XChat } from './types';
 import { useBump, useDebounced } from './parts';
+import { go } from '../lib/router';
+import { S } from '../lib/core';
+import * as core from '../lib/core';
+import * as cond from '../lib/cond';
 
-const newVar = (type = 'select', n = 1): PVar => ({ id: core().uid(), name: `변수${n}`, label: '', hint: '', type, default: type === 'toggle' ? false : type === 'slider' ? 3 : type === 'select' ? '보통' : '',
+const newVar = (type = 'select', n = 1): PVar => ({ id: core.uid(), name: `변수${n}`, label: '', hint: '', type, default: type === 'toggle' ? false : type === 'slider' ? 3 : type === 'select' ? '보통' : '',
   options: [{ label: '보통', value: '' }, { label: '다르게', value: '' }], min: 1, max: 5, step: 1, onText: '', offText: '' });
 
 const COND_HELP = [
@@ -21,7 +24,7 @@ const TYPE_HINT: Record<string, string> = { select: '여러 개 중 하나', sli
 
 /** 변수 하나의 입력 칸. value 는 처음 값이고, 바뀌면 set(v) 로 알린다 */
 function Control({ d, value, set }: { d: PVar; value: unknown; set: (v: string | number | boolean) => void }) {
-  const [v, setV] = useState(() => cond().pvCoerce(d, value));
+  const [v, setV] = useState(() => cond.pvCoerce(d, value));
   const put = (x: string | number | boolean) => { setV(x); set(x); };
   if (d.type === 'toggle') return <label className="pv-toggle"><span className="switch"><input type="checkbox" defaultChecked={!!v} onChange={e => put(e.target.checked)} /><i /></span><span>{v ? '켬' : '끔'}</span></label>;
   if (d.type === 'slider') return <div className="range"><input type="range" min={d.min ?? 0} max={d.max ?? 100} step={d.step || 1} defaultValue={String(v)} onChange={e => put(+e.target.value)} /><output>{String(v)}</output></div>;
@@ -37,23 +40,23 @@ const Row = ({ d, children, extra }: { d: PVar; children: ReactNode; extra?: Rea
 
 /** 대화방별 값 고르기 (장면 패널). div.col.pv-panel 안에 올린다 */
 export function ChatPanel({ chat }: { chat: XChat }) {
-  const S = store(), { pvDefs, pvCoerce, pvDefault } = cond(), redraw = useBump(), gen = useRef(0);
+  const { pvDefs, pvCoerce, pvDefault } = cond, redraw = useBump(), gen = useRef(0);
   const saveChat = useDebounced(() => S.save('chats', chat, true), 250);
   const preset = S.presetFor(chat), defs = pvDefs(preset);
-  if (!defs.length) return <><p className="dim">지금 프리셋에는 변수가 없어요. 프리셋에 변수를 만들면 대화방마다 문체 · 길이 · 수위 같은 것을 여기서 바로 바꿀 수 있습니다.</p><Btn label="프리셋에서 변수 만들기" ic="sliders" cls="ghost" onClick={() => L.ui.go('presets', preset.id)} /></>;
+  if (!defs.length) return <><p className="dim">지금 프리셋에는 변수가 없어요. 프리셋에 변수를 만들면 대화방마다 문체 · 길이 · 수위 같은 것을 여기서 바로 바꿀 수 있습니다.</p><Btn label="프리셋에서 변수 만들기" ic="sliders" cls="ghost" onClick={() => go('presets', preset.id)} /></>;
   const mine = ((chat.pvars ||= {})[preset.id] ||= {});
   const n = defs.filter(d => mine[d.name] !== undefined && String(pvCoerce(d, mine[d.name])) !== String(pvDefault(d))).length;
   return <>
     <small className="hint">{`${preset.name} · 이 대화방에만 적용${n ? ` · 기본값과 다른 값 ${n}개` : ''}`}</small>
     {defs.map(d => <Row d={d} key={`${gen.current}-${d.id || d.name}`}><Control d={d} value={mine[d.name]} set={v => { mine[d.name] = v; saveChat(); redraw(); }} /></Row>)}
-    <div className="row wrap"><Btn label="기본값으로" cls="ghost" ic="refresh" onClick={() => { delete chat.pvars?.[preset.id]; void S.save('chats', chat, true); gen.current++; redraw(); }} /><Btn label="변수 고치기" cls="ghost" ic="edit" onClick={() => L.ui.go('presets', preset.id)} /></div>
+    <div className="row wrap"><Btn label="기본값으로" cls="ghost" ic="refresh" onClick={() => { delete chat.pvars?.[preset.id]; void S.save('chats', chat, true); gen.current++; redraw(); }} /><Btn label="변수 고치기" cls="ghost" ic="edit" onClick={() => go('presets', preset.id)} /></div>
     {chat.mode === 'talk' ? <small className="hint">{'대화 모드는 프리셋 블록 대신 대화 모드 지시문을 씁니다. 그 지시문 안에 적은 {{var::이름}} 에만 적용돼요.'}</small> : null}
   </>;
 }
 
 /** 선택지 목록 고치기 */
 function Options({ v, sv, changed }: { v: PVar; sv: () => void; changed: () => void }) {
-  const gen = useRef(0), { pvDefault } = cond();
+  const gen = useRef(0), { pvDefault } = cond;
   const opts = v.options = Array.isArray(v.options) && v.options.length ? v.options : [{ label: '보통', value: '' }];
   const again = () => { gen.current++; changed(); };   // 개수가 바뀌면 칸을 새로 만든다
   return <div className="pv-opts">
@@ -70,7 +73,7 @@ function Options({ v, sv, changed }: { v: PVar; sv: () => void; changed: () => v
 
 /** 프리셋 화면의 변수 정의 편집기 */
 export function PresetVarsEditor({ p, sv }: { p: Preset; sv: () => void }) {
-  const { PV_TYPES, pvName, pvDefault, pvCoerce, usedVars } = cond();
+  const { PV_TYPES, pvName, pvDefault, pvCoerce, usedVars } = cond;
   const redraw = useBump(), open = useRef(new Set<string>()).current, shown = useRef(new Map<string, string>()).current, gen = useRef(0);
   const vars = p.vars = Array.isArray(p.vars) ? p.vars : [];
   const used = () => { const s = new Set<string>(); for (const b of p.blocks || []) for (const n of usedVars(b.content)) s.add(n); for (const k of ['prefill', 'continueNudge', 'impersonatePrompt', 'groupNudge']) for (const n of usedVars(p.params?.[k])) s.add(n); return s; };

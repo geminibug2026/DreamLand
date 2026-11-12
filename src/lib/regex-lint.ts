@@ -209,7 +209,7 @@ export function skipDetail(code: string, r: SkipScript | null | undefined, env: 
 /** 찾은 곳을 기준으로 원문을 조각낸다: [{ t, hit, i }] (hit 이면 i 번째로 찾은 곳) */
 export interface MatchLike { index: number; match: string; out: string }
 export interface HitPart { t: string; hit: boolean; i?: number }
-export type DiffPart = { t: string } | { del: string; ins: string; i: number };
+export type DiffPart = { t: string } | { t?: undefined; del: string; ins: string; i: number };
 export function hitParts(text: string, matches: MatchLike[] | null | undefined): HitPart[] {
   const out: HitPart[] = []; let at = 0;
   (matches || []).forEach((m, i) => {

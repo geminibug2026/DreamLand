@@ -1,9 +1,10 @@
 // memory.js 374–864 줄을 그대로 옮긴 것. 본문은 고치지 않고 타입(Part1)만 붙인다
+import { S, DB, uid, msgText, emit } from '../../lib/core';
+import { quickCall } from '../../lib/engine';
 import type { MemoryApi } from './api';
 import type { CommitOpts } from './part2';
 import type { Mem, Msg, ChatM, Cfg, MemCheck, Summary, Pledge, CanonRow, StatusRow } from '../types';
 import { G, PROMPTS, NARRATOR, PUBLIC_ONLY, LANG_DIRECTIVES, MEMORY_DEFAULTS, SHELVES, PROMPT_KEYS, empty, cache, mesHashOf, mesHashLegacySet, turnMatches, cleanStr, getStringHash, untouchedPrompt, transformTags, visibleProse, sanitizeRecord, cleanMultiline, FOSSIL, fossilShape, parseLoose, rollbackOrDrop, statusCache, updateTimers, BUNDLE_SKIP, activityLog, CHAT_IDLE_MAX_WAIT_MS, overrides, audits, lasts, freezes, PACKET_HEADER, PACKET_FOOTER } from './base';
-import { S, DB, uid, msgText, emit, quickCall } from './legacy';
 import * as MP from '../prompts';
 import { findStatusBars, statusOneLine, isPauseDirective, isPauseMessage, verifyIssues } from '../scene';
 import { withDeadline, parsePhraseList, BUNDLE_EXCLUDED, resolveBundleName, switchBundle } from '../craft';
@@ -152,7 +153,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
   promptOutdated() { const s: RawCfg = S.settings.memory || {}; this.migrateSettings(s); return Object.keys(s.promptOutdated || {}).filter(k => PROMPT_KEYS.includes(k) && !untouchedPrompt(k, k === 'archivist' ? s.prompt : s.prompts?.[k])); },
   /** 프롬프트를 기본값으로 되돌린다 (안내도 지운다) */
   resetPrompt(key) {
-    const s = S.settings.memory; if (!s || !PROMPT_KEYS.includes(key)) return;
+    const s = S.settings.memory as Cfg | undefined; if (!s || !PROMPT_KEYS.includes(key)) return;
     if (key === 'archivist') s.prompt = ''; else s.prompts = { ...(s.prompts || {}), [key]: '' };
     if (s.promptOutdated) delete s.promptOutdated[key];
     S.set({ memory: s });

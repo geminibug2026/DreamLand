@@ -1,21 +1,23 @@
 // 왼쪽 대화방 목록: 캐릭터(또는 그룹)별로 묶고, 방마다 분량 · 기간 · 분기 관계를 보여 준다
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Avatar, Icon, IconBtn } from '../kit';
-import { B } from './bridge';
 import { cur, ui, useCh } from './store';
 import { ago, charsOf, daysOf, drawSide, groupKey, modeOf, roomName, setSide, titleOf } from './actions';
 import { chatMenu, groupDialog } from './menus';
 import type { Room } from './types';
+import { go } from '../lib/router';
+import { startMenu } from './start';
+import { S } from '../lib/core';
 
 const PAGE = 6;
 
 function List({ term }: { term: string }) {
   const [, redraw] = useState(0), list = () => redraw(x => x + 1);
-  const S = B.S, fold = cur.fold, more = cur.more, flat = S.settings.sideView === 'recent';
+  const fold = cur.fold, more = cur.more, flat = S.settings.sideView === 'recent';
   const room = (c: Room, max: number, depth = 0, isFlat = false) => {
     const parent = c.parent && S.get('chats', c.parent.id), n = c.count || 0, mode = modeOf(c);
     return <button key={c.id} className={['room', c.id === cur.chat?.id && 'on', depth > 0 && 'sub'].filter(Boolean).join(' ')} style={depth ? { marginLeft: Math.min(depth, 3) * 14 + 'px' } : undefined}
-      onClick={() => { setSide(false); B.ui.go('chat', c.id); }} onContextMenu={e => { e.preventDefault(); chatMenu(e.currentTarget, c); }}>
+      onClick={() => { setSide(false); go('chat', c.id); }} onContextMenu={e => { e.preventDefault(); chatMenu(e.currentTarget, c); }}>
       <div className="room-top">{depth ? <Icon name="branch" size={13} /> : null}<i className={'room-mode ' + mode}>{mode === 'talk' ? '대화' : 'RP'}</i><b>{isFlat ? `${titleOf(c)} · ${roomName(c)}` : roomName(c)}</b>
         {c.pinned ? <i className="room-pin">✦</i> : null}{c.unread ? <i className="room-unread">{String(c.unread)}</i> : null}{c.scene?.on ? <i className="room-scene">장면 중</i> : null}<time>{ago(c.updatedAt)}</time></div>
       <small className="room-prev">{c.preview || '아직 아무 말도 없어요'}</small>
@@ -51,7 +53,7 @@ function List({ term }: { term: string }) {
             <div className="av-stack">{chars.slice(0, 2).map(ch => <Avatar key={ch.id} o={ch} cls="sm" />)}{chars.length > 2 ? <i className="av-more">{`+${chars.length - 2}`}</i> : null}</div>
             <div className="cgroup-text"><b>{titleOf(rooms[0])}</b><small>{`대화방 ${rooms.length} · 메시지 ${total.toLocaleString()} · ${ago(newest(rooms))}`}</small></div>
             <Icon name={open ? 'down' : 'right'} size={15} /></button>
-          <IconBtn ic="plus" title="이 캐릭터와 새 대화방" onClick={e => B.oldChat.startMenu(e.currentTarget, rooms[0].charIds)} /></div>
+          <IconBtn ic="plus" title="이 캐릭터와 새 대화방" onClick={e => startMenu(e.currentTarget, rooms[0].charIds)} /></div>
         {open ? <div className="cgroup-rooms">{shown.flatMap(c => walk(c, 0))}
           {rest > 0 ? <button className="room-more" onClick={() => { more.set(k, lim + PAGE * 2); list(); }}>{`이 캐릭터의 대화방 ${rest}개 더 보기`}</button>
             : (lim > PAGE && roots.length > PAGE && !term ? <button className="room-more" onClick={() => { more.delete(k); list(); }}>접기</button> : null)}</div> : null}
@@ -67,7 +69,7 @@ export const Side = memo(function Side() {
   const [term, setTerm] = useState(''), timer = useRef(0), kept = useRef<ReactNode>(null);
   useEffect(() => () => clearTimeout(timer.current), []);
   if (!cur.sideOpen) return kept.current;   // 닫혀 있으면 열 때 그린다 (대화방이 아주 많을 때 방을 여는 시간을 아낀다)
-  const S = B.S, view = S.settings.sideView || 'chars';
+  const view = S.settings.sideView || 'chars';
   return kept.current = <>
     <header className="side-head">
       <input className="inp search" placeholder="캐릭터 · 대화방 · 내용 찾기" onChange={e => { const v = e.target.value.trim().toLowerCase(); clearTimeout(timer.current); timer.current = window.setTimeout(() => setTerm(v), 140); }} />

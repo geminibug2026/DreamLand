@@ -1,14 +1,16 @@
 // 벡터 검색: 답변 전 준비(X.before) · 프롬프트 조각 · 로어북 깨우기 · 기능 화면 › 벡터 검색 (옛 js/f-vectors.js). 기본은 꺼짐
 import type { FeatureDef } from '../main';
-import { B, NEEDS, errMsg, isAbort } from '../addons/legacy';
+import { errMsg, isAbort } from '../addons/parts';
 import { reactNode } from '../addons/parts';
 import { VEC_TEMPLATE, cfg, dropAll, dropChat, hitOf, loreWoken, prepare } from '../vectors/logic';
 import { VectorsPane } from '../vectors/Pane';
+import { on } from '../lib/core';
+import { toast } from '../ui';
+import { X } from '../lib/hooks';
 
 function setup() {
-  const X = B.X;
   X.before = X.before.filter(p => p.owner !== 'vectors');
-  X.before.push({ owner: 'vectors', fn: async a => { try { await prepare(a); } catch (e) { if (!isAbort(e)) { console.warn('[벡터 검색]', e); B.ui.toast('벡터 검색을 건너뛰었어요: ' + errMsg(e).slice(0, 120), 'err'); } } } });
+  X.before.push({ owner: 'vectors', fn: async a => { try { await prepare(a); } catch (e) { if (!isAbort(e)) { console.warn('[벡터 검색]', e); toast('벡터 검색을 건너뛰었어요: ' + errMsg(e).slice(0, 120), 'err'); } } } });
   X.loreVec = loreWoken;
   X.prompt = X.prompt.filter(p => p.owner !== 'vectors');
   X.prompt.push({ owner: 'vectors', fn: ({ chat }) => {
@@ -20,8 +22,8 @@ function setup() {
   X.studio = X.studio.filter(t => t.owner !== 'vectors');
   X.studio.push({ owner: 'vectors', title: '벡터 검색', render: () => reactNode('vectors-studio', 'div.card.vec-card', <VectorsPane />) });
 
-  B.core.on('chat:deleted', id => { void dropChat(String(id), false); });
-  B.core.on('data:imported', dropAll);
+  on('chat:deleted', id => { void dropChat(String(id), false); });
+  on('data:imported', dropAll);
 }
 
-export const feature: FeatureDef = { name: 'vectors', needs: [...NEEDS, 'embed'], setup };
+export const feature: FeatureDef = { name: 'vectors', setup };

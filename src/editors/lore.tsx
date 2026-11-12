@@ -1,11 +1,15 @@
 // 로어북 편집기 (항목이 수백 개여도 찾고 · 접고 · 한꺼번에 고칠 수 있게) + 로어북 스위치 · 연결 · 전체 설정
+import { LORE_POS, loreLinks } from '../lib/f-lore';
 import { useRef, useState, type ReactNode } from 'react';
 import { Btn, Icon, IconBtn, useEvents } from '../kit';
 import { Form, confirmBox, menu, openModal, toast, usePaged, type FormDefs, type ModalHandle } from '../ui';
-import { cards, core, engine, store, type Entry, type Lore, type LoreHit } from './bridge';
+import type { Entry, Lore, LoreHit } from './types';
 import { useBump, useDebounced, type EditorApi } from './parts';
+import { S } from '../lib/core';
+import * as engine from '../lib/engine';
+import * as core from '../lib/core';
+import * as cards from '../lib/cards';
 
-export const LORE_POS: [string, string][] = [['before', '캐릭터 설명 앞'], ['after', '캐릭터 설명 뒤'], ['em_top', '대화 예시 앞'], ['em_bottom', '대화 예시 뒤'], ['an_top', '작가 노트 위'], ['an_bottom', '작가 노트 아래'], ['depth', '대화 깊이에 삽입'], ['outlet', '아울렛 ({{outlet::이름}})']];
 const POS_SHORT: Record<string, string> = { before: '설명 앞', after: '설명 뒤', em_top: '예시 앞', em_bottom: '예시 뒤', an_top: '노트 위', an_bottom: '노트 아래', depth: '깊이', outlet: '아울렛' };
 const TRIGGERS: [string, string][] = [['normal', '일반 답변'], ['continue', '이어 쓰기'], ['impersonate', '대신 써 주기'], ['regenerate', '다시 생성'], ['swipe', '답변 넘기기'], ['quiet', '조용한 생성 (/gen)']];
 const TRI: [string, string][] = [['', '로어북 설정을 따름'], ['true', '켬'], ['false', '끔']];
@@ -14,7 +18,7 @@ const MATCH: [string, string][] = [['matchPersona', '페르소나 설명'], ['ma
 const PAGE = 40;
 const titleOf = (e: Entry) => e.name || (e.keys || []).slice(0, 3).join(', ') || '(이름 없는 항목)';
 const copy = <T,>(o: T): T => { try { return structuredClone(o); } catch { return JSON.parse(JSON.stringify(o)) as T; } };
-const tok = (e: Entry) => engine().tokens(e.content);
+const tok = (e: Entry) => engine.tokens(e.content);
 
 /** 값이 빠진 예전 항목을 편집할 수 있게 채운다 (저장된 뜻은 바꾸지 않는다) */
 function ready(e: Entry) {
@@ -27,7 +31,7 @@ function ready(e: Entry) {
 
 /** 로어북 전체 설정 (모든 로어북에 함께 적용) */
 export function loreSettingsDialog() {
-  const S = store(), G = S.settings.lore ||= {};
+  const G = S.settings.lore ||= {};
   openModal({ title: '로어북 전체 설정', body: <div className="col">
     <Form obj={G} defs={[
       { k: 'includeNames', label: '살필 때 말한 사람 이름을 앞에 붙이기', type: 'check', hint: '"이름: 대사" 꼴로 살핍니다. 캐릭터 이름을 키워드로 쓰면 그 캐릭터가 말할 때마다 발동해요.' },
@@ -45,10 +49,10 @@ function TestBody({ b }: { b: Lore }) {
   const ta = useRef<HTMLTextAreaElement>(null), kind = useRef<HTMLSelectElement>(null);
   const [out, setOut] = useState<ReactNode>(null);
   const run = () => {
-    const S = store(), text = ta.current?.value || ''; if (!text.trim()) return setOut(<p className="dim">글을 적어 주세요.</p>);
+    const text = ta.current?.value || ''; if (!text.trim()) return setOut(<p className="dim">글을 적어 주세요.</p>);
     const chat = S.get('chats', S.settings.lastChat), ch = S.get('chars', chat?.charIds?.[0]) || null, persona = chat ? S.persona(chat) : null;
     const k = kind.current?.value || 'normal', type = k === 'regenerate' ? 'regen' : k;
-    const hits: LoreHit[] = engine().scanLore([b], [{ content: text }], { user: persona?.name || '', char: ch?.name || '', vars: {} }, { count: 9999, type, char: ch, persona });
+    const hits: LoreHit[] = engine.scanLore([b], [{ content: text }], { user: persona?.name || '', char: ch?.name || '', vars: {} }, { count: 9999, type, char: ch, persona });
     const total = hits.reduce((n, e) => n + e.tok, 0);
     setOut(<><small className="hint">{hits.length ? `${hits.length}개 발동 · ≈${total} 토큰${ch ? ` · 캐릭터 조건은 "${ch.name}" 기준` : ''} · 확률과 묶음 추첨은 누를 때마다 달라질 수 있어요` : '발동한 항목이 없어요. (지연 · 쿨다운은 시험에서 빼고 봅니다)'}</small>
       {hits.map((e, i) => <div className="lore-test-row" key={i}><b>{titleOf(e)}</b><span>{POS_SHORT[e.position || ''] || ''}</span><span className="tokbadge">{`≈${e.tok}`}</span></div>)}</>);
@@ -60,15 +64,11 @@ function TestBody({ b }: { b: Lore }) {
   </div>;
 }
 
-/** 이 로어북이 따로 묶인 곳 (꺼 두어도 여기서는 쓰인다) */
-export const loreLinks = (b: Lore): string[] => {
-  const S = store(), n = (list: { loreIds?: string[] }[]) => list.filter(x => (x.loreIds || []).includes(b.id)).length, c = n(S.chars), p = n(S.personas), r = n(S.chats);
-  return [c && `캐릭터 ${c}`, p && `페르소나 ${p}`, r && `대화방 ${r}`].filter((x): x is string => !!x);
-};
 
 /** 로어북 켜고 끄기: 켜면 모든 대화에서 쓰인다. 목록과 편집기의 스위치가 서로 맞춰진다 */
+export { LORE_POS, loreLinks };
 export function LoreSwitch({ b, after }: { b: Lore; after?: (on: boolean) => void }) {
-  const S = store(); useEvents('settings');
+  useEvents('settings');
   return <label className="switch lore-sw" title="모든 대화에서 켜기 / 끄기" onClick={e => e.stopPropagation()}>
     <input type="checkbox" data-lore-sw={b.id} checked={S.settings.activeLore.includes(b.id)} onChange={e => {
       const on = e.target.checked; S.set({ activeLore: on ? [...new Set([...S.settings.activeLore, b.id])] : S.settings.activeLore.filter(i => i !== b.id) });
@@ -80,7 +80,7 @@ export function LoreSwitch({ b, after }: { b: Lore; after?: (on: boolean) => voi
 type Fixed = () => [Lore, string][];
 /** 로어북 고르는 창의 내용 */
 function PickList({ holder, toggle, fixed, mine }: { holder: { loreIds?: string[] }; toggle: (id: string) => void; fixed: Fixed; mine: () => string[] }) {
-  const S = store(), redraw = useBump(), [q, setQ] = useState('');
+  const redraw = useBump(), [q, setQ] = useState('');
   const [fx] = useState(() => new Map(fixed().map(([b, tag]) => [b.id, tag])));
   const [all] = useState(() => { const on = new Set(holder.loreIds); const w = (b: Lore) => +(on.has(b.id) || fx.has(b.id)); return [...S.lore].sort((a, b) => w(b) - w(a)); });   // 열 때 한 번만: 연결된 것 먼저
   const hit = all.filter(b => !q || `${b.name} ${b.description || ''}`.toLowerCase().includes(q));
@@ -96,7 +96,7 @@ function PickList({ holder, toggle, fixed, mine }: { holder: { loreIds?: string[
 /** 연결한 로어북만 꼬리표로 보여 주고, 더 고를 때는 찾기 창을 연다 (로어북이 아주 많아도 화면이 길어지지 않게).
  *  fixed(): 여기서 끊을 수 없는 것들 [[로어북, '전역' | '캐릭터'], …] */
 export function LoreLinker({ holder, save, fixed = () => [] }: { holder: { loreIds?: string[] }; save: () => void; fixed?: Fixed }) {
-  const S = store(), redraw = useBump(); holder.loreIds ||= [];
+  const redraw = useBump(); holder.loreIds ||= [];
   const mine = () => { const fx = new Set(fixed().map(([b]) => b.id)); return (holder.loreIds || []).filter(id => S.get('lore', id) && !fx.has(id)); };
   const toggle = (id: string) => { const ids = holder.loreIds || []; holder.loreIds = ids.includes(id) ? ids.filter(i => i !== id) : [...ids, id]; save(); };
   const open = () => {
@@ -175,7 +175,7 @@ function EntryBody({ e, sv, changed, draw }: { e: Entry; sv: () => void; changed
 
 export function LoreEditor({ b, api }: { b: Lore; api: EditorApi }) {
   b.entries ||= [];
-  const S = store(), { uid, download, newEntry } = core();
+  const { uid, download, newEntry } = core;
   const redraw = useBump(), sv = useDebounced(() => api.save(), 300);
   const st = useRef({ q: '', filter: 'all', sort: 'list', shown: PAGE, pick: false, open: new Set<string>(), picked: new Set<string>(), gen: 0, at: -1, rows: [] as Entry[] }).current;
   /** 목록을 다시 고르고 그린다 (옛 drawEntries). redraw 만 부르면 머리줄 · 집계만 바뀐다 — 고치는 도중에 항목이 자리를 옮기지 않게 */
@@ -220,7 +220,7 @@ export function LoreEditor({ b, api }: { b: Lore; api: EditorApi }) {
       <Btn label="항목 추가" ic="plus" cls="primary" onClick={() => { const e = newEntry(); b.entries.unshift(e); open.add(e.id); st.q = ''; setQText(''); st.filter = 'all'; pg.setPage(0); void api.save(); draw(); api.redraw(); }} />
       <IconBtn ic="play" title="발동 시험" onClick={() => openModal({ title: `발동 시험 · ${b.name}`, wide: true, body: <TestBody b={b} /> })} />
       <IconBtn ic="sliders" title="로어북 전체 설정" onClick={() => loreSettingsDialog()} />
-      <IconBtn ic="import" title="실리태번 형식으로 내보내기" onClick={() => download(`${b.name}.json`, JSON.stringify(cards().loreToWorld(b), null, 2))} />
+      <IconBtn ic="import" title="실리태번 형식으로 내보내기" onClick={() => download(`${b.name}.json`, JSON.stringify(cards.loreToWorld(b), null, 2))} />
       <IconBtn ic="trash" title="로어북 삭제" onClick={async () => { if (await confirmBox(`"${b.name}" 로어북을 삭제할까요?`, '삭제', true)) { await S.remove('lore', b.id); S.set({ activeLore: S.settings.activeLore.filter(i => i !== b.id) }); api.refresh(); } }} />
     </div></header>
     <div className="lore-power"><LoreSwitch b={b} after={() => { redraw(); api.redraw(); }} /><div><b>이 로어북 켜기</b><small>{active ? '모든 대화에서 쓰이는 중' : links.length ? `꺼짐 · 묶어 둔 곳(${links.join(' · ')})에서만 쓰여요` : '꺼짐 · 어느 대화에서도 쓰이지 않아요'}</small></div></div>

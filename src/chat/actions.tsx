@@ -1,18 +1,31 @@
 // 대화 화면의 동작: 보내기 · 생성 · 명령 · 분기 · 번역 · 삽화 · 장면 · 먼저 오는 연락 (옛 js/chat.js 의 흐름 그대로)
 import { confirmBox, openModal, promptBox, toast } from '../ui';
-import { B, moN, type AutoPlan, type ChatApi } from './bridge';
+import * as engine from '../lib/engine';
+import { moN } from './order';
+import type { AutoPlan, ChatApi } from './types';
 import { bump, cur, flush, ui } from './store';
 import { ux } from '../features/usersettings';
 import type { Cast, CmdItem, GenOpt, GenType, Motive, Msg, Room, SceneSpec, Swipe } from './types';
+import { DB, S, emit, fmtTime, msgText, newChat, newMsg, uid } from '../lib/core';
+import { go, route } from '../lib/router';
+import { applyRegex, macro, makeCtx, roll } from '../lib/engine';
+import { Live, cdHours, inQuietHours, mo, newLater, quietLeft } from '../lib/live';
+import { MOTIVE_ORDER, STATUS, cooldownLeft, pickMotive, planAuto, replyDelay, scheduleOf, wakeIn } from '../lib/f-schedule';
+import { X, runFilters } from '../lib/hooks';
+import { Assets } from '../lib/assets';
+import { Memory } from '../lib/memory';
+import { Illust, translateText } from '../lib/illust';
+import { Clock } from '../lib/clock';
+import { render } from '../lib/format';
 
 // ── 방 · 이름 ──
-export const charsOf = (chat: Room): Cast[] => chat.charIds.map(id => B.S.get('chars', id)).filter((c): c is Cast => !!c);
+export const charsOf = (chat: Room): Cast[] => chat.charIds.map(id => S.get('chars', id)).filter((c): c is Cast => !!c);
 export const titleOf = (chat: Room) => charsOf(chat).map(c => c.name).join(', ') || '삭제된 캐릭터';
 export const modeOf = (chat?: Room | null): 'rp' | 'talk' => chat?.mode === 'talk' ? 'talk' : 'rp';
 export const groupKey = (c: Room) => [...c.charIds].sort().join('+') || '-';
 let roomIdx: Map<string, number> | null = null, roomIdxKey = '';
 const roomNo = (c: Room) => {
-  const S = B.S, key = S.chats.length + ':' + (S.chats[S.chats.length - 1]?.id || '');
+  const key = S.chats.length + ':' + (S.chats[S.chats.length - 1]?.id || '');
   if (!roomIdx || roomIdxKey !== key || !roomIdx.has(c.id)) { roomIdx = new Map(); roomIdxKey = key; const seen = new Map<string, number>(); for (const x of [...S.chats].sort((a, b) => a.createdAt - b.createdAt)) { const k = groupKey(x), n = (seen.get(k) || 0) + 1; seen.set(k, n); roomIdx.set(x.id, n); } }
   return roomIdx.get(c.id) || 1;
 };
@@ -20,8 +33,8 @@ export const roomName = (c: Room) => { const t = titleOf(c), n = String(c.name |
 export const daysOf = (c: Room) => Math.max(1, Math.round(((c.updatedAt || c.createdAt) - c.createdAt) / 86400000) + 1);
 export const ago = (t: number) => { const d = (Date.now() - t) / 60000; return d < 1 ? '방금' : d < 60 ? `${Math.floor(d)}분 전` : d < 1440 ? `${Math.floor(d / 60)}시간 전` : d < 43200 ? `${Math.floor(d / 1440)}일 전` : new Date(t).toLocaleDateString('ko-KR', { year: '2-digit', month: 'numeric', day: 'numeric' }); };
 const now = () => Date.now();
-const save = () => B.S.saveMsgs(cur.chat!, cur.msgs);
-const onChat = () => B.ui.route.page === 'chat';
+const save = () => S.saveMsgs(cur.chat!, cur.msgs);
+const onChat = () => route.page === 'chat';
 const errMsg = (e: unknown) => e instanceof Error ? e.message : String(e);
 
 // ── 다시 그리기 (조각별) ──
@@ -97,22 +110,22 @@ export function drawMain({ lazy = false } = {}) {
 }
 
 // ── 본문 ──
-export const assetOwners = () => cur.chat ? [...cur.chat.charIds.map(B.Assets.ownerOfChar), B.Assets.ownerOfPersona(B.S.persona(cur.chat).id)] : [];
+export const assetOwners = () => cur.chat ? [...cur.chat.charIds.map(Assets.ownerOfChar), Assets.ownerOfPersona(S.persona(cur.chat).id)] : [];
 export const TYPING = '<span class="typing"><i></i><i></i><i></i></span>';
 export function bodyHtml(m: Msg) {
-  const S = B.S, s = m.swipes[m.sw] || { text: '' };
+  const s = m.swipes[m.sw] || { text: '' };
   let depth: number | undefined; if (!m.hidden) { depth = 0; for (let i = cur.msgs.length - 1; i >= 0 && cur.msgs[i] !== m; i--) if (!cur.msgs[i].hidden) depth++; }
   const raw = s.showTr && s.tr ? s.tr : s.text;
-  const text = B.runFilters(B.engine.applyRegex(raw, { who: m.role === 'user' ? 'user' : 'ai', target: 'display', depth, charId: m.charId, chat: cur.chat }), { role: m.role, msg: m, chat: cur.chat });
+  const text = runFilters(applyRegex(raw, { who: m.role === 'user' ? 'user' : 'ai', target: 'display', depth, charId: m.charId, chat: cur.chat }), { role: m.role, msg: m, chat: cur.chat });
   const style = m.role === 'system' ? 'plain' : modeOf(cur.chat) === 'talk' && !m.scene ? 'chat' : S.settings.rpBubbles ? 'bubbles' : 'novel';
-  return B.render(B.Assets.expand(B.Illust.strip(text), assetOwners(), `${m.id}:${m.sw}`), { style, prose: m.role !== 'user' });
+  return render(Assets.expand(Illust.strip(text), assetOwners(), `${m.id}:${m.sw}`), { style, prose: m.role !== 'user' });
 }
 /** 메시지 옆에 적는 시각: 이야기 시계를 쓰는 방은 이야기 시각, 시각을 쓰지 않는 방은 비움 */
-export const msgClock = (m: Msg, s: Swipe) => { const k = B.Clock.mode(cur.chat); return k === 'none' ? '' : k === 'story' ? B.core.fmtTime(B.Clock.timeOf(cur.chat, m)) : B.core.fmtTime(s.ts || m.ts); };
+export const msgClock = (m: Msg, s: Swipe) => { const k = Clock.mode(cur.chat); return k === 'none' ? '' : k === 'story' ? fmtTime(Clock.timeOf(cur.chat, m)) : fmtTime(s.ts || m.ts); };
 
 /** 먼저 그려 둔 화면에, 뒤늦게 읽힌 에셋 · 삽화 · 기억을 채운다 */
 export function fillLate(had: { assets: boolean; illust: boolean }, owners: string[]) {
-  const fillAssets = !had.assets && B.Assets.count(owners) > 0;
+  const fillAssets = !had.assets && Assets.count(owners) > 0;
   for (let i = cur.head; i < cur.msgs.length; i++) {
     const m = cur.msgs[i], s = m.swipes[m.sw]; if (!s || (m.role === 'system' && (m.dice || m.curtain))) continue;
     if (!((!had.illust && s.illust?.length) || (fillAssets && bodyHtml(m).includes('asset-frame')))) continue;
@@ -125,12 +138,12 @@ export function fillLate(had: { assets: boolean; illust: boolean }, owners: stri
 /** 고친 글을 저장한다 (편집 상자의 저장) */
 export async function commitEdit(m: Msg, value: string) {
   const s = m.swipes[m.sw], changed = s.text !== value;
-  s.text = m.role === 'system' ? value : B.engine.applyRegex(value, { who: m.role === 'user' ? 'user' : 'ai', target: 'store', edit: true, charId: m.charId, chat: cur.chat });
+  s.text = m.role === 'system' ? value : applyRegex(value, { who: m.role === 'user' ? 'user' : 'ai', target: 'store', edit: true, charId: m.charId, chat: cur.chat });
   delete s.tr; s.showTr = false; await save();
-  redraw(m); if (changed) B.core.emit('message:edited', { chat: cur.chat, msg: m, msgs: cur.msgs });
+  redraw(m); if (changed) emit('message:edited', { chat: cur.chat, msg: m, msgs: cur.msgs });
 }
 /** 메시지가 지워지거나 스와이프가 바뀌면 상태창을 그 시점으로 되감는다 */
-function rewindState() { if (cur.chat && B.Live.rewind(cur.chat, cur.msgs)) { drawHud(); drawDossier(); if (cur.drawer) drawDrawer(); } }
+function rewindState() { if (cur.chat && Live.rewind(cur.chat, cur.msgs)) { drawHud(); drawDossier(); if (cur.drawer) drawDrawer(); } }
 /** 장면 상태를 남아 있는 메시지에 맞춘다 (막을 올린 표시가 지워졌으면 장면도 닫힌 것). 바뀌었으면 true */
 function syncScene(chat: Room, list: Msg[]) {
   const k = [...list].reverse().find(m => m.curtain)?.curtain, on = k?.kind === 'open'; if (!!chat.scene?.on === on) return false;
@@ -141,7 +154,7 @@ async function afterDelete() {
   const sc = syncScene(cur.chat!, cur.msgs); rewindState();
   if (sc) drawMain();
   else { const back = holdView(); cur.from = Math.max(0, cur.msgs.length - cur.shown); cur.head = Math.max(cur.from, Math.min(cur.head, cur.msgs.length)); flush('msgs'); back(); }
-  drawSide(); await save(); B.core.emit('message:deleted', { chat: cur.chat, msgs: cur.msgs });
+  drawSide(); await save(); emit('message:deleted', { chat: cur.chat, msgs: cur.msgs });
 }
 export async function delMsg(m: Msg) {
   if (cur.msgs.indexOf(m) < 0 || (ux().confirmDelete && !(await confirmBox('이 메시지를 삭제할까요?', '삭제', true)))) return;
@@ -157,16 +170,16 @@ export async function swipe(m: Msg, dir: number) {
   const n = m.sw + dir;
   if (n < 0) return;
   if (n >= m.swipes.length) { if (cur.msgs[cur.msgs.length - 1] === m) void generate('regen'); return; }
-  m.sw = n; rewindState(); await save(); redraw(m); B.core.emit('message:swiped', { chat: cur.chat, msg: m, msgs: cur.msgs });
+  m.sw = n; rewindState(); await save(); redraw(m); emit('message:swiped', { chat: cur.chat, msg: m, msgs: cur.msgs });
 }
 const copy = <T,>(o: T): T => { try { return structuredClone(o); } catch { return JSON.parse(JSON.stringify(o)) as T; } };
 export async function branch(idx: number) {
-  const c = cur.chat!, S = B.S, DB = B.DB, uid = B.core.uid;
+  const c = cur.chat!;
   try {
     const n = S.chats.filter(x => x.parent?.id === c.id).length + 1;
-    const chat = B.core.newChat({ ...copy(c), id: uid(), name: `${roomName(c)} · 분기 ${n}`, createdAt: now(), src: '', pinned: false, parent: { id: c.id, at: idx + 1 }, diary: copy((c.diary || []).filter(d => (d.to || 0) <= idx + 1)), diaryAt: Math.min(c.diaryAt || 0, idx + 1) });
+    const chat = newChat({ ...copy(c), id: uid(), name: `${roomName(c)} · 분기 ${n}`, createdAt: now(), src: '', pinned: false, parent: { id: c.id, at: idx + 1 }, diary: copy((c.diary || []).filter(d => (d.to || 0) <= idx + 1)), diaryAt: Math.min(c.diaryAt || 0, idx + 1) });
     const list = copy(cur.msgs.slice(0, idx + 1));
-    B.Live.rewind(chat, list); syncScene(chat, list); delete chat.owed; chat.later = [];
+    Live.rewind(chat, list); syncScene(chat, list); delete chat.owed; chat.later = [];
     // 삽화는 대화방마다 따로 보관하므로 새 방 몫으로 복사한다
     const pics = new Map((await DB.byOwner('chat:' + c.id)).filter(a => a.kind === 'illust').map(a => [a.id, a]));
     const moved = new Map<string, string>(), dup = async (id: string) => { const pic = pics.get(id); if (!pic) return id; if (!moved.has(id)) { const nid = uid(); await DB.put('assets', { ...pic, id: nid, owner: 'chat:' + chat.id }); moved.set(id, nid); } return moved.get(id)!; };
@@ -174,24 +187,24 @@ export async function branch(idx: number) {
     // 장기기억도 이어받는다 (분기점 뒤의 기록은 다음 생성 때 걸러진다)
     const mem = await DB.get('mem', c.id).catch(() => null); if (mem) await DB.put('mem', { ...copy(mem), id: chat.id });
     await S.saveMsgs(chat, list);
-    toast(`"${chat.name}" 방을 만들어 옮겨 왔어요`, 'ok'); B.ui.go('chat', chat.id);
+    toast(`"${chat.name}" 방을 만들어 옮겨 왔어요`, 'ok'); go('chat', chat.id);
   } catch (e) { console.error(e); toast('분기하지 못했어요: ' + errMsg(e), 'err'); }
 }
 // 후처리(번역 · 삽화) 결과를 그 메시지가 속한 방에 저장한다. 기다리는 사이 방을 옮겼거나 다시 열었어도 같은 메시지를 찾아 옮겨 적는다
 async function saveIn(chat: Room, list: Msg[], m: Msg, carry: (live: Msg) => void) {
   if (cur.chat?.id === chat.id) { let live = m; if (!cur.msgs.includes(m)) { const hit = cur.msgs.find(x => x.id === m.id); if (!hit) return; live = hit; carry(live); } await save(); redraw(live); }
-  else if (B.S.get('chats', chat.id) && list.includes(m)) await B.S.saveMsgs(chat, list);
+  else if (S.get('chats', chat.id) && list.includes(m)) await S.saveMsgs(chat, list);
 }
-const translator = () => B.X.translate || B.translateText;
+const translator = () => X.translate || translateText;
 export async function translate(m: Msg, { again = false, chat = cur.chat!, msgs: list = cur.msgs } = {}) {
-  const S = B.S, s = m.swipes[m.sw];
+  const s = m.swipes[m.sw];
   if (s.tr && !again) { s.showTr = !s.showTr; await save(); return redraw(m); }
   setStatus('번역 중…');
   try {
     const idx = list.indexOf(m), user = S.persona(chat).name, n = S.settings.translate.context || 0;
-    const context = n ? list.slice(Math.max(0, idx - n), idx).filter(x => !x.hidden).map(x => ({ name: x.role === 'user' ? user : (x.name || 'Narrator'), text: B.core.msgText(x) })) : [];
+    const context = n ? list.slice(Math.max(0, idx - n), idx).filter(x => !x.hidden).map(x => ({ name: x.role === 'user' ? user : (x.name || 'Narrator'), text: msgText(x) })) : [];
     const src = s.text;
-    s.tr = await translator()(B.Illust.strip(s.text), S.settings.translate.lang, { chat, context }); s.showTr = true;
+    s.tr = await translator()(Illust.strip(s.text), S.settings.translate.lang, { chat, context }); s.showTr = true;
     await saveIn(chat, list, m, live => { const t = live.swipes?.[m.swipes.indexOf(s)]; if (t && t.text === src) { t.tr = s.tr; t.showTr = true; } });
   } catch (e) { toast('번역 실패: ' + errMsg(e), 'err'); } finally { setStatus(''); }
 }
@@ -203,13 +216,13 @@ export async function editTranslation(m: Msg) {
 export async function translateInput() {
   const inp = ui.input, text = inp?.value.trim(); if (!inp || !text) return toast('번역할 내용을 먼저 적어 주세요');
   setStatus('번역 중…');
-  try { inp.value = await translator()(text, B.S.settings.translate.inputLang || 'English', { chat: cur.chat }); inp.dispatchEvent(new Event('input')); } catch (e) { toast('번역 실패: ' + errMsg(e), 'err'); } finally { setStatus(''); }
+  try { inp.value = await translator()(text, S.settings.translate.inputLang || 'English', { chat: cur.chat }); inp.dispatchEvent(new Event('input')); } catch (e) { toast('번역 실패: ' + errMsg(e), 'err'); } finally { setStatus(''); }
 }
 // ── 삽화 ──
 export function drawScene(m: Msg, scene: SceneSpec, at?: { chat: Room; msgs: Msg[] }) {
   setStatus('삽화 그리는 중…');
   const g = cur.gen?.msgs.includes(m) ? cur.gen : null, chat = at?.chat || g?.chat || cur.chat!, list = at?.msgs || g?.msgs || cur.msgs;
-  B.Illust.enqueue(chat, m, scene, async err => {
+  Illust.enqueue(chat, m, scene as unknown as Record<string, unknown>, async err => {
     setStatus(''); if (err) return toast('삽화 실패: ' + err.message, 'err');
     await saveIn(chat, list, m, live => m.swipes.forEach((sw, i) => { const t = live.swipes?.[i]; if (t && t.text === sw.text) { if (sw.illust) t.illust = sw.illust; if (sw.illustPlan) t.illustPlan = sw.illustPlan; if (sw.illustDraft) t.illustDraft = sw.illustDraft; } }));
   });
@@ -217,7 +230,7 @@ export function drawScene(m: Msg, scene: SceneSpec, at?: { chat: Room; msgs: Msg
 export async function removeIllust(m: Msg, s: Swipe, id: string) {
   if (!(await confirmBox('이 삽화를 지울까요?', '지우기', true))) return;
   const i = (s.illust || []).findIndex(x => x.id === id); if (i >= 0) s.illust!.splice(i, 1);
-  await B.Illust.remove(id); await save(); redraw(m);
+  await Illust.remove(id); await save(); redraw(m);
 }
 export function speak(text: string) {
   if (!('speechSynthesis' in window)) return toast('이 브라우저는 읽어 주기를 지원하지 않아요', 'err');
@@ -229,20 +242,20 @@ export function speak(text: string) {
 // ════════ 보내기 · 명령 ════════
 export async function send() {
   const inp = ui.input; if (cur.busy || !inp || !cur.chat) return;
-  const raw = inp.value.trim(), S = B.S;
+  const raw = inp.value.trim();
   if (raw.startsWith('/')) { inp.value = ''; inp.style.height = 'auto'; return command(raw); }
   if (raw || cur.attach.length) {
     const chat = cur.chat, chars = charsOf(chat), persona = S.persona(chat);
-    const ctx = B.engine.makeCtx({ chat, char: chars[0], chars, persona, msgs: cur.msgs, input: raw });
-    let text = B.engine.applyRegex(B.engine.macro(raw, ctx), { who: 'user', target: 'store', ctx }), mine = '';
+    const ctx = makeCtx({ chat, char: chars[0], chars, persona, msgs: cur.msgs, input: raw });
+    let text = applyRegex(macro(raw, ctx), { who: 'user', target: 'store', ctx }), mine = '';
     if (S.settings.translate.autoInput && text.trim()) { setStatus('번역 중…'); try { mine = text; text = await translator()(text, S.settings.translate.inputLang || 'English', { chat }); } catch (e) { mine = ''; toast('입력 번역 실패: ' + errMsg(e), 'err'); } finally { setStatus(''); } }
-    const m = B.core.newMsg('user', text, { name: persona.name, ...(modeOf(chat) === 'talk' && chat.scene?.on ? { scene: true } : {}) });
+    const m = newMsg('user', text, { name: persona.name, ...(modeOf(chat) === 'talk' && chat.scene?.on ? { scene: true } : {}) });
     chat.seenAt = now();
     if (mine) { m.swipes[0].tr = mine; m.swipes[0].showTr = true; }   // 화면에는 내가 쓴 말을, 모델에는 번역문을
     if (cur.attach.length) { m.images = cur.attach; cur.attach = []; bump('attach'); }
-    cur.msgs.push(m); appendMsg(m); B.core.emit('message:sent', { msg: m, chat });
+    cur.msgs.push(m); appendMsg(m); emit('message:sent', { msg: m, chat });
     if (chat.auto) chat.auto.streak = 0;
-    cur.chimeRun = 0; clearTimeout(chimeTimer); B.Live.touch();
+    cur.chimeRun = 0; clearTimeout(chimeTimer); Live.touch();
     inp.value = ''; inp.style.height = 'auto'; toBottom();
     await save();
   }
@@ -256,20 +269,20 @@ const ALIAS: Record<string, string[]> = { '/roll': ['/r', '/dice'], '/sys': ['/n
 export function commandList(): CmdItem[] {
   const base: CmdItem[] = [...HELP, ['/help', '명령어를 모두 봅니다'] as [string, string]].map(([c, d]) => { const [cmd, ...a] = c.split(' '); return { cmd, args: a.join(' '), help: d, alias: ALIAS[cmd] }; });
   const seen = new Set(base.flatMap(b => [b.cmd, ...(b.alias || [])]));
-  const ext = [...B.X.commands].filter(([k]) => !seen.has(k)).map(([k, v]) => ({ cmd: k, args: v.args || '', help: v.help || '확장 명령어' })).sort((x, y) => x.cmd.localeCompare(y.cmd));
+  const ext = [...X.commands].filter(([k]) => !seen.has(k)).map(([k, v]) => ({ cmd: k, args: v.args || '', help: v.help || '확장 명령어' })).sort((x, y) => x.cmd.localeCompare(y.cmd));
   return [...base, ...ext];
 }
 export async function command(line: string): Promise<unknown> {
   const chat = cur.chat; if (!chat) return;
-  const S = B.S, [cmd, ...rest] = line.trim().split(/\s+/), arg = line.trim().slice(cmd.length).trim();
+  const [cmd, ...rest] = line.trim().split(/\s+/), arg = line.trim().slice(cmd.length).trim();
   const push = async (m: Msg) => { cur.msgs.push(m); appendMsg(m); toBottom(); await save(); };
   switch (cmd.toLowerCase()) {
     case '/roll': case '/r': case '/dice': {
-      const r = B.engine.roll(arg || '1d20'); if (!r) return toast('주사위 식을 확인해 주세요 (예: 2d6+1)', 'err');
+      const r = roll(arg || '1d20'); if (!r) return toast('주사위 식을 확인해 주세요 (예: 2d6+1)', 'err');
       const who = S.persona(chat).name, sides = +r.expr.split('d')[1].replace(/[+-].*/, '');
-      return push(B.core.newMsg('system', `${who}의 주사위 ${r.expr} → ${r.rolls.join(', ')}${r.mod ? ` (${r.mod > 0 ? '+' : ''}${r.mod})` : ''} = ${r.total}`, { dice: { expr: r.expr, rolls: r.rolls, mod: r.mod, total: r.total, sides }, diceBy: who }));
+      return push(newMsg('system', `${who}의 주사위 ${r.expr} → ${r.rolls.join(', ')}${r.mod ? ` (${r.mod > 0 ? '+' : ''}${r.mod})` : ''} = ${r.total}`, { dice: { expr: r.expr, rolls: r.rolls, mod: r.mod, total: r.total, sides }, diceBy: who }));
     }
-    case '/sys': case '/narrate': return arg ? push(B.core.newMsg('system', B.engine.applyRegex(arg, { who: 'slash', target: 'store', chat }))) : null;
+    case '/sys': case '/narrate': return arg ? push(newMsg('system', applyRegex(arg, { who: 'slash', target: 'store', chat }))) : null;
     case '/continue': case '/cont': return generate('continue');
     case '/regen': return generate('regen');
     case '/imp': case '/impersonate': return generate('impersonate');
@@ -277,34 +290,33 @@ export async function command(line: string): Promise<unknown> {
     case '/setvar': (chat.vars ||= {})[rest[0]] = rest.slice(1).join(' '); await S.save('chats', chat, true); toast(`${rest[0]} = ${rest.slice(1).join(' ')}`); if (cur.drawer) drawDrawer(); return;
     case '/getvar': return toast(`${rest[0]} = ${chat.vars?.[rest[0]] ?? '(없음)'}`);
     case '/bg': chat.bg = arg; await S.save('chats', chat, true); return drawMain();
-    case '/help': case '/?': return openModal({ title: '명령어', body: <div className="help">{[...HELP, ...[...B.X.commands].map(([k, v]): [string, string] => [k, v.help || '확장 명령어'])].map(([c, d], i) => <div className="help-row" key={i}><code>{c}</code><span>{d}</span></div>)}</div> });
+    case '/help': case '/?': return openModal({ title: '명령어', body: <div className="help">{[...HELP, ...[...X.commands].map(([k, v]): [string, string] => [k, v.help || '확장 명령어'])].map(([c, d], i) => <div className="help-row" key={i}><code>{c}</code><span>{d}</span></div>)}</div> });
     default: {
-      const ext = B.X.commands.get(cmd.toLowerCase());
+      const ext = X.commands.get(cmd.toLowerCase());
       if (!ext) { const inp = ui.input; if (inp && !inp.value) { inp.value = line; inp.dispatchEvent(new Event('input')); } return toast(`알 수 없는 명령어: ${cmd}`, 'err'); }
-      try { return await ext.run(arg, B.oldChat.chatApi); } catch (e) { console.error(e); return toast(`${cmd}: ${errMsg(e)}`, 'err'); }
+      try { return await ext.run(arg, chatApi); } catch (e) { console.error(e); return toast(`${cmd}: ${errMsg(e)}`, 'err'); }
     }
   }
 }
 
 // ════════ 대화 모드: 상태 · 명령 · 먼저 말 걸기 ════════
 /** 지금 이 캐릭터의 상태 (임시로 바꾼 상태 → 주간 일정 → 온라인) */
-export const presenceOf = (chat: Room, ch: Cast | undefined = charsOf(chat)[0]) => B.Live.presence(chat, ch);
+export const presenceOf = (chat: Room, ch: Cast | undefined = charsOf(chat)[0]) => Live.presence(chat, ch);
 const awakeChars = (chat: Room) => { const cs = charsOf(chat), aw = cs.filter(c => !(chat.muted || []).includes(c.id)); return aw.length ? aw : cs; };
 const nameCalled = (text: string, name: string) => { const t = String(text || '').toLowerCase(), n = String(name || '').trim().toLowerCase(), first = n.split(/\s+/)[0]; return !!n && (t.includes(n) || (first.length >= 2 && t.includes(first))); };
 const weighted = <T,>(list: T[], w: (c: T) => number) => { const total = list.reduce((n, c) => n + w(c), 0); let r = Math.random() * total; for (const c of list) { r -= w(c); if (r <= 0) return c; } return list[0]; };
 async function runTalkCommands(chat: Room, msgs: Msg[], target: Msg, cmds: { name: string; args: Record<string, string> }[]) {
-  const S = B.S, STATUS = B.sched.STATUS;
-  for (const c of cmds) {
+    for (const c of cmds) {
     if (c.name === 'react' && c.args.emoji) { const u = [...msgs].reverse().find(m => m.role === 'user'); if (u) { (u.reactions ||= []).push({ emoji: c.args.emoji, by: target.name }); if (cur.chat === chat) redraw(u); } }
-    else if (c.name === 'status') { const st = STATUS[c.args.state || c.args.status] ? (c.args.state || c.args.status) : 'online'; const dur = String(c.args.duration || '').match(/([\d.]+)\s*(m|h)/i); B.Live.setPresence(chat, S.get('chars', target.charId), { status: st, activity: c.args.activity || '', durMs: dur ? +dur[1] * (dur[2].toLowerCase() === 'h' ? 3600000 : 60000) : 0 }); }
-    else if (c.name === 'time') { if (chat.clock?.ai) await B.Clock.move(chat, { set: c.args.set, advance: c.args.advance }); }
-    else if (c.name === 'memory' && c.args.summary && S.settings.memory.enabled) await B.Memory.add(chat.id, { summary: c.args.summary, kind: 'fact', importance: 0.7, entities: [target.name] }).catch(() => { });
+    else if (c.name === 'status') { const st = STATUS[c.args.state || c.args.status] ? (c.args.state || c.args.status) : 'online'; const dur = String(c.args.duration || '').match(/([\d.]+)\s*(m|h)/i); Live.setPresence(chat, S.get('chars', target.charId), { status: st, activity: c.args.activity || '', durMs: dur ? +dur[1] * (dur[2].toLowerCase() === 'h' ? 3600000 : 60000) : 0 }); }
+    else if (c.name === 'time') { if (chat.clock?.ai) await Clock.move(chat, { set: c.args.set, advance: c.args.advance }); }
+    else if (c.name === 'memory' && c.args.summary && S.settings.memory.enabled) await Memory.add(chat.id, { summary: c.args.summary, kind: 'fact', importance: 0.7, entities: [target.name] }).catch(() => { });
     else if (c.name === 'selfie') { const ch = S.get('chars', target.charId); drawScene(target, { title: '셀카', camera: 'selfie, upper body, looking at viewer', prompt: c.args.context || 'casual selfie', characters: [{ name: ch?.name || target.name, action: 'taking a selfie, ' + (c.args.context || 'smiling') }] }); }
   }
 }
 /** 말풍선을 한 줄씩 차례로 보여 준다 (저장은 이미 끝난 상태) */
 async function revealLines(target: Msg) {
-  const lines = B.core.msgText(target).split('\n').filter(l => l.trim()); if (lines.length < 2) return;
+  const lines = msgText(target).split('\n').filter(l => l.trim()); if (lines.length < 2) return;
   const sw = target.swipes[target.sw], full = sw.text;
   for (let i = 1; i <= lines.length; i++) {
     if (!ui.msgs?.querySelector(`[data-id="${target.id}"] .msg-body`) || cur.busy || target.swipes[target.sw].text !== full) break;
@@ -318,13 +330,13 @@ async function revealLines(target: Msg) {
 
 // ── 먼저 오는 연락: 답하지 못한 말 → 약속 → 조용할 때, 한 흐름으로 ──
 let autoTimer = 0, chimeTimer = 0;
-const capOf = (ch: Cast) => { const M = B.S.settings.modes, t = ch.talk ?? 0; return +(M.autoDaily || 0) > 0 ? +(M.autoDaily || 0) : t >= 0.8 ? 8 : t >= 0.6 ? 6 : t >= 0.4 ? 5 : t >= 0.2 ? 3 : 2; };
+const capOf = (ch: Cast) => { const M = S.settings.modes, t = ch.talk ?? 0; return +(M.autoDaily || 0) > 0 ? +(M.autoDaily || 0) : t >= 0.8 ? 8 : t >= 0.6 ? 6 : t >= 0.4 ? 5 : t >= 0.2 ? 3 : 2; };
 function autoState(chat: Room) { const a = chat.auto ||= { day: '', count: 0, streak: 0 }, today = new Date().toDateString(); if (a.day !== today) { a.day = today; a.count = 0; a.chime = 0; } return a; }
 /** 오프라인이 풀릴 때까지 남은 시간 (밀리초) */
 function wakeMsOf(chat: Room, ch: Cast) {
   const p = presenceOf(chat, ch); if (p.status !== 'offline') return 0;
   if (p.from === 'override') return p.until ? Math.max(1000, p.until - now()) : Infinity;
-  const s = B.sched.scheduleOf(ch); return s ? B.sched.wakeIn(s) * 60000 : Infinity;
+  const s = scheduleOf(ch); return s ? wakeIn(s) * 60000 : Infinity;
 }
 /** 선톡을 맡을 캐릭터: 가장 여유 있는 상태인 캐릭터 가운데서 (roll 이면 수다 정도에 따라 뽑는다) */
 function autoChar(chat: Room, roll = false): Cast | null {
@@ -336,31 +348,30 @@ function autoChar(chat: Room, roll = false): Cast | null {
 function motiveFor(chat: Room, ch: Cast, msgs: Msg[]): Motive {
   const real = msgs.filter(m => m.role !== 'system'), last = real[real.length - 1], lastUser = [...real].reverse().find(m => m.role === 'user');
   const seen = !document.hidden && (chat.seenAt || 0) >= (last?.ts || 0);
-  return B.sched.pickMotive({ sched: B.sched.scheduleOf(ch), now: B.Clock.now(chat), lastUserAt: lastUser?.ts || 0, lastRole: last?.role || '', seen, readReact: B.S.settings.modes.readReact !== false, owed: !!chat.owed,
-    cd: chat.auto?.cd?.[ch.id] || {}, hours: B.live.cdHours(), longHours: B.live.mo('longHours'), use: B.live.mo('motives') !== false });
+  return pickMotive({ sched: scheduleOf(ch), now: Clock.now(chat), lastUserAt: lastUser?.ts || 0, lastRole: (last?.role || '') as '' | 'user' | 'assistant', seen, readReact: S.settings.modes.readReact !== false, owed: !!chat.owed,
+    cd: chat.auto?.cd?.[ch.id] || {}, hours: cdHours(), longHours: mo('longHours') as number | undefined, use: mo('motives') !== false });
 }
 function markMotive(chat: Room, ch: Cast, kind: string) { const a = autoState(chat); ((a.cd ||= {})[ch.id] ||= {})[kind] = now(); a.last = { kind, at: now(), charId: ch.id }; }
 /** 다음 연락이 언제인지, 무엇이 막고 있는지 (설정 창의 현황판과 타이머가 같은 계산을 쓴다) */
 export function autoPlan(chat: Room, msgs: Msg[] = cur.msgs): AutoPlan | null {
-  const S = B.S, M = S.settings.modes, a = autoState(chat), t = now(), mo = B.live.mo; if (!awakeChars(chat).length) return null;
+  const M = S.settings.modes, a = autoState(chat), t = now(); if (!awakeChars(chat).length) return null;
   const real = msgs.filter(m => m.role !== 'system'), last = real[real.length - 1];
   const owed = chat.owed && mo('offlineWake') !== false && last?.role === 'user' ? chat.owed : null;
   const ch = (owed && S.get('chars', owed.charId)) || autoChar(chat); if (!ch) return null;
   const p = presenceOf(chat, ch);
   const due = (chat.later || []).filter(l => l.at > t - 86400000 * 3).sort((x, y) => x.at - y.at)[0];
   const tail = msgs[msgs.length - 1], cap = capOf(ch);
-  const plan = B.sched.planAuto({ nowTs: t, on: !!M.auto, talk: modeOf(chat) === 'talk', scene: !!chat.scene?.on, hasUser: real.some(m => m.role === 'user'), conn: !!(S.get('conns', M.autoConn) || S.connFor(chat)),
+  const plan = planAuto({ nowTs: t, on: !!M.auto, talk: modeOf(chat) === 'talk', scene: !!chat.scene?.on, hasUser: real.some(m => m.role === 'user'), conn: !!(S.get('conns', M.autoConn) || S.connFor(chat)),
     status: p.status, wakeMs: wakeMsOf(chat, ch), count: a.count, cap, streak: a.streak, maxStreak: M.autoStreak || 3, minutes: M.autoMinutes || 10, backoff: M.autoBackoff || 2,
-    base: Math.max(tail?.swipes?.[tail.sw]?.ts || tail?.ts || 0, a.lastAt || 0, cur.chat === chat ? cur.openedAt || 0 : 0), quietMs: B.live.quietLeft(M.quietFrom, M.quietTo) * 60000,
-    userStatus: B.Live.userStatus().status, hidden: document.hidden && !M.autoHidden, laterAt: due?.at || 0, laterOn: M.later !== false, owedAt: owed?.at || 0 });
-  const motive = motiveFor(chat, ch, msgs), cd = a.cd?.[ch.id] || {}, hours = B.live.cdHours(), STATUS = B.sched.STATUS;
+    base: Math.max(tail?.swipes?.[tail.sw]?.ts || tail?.ts || 0, a.lastAt || 0, cur.chat === chat ? cur.openedAt || 0 : 0), quietMs: quietLeft(M.quietFrom, M.quietTo) * 60000,
+    userStatus: Live.userStatus().status, hidden: document.hidden && !M.autoHidden, laterAt: due?.at || 0, laterOn: M.later !== false, owedAt: owed?.at || 0 });
+  const motive = motiveFor(chat, ch, msgs), cd = a.cd?.[ch.id] || {}, hours = cdHours();
   return { plan, ch, due, owed, motive, count: a.count, cap, streak: a.streak, last: a.last || null, who: ch.name, status: `${STATUS[p.status]}${p.activity ? ' · ' + p.activity : ''}`,
-    cdLeft: Object.fromEntries(B.sched.MOTIVE_ORDER.map(k => [k, B.sched.cooldownLeft(k, cd, hours, t)])) };
+    cdLeft: Object.fromEntries(MOTIVE_ORDER.map(k => [k, cooldownLeft(k, cd, hours, t)])) };
 }
 /** 설정 창의 "지금 한 통 받기" — 한도에 넣지 않고, 이유는 지금 고를 수 있는 것으로 */
 export async function poke(chat: Room) {
-  const S = B.S;
-  if (cur.chat !== chat || cur.busy || modeOf(chat) !== 'talk' || !(S.get('conns', S.settings.modes.autoConn) || S.connFor(chat))) return false;
+    if (cur.chat !== chat || cur.busy || modeOf(chat) !== 'talk' || !(S.get('conns', S.settings.modes.autoConn) || S.connFor(chat))) return false;
   const ch = autoChar(chat, true); if (!ch) return false;
   const mv = motiveFor(chat, ch, cur.msgs); markMotive(chat, ch, mv.kind); autoState(chat).lastAt = now(); await S.save('chats', chat, true);
   void generate('normal', { proactive: true, speaker: ch, live: mv }); return true;
@@ -372,7 +383,7 @@ export function armAuto() {
   autoTimer = window.setTimeout(() => void fireAuto(chat), Math.min(Math.max(1500, P.plan.at - now()), 2 ** 31 - 1));
 }
 async function fireAuto(chat: Room) {
-  const S = B.S, later = (ms: number) => { clearTimeout(autoTimer); autoTimer = window.setTimeout(armAuto, ms); };
+  const later = (ms: number) => { clearTimeout(autoTimer); autoTimer = window.setTimeout(armAuto, ms); };
   if (cur.chat !== chat || !onChat()) return;
   if (cur.busy || ui.input?.value.trim()) return later(60000);                                  // 쓰고 있는 중이면 끼어들지 않는다
   const M = S.settings.modes, P = autoPlan(chat); if (!P || !P.plan.at) return;
@@ -394,12 +405,12 @@ async function fireAuto(chat: Room) {
 }
 /** 자리를 비운 사이: 기한이 지난 약속, 또는 오래 비웠을 때 그 사이에 온 것처럼 한 통 */
 export async function catchUp(chat: Room, awayFor: number) {
-  const S = B.S, M = S.settings.modes; if (modeOf(chat) !== 'talk' || cur.busy || chat.scene?.on || !S.connFor(chat) || B.Live.userStatus().status === 'dnd') return false;
+  const M = S.settings.modes; if (modeOf(chat) !== 'talk' || cur.busy || chat.scene?.on || !S.connFor(chat) || Live.userStatus().status === 'dnd') return false;
   const a = autoState(chat), ch = autoChar(chat, true); if (!ch) return false;
   const due = M.later !== false ? (chat.later || []).filter(l => l.at <= now()).sort((x, y) => x.at - y.at)[0] : null;
   if (due) { chat.later = (chat.later || []).filter(l => l !== due); a.last = { kind: 'later', at: now(), charId: ch.id }; await S.save('chats', chat, true); await generate('normal', { proactive: true, speaker: ch, live: { kind: 'later', about: due.about }, stamp: Math.max(due.at, now() - 86400000 * 3) }); return true; }
   const last = cur.msgs[cur.msgs.length - 1];
-  if (B.live.inQuietHours() || chat.owed) return false;                                         // 답하지 못한 말이 있으면 그쪽(복귀)이 먼저다
+  if (inQuietHours() || chat.owed) return false;                                         // 답하지 못한 말이 있으면 그쪽(복귀)이 먼저다
   if (!M.auto || M.away === false || !last || awayFor < (M.awayHours || 3) * 3600000 || a.count >= capOf(ch) || (a.awayAt || 0) > (last.ts || 0) || presenceOf(chat, ch).status === 'offline') return false;
   a.awayAt = now(); a.count++; a.lastAt = now(); a.last = { kind: 'away', at: now(), charId: ch.id }; await S.save('chats', chat, true);
   const base = Math.max(last.ts || 0, now() - awayFor), stamp = Math.round(base + (now() - base) * (0.35 + Math.random() * 0.5));
@@ -408,16 +419,15 @@ export async function catchUp(chat: Room, awayFor: number) {
 }
 /** 그룹: 한 캐릭터가 말한 뒤 다른 캐릭터가 끼어든다 (기본 꺼짐 · 한 번에 답변 1회) */
 function maybeChime(chat: Room, msgs: Msg[]) {
-  const mo = B.live.mo;
-  if (modeOf(chat) !== 'talk' || chat.scene?.on || !mo('chime') || cur.chat !== chat || charsOf(chat).length < 2) return;
+    if (modeOf(chat) !== 'talk' || chat.scene?.on || !mo('chime') || cur.chat !== chat || charsOf(chat).length < 2) return;
   const a = autoState(chat), tail = msgs[msgs.length - 1]; if (tail?.role !== 'assistant') return;
   if ((cur.chimeRun || 0) >= (moN('chimeMax') || 2) || (a.chime || 0) >= (moN('chimeDaily') || 20)) return;
-  const text = B.core.msgText(tail), pool = awakeChars(chat).filter(c => c.id !== tail.charId && presenceOf(chat, c).status !== 'offline'); if (!pool.length) return;
+  const text = msgText(tail), pool = awakeChars(chat).filter(c => c.id !== tail.charId && presenceOf(chat, c).status !== 'offline'); if (!pool.length) return;
   const mood = (c: Cast) => ({ online: 1, idle: 0.7, dnd: 0.3 } as Record<string, number>)[presenceOf(chat, c).status] || 1;
   let who = pool.find(c => nameCalled(text, c.name));
   if (!who) { if (Math.random() * 100 >= moN('chimeChance')) return; who = weighted(pool, c => (c.talk || 0.5) * mood(c)); }
   const speaker = who;
-  cur.chimeRun = (cur.chimeRun || 0) + 1; a.chime = (a.chime || 0) + 1; void B.S.save('chats', chat, true);
+  cur.chimeRun = (cur.chimeRun || 0) + 1; a.chime = (a.chime || 0) + 1; void S.save('chats', chat, true);
   clearTimeout(chimeTimer);
   chimeTimer = window.setTimeout(() => { if (cur.chat === chat && !cur.busy && !ui.input?.value.trim() && onChat()) void generate('normal', { speaker, chime: true, live: { kind: 'chime', from: tail.name || '' } }); }, Math.min(9000, 1600 + text.split('\n').filter(l => l.trim()).length * 900 + Math.random() * 1500));
 }
@@ -427,16 +437,16 @@ export async function openScene(info: { title?: string; place?: string; time?: s
   const chat = cur.chat; if (!chat || chat.scene?.on) return;
   const title = (info.title || '').trim() || '만남';
   chat.scene = { on: true, title, place: info.place || '', at: cur.msgs.length }; chat.scenes = (chat.scenes || 0) + 1;
-  cur.msgs.push(B.core.newMsg('system', `Scene begins: ${title}${info.place ? ' — ' + info.place : ''}${info.time ? ' (' + info.time + ')' : ''}`, { curtain: { kind: 'open', title, place: info.place || '', time: info.time || '' } }));
+  cur.msgs.push(newMsg('system', `Scene begins: ${title}${info.place ? ' — ' + info.place : ''}${info.time ? ' (' + info.time + ')' : ''}`, { curtain: { kind: 'open', title, place: info.place || '', time: info.time || '' } }));
   await save(); drawMain();
-  if (auto && B.S.settings.modes.sceneStart !== false) void generate('normal');
+  if (auto && S.settings.modes.sceneStart !== false) void generate('normal');
 }
 export async function closeScene(summary = '', auto = false) {
   const chat = cur.chat; if (!chat?.scene?.on) return;
   if (!auto && !summary) { const v = await promptBox('이 장면을 한 줄로 남길까요? (비워도 됩니다)', '', { placeholder: '예: 역 앞에서 만나 우산을 같이 썼다' }); if (v === null) return; summary = v.trim(); }
   chat.scene = { ...chat.scene, on: false };
-  cur.msgs.push(B.core.newMsg('system', `Scene ends${summary ? ': ' + summary : ''}. Back to texting.`, { curtain: { kind: 'close', summary } }));
-  await save(); B.core.emit('scene:close', { chat }); drawMain(); armAuto();
+  cur.msgs.push(newMsg('system', `Scene ends${summary ? ': ' + summary : ''}. Back to texting.`, { curtain: { kind: 'close', summary } }));
+  await save(); emit('scene:close', { chat }); drawMain(); armAuto();
 }
 
 // ════════ 생성 ════════
@@ -444,7 +454,7 @@ function pickSpeaker(chars: Cast[]) {
   const chat = cur.chat!, awake = chars.filter(c => !(chat.muted || []).includes(c.id)); if (awake.length) chars = awake;
   if (chars.length === 1) return chars[0];
   const lastAi = [...cur.msgs].reverse().find(m => m.role === 'assistant'), tail = cur.msgs[cur.msgs.length - 1];
-  const lastText = tail ? B.core.msgText(tail) : '';
+  const lastText = tail ? msgText(tail) : '';
   if (chat.groupOrder === 'list') { const i = chars.findIndex(c => c.id === lastAi?.charId); return chars[(i + 1) % chars.length]; }
   const lastSpeaker = tail?.charId;
   const named = chars.filter(c => c.id !== lastSpeaker && lastText.includes(c.name));
@@ -455,11 +465,11 @@ function pickSpeaker(chars: Cast[]) {
 
 export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Promise<void> {
   if (cur.busy || cur.prep || !cur.chat) return;
-  const S = B.S, E = B.engine, Live = B.Live, mo = B.live.mo;
+  const E = engine;
   const chat = cur.chat, msgs = cur.msgs, chars = charsOf(chat);
   if (!chars.length) return toast('이 대화의 캐릭터가 삭제되었어요', 'err');
   const conn = (opt.proactive && S.get('conns', S.settings.modes.autoConn)) || S.connFor(chat);
-  if (!conn) { if (opt.proactive) return; toast('먼저 API 연결을 추가해 주세요', 'err'); return B.ui.go('conns'); }
+  if (!conn) { if (opt.proactive) return; toast('먼저 API 연결을 추가해 주세요', 'err'); return go('conns'); }
   const last = msgs[msgs.length - 1];
   if ((type === 'regen' || type === 'continue') && last?.role !== 'assistant') type = 'normal';
   let speaker = opt.speaker || (type === 'normal' || type === 'impersonate' ? pickSpeaker(chars) : (S.get('chars', last.charId) || chars[0]));
@@ -480,9 +490,9 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
   const pres = talkNow ? presenceOf(chat, speaker) : null, trackOn = !!S.settings.tracker.enabled;
   // 상태창: 다시 생성할 때는 그 답변이 나오기 전의 상태로 되감고 시작한다
   if (trackOn && type !== 'impersonate') { Live.arm(chat); if (type === 'regen' && Live.rewind(chat, msgs, msgs.length - 1)) drawHud(); }
-  if (B.X.before.length) {   // 답변 전 준비: 그동안 다른 생성이 끼어들지 못하게 하고, 방이 바뀌었으면 그만둔다
+  if (X.before.length) {   // 답변 전 준비: 그동안 다른 생성이 끼어들지 못하게 하고, 방이 바뀌었으면 그만둔다
     cur.prep = true; setStatus('기억 찾는 중…');
-    try { for (const b of B.X.before) { try { await b.fn({ chat, msgs, type, chars, persona }); } catch (e) { console.warn('[생성 전 준비]', b.owner, e); } } } finally { cur.prep = false; setStatus(''); }
+    try { for (const b of X.before) { try { await b.fn({ chat, msgs, type, chars, persona }); } catch (e) { console.warn('[생성 전 준비]', b.owner, e); } } } finally { cur.prep = false; setStatus(''); }
     if (cur.chat !== chat || cur.msgs !== msgs || cur.busy) return;
   }
   chat.loreState ||= {}; chat.vars ||= {};
@@ -492,12 +502,12 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
   let built;
   try { built = E.buildPrompt({ chat: pchat, char: speaker, chars, persona, preset, msgs, type, commit: true, proactive: !!opt.proactive }); } catch (e) { console.error(e); return toast('프롬프트 조립 실패: ' + errMsg(e), 'err'); }
   finally { Live.pending = null; if (pres) { if (keepPresence === undefined) delete chat.presence; else chat.presence = keepPresence; } }
-  B.core.emit('prompt:ready', { messages: built.messages, chat, type, speaker });
+  emit('prompt:ready', { messages: built.messages, chat, type, speaker });
   cur.lastPrompt = built; drawGauge();
 
   let target: Msg | null = null, sw: Swipe | null = null, base = '';
   const stick = nearBottom();
-  if (type === 'normal') { target = B.core.newMsg('assistant', '', { charId: speaker.id, name: speaker.name, ...(inScene ? { scene: true } : {}) }); msgs.push(target); appendMsg(target); }
+  if (type === 'normal') { target = newMsg('assistant', '', { charId: speaker.id, name: speaker.name, ...(inScene ? { scene: true } : {}) }); msgs.push(target); appendMsg(target); }
   else if (type === 'regen') { target = last; target.swipes.push({ text: '', ts: now() }); target.sw = target.swipes.length - 1; redraw(target); }
   else if (type === 'continue') { target = last; base = target.swipes[target.sw].text; }
   if (target) { sw = target.swipes[target.sw]; delete sw.tr; sw.showTr = false; }
@@ -515,11 +525,11 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
     if (keep && S.settings.autoScroll) toBottom();
   };
   const schedule = () => { if (!raf) raf = requestAnimationFrame(paint); };
-  const abort = cur.abort = new AbortController(); setBusy(true); cur.gen = { chat, msgs }; try { paint(); } catch (e) { console.warn(e); } B.core.emit('generate:start', { chat, type });
+  const abort = cur.abort = new AbortController(); setBusy(true); cur.gen = { chat, msgs }; try { paint(); } catch (e) { console.warn(e); } emit('generate:start', { chat, type });
   if (built.talk && pres && mo('presenceDelay') && type === 'normal' && !opt.proactive && !opt.chime) {
     // 상태에 따라 답장이 늦게 온다. 내가 이름을 불렀으면 서둘러 본다
-    const lastUser = [...msgs].reverse().find(m => m.role === 'user'), named = !!lastUser && nameCalled(B.core.msgText(lastUser), speaker.name);
-    const wait = B.sched.replyDelay(pres.status, { online: mo('delayOnline'), idle: mo('delayIdle'), dnd: mo('delayDnd') }, { named, namedPct: mo('delayNamed') });
+    const lastUser = [...msgs].reverse().find(m => m.role === 'user'), named = !!lastUser && nameCalled(msgText(lastUser), speaker.name);
+    const wait = replyDelay(pres.status, { online: mo('delayOnline'), idle: mo('delayIdle'), dnd: mo('delayDnd') }, { named, namedPct: mo('delayNamed') as number | undefined });
     if (wait) await new Promise<void>(r => { const t = setTimeout(r, wait); abort.signal.addEventListener('abort', () => { clearTimeout(t); r(); }, { once: true }); });
   }
   const t0 = now(), impersonateBase = ui.input?.value || '';
@@ -540,7 +550,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
     if (target) cur.paint.delete(target.id);
     if (!alive) { if (cur.gen?.msgs === msgs) cur.gen = null; }
     else if (target && sw) {
-      const plan = B.Illust.extract(E.splitThink(base + acc).text);
+      const plan = Illust.extract(E.splitThink(base + acc).text);
       const lv = Live.extract(plan.text); plan.text = lv.text;
       const talked = built.talk ? E.parseTalk(plan.text) : null;
       const final = E.postFormat(E.applyRegex(talked ? talked.text : plan.text, { who: 'ai', target: 'store', charId: target.charId, ctx: built.ctx }));
@@ -558,10 +568,10 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
         if (trackOn) { if (lv.patch) Live.apply(chat, lv.patch, { names: chars.map(c => c.name), mx: t => E.macro(t, built.ctx) }); Live.stamp(chat, target); if (cur.chat === chat) drawHud(); }   // 바뀐 항목만 합치고, 이 답변에 그 시점의 상태를 찍어 둔다
         if (opt.live?.kind) { target.why = opt.live.kind; if (cur.chat === chat) redraw(target); }   // 왜 온 연락인지 이름 옆에 작게
         if (chat.owed && !opt.chime) delete chat.owed;
-        for (const o of lv.later) if (S.settings.modes.later !== false && (chat.later ||= []).length < (S.settings.modes.laterMax || 3)) chat.later.push(B.live.newLater(o));
+        for (const o of lv.later) if (S.settings.modes.later !== false && (chat.later ||= []).length < (S.settings.modes.laterMax || 3)) chat.later.push(newLater(o));
         if (document.hidden || cur.chat !== chat) { chat.unread = (chat.unread || 0) + 1; Live.ping(speaker.name, final); } else chat.seenAt = now();
       }
-      if (final) B.core.emit('message:received', { msg: target, chat });   // 저장 전에 알린다 (이야기 시각 등 메시지에 적히는 것이 함께 저장되게)
+      if (final) emit('message:received', { msg: target, chat });   // 저장 전에 알린다 (이야기 시각 등 메시지에 적히는 것이 함께 저장되게)
       await S.saveMsgs(chat, msgs);
       if (cur.gen?.msgs === msgs) cur.gen = null;
       if (final && cur.chat === chat) {
@@ -573,15 +583,15 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
       if (cur.chat === chat) { drawSide(); drawDossier(); if (cur.drawer) drawDrawer(); if (final) void afterReply(chat, msgs); }
     } else if (ui.input) { ui.input.value = (impersonateBase + acc).trim(); ui.input.dispatchEvent(new Event('input')); ui.input.focus(); }
     if (cur.gen?.msgs === msgs) cur.gen = null;
-    B.core.emit('generate:end', { chat, type });
+    emit('generate:end', { chat, type });
   }
 }
 
 async function afterReply(chat: Room, msgs: Msg[]) {
-  const st = B.S.settings; armAuto();
+  const st = S.settings; armAuto();
   const tail = msgs[msgs.length - 1];
-  if (st.illust.auto && tail?.role === 'assistant' && !tail.swipes[tail.sw].illust?.length && (st.illust.mode === 'call') && msgs.filter(m => m.role === 'assistant').length % Math.max(1, st.illust.every || 1) === 0) B.Illust.analyze(chat, msgs, tail, null, { manual: false }).then(sc => sc.slice(0, st.illust.maxScenes || 1).forEach(x => drawScene(tail, x, { chat, msgs }))).catch(e => toast('삽화 계획 실패: ' + errMsg(e), 'err'));
-  if (st.memory.enabled && st.memory.auto && tail?.role === 'assistant') { setStatus('기억 정리 중…'); try { await B.Memory.commit(chat, msgs, tail); if (cur.drawer && cur.chat === chat) drawDrawer(); } catch (e) { toast('기억 기록 실패: ' + errMsg(e), 'err'); } finally { setStatus(''); } }
+  if (st.illust.auto && tail?.role === 'assistant' && !tail.swipes[tail.sw].illust?.length && (st.illust.mode === 'call') && msgs.filter(m => m.role === 'assistant').length % Math.max(1, st.illust.every || 1) === 0) Illust.analyze(chat, msgs, tail, undefined, { manual: false }).then(sc => sc.slice(0, st.illust.maxScenes || 1).forEach(x => drawScene(tail, x, { chat, msgs }))).catch(e => toast('삽화 계획 실패: ' + errMsg(e), 'err'));
+  if (st.memory.enabled && st.memory.auto && tail?.role === 'assistant') { setStatus('기억 정리 중…'); try { await Memory.commit(chat, msgs, tail); if (cur.drawer && cur.chat === chat) drawDrawer(); } catch (e) { toast('기억 기록 실패: ' + errMsg(e), 'err'); } finally { setStatus(''); } }
   if (st.translate.auto && tail?.role === 'assistant' && !tail.swipes[tail.sw].tr) await translate(tail, { chat, msgs });
   if (st.tracker.enabled && st.tracker.mode !== 'inline') await track(chat, msgs);
   maybeChime(chat, msgs);
@@ -590,17 +600,17 @@ async function afterReply(chat: Room, msgs: Msg[]) {
 /** 예전 자동 요약 글을 장기기억의 기억 한 장으로 옮긴다 */
 export async function moveOldSummary(chat: Room) {
   const text = String(chat.summary || '').trim(); if (!text) return;
-  await B.Memory.add(chat.id, { summary: text, kind: 'event', importance: 0.8, entities: charsOf(chat).map(c => c.name) });
-  chat.summary = ''; chat.summaryAt = 0; await B.S.save('chats', chat, true); toast('옛 요약을 장기기억으로 옮겼어요', 'ok'); if (cur.drawer && cur.chat === chat) drawDrawer();
+  await Memory.add(chat.id, { summary: text, kind: 'event', importance: 0.8, entities: charsOf(chat).map(c => c.name) });
+  chat.summary = ''; chat.summaryAt = 0; await S.save('chats', chat, true); toast('옛 요약을 장기기억으로 옮겼어요', 'ok'); if (cur.drawer && cur.chat === chat) drawDrawer();
 }
 
 export async function track(chat: Room, msgs: Msg[]) {
-  const S = B.S, E = B.engine, Live = B.Live, chars = charsOf(chat), persona = S.persona(chat);
+  const E = engine, chars = charsOf(chat), persona = S.persona(chat);
   const ctx = E.makeCtx({ chat, char: chars[0], chars, persona, msgs }), mx = (t: string) => E.macro(t, ctx);
   const call = Live.trackCall(chat, chars, mx); if (!call.any) return;
   setStatus('상태 갱신 중…');
   try {
-    const recent = msgs.filter(m => !m.hidden).slice(-6).map(m => `${m.role === 'user' ? ctx.user : (m.name || 'Narrator')}: ${B.core.msgText(m)}`).join('\n\n');
+    const recent = msgs.filter(m => !m.hidden).slice(-6).map(m => `${m.role === 'user' ? ctx.user : (m.name || 'Narrator')}: ${msgText(m)}`).join('\n\n');
     const out = await E.quickCall(call.system, `[Previous state]\n${JSON.stringify(call.prev)}\n\n[Latest messages]\n${recent}`, { maxTokens: 900, conn: S.connFor(chat) });
     const patch = Live.readCall(out), tail = [...msgs].reverse().find(m => m.role === 'assistant');
     if (!patch) return console.warn('tracker: 답을 읽지 못했어요', out);
@@ -615,12 +625,12 @@ export function jumpTo(m: Msg) {
   const i = cur.msgs.indexOf(m); if (i < 0) return;
   cur.shown = Math.max(cur.shown, cur.msgs.length - i + 4); drawMsgs(); setTimeout(() => chatApi.scrollTo(m.id), 60);
 }
-const saveState = (() => { let t = 0; return () => { clearTimeout(t); t = window.setTimeout(() => { if (cur.chat) void B.S.saveMsgs(cur.chat, cur.msgs); }, 300); }; })();
+const saveState = (() => { let t = 0; return () => { clearTimeout(t); t = window.setTimeout(() => { if (cur.chat) void S.saveMsgs(cur.chat, cur.msgs); }, 300); }; })();
 /** 상태창이 대화 화면에 부탁하는 것들 */
 export const hudOpts = () => {
   const c = cur.chat!;
   return { msgs: cur.msgs, chars: charsOf(c), saved: saveState, redraw: () => { drawHud(); drawDossier(); if (cur.drawer) drawDrawer(); }, onJump: jumpTo,
-    onFold: async () => { c.hudFold = !c.hudFold; await B.S.save('chats', c, true); drawHud(); } };
+    onFold: async () => { c.hudFold = !c.hudFold; await S.save('chats', c, true); drawHud(); } };
 };
 export type HudOpts = ReturnType<typeof hudOpts>;
 
@@ -630,7 +640,7 @@ export const chatApi: ChatApi = {
   reveal(id) { unpin(); const i = cur.msgs.findIndex(m => m.id === id); if (i < 0) return false; const need = cur.msgs.length - i + 4; if (need > cur.shown || i < cur.head) { cur.shown = Math.max(cur.shown, need); drawMsgs(); } const el = ui.msgs?.querySelector(`[data-id="${id}"]`); if (!el) return false; el.scrollIntoView({ block: 'center' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1600); return true; },
   roomName: c => roomName(c), groupTitle: c => titleOf(c),
   current: () => ({ chat: cur.chat, msgs: cur.msgs, busy: cur.busy }),
-  generate: (type = 'normal') => generate(type),
+  generate: (type = 'normal') => generate(type as GenType),
   send: text => { if (ui.input) { ui.input.value = text; return send(); } },
   insert: text => { const inp = ui.input; if (inp) { inp.value += text; inp.dispatchEvent(new Event('input')); inp.focus(); } },
   addSystemMessage: text => command('/sys ' + text),
@@ -659,7 +669,7 @@ export function onKey(e: KeyboardEvent) {
 /** 화면으로 돌아왔다: 읽음 처리 + 다음 연락 다시 잡기 */
 export function onVisible() {
   if (document.hidden || !cur.chat) return;
-  armAuto(); cur.chat.seenAt = now(); if (cur.chat.unread) { cur.chat.unread = 0; void B.S.save('chats', cur.chat, true); drawSide(); }
+  armAuto(); cur.chat.seenAt = now(); if (cur.chat.unread) { cur.chat.unread = 0; void S.save('chats', cur.chat, true); drawSide(); }
 }
 let presenceSig = '';
 /** 일정의 칸이 바뀌면 상태 점도 따라 바뀐다 (30초마다 본다) */

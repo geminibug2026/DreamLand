@@ -1,6 +1,9 @@
 // 표정: 설정 · 그림 보관 · 지금 표정 계산 · 기록 · 감정 판정 (화면 없음)
-import { B, type AssetRec, type ChatX, type Msg, type Swipe } from '../addons/legacy';
+import type { AssetRec, ChatX, Msg, Swipe } from '../addons/types';
 import { DEFAULT_LABELS, KO, RELATED, canonLabel, extractTag, hashStr, keywordLabel, plainText, type CustomLabel } from './pure';
+import { DB, S, msgText, now, uid } from '../lib/core';
+import { macro, makeCtx, quickCall } from '../lib/engine';
+import { chatApi } from '../chat/actions';
 
 // ════════ 설정 ════════
 export const TAG_PROMPT = `[Expression tag]
@@ -26,7 +29,7 @@ export interface ExprCfg {
 const DEF = { show: true, mode: 'off', tagPrompt: '', tagFallback: true, callPrompt: '', callContext: 1, callTokens: 300, onlyHave: true, dossier: true, avatars: true, avatarFit: 'contain', multi: true, fade: true,
   standing: false, side: 'right', size: 66, sizeOver: 40, overOpacity: 90, dim: true, fallback: 'neutral', maxPx: 1280 };
 export function cfg(): ExprCfg {
-  const st = B.S.settings; let c = st.expressions as Record<string, unknown> | undefined;
+  const st = S.settings; let c = st.expressions as Record<string, unknown> | undefined;
   if (!c || typeof c !== 'object' || Array.isArray(c)) c = st.expressions = {};
   for (const [k, v] of Object.entries(DEF)) if (c[k] === undefined) c[k] = v;
   if (!Array.isArray(c.custom)) c.custom = [];
@@ -34,7 +37,7 @@ export function cfg(): ExprCfg {
   if (!c.ui || typeof c.ui !== 'object') c.ui = {};
   return c as unknown as ExprCfg;
 }
-export const save = () => B.S.set({ expressions: cfg() });
+export const save = () => S.set({ expressions: cfg() });
 export const charCfg = (id: string) => { const c = cfg(); return (c.chars[id] ||= { n: 0, fallback: '' }); };
 export const customOf = (label: string) => cfg().custom.find(x => x.label === label);
 /** 화면에 적을 이름: 기쁨 */
@@ -52,20 +55,20 @@ export const Sprites = {
   of: (id: string, label: string) => (cache.get(id) || []).filter(a => a.label === label),
   labels: (id: string) => [...new Set((cache.get(id) || []).map(a => a.label))],
   async load(ids: string | string[] | undefined) {
-    for (const id of ([] as string[]).concat(ids || [])) if (id && !cache.has(id)) { const list = ((await B.core.DB.byOwner(ownerOf(id))) as Sprite[]).filter(a => a.kind === 'expr').sort(order); if (!cache.has(id)) cache.set(id, list); }
+    for (const id of ([] as string[]).concat(ids || [])) if (id && !cache.has(id)) { const list = ((await DB.byOwner(ownerOf(id))) as Sprite[]).filter(a => a.kind === 'expr').sort(order); if (!cache.has(id)) cache.set(id, list); }
   },
   note(id: string) { const n = this.list(id).length, cc = charCfg(id); if (cc.n !== n) { cc.n = n; save(); } },
   async put(id: string, label: string, name: string, data: string) {
     await this.load(id);
     const old = this.list(id).find(a => a.label === label && a.name === name);
-    const rec: Sprite = { id: old?.id || B.core.uid(), owner: ownerOf(id), kind: 'expr', label, name, data, ts: B.core.now() };
-    await B.core.DB.put('assets', rec);
+    const rec: Sprite = { id: old?.id || uid(), owner: ownerOf(id), kind: 'expr', label, name, data, ts: now() };
+    await DB.put('assets', rec);
     cache.set(id, [...this.list(id).filter(a => a.id !== rec.id), rec].sort(order));
     return rec;
   },
-  async update(id: string, rec: Sprite) { await B.core.DB.put('assets', rec); cache.set(id, this.list(id).map(a => a.id === rec.id ? rec : a).sort(order)); },
-  async remove(id: string, rec: Sprite) { await B.core.DB.del('assets', rec.id); cache.set(id, this.list(id).filter(a => a.id !== rec.id)); this.note(id); },
-  async clear(id: string) { for (const a of await B.core.DB.byOwner(ownerOf(id))) await B.core.DB.del('assets', a.id); cache.set(id, []); this.note(id); },
+  async update(id: string, rec: Sprite) { await DB.put('assets', rec); cache.set(id, this.list(id).map(a => a.id === rec.id ? rec : a).sort(order)); },
+  async remove(id: string, rec: Sprite) { await DB.del('assets', rec.id); cache.set(id, this.list(id).filter(a => a.id !== rec.id)); this.note(id); },
+  async clear(id: string) { for (const a of await DB.byOwner(ownerOf(id))) await DB.del('assets', a.id); cache.set(id, []); this.note(id); },
   /** 캐릭터가 지워졌을 때: 읽어 둔 것을 잊는다 */
   forget(id: string) { cache.delete(id); },
   find(id: string): Sprite | null { for (const list of cache.values()) { const a = list.find(x => x.id === id); if (a) return a; } return null; },
@@ -123,11 +126,11 @@ export const bus = { sync: () => { }, schedule: () => { } };
 
 // ════════ 기록 ════════
 export async function persist(chat: ChatX, msg: Msg) {
-  const cur = B.chat.current();
-  if (cur.chat?.id === chat.id && cur.msgs.includes(msg)) return B.chat.save();
-  const list = await B.S.msgs(chat.id), m = list.find(x => x.id === msg.id); if (!m) return;
+  const cur = chatApi.current();
+  if (cur.chat?.id === chat.id && cur.msgs.includes(msg)) return chatApi.save();
+  const list = await S.msgs(chat.id), m = list.find(x => x.id === msg.id); if (!m) return;
   m.swipes = msg.swipes; m.sw = msg.sw;
-  await B.S.saveMsgs(chat, list);
+  await S.saveMsgs(chat, list);
 }
 export async function setExpr(chat: ChatX, msg: Msg, label: string, pickId = '') {
   const sw = msg.swipes?.[msg.sw]; if (!sw) return;
@@ -142,16 +145,16 @@ export const clip = (s: string, n: number) => s.length > n ? s.slice(0, Math.flo
 export const byKeyword = (text: string, charId: string) => keywordLabel(text, { labels: cfg().onlyHave ? candidates(charId) : [], custom: cfg().custom }).label;
 /** 따로 묻기: 보조 연결로 한 번 호출 */
 export async function classify(chat: ChatX, msgs: Msg[], msg: Msg, { signal }: { signal?: AbortSignal } = {}): Promise<string> {
-  const c = cfg(), S = B.S, charId = charIdOf(msg, chat), char = S.get('chars', charId);
+  const c = cfg(), charId = charIdOf(msg, chat), char = S.get('chars', charId);
   const labels = candidates(charId); if (!labels.length) return '';
   const conn = S.helperConn('expr', chat); if (!conn) throw new Error('연결된 API 가 없어요');
-  const chars = chat.charIds.map(id => S.get('chars', id)).filter(x => !!x), ctx = B.engine.makeCtx({ chat, char: char || chars[0], chars, persona: S.persona(chat), msgs });
+  const chars = chat.charIds.map(id => S.get('chars', id)).filter(x => !!x), ctx = makeCtx({ chat, char: char || chars[0], chars, persona: S.persona(chat), msgs });
   if (msg.name && !char) ctx.char = msg.name;
-  const sys = B.engine.macro(String(c.callPrompt || '').trim() || CALL_PROMPT, { ...ctx, vars: {} }).replace(/\{\{labels\}\}/gi, labels.join(', '));
+  const sys = macro(String(c.callPrompt || '').trim() || CALL_PROMPT, { ...ctx, vars: {} }).replace(/\{\{labels\}\}/gi, labels.join(', '));
   const idx = msgs.indexOf(msg), n = Math.max(0, Math.min(6, Math.round(+c.callContext) || 0));
-  const prev = idx > 0 && n ? msgs.slice(Math.max(0, idx - n), idx).filter(m => !m.hidden && m.role !== 'system').map(m => `${m.role === 'user' ? ctx.user : (m.name || ctx.char)}: ${clip(plainText(B.core.msgText(m)), 500)}`) : [];
-  const user = (prev.length ? `[Earlier]\n${prev.join('\n\n')}\n\n` : '') + `[Latest reply by ${ctx.char}]\n${clip(plainText(extractTag(B.core.msgText(msg)).text), 1800)}`;
-  const out = await B.engine.quickCall(sys, user, { maxTokens: Math.max(16, Math.round(+c.callTokens) || 300), conn, signal });
+  const prev = idx > 0 && n ? msgs.slice(Math.max(0, idx - n), idx).filter(m => !m.hidden && m.role !== 'system').map(m => `${m.role === 'user' ? ctx.user : (m.name || ctx.char)}: ${clip(plainText(msgText(m)), 500)}`) : [];
+  const user = (prev.length ? `[Earlier]\n${prev.join('\n\n')}\n\n` : '') + `[Latest reply by ${ctx.char}]\n${clip(plainText(extractTag(msgText(msg)).text), 1800)}`;
+  const out = await quickCall(sys, user, { maxTokens: Math.max(16, Math.round(+c.callTokens) || 300), conn, signal });
   const hit = canonLabel(out, labels) || canonLabel(out, universe(charId));
   if (!hit) console.warn('[표정] 답에서 감정을 찾지 못했어요:', out);
   return hit;
@@ -166,6 +169,6 @@ export async function stripLater(chat: ChatX, msg: Msg, sw: Swipe) {
 /** 숨은 태그 지시 (추가 호출 없음) */
 export function tagInstruction(char: { id: string; name: string }, ctx?: Record<string, unknown> | null): string {
   const labels = candidates(char.id); if (labels.length < 2) return '';
-  return B.engine.macro(String(cfg().tagPrompt || '').trim() || TAG_PROMPT, { ...(ctx || { char: char.name }), char: char.name }).replace(/\{\{labels\}\}/gi, labels.join(', '));
+  return macro(String(cfg().tagPrompt || '').trim() || TAG_PROMPT, { ...(ctx || { char: char.name }), char: char.name }).replace(/\{\{labels\}\}/gi, labels.join(', '));
 }
 export function toggleStanding(v?: boolean) { const c = cfg(); c.standing = v === undefined ? !c.standing : !!v; save(); bus.sync(); }

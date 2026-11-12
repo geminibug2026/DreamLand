@@ -1,10 +1,13 @@
 // 기억 · 세계 · 이야기 탭이 함께 쓰는 작은 도구 (옛 memoria-views.js 의 「작은 도구」)
 import type { MouseEvent } from 'react';
-import { L } from '../../legacy';
-import { Memory, chatApi, toast, ui, type MemoryUi } from '../bridge';
+import type { MemoryUi } from '../types';
 import type { TimelineStore } from '../scene';
 import type { Bond, BondStep, ChatM, Mem, Msg } from '../types';
 import { makeIcons, type StOpen } from './parts';
+import { go, route } from '../../lib/router';
+import { Memory } from '../../lib/memory';
+import { chatApi } from '../../chat/actions';
+import { toast } from '../../ui';
 
 /** 이 세 화면만 쓰는 엔진 메서드 */
 export type MemoryViews = MemoryUi & {
@@ -17,7 +20,7 @@ export type MemoryViews = MemoryUi & {
   rebuildSummaries(chat: ChatM, mem: Mem, o?: { stop?: () => boolean; onProgress?: (done: number, total: number) => void }): Promise<number | null | undefined>;
   chunkText(chat: ChatM, mem: Mem, from: number, to: number, signal?: AbortSignal, strict?: boolean): Promise<string>;
 };
-export const Mx = () => Memory<MemoryViews>();
+export const Mx = () => (Memory as unknown as MemoryViews);
 
 const GL: Record<string, string> = { anchor: 'M12 8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM12 8v13M8 12h8M4 13a8 8 0 0 0 16 0', sprout: 'M12 21v-9M12 12c0-4-3-6-7-6 0 4 3 6 7 6zM12 15c0-3 2.5-5 6.5-5 0 3-2.5 5-6.5 5z', quote: 'M5 17c2-1 3-3 3-5H5V7h5v5c0 3-2 5-4 6zM14 17c2-1 3-3 3-5h-3V7h5v5c0 3-2 5-4 6z' };
 const GlIco = makeIcons(GL).Ico;
@@ -55,9 +58,9 @@ export const storyState = (st: StOpen): StoryState => (st.story ||= { tab: 'flow
 /** 그 번호의 메시지로 간다 (열려 있는 대화일 때) */
 export function jumpTo(st: StOpen, n: number) {
   const msg = st.msgs[n - 1];
-  if (!msg || chatApi().current().chat?.id !== st.chat?.id) return toast(`#${n} 메시지는 지금 화면에 불러와져 있지 않아요.`);
-  st.close?.(); if (ui().route.page !== 'chat') L.ui.go('chat', st.chat.id);
-  setTimeout(() => { chatApi().scrollTo(msg.id); const el = document.querySelector(`article.msg[data-id="${msg.id}"]`); if (el) { el.classList.add('mm-flash'); setTimeout(() => el.classList.remove('mm-flash'), 1600); } }, 300);
+  if (!msg || chatApi.current().chat?.id !== st.chat?.id) return toast(`#${n} 메시지는 지금 화면에 불러와져 있지 않아요.`);
+  st.close?.(); if (route.page !== 'chat') go('chat', st.chat.id);
+  setTimeout(() => { chatApi.scrollTo(msg.id); const el = document.querySelector(`article.msg[data-id="${msg.id}"]`); if (el) { el.classList.add('mm-flash'); setTimeout(() => el.classList.remove('mm-flash'), 1600); } }, 300);
 }
 /** 화면 맨 바깥에 건다 — #번호 단추를 누르면 그 메시지로 */
 export const onJump = (st: StOpen) => (e: MouseEvent<HTMLElement>) => { const j = (e.target as Element).closest?.<HTMLElement>('.mm-st-jump'); if (j) { e.preventDefault(); e.stopPropagation(); jumpTo(st, +(j.dataset.mes || 0)); } };

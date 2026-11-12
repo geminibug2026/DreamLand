@@ -1,11 +1,17 @@
 // 기능 › 표정: 세트 · 판정 · 표시
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { Avatar, Btn, Icon, IconBtn } from '../kit';
-import { B, errMsg, type CharX } from '../addons/legacy';
+import type { CharX } from '../addons/types';
+import { errMsg } from '../addons/parts';
 import { Check, Field, Select, openModal, useRedraw, type Opt } from '../addons/parts';
 import { ALIASES, DEFAULT_LABELS, canonLabel, cleanLabel, keywordLabel, plainText } from './pure';
 import { CALL_PROMPT, MODES, Sprites, TAG_PROMPT, bus, candidates, cfg, charCfg, clip, customOf, fallbackOf, fullName, nameOf, save, tagInstruction, universe } from './store';
 import { exportZip, importFiles } from './upload';
+import { S, pickFiles } from '../lib/core';
+import { modal } from '../ui/dom';
+import { charPicker, confirmBox, promptBox, toast } from '../ui';
+import { macro, quickCall, tokens } from '../lib/engine';
+import { chatApi } from '../chat/actions';
 
 function Range({ value, min, max, step, unit, onChange }: { value: number; min: number; max: number; step: number; unit: string; onChange: (v: number) => void }) {
   return <div className="range"><input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(+e.target.value)} /><output>{value + unit}</output></div>;
@@ -14,7 +20,7 @@ const SecHead = ({ title, desc, children }: { title: string; desc?: string; chil
   const side = Array.isArray(children) ? children.some(Boolean) : !!children;
   return <div className="exs-sec-head"><div><h4>{title}</h4>{desc ? <p>{desc}</p> : null}</div>{side ? <div className="exs-actions">{children}</div> : null}</div>;
 };
-const bigImage = (title: string, src: string) => { const img = document.createElement('img'); img.className = 'full-img'; img.src = src; img.alt = ''; B.ui.modal({ title, wide: true, body: img }); };
+const bigImage = (title: string, src: string) => { const img = document.createElement('img'); img.className = 'full-img'; img.src = src; img.alt = ''; modal({ title, wide: true, body: img }); };
 
 /** 한 감정의 그림들: 더하기 · 옮기기 · 지우기 · (사용자 정의면) 이름과 키워드 */
 function labelDialog(char: CharX, label: string, onChange: () => void) {
@@ -23,7 +29,7 @@ function labelDialog(char: CharX, label: string, onChange: () => void) {
 function LabelDetail({ char, label, onChange, close }: { char: CharX; label: string; onChange: () => void; close: () => void }) {
   const redraw = useRedraw(), c = cfg();
   const changed = () => { redraw(); onChange(); bus.sync(); };
-  const add = async () => { if (await importFiles(char.id, await B.core.pickFiles({ accept: 'image/*,.zip', multiple: true }), { label })) changed(); };
+  const add = async () => { if (await importFiles(char.id, await pickFiles({ accept: 'image/*,.zip', multiple: true }), { label })) changed(); };
   const list = Sprites.of(char.id, label), custom = customOf(label), cc = charCfg(char.id), isFb = fallbackOf(char.id) === label;
   return <>
     <div className="exs-detail-top">
@@ -34,15 +40,15 @@ function LabelDetail({ char, label, onChange, close }: { char: CharX; label: str
     {list.length ? <div className="exs-detail-grid">{list.map(a => <figure key={a.id} className="exs-fig-card">
       <button type="button" className="exs-thumb big" title="크게 보기" onClick={() => bigImage(a.name, a.data)}><img src={a.data} alt="" loading="lazy" /></button>
       <figcaption><span title={a.name}>{a.name}</span>
-        <Select cls="exs-move" value={label} opts={universe(char.id).map(l => [l, l === label ? '옮기기…' : fullName(l)] as const)} onChange={async v => { if (v === label) return; await Sprites.update(char.id, { ...a, label: v }); B.ui.toast(`${nameOf(v)}(으)로 옮겼어요`); changed(); }} />
-        <IconBtn ic="trash" title="이 그림 지우기" cls="tiny" onClick={async () => { if (!(await B.ui.confirmBox(`"${a.name}" 그림을 지울까요?`, '지우기', true))) return; await Sprites.remove(char.id, a); changed(); }} /></figcaption>
+        <Select cls="exs-move" value={label} opts={universe(char.id).map(l => [l, l === label ? '옮기기…' : fullName(l)] as const)} onChange={async v => { if (v === label) return; await Sprites.update(char.id, { ...a, label: v }); toast(`${nameOf(v)}(으)로 옮겼어요`); changed(); }} />
+        <IconBtn ic="trash" title="이 그림 지우기" cls="tiny" onClick={async () => { if (!(await confirmBox(`"${a.name}" 그림을 지울까요?`, '지우기', true))) return; await Sprites.remove(char.id, a); changed(); }} /></figcaption>
     </figure>)}</div> : null}
     {custom ? <div className="exs-custom">
       <h4>사용자 정의 감정</h4>
       <Field label="화면에 보일 이름"><input className="inp" defaultValue={custom.name || ''} placeholder={label} onChange={e => { custom.name = e.target.value.trim(); save(); onChange(); }} /></Field>
       <Field label="키워드 (쉼표로 구분)" hint="키워드로 추정할 때 답변에 이 낱말이 있으면 이 감정으로 봅니다."><input className="inp" defaultValue={custom.keys || ''} placeholder="예: 으쓱, 우쭐, smug" onChange={e => { custom.keys = e.target.value; save(); }} /></Field>
       <div className="exs-actions"><Btn label="이 감정 삭제" ic="trash" cls="danger" onClick={async () => {
-        if (!(await B.ui.confirmBox(`"${label}" 감정을 목록에서 뺄까요? 캐릭터들에 올린 그림은 지워지지 않고, 그림이 있는 캐릭터에서는 계속 보입니다.`, '삭제', true))) return;
+        if (!(await confirmBox(`"${label}" 감정을 목록에서 뺄까요? 캐릭터들에 올린 그림은 지워지지 않고, 그림이 있는 캐릭터에서는 계속 보입니다.`, '삭제', true))) return;
         c.custom = c.custom.filter(x => x.label !== label); save(); close(); onChange();
       }} /></div>
     </div> : null}
@@ -51,7 +57,7 @@ function LabelDetail({ char, label, onChange, close }: { char: CharX; label: str
 
 // 화면을 떠났다 돌아와도 남는 보기 상태
 const view = { sub: 'set', filter: 'all', query: '' };
-const pickChar = (): CharX | null => { const c = cfg(), S = B.S, { chat } = B.chat.current(); return S.get('chars', c.ui.char) || S.get('chars', chat?.charIds?.[0]) || [...S.chars].sort((a, b) => (c.chars[b.id]?.n || 0) - (c.chars[a.id]?.n || 0))[0] || null; };
+const pickChar = (): CharX | null => { const c = cfg(), { chat } = chatApi.current(); return S.get('chars', c.ui.char) || S.get('chars', chat?.charIds?.[0]) || [...S.chars].sort((a, b) => (c.chars[b.id]?.n || 0) - (c.chars[a.id]?.n || 0))[0] || null; };
 const dragOver = (e: DragEvent<HTMLElement>, stop = false) => { e.preventDefault(); if (stop) e.stopPropagation(); e.currentTarget.classList.add('over'); };
 const dragLeave = (e: DragEvent<HTMLElement>) => e.currentTarget.classList.remove('over');
 
@@ -59,16 +65,16 @@ const dragLeave = (e: DragEvent<HTMLElement>) => e.currentTarget.classList.remov
 function SetTab({ char, draw }: { char: CharX | null; draw: () => void }) {
   const prog = useRef<HTMLDivElement>(null), bar = useRef<HTMLElement>(null);
   if (!char) return <div className="card exs-card"><p className="dim exs-empty">먼저 캐릭터를 만들어 주세요.</p></div>;
-  const c = cfg(), ui = B.ui, pick = B.core.pickFiles, list = Sprites.list(char.id), have = Sprites.labels(char.id);
+  const c = cfg(), pick = pickFiles, list = Sprites.list(char.id), have = Sprites.labels(char.id);
   const progress = (n: number, total: number) => { prog.current?.classList.toggle('on', n < total); if (bar.current) bar.current.style.width = Math.round(n / Math.max(1, total) * 100) + '%'; };
   const add = async (files: File[], label = '') => { if (!files?.length) return; prog.current?.classList.add('on'); if (bar.current) bar.current.style.width = '4%'; try { await importFiles(char.id, files, { label, onProgress: progress }); } finally { prog.current?.classList.remove('on'); } draw(); };
   const cc = charCfg(char.id), all = universe(char.id), fb = fallbackOf(char.id);
   const hit = (l: string) => { const q = view.query.trim().toLowerCase(); return (!q || (l + ' ' + nameOf(l) + ' ' + (ALIASES[l] || '')).toLowerCase().includes(q)) && (view.filter === 'all' || (view.filter === 'have') === have.includes(l)); };
   const addLabel = async () => {
-    const v = await ui.promptBox('새 감정 이름 (영문 · 한글 · 숫자)', '', { placeholder: '예: smug, 졸림' }); if (v == null) return;
-    const lab = cleanLabel(v); if (!lab) return ui.toast('이름을 적어 주세요', 'err');
-    if (universe(char.id).includes(lab)) return ui.toast('이미 있는 감정이에요', 'err');
-    const known = canonLabel(lab, DEFAULT_LABELS); if (known && !(await ui.confirmBox(`"${lab}"은(는) 기본 감정 ${fullName(known)}의 다른 이름으로 알아봅니다. 그래도 따로 만들까요?`, '따로 만들기'))) return;
+    const v = await promptBox('새 감정 이름 (영문 · 한글 · 숫자)', '', { placeholder: '예: smug, 졸림' }); if (v == null) return;
+    const lab = cleanLabel(v); if (!lab) return toast('이름을 적어 주세요', 'err');
+    if (universe(char.id).includes(lab)) return toast('이미 있는 감정이에요', 'err');
+    const known = canonLabel(lab, DEFAULT_LABELS); if (known && !(await confirmBox(`"${lab}"은(는) 기본 감정 ${fullName(known)}의 다른 이름으로 알아봅니다. 그래도 따로 만들까요?`, '따로 만들기'))) return;
     c.custom.push({ label: lab, name: '', keys: '' }); save(); view.filter = 'all'; view.query = ''; draw(); labelDialog(char, lab, draw);
   };
   const chips = [['all', `전체 ${all.length}`], ['have', `그림 있음 ${all.filter(l => have.includes(l)).length}`], ['none', `비어 있음 ${all.filter(l => !have.includes(l)).length}`]];
@@ -80,7 +86,7 @@ function SetTab({ char, draw }: { char: CharX | null; draw: () => void }) {
         <Btn label="폴더" ic="folder" title="실리태번 스프라이트 폴더(characters/이름)를 통째로 고릅니다. 휴대폰에서는 ZIP 을 써 주세요" onClick={async () => add(await pick({ dir: true, multiple: true }))} />
         <Btn label="ZIP" ic="import" title="스프라이트 묶음 ZIP 가져오기" onClick={async () => add(await pick({ accept: '.zip,application/zip' }))} />
         {list.length ? <Btn label="내보내기" ic="import" cls="ghost" title="실리태번 스프라이트 폴더에 그대로 넣을 수 있는 ZIP" onClick={() => exportZip(char)} /> : null}
-        {list.length ? <Btn label="모두 지우기" ic="trash" cls="ghost" onClick={async () => { if (!(await ui.confirmBox(`${char.name}의 표정 그림 ${list.length}장을 모두 지울까요? 되돌릴 수 없어요.`, '지우기', true))) return; await Sprites.clear(char.id); ui.toast('표정 그림을 모두 지웠어요', 'ok'); bus.sync(); draw(); }} /> : null}
+        {list.length ? <Btn label="모두 지우기" ic="trash" cls="ghost" onClick={async () => { if (!(await confirmBox(`${char.name}의 표정 그림 ${list.length}장을 모두 지울까요? 되돌릴 수 없어요.`, '지우기', true))) return; await Sprites.clear(char.id); toast('표정 그림을 모두 지웠어요', 'ok'); bus.sync(); draw(); }} /> : null}
       </SecHead>
       <div className="dropzone small exs-drop" onClick={async () => add(await pick({ accept: 'image/*,.zip', multiple: true }))} onDragOver={e => dragOver(e)} onDragLeave={dragLeave}
         onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('over'); void add([...e.dataTransfer.files]); }}>
@@ -111,7 +117,7 @@ function SetTab({ char, draw }: { char: CharX | null; draw: () => void }) {
 
 // ── 판정 ──
 function DetectTab({ char, draw }: { char: CharX | null; draw: () => void }) {
-  const c = cfg(), S = B.S, ui = B.ui, alive = useRef(true);
+  const c = cfg(), alive = useRef(true);
   const testIn = useRef<HTMLTextAreaElement>(null), [out, setOut] = useState<ReactNode>(null);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const show = (n: ReactNode) => { if (alive.current) setOut(n); };
@@ -131,7 +137,7 @@ function DetectTab({ char, draw }: { char: CharX | null; draw: () => void }) {
       <SecHead title="숨은 태그 지시문" desc="답변 요청의 맨 끝에 이 지시가 붙습니다. 표정 그림이 두 가지 이상 있는 캐릭터가 말할 때만 넣습니다."><Btn label="기본값" ic="refresh" cls="ghost" onClick={() => { c.tagPrompt = ''; save(); draw(); }} /></SecHead>
       <textarea className="inp exs-prompt" rows={7} spellCheck={false} value={c.tagPrompt || ''} placeholder={TAG_PROMPT} onChange={e => { c.tagPrompt = e.target.value; save(); draw(); }} />
       <small className="hint">{'{{labels}} 자리에 고를 수 있는 감정 이름이, {{char}} 자리에 말하는 캐릭터 이름이 들어갑니다. 비워 두면 위에 흐리게 보이는 기본 지시문을 씁니다. 태그 모양 <emotion:이름> 은 바꾸지 마세요 — 이 모양이어야 떼어 내고 읽을 수 있습니다.'}</small>
-      {sample ? <small className="hint">{`지금 ${char!.name}(으)로 채우면 약 ${B.engine.tokens(sample).toLocaleString()} 토큰이 답변 요청마다 더 실립니다.`}</small> : char ? <small className="hint">{`${char.name}에게 표정 그림이 두 가지 이상 있어야 지시가 들어갑니다.`}</small> : null}
+      {sample ? <small className="hint">{`지금 ${char!.name}(으)로 채우면 약 ${tokens(sample).toLocaleString()} 토큰이 답변 요청마다 더 실립니다.`}</small> : char ? <small className="hint">{`${char.name}에게 표정 그림이 두 가지 이상 있어야 지시가 들어갑니다.`}</small> : null}
       <Check label="태그가 빠진 답변은 키워드로 추정하기" on={c.tagFallback} onChange={v => { c.tagFallback = v; save(); draw(); }} />
     </div></div> : null}
     {c.mode === 'call' ? <div className="card exs-card"><div className="exs-sec">
@@ -151,13 +157,13 @@ function DetectTab({ char, draw }: { char: CharX | null; draw: () => void }) {
         <Btn label="키워드로 추정" ic="search" onClick={() => showScore(keywordLabel(testIn.current?.value, { labels: char && c.onlyHave ? candidates(char.id) : [], custom: c.custom }))} />
         <Btn label="모델에게 묻기 (호출 1회)" ic="sparkle" cls="ghost" onClick={async e => {
           const text = testIn.current?.value || '';
-          if (!text.trim()) return ui.toast('먼저 글을 적어 주세요');
-          const labels = char && candidates(char.id).length > 1 ? candidates(char.id) : universe(char?.id), conn = S.helperConn('expr', B.chat.current().chat);
-          if (!conn) return ui.toast('연결된 API 가 없어요', 'err');
+          if (!text.trim()) return toast('먼저 글을 적어 주세요');
+          const labels = char && candidates(char.id).length > 1 ? candidates(char.id) : universe(char?.id), conn = S.helperConn('expr', chatApi.current().chat);
+          if (!conn) return toast('연결된 API 가 없어요', 'err');
           const b = e.currentTarget; b.disabled = true; show('묻는 중…');
           try {
-            const sys = B.engine.macro(String(c.callPrompt || '').trim() || CALL_PROMPT, { char: char?.name || 'the character', user: S.settings.userNameFallback as string | undefined, vars: {} }).replace(/\{\{labels\}\}/gi, labels.join(', '));
-            const res = await B.engine.quickCall(sys, `[Latest reply by ${char?.name || 'the character'}]\n${clip(plainText(text), 1800)}`, { maxTokens: Math.max(16, +c.callTokens || 300), conn });
+            const sys = macro(String(c.callPrompt || '').trim() || CALL_PROMPT, { char: char?.name || 'the character', user: S.settings.userNameFallback as string | undefined, vars: {} }).replace(/\{\{labels\}\}/gi, labels.join(', '));
+            const res = await quickCall(sys, `[Latest reply by ${char?.name || 'the character'}]\n${clip(plainText(text), 1800)}`, { maxTokens: Math.max(16, +c.callTokens || 300), conn });
             const l = canonLabel(res, labels) || canonLabel(res, universe(char?.id));
             show(<><b>{l ? fullName(l) : '답에서 감정을 찾지 못했어요'}</b><span className="chip static">{`모델의 답: ${String(res).slice(0, 60) || '(빈 답)'}`}</span></>);
           } catch (err) { show('실패: ' + errMsg(err)); } finally { b.disabled = false; }
@@ -223,10 +229,10 @@ export function ExprStudio() {
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const c = cfg(), S = B.S, char = pickChar();
+  const c = cfg(), char = pickChar();
   const list = char ? Sprites.list(char.id) : [], have = char ? Sprites.labels(char.id) : [];
   const mode = MODES.find(m => m[0] === c.mode) || MODES[0];
-  const choose = () => B.ui.charPicker({ title: '표정을 관리할 캐릭터', multi: false, selected: char ? [char.id] : [], note: x => c.chars[x.id]?.n ? `표정 ${c.chars[x.id].n}장` : '', onDone: async ([id]) => { c.ui.char = id; save(); await Sprites.load(id); draw(); } });
+  const choose = () => charPicker({ title: '표정을 관리할 캐릭터', multi: false, selected: char ? [char.id] : [], note: x => c.chars[x.id]?.n ? `표정 ${c.chars[x.id].n}장` : '', onDone: async ([id]) => { c.ui.char = id; save(); await Sprites.load(id); draw(); } });
   const sub = TABS.some(t => t[0] === view.sub) ? view.sub : 'set';
   return <>
     <div className="exs-head">

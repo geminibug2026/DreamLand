@@ -1,6 +1,12 @@
 // 캐릭터 에셋: 설정 · 안내문 채우기 · 올리기 · 내보내기 (화면 없는 부분)
-import { mod } from '../legacy';
-import { B, errMsg, type AssetRec, type ChatX, type CharX, type Persona } from '../addons/legacy';
+import type { AssetRec, ChatX, CharX, Persona } from '../addons/types';
+import type { Settings } from '../lib/types';
+import { errMsg } from '../addons/parts';
+import * as libAssets from '../lib/assets';
+import { confirmBox, toast } from '../ui';
+import { bytesToDataURL, mimeOf, readDataURL, S, dataURLToBytes, download, pickFiles } from '../lib/core';
+import { X } from '../lib/hooks';
+import { chatApi } from '../chat/actions';
 
 export interface AssetsApi {
   IMG: RegExp; keyOf(s: string): string; baseOf(s: string): string;
@@ -15,9 +21,7 @@ export interface AssetsApi {
   names(owners: string[]): string[]; grouped(owners: string[]): string; count(owners: string[]): number; keywords(owners: string[]): string;
 }
 interface ZipFile { name: string; data: Uint8Array }
-interface AssetsMod { Assets: AssetsApi; unzip(buf: ArrayBuffer): Promise<ZipFile[]>; zip(files: ZipFile[]): Uint8Array | Blob; ASSET_PROMPT: string }
-const M = () => mod<AssetsMod>('assets');
-export const A = (): AssetsApi => M().Assets;
+export const A = (): AssetsApi => libAssets.Assets as unknown as AssetsApi;
 
 export interface AstPreset { id: string; name: string; prompt: string }
 export interface CharCfg { link: string; ver: string; vers: string[] }
@@ -89,7 +93,7 @@ export const STYLES: [string, string, string][] = [['plain', '그대로', '꾸�
 const DEFAULTS = { depth: 2, style: 'ink', maxSize: 400, lazy: true, zoom: true, webp: false, confirmOverwrite: true };
 
 export function cfg(): AssetsCfg {
-  const c = B.S.settings.assets as AssetsCfg;
+  const c = S.settings.assets as unknown as AssetsCfg;
   if (!Array.isArray(c.presets) || !c.presets.length) {
     c.presets = DEFAULT_PRESETS.map((p, i) => ({ id: 'd' + i, ...p }));
     if (c.prompt?.trim()) { c.presets.push({ id: 'custom', name: '내 안내문', prompt: c.prompt }); c.preset = 'custom'; }
@@ -101,31 +105,31 @@ export function cfg(): AssetsCfg {
   for (const [k, d] of Object.entries(DEFAULTS)) if (rec[k] === undefined) rec[k] = d;
   return c;
 }
-export const save = () => B.S.set({ assets: cfg() });
+export const save = () => S.set({ assets: cfg() as unknown as Settings['assets'] });
 export const presetOf = (): AstPreset => { const c = cfg(); return c.presets.find(p => p.id === c.preset) || c.presets[0]; };
 export const charCfg = (id: string): CharCfg => { const c = cfg(), cc = (c.chars[id] ||= { link: '', ver: '', vers: [] }); if (!Array.isArray(cc.vers)) cc.vers = []; return cc; };
-export const ownersOf = (chat?: ChatX | null, persona?: Persona): string[] => chat ? [...chat.charIds.map(A().ownerOfChar), A().ownerOfPersona((persona || B.S.persona(chat))?.id)] : [];
-const charKey = (id?: string) => { if (!id) return ''; const o = A().ownerOfChar(id), src = B.S.get('chars', A().source(o).slice(5)), v = A().verOf(o); return (src?.name || '') + (v ? '/' + v : ''); };
+export const ownersOf = (chat?: ChatX | null, persona?: Persona): string[] => chat ? [...chat.charIds.map(A().ownerOfChar), A().ownerOfPersona((persona || S.persona(chat))?.id)] : [];
+const charKey = (id?: string) => { if (!id) return ''; const o = A().ownerOfChar(id), src = S.get('chars', A().source(o).slice(5)), v = A().verOf(o); return (src?.name || '') + (v ? '/' + v : ''); };
 const randOf = (owners: string[], prefix: unknown) => { const k = String(prefix || '').trim().toLowerCase(); if (!k) return ''; const hit = owners.flatMap(o => A().active(o)).filter(a => a.name.startsWith(k)); return hit.length ? hit[Math.floor(Math.random() * hit.length)].name : ''; };
 
 /** 안내문의 빈칸 채우기 */
 export function renderPrompt(owners: string[], charId?: string, text: string = presetOf().prompt): string {
   const c = cfg(), As = A();
   const v: Record<string, () => string> = { img_keywords: () => As.names(owners).join(', '), img_keywords_autogen: () => As.names(owners).join(', '), img_keywords_grouped: () => As.grouped(owners) || As.names(owners).join(', '), keywords: () => As.keywords(owners), img_count: () => String(As.count(owners)), max: () => String(c.max || 2), charkey: () => charKey(charId) };
-  return String(text || M().ASSET_PROMPT).replace(/\{\{(img_keywords_autogen|img_keywords_grouped|img_keywords|img_count|keywords|max|charkey)\}\}/gi, (_m, k: string) => v[k.toLowerCase()]())
+  return String(text || libAssets.ASSET_PROMPT).replace(/\{\{(img_keywords_autogen|img_keywords_grouped|img_keywords|img_count|keywords|max|charkey)\}\}/gi, (_m, k: string) => v[k.toLowerCase()]())
     .replace(/\{\{img_rand::([^{}]+)\}\}/gi, (_m, p: string) => randOf(owners, p)).replace(/\{\{img_resolve::([^{}]+)\}\}/gi, (_m, n: string) => As.resolve(owners, n)?.name || '');
 }
 
 /** 프롬프트 조각 · 매크로를 등록한다 (studio.js 의 기본 조각을 대신한다) */
 export function registerPrompt() {
-  const X = B.X, As = A();
+  const As = A();
   X.prompt = X.prompt.filter(p => p.owner !== 'assets');
   X.prompt.push({ owner: 'assets', fn: ({ chat, persona }) => {
     const c = cfg(); if (!c.inject) return [];
     const owners = ownersOf(chat, persona); if (!As.count(owners)) return [];
     return [{ where: 'depth', depth: Math.max(0, +c.depth || 0), order: 40, content: renderPrompt(owners, chat.charIds[0]), src: `에셋 안내문 (${presetOf().name})` }];
   } });
-  const here = () => { const { chat } = B.chat.current(); return { owners: ownersOf(chat), charId: chat?.charIds?.[0] || '' }; };
+  const here = () => { const { chat } = chatApi.current(); return { owners: ownersOf(chat), charId: chat?.charIds?.[0] || '' }; };
   const macro = (name: string, fn: (args: string[]) => string) => X.macros.set(name, { owner: 'assets', fn });
   macro('img_keywords', () => As.names(here().owners).join(', '));
   macro('img_keywords_autogen', () => As.names(here().owners).join(', '));
@@ -146,7 +150,7 @@ export const PATHS = {
 export async function copy(text: string, msg: string) {
   try { await navigator.clipboard.writeText(text); }
   catch { const t = document.createElement('textarea'); t.value = text; t.style.position = 'fixed'; t.style.opacity = '0'; document.body.append(t); t.select(); try { document.execCommand('copy'); } catch { /* 복사할 길이 없다 */ } t.remove(); }
-  B.ui.toast(msg);
+  toast(msg);
 }
 const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'image/avif': 'avif' };
 const extOf = (dataUrl: string) => EXT[String(dataUrl).slice(5, String(dataUrl).indexOf(';'))] || 'png';
@@ -157,9 +161,9 @@ export const SAMPLE = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="ht
 interface UpItem { fileName: string; mime: string; load(): Promise<string> }
 /** 고른 파일(이미지 · ZIP)을 한 줄로 펼친다 */
 async function gather(files: File[]): Promise<UpItem[]> {
-  const out: UpItem[] = [], { mimeOf, bytesToDataURL, readDataURL } = B.core;
+  const out: UpItem[] = [];
   for (const f of files) {
-    if (/\.zip$/i.test(f.name)) { for (const z of await M().unzip(await f.arrayBuffer())) if (A().IMG.test(z.name) && !/(^|\/)(__MACOSX\/|\._)/.test(z.name)) out.push({ fileName: z.name.split('/').pop() || '', mime: mimeOf(z.name), load: async () => bytesToDataURL(z.data, mimeOf(z.name)) }); }
+    if (/\.zip$/i.test(f.name)) { for (const z of await libAssets.unzip(await f.arrayBuffer())) if (A().IMG.test(z.name) && !/(^|\/)(__MACOSX\/|\._)/.test(z.name)) out.push({ fileName: z.name.split('/').pop() || '', mime: mimeOf(z.name), load: async () => bytesToDataURL(z.data, mimeOf(z.name)) }); }
     else if (f.type?.startsWith('image/') || A().IMG.test(f.name)) out.push({ fileName: f.name, mime: f.type || mimeOf(f.name), load: () => readDataURL(f) });
   }
   return out;
@@ -174,7 +178,7 @@ function toWebp(dataUrl: string, mime: string): Promise<string> {
   });
 }
 export async function upload(owner: string, ver: string, files: File[], onProgress: (n: number, total: number) => void = () => { }): Promise<number> {
-  const { toast, confirmBox } = B.ui, As = A();
+  const As = A();
   let items: UpItem[];
   try { items = await gather(files); } catch (e) { toast('파일을 읽지 못했어요: ' + errMsg(e), 'err'); return 0; }
   if (!items.length) { toast('넣을 이미지가 없어요 (PNG · JPEG · WebP · GIF · ZIP)'); return 0; }
@@ -193,13 +197,13 @@ export async function upload(owner: string, ver: string, files: File[], onProgre
   return n;
 }
 export async function uploadFromUrl(owner: string, ver: string, rawUrl: string, label?: string): Promise<number> {
-  const { toast } = B.ui, url = String(rawUrl || '').trim();
+  const url = String(rawUrl || '').trim();
   if (!/^https?:\/\//i.test(url)) { toast('http(s) 로 시작하는 이미지 주소를 적어 주세요', 'err'); return 0; }
   let blob: Blob;
   try { const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status); blob = await r.blob(); }
   catch (e) { toast('이미지를 받아 오지 못했어요 (그 사이트가 다른 곳에서의 요청을 막았을 수 있어요): ' + errMsg(e), 'err'); return 0; }
   const fromUrl = safeDecode(url.split(/[?#]/)[0].split('/').pop() || '');
-  const mime = blob.type?.startsWith('image/') ? blob.type : A().IMG.test(fromUrl) ? B.core.mimeOf(fromUrl) : '';
+  const mime = blob.type?.startsWith('image/') ? blob.type : A().IMG.test(fromUrl) ? mimeOf(fromUrl) : '';
   if (!mime) { toast('이미지 파일이 아니에요', 'err'); return 0; }
   const name = (label || A().keyOf(fromUrl) || 'image') + '.' + (mime.split('/')[1] || 'png').replace('jpeg', 'jpg');
   return upload(owner, ver, [new File([blob], name, { type: mime })]);
@@ -228,35 +232,33 @@ export function tidyPlan(list: AssetRec[], o: TidyOpt): TidyStep[] {
 
 // ════════ 내보내기 · 백업 ════════
 export async function exportZip(char: CharX) {
-  const { toast } = B.ui, As = A(), owner = As.ownerOfChar(char.id); await As.load([owner]);
+  const As = A(), owner = As.ownerOfChar(char.id); await As.load([owner]);
   const list = As.list(owner); if (!list.length) return toast('내보낼 에셋이 없어요');
   const seen = new Set<string>(), files: ZipFile[] = [];
-  for (const a of list) { let name = `${a.ver ? safeFile(a.ver) + '/' : ''}${safeFile(a.name)}.${extOf(a.data)}`; while (seen.has(name)) name = name.replace(/(\.\w+)$/, '_$1'); seen.add(name); files.push({ name, data: B.core.dataURLToBytes(a.data) }); }
-  B.core.download(`${safeFile(char.name)}_assets.zip`, M().zip(files), 'application/zip');
+  for (const a of list) { let name = `${a.ver ? safeFile(a.ver) + '/' : ''}${safeFile(a.name)}.${extOf(a.data)}`; while (seen.has(name)) name = name.replace(/(\.\w+)$/, '_$1'); seen.add(name); files.push({ name, data: dataURLToBytes(a.data) }); }
+  download(`${safeFile(char.name)}_assets.zip`, libAssets.zip(files), 'application/zip');
   toast(`에셋 ${files.length}개를 ZIP 으로 내보냈어요`, 'ok');
 }
 export function exportSettings() {
-  B.core.download(`dreamland-assets-settings_${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ type: 'dreamland-assets-settings', version: 1, exportedAt: new Date().toISOString(), settings: cfg() }, null, 2));
-  B.ui.toast('설정을 내보냈어요', 'ok');
+  download(`dreamland-assets-settings_${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ type: 'dreamland-assets-settings', version: 1, exportedAt: new Date().toISOString(), settings: cfg() }, null, 2));
+  toast('설정을 내보냈어요', 'ok');
 }
 export async function importSettings(done: () => void) {
-  const { toast, confirmBox } = B.ui;
-  const [f] = await B.core.pickFiles({ accept: '.json' }); if (!f) return;
+  const [f] = await pickFiles({ accept: '.json' }); if (!f) return;
   let data: { type?: string; settings?: Partial<AssetsCfg> } | null; try { data = JSON.parse(await f.text()); } catch { return toast('JSON 파일을 읽지 못했어요', 'err'); }
   const s = data?.type === 'dreamland-assets-settings' ? data.settings : null;
   if (!s || typeof s !== 'object' || !Array.isArray(s.presets)) return toast('드림랜드 에셋 설정 백업 파일이 아니에요', 'err');
   if (!(await confirmBox('지금 설정(프리셋 · 캐릭터별 링크와 버전 · 표시 옵션)을 백업 내용으로 바꿀까요?', '복원'))) return;
-  B.S.set({ assets: { ...(B.S.settings.assets as AssetsCfg), ...s } }); cfg();
+  S.set({ assets: { ...S.settings.assets, ...s } }); cfg();
   toast('설정을 복원했어요', 'ok'); done();
 }
 export function exportPreset() {
   const p = presetOf();
-  B.core.download(`asset-preset_${safeFile(p.name)}.json`, JSON.stringify([{ name: p.name, prompt: p.prompt }], null, 2));
-  B.ui.toast(`"${p.name}" 프리셋을 내보냈어요`, 'ok');
+  download(`asset-preset_${safeFile(p.name)}.json`, JSON.stringify([{ name: p.name, prompt: p.prompt }], null, 2));
+  toast(`"${p.name}" 프리셋을 내보냈어요`, 'ok');
 }
 export async function importPresets(done: () => void) {
-  const { toast, confirmBox } = B.ui;
-  const [f] = await B.core.pickFiles({ accept: '.json' }); if (!f) return;
+  const [f] = await pickFiles({ accept: '.json' }); if (!f) return;
   let data: unknown; try { data = JSON.parse(await f.text()); } catch { return toast('JSON 파일을 읽지 못했어요', 'err'); }
   const wrap = data as { presets?: unknown } | null;
   const raw: unknown[] = Array.isArray(data) ? data : Array.isArray(wrap?.presets) ? wrap.presets : [data];

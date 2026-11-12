@@ -1,66 +1,73 @@
 // 대화 메뉴 · 그룹 만들기 · 상태 메뉴 · 이 대화에서 찾기 · 이 방의 시각
+import { editSchedule } from '../schedule/Editor';
 import { useReducer, useState } from 'react';
 import { charPicker, confirmBox, menu, openModal, promptBox, toast, type MenuItem, type ModalHandle } from '../ui';
-import { B } from './bridge';
 import { cur, ui } from './store';
 import { charsOf, drawMain, drawSide, drawTop, jumpTo, modeOf, presenceOf, titleOf } from './actions';
 import { inspector } from './Inspector';
 import { liveSettings } from './LiveSettings';
 import type { Cast, ClockCfg, Room } from './types';
+import { S, download, emit, msgText } from '../lib/core';
+import { go } from '../lib/router';
+import { Live, mo } from '../lib/live';
+import { Clock, clockHint } from '../lib/clock';
+import { STATUS, scheduleOf } from '../lib/f-schedule';
+import { chatToStJsonl } from '../lib/cards';
+import { startMenu } from './start';
+import { Assets } from '../lib/assets';
 
 export interface TopHooks { narrow: boolean; setMode(k: 'rp' | 'talk'): void; find(): void; me(a: Element): void; pres(a: Element): void }
 
 export const presItems = (c: Room, chars: Cast[]): MenuItem[] => [
-  ...chars.map(ch => { const p = presenceOf(c, ch); return { label: `${ch.name} · ${B.sched.STATUS[p.status]}`, hint: p.activity || (B.sched.scheduleOf(ch) ? '' : '일정 없음'), ic: 'moon', onclick: () => B.sched.Schedule.edit(ch) }; }),
+  ...chars.map(ch => { const p = presenceOf(c, ch); return { label: `${ch.name} · ${STATUS[p.status]}`, hint: p.activity || (scheduleOf(ch) ? '' : '일정 없음'), ic: 'moon', onclick: () => editSchedule(ch) }; }),
   '-', { label: '먼저 오는 연락 · 상태 설정', ic: 'sliders', onclick: () => { liveSettings('auto', c); } }];
 export const meItems = (): MenuItem[] => {
-  const mo = B.live.mo, Live = B.Live;
-  return [
+    return [
     ...Object.entries(Live.userStatuses).map(([k, l]) => ({ label: l, ic: mo('userStatus') === k ? 'check' : 'user', hint: k === 'dnd' ? '먼저 오는 연락 없음' : k === 'hidden' ? '오프라인처럼 보임' : k === 'idle' ? '' : `${mo('userIdleMin') || 0}분 뒤 자동 자리 비움`, onclick: () => Live.setUserStatus(k) })),
-    '-', { label: '하는 일 적기', ic: 'edit', hint: String(mo('userActivity') || ''), onclick: async () => { const v = await promptBox('지금 하는 일 (캐릭터에게 보여요)', String(mo('userActivity') || ''), { placeholder: '예: 회의 중' }); if (v !== null) { B.S.settings.modes.userActivity = v.trim(); B.S.set({}); } } }];
+    '-', { label: '하는 일 적기', ic: 'edit', hint: String(mo('userActivity') || ''), onclick: async () => { const v = await promptBox('지금 하는 일 (캐릭터에게 보여요)', String(mo('userActivity') || ''), { placeholder: '예: 회의 중' }); if (v !== null) { S.settings.modes.userActivity = v.trim(); S.set({}); } } }];
 };
 
 export function chatMenu(anchor: Element, c: Room, top: TopHooks | null = null) {
-  const S = B.S, talk = modeOf(c) === 'talk', N = top?.narrow ? top : null, parent = c.parent && S.get('chats', c.parent.id);
+  const talk = modeOf(c) === 'talk', N = top?.narrow ? top : null, parent = c.parent && S.get('chats', c.parent.id);
   menu(anchor, [
     ...(N ? [
       { label: talk ? 'RP 모드로 바꾸기' : '대화 모드로 바꾸기', ic: talk ? 'feather' : 'chat', hint: talk ? '소설처럼' : '메신저처럼', onclick: () => N.setMode(talk ? 'rp' : 'talk') },
       talk ? { label: '캐릭터 상태 · 일정', ic: 'moon', onclick: () => N.pres(anchor) } : null,
-      talk ? { label: '내 상태', ic: 'user', hint: B.Live.userStatus().label, onclick: () => N.me(anchor) } : null,
-      { label: '꿈 일기장', ic: 'book', onclick: () => B.core.emit('diary:open', c) },
+      talk ? { label: '내 상태', ic: 'user', hint: Live.userStatus().label, onclick: () => N.me(anchor) } : null,
+      { label: '꿈 일기장', ic: 'book', onclick: () => emit('diary:open', c) },
       { label: '이 대화에서 찾기', ic: 'search', onclick: N.find },
-      { label: '같은 캐릭터와 새 대화', ic: 'plus', onclick: () => B.oldChat.startMenu(anchor, c.charIds) },
+      { label: '같은 캐릭터와 새 대화', ic: 'plus', onclick: () => startMenu(anchor, c.charIds) },
       { label: '프롬프트 살펴보기', ic: 'code', onclick: inspector },
       '-'] as MenuItem[] : []),
-    talk ? { label: '이 방의 시각', ic: 'moon', hint: B.clock.clockHint(c), onclick: () => { clockDialog(c, () => { if (c.id === cur.chat?.id) drawMain(); }); } } : null,
+    talk ? { label: '이 방의 시각', ic: 'moon', hint: clockHint(c), onclick: () => { clockDialog(c, () => { if (c.id === cur.chat?.id) drawMain(); }); } } : null,
     { label: '대화 모드 설정', ic: 'sliders', hint: '선톡 · 장면 · 상태창', onclick: () => { liveSettings(modeOf(c) === 'talk' ? 'auto' : 'tracker', c); } },
     { label: c.pinned ? '고정 풀기' : '맨 위에 고정', ic: 'star', onclick: async () => { c.pinned = !c.pinned; await S.save('chats', c, true); drawSide(); } },
-    parent ? { label: '원래 대화방으로', ic: 'branch', onclick: () => B.ui.go('chat', parent.id) } : null,
+    parent ? { label: '원래 대화방으로', ic: 'branch', onclick: () => go('chat', parent.id) } : null,
     { label: '이름 바꾸기', ic: 'edit', onclick: async () => { const v = await promptBox('대화 이름', c.name); if (v !== null) { c.name = v; await S.save('chats', c, true); drawSide(); if (c.id === cur.chat?.id) drawTop(); } } },
-    { label: 'JSONL 로 내보내기', ic: 'import', hint: '실리태번 호환', onclick: async () => { const ms = await S.msgs(c.id); B.core.download(`${titleOf(c)}-${c.id}.jsonl`, B.cards.chatToStJsonl(c, ms, S.persona(c).name, charsOf(c)[0]?.name || 'Character'), 'application/jsonl'); } },
-    { label: '텍스트로 내보내기', ic: 'note', onclick: async () => { const ms = await S.msgs(c.id); B.core.download(`${titleOf(c)}.txt`, ms.filter(m => !m.hidden).map(m => `${m.role === 'user' ? S.persona(c).name : m.role === 'system' ? '나레이션' : (m.name || titleOf(c))}: ${B.core.msgText(m)}`).join('\n\n'), 'text/plain'); } },
+    { label: 'JSONL 로 내보내기', ic: 'import', hint: '실리태번 호환', onclick: async () => { const ms = await S.msgs(c.id); download(`${titleOf(c)}-${c.id}.jsonl`, chatToStJsonl(c, ms, S.persona(c).name, charsOf(c)[0]?.name || 'Character'), 'application/jsonl'); } },
+    { label: '텍스트로 내보내기', ic: 'note', onclick: async () => { const ms = await S.msgs(c.id); download(`${titleOf(c)}.txt`, ms.filter(m => !m.hidden).map(m => `${m.role === 'user' ? S.persona(c).name : m.role === 'system' ? '나레이션' : (m.name || titleOf(c))}: ${msgText(m)}`).join('\n\n'), 'text/plain'); } },
     '-',
     { label: '대화 삭제', ic: 'trash', danger: true, onclick: async () => {
       if (!(await confirmBox(`"${titleOf(c)}" 대화를 삭제할까요?`, '삭제', true))) return;
       if (cur.gen?.chat === c) cur.abort?.abort();
-      await B.Assets.removeOwner('chat:' + c.id); await S.remove('chats', c.id);
-      if (c.id === cur.chat?.id) { cur.chat = null; S.set({ lastChat: '' }); B.ui.go('chat'); } else drawSide();
+      await Assets.removeOwner('chat:' + c.id); await S.remove('chats', c.id);
+      if (c.id === cur.chat?.id) { cur.chat = null; S.set({ lastChat: '' }); go('chat'); } else drawSide();
     } },
   ]);
 }
 
 export function groupDialog() {
-  if (B.S.chars.length < 2) return toast('그룹 채팅은 캐릭터가 둘 이상 있어야 해요');
-  charPicker({ title: '그룹 채팅에 함께할 캐릭터', onDone: ids => { if (ids.length < 2) return toast('두 명 이상 골라 주세요'); B.oldChat.startMenu(ui.side || document.body, ids); } });
+  if (S.chars.length < 2) return toast('그룹 채팅은 캐릭터가 둘 이상 있어야 해요');
+  charPicker({ title: '그룹 채팅에 함께할 캐릭터', onDone: ids => { if (ids.length < 2) return toast('두 명 이상 골라 주세요'); startMenu(ui.side || document.body, ids); } });
 }
 
 function Find({ close }: { close: () => void }) {
   const [q, setQ] = useState('');
   const term = q.trim().toLowerCase();
-  const hits = term ? cur.msgs.map((x, i) => ({ x, i, t: B.core.msgText(x) })).filter(o => o.t.toLowerCase().includes(term)).slice(-80).reverse() : null;
+  const hits = term ? cur.msgs.map((x, i) => ({ x, i, t: msgText(x) })).filter(o => o.t.toLowerCase().includes(term)).slice(-80).reverse() : null;
   return <div className="col"><input className="inp" placeholder="찾을 말" value={q} onChange={e => setQ(e.target.value)} />
     <div className="find-list">{hits && (hits.length ? hits.map(o => { const at = o.t.toLowerCase().indexOf(term); return <button className="find-item" key={o.x.id} onClick={() => { close(); jumpTo(o.x); }}>
-      <b>{`${String(o.i + 1).padStart(3, '0')} · ${o.x.role === 'user' ? B.S.persona(cur.chat).name : (o.x.name || '나레이션')}`}</b><span>{(at > 30 ? '…' : '') + o.t.slice(Math.max(0, at - 30), at + 90).replace(/\s+/g, ' ')}</span></button>; }) : <p className="dim">찾는 말이 없어요.</p>)}</div></div>;
+      <b>{`${String(o.i + 1).padStart(3, '0')} · ${o.x.role === 'user' ? S.persona(cur.chat).name : (o.x.name || '나레이션')}`}</b><span>{(at > 30 ? '…' : '') + o.t.slice(Math.max(0, at - 30), at + 90).replace(/\s+/g, ' ')}</span></button>; }) : <p className="dim">찾는 말이 없어요.</p>)}</div></div>;
 }
 export function findInChat() { const m: ModalHandle = openModal({ title: '이 대화에서 찾기', body: <Find close={() => m.close()} /> }); }
 
@@ -69,8 +76,7 @@ const pad = (n: number) => String(n).padStart(2, '0');
 const local = (t: number) => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 function ClockDlg({ chat }: { chat: Room }) {
   const [gen, redraw] = useReducer((x: number) => x + 1, 0);
-  const Clock = B.Clock;
-  const set = async (patch: ClockCfg) => { chat.clock = { mode: 'real', at: Date.now(), setAt: Date.now(), flow: 'real', step: 5, ai: false, ...(chat.clock || {}), ...patch }; await B.S.save('chats', chat, true); B.core.emit('clock', chat); redraw(); };
+    const set = async (patch: ClockCfg) => { chat.clock = { mode: 'real', at: Date.now(), setAt: Date.now(), flow: 'real', step: 5, ai: false, ...(chat.clock || {}), ...patch }; await S.save('chats', chat, true); emit('clock', chat); redraw(); };
   const c: ClockCfg = chat.clock || { mode: 'real' }, mode = c.mode || 'real';
   const card = (k: 'real' | 'story' | 'none', title: string, desc: string) => <button type="button" className={'clock-opt' + (mode === k ? ' on' : '')} onClick={() => void set(k === 'story' && mode !== 'story' ? { mode: k, at: Clock.ms(chat), setAt: Date.now() } : { mode: k })}><i /><b>{title}</b><small>{desc}</small></button>;
   const jump = (min: number) => { const now = Clock.ms(chat); let t = now + min * 60000; if (!min) { const d = new Date(now); t = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 8, 0).getTime(); } void set({ at: t, setAt: Date.now() }); };

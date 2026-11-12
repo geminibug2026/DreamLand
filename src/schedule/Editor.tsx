@@ -1,15 +1,16 @@
 // 주간 일정: 주간 띠 · 편집 창 · 캐릭터 한 줄 · 기능 화면 › 일정
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { mod } from '../legacy';
 import { Avatar, Btn, IconBtn, useEvents } from '../kit';
-import { usePaged, type ModalHandle } from '../ui';
-import { B, errMsg, isAbort, type CharX } from '../addons/legacy';
+import { usePaged, type ModalHandle, confirmBox, menu, toast } from '../ui';
+import type { CharX } from '../addons/types';
+import { errMsg, isAbort } from '../addons/parts';
 import { openModal } from '../addons/parts';
-import { DAY, DAYS, FREE, STATUS, blockAt, dayIndex, fmtMin, hasBlocks, normDay, normWeek, toMin, type Block, type Sched, type Status } from './logic';
-import { generate, putSchedule, rawSchedule, scheduleOf } from './store';
+import { DAY, DAYS, FREE, STATUS, Schedule, blockAt, dayIndex, fmtMin, hasBlocks, normDay, normWeek, putSchedule, rawSchedule, scheduleOf, toMin, type Block, type Sched, type Status } from '../lib/f-schedule';
+import * as libClock from '../lib/clock';
+import { S } from '../lib/core';
 
-const clock = () => mod<{ Clock: { date(): Date } }>('clock').Clock.date();
+const clock = () => libClock.Clock.date();
 const pct = (n: number) => n / DAY * 100 + '%';
 
 /** 주간 띠: 요일마다 24시간을 상태 무늬로 */
@@ -39,7 +40,6 @@ function Committed({ as = 'input', onCommit, onTyping, ...rest }: { as?: 'input'
 interface Job { ctl: AbortController | null }
 /** 주간 일정 편집기 (div.sched 안) */
 function Editor({ ch, job }: { ch: CharX; job: Job }) {
-  const toast = B.ui.toast;
   const [sched, setSched] = useState<Sched>(() => { const s = rawSchedule(ch) || { on: true, days: Array.from({ length: 7 }, () => []), guide: '' }; return { ...s, days: normWeek(s.days) }; });
   const [day, setDay] = useState(() => dayIndex(clock())), [busy, setBusy] = useState(false);
   const cur = useRef(sched); cur.current = sched;
@@ -49,13 +49,13 @@ function Editor({ ch, job }: { ch: CharX; job: Job }) {
   const setDayBlocks = (i: number, blocks: Block[]) => commit({ days: cur.current.days.map((d, k) => k === i ? normDay(blocks) : d) });
   const run = async (only: number) => {
     if (busy) { job.ctl?.abort(); return; }
-    if (only < 0 && hasBlocks(cur.current) && !(await B.ui.confirmBox('지금 일정을 새로 짠 일정으로 바꿀까요? (호출 1회)', '새로 짜기'))) return;
+    if (only < 0 && hasBlocks(cur.current) && !(await confirmBox('지금 일정을 새로 짠 일정으로 바꿀까요? (호출 1회)', '새로 짜기'))) return;
     const ctl = job.ctl = new AbortController(); setBusy(true);
-    try { const days = await generate(ch, { guide: cur.current.guide || '', only, signal: ctl.signal }); commit({ days, on: true }); toast(only >= 0 ? `${DAYS[only]}요일 일정을 새로 짰어요` : '일주일 일정을 짰어요', 'ok'); }
+    try { const days = await Schedule.generate(ch, { guide: cur.current.guide || '', only, signal: ctl.signal }); commit({ days, on: true }); toast(only >= 0 ? `${DAYS[only]}요일 일정을 새로 짰어요` : '일주일 일정을 짰어요', 'ok'); }
     catch (e) { if (!isAbort(e)) toast('일정 만들기 실패: ' + errMsg(e), 'err'); }
     finally { job.ctl = null; if (alive.current) setBusy(false); }
   };
-  const copyTo = (anchor: Element) => B.ui.menu(anchor, ([['평일 모두 (월–금)', [0, 1, 2, 3, 4]], ['주말 (토·일)', [5, 6]], ['모든 요일', [0, 1, 2, 3, 4, 5, 6]], ...DAYS.map((d, i) => [`${d}요일`, [i]])] as [string, number[]][])
+  const copyTo = (anchor: Element) => menu(anchor, ([['평일 모두 (월–금)', [0, 1, 2, 3, 4]], ['주말 (토·일)', [5, 6]], ['모든 요일', [0, 1, 2, 3, 4, 5, 6]], ...DAYS.map((d, i) => [`${d}요일`, [i]])] as [string, number[]][])
     .filter(([, to]) => to.some(i => i !== day)).map(([label, to]) => ({ label, onclick: () => { const src = cur.current.days[day]; commit({ days: cur.current.days.map((d, i) => to.includes(i) ? src.map(b => ({ ...b })) : d) }); toast('복사했어요'); } })));
   const [tick, setTick] = useState(0);   // 못 읽은 시각을 적었을 때 칸을 저장된 값으로 되돌린다
   const list = sched.days[day], At = hasBlocks(sched) ? blockAt(sched) : null, off = sched.on === false, now = new Date();
@@ -91,7 +91,7 @@ function Editor({ ch, job }: { ch: CharX; job: Job }) {
     <div className="sched-gen">
       <label className="field"><span className="field-label">바라는 점 (선택)</span><Committed as="textarea" className="inp" rows={2} defaultValue={sched.guide || ''} placeholder="예: 야간 근무라 낮에 자요 / 주말에는 늦잠" onTyping={v => { guide.current = v; cur.current.guide = v; }} onCommit={() => commit({ guide: guide.current })} /></label>
       <div className="row wrap"><Btn label={busy ? '멈추기' : hasBlocks(sched) ? 'AI 로 일주일 다시 짜기' : 'AI 로 일주일 짜기'} ic={busy ? 'stop' : 'sparkle'} cls="primary" onClick={() => void run(-1)} />
-        {hasBlocks(sched) ? <Btn label="모두 비우기" cls="ghost" onClick={async () => { if (await B.ui.confirmBox(`${ch.name}의 일정을 모두 비울까요?`, '비우기', true)) commit({ days: Array.from({ length: 7 }, () => []) }); }} /> : null}
+        {hasBlocks(sched) ? <Btn label="모두 비우기" cls="ghost" onClick={async () => { if (await confirmBox(`${ch.name}의 일정을 모두 비울까요?`, '비우기', true)) commit({ days: Array.from({ length: 7 }, () => []) }); }} /> : null}
         <small className="hint">{busy ? '일정을 짜는 중…' : '버튼을 누를 때만 모델을 부릅니다 (일주일 1회 · 요일 하나 1회). 캐릭터 설명을 읽고 짜며, 짠 뒤에는 손으로 고칠 수 있어요.'}</small></div>
     </div>
   </>;
@@ -120,7 +120,7 @@ export function rowNode(ch: CharX, onDone?: () => void): HTMLElement {
 
 /** 기능 화면의 탭 (div.card.sched-studio 안): 캐릭터가 많아도 찾을 수 있게 검색 + 일정이 있는 캐릭터 먼저 */
 export function ScheduleStudio() {
-  const draw = useEvents('chars'), S = B.S;
+  const draw = useEvents('chars');
   const [q, setQ] = useState('');
   const t = q.trim().toLowerCase(), rows = S.chars.filter(c => !t || (c.name + ' ' + (c.tags || []).join(' ')).toLowerCase().includes(t)).sort((a, b) => +hasBlocks(rawSchedule(b)) - +hasBlocks(rawSchedule(a)) || a.name.localeCompare(b.name, 'ko'));
   const pg = usePaged(rows, { id: 'schedule', perPage: 30, resetKey: t });

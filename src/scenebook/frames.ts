@@ -2,25 +2,25 @@
 // 액자 그림은 이 기기의 보관함(IndexedDB)에 두고, 설정에는 고른 액자의 id 만 남긴다. 화면 표시만 바꾸며 그림 원본은 그대로다.
 // 옛 js/scenebook-frames.js 를 옮긴 것. applyFrame 은 DOM 을 건드리는 대신 무엇을 씌울지 알려 주는 frameLayout 이 되었다
 import type { CSSProperties } from 'react';
-import { C } from './bridge';
 import { FRAMES } from './framing';
 import { ORNAMENTS, INKS, ORNAMENT_PAD, ornamentParts } from './ornaments';
 import type { FrameRec } from './types';
+import * as C from '../lib/core';
 
 export const FRAME_OWNER = 'illust:frames';
 const store = new Map<string, FrameRec>();   // id → { id, name, data, width, height, window:[x,y,w,h], mask }
 let loading: Promise<void> | null = null;
 export const Frames = {
   /** 저장된 액자 그림을 읽어 둔다 (한 번만) */
-  load() { return loading ||= C().DB.byOwner(FRAME_OWNER).then(list => { for (const f of list) if (f.kind === 'illust-frame') store.set(f.id, f as FrameRec); }).catch(e => console.warn('[삽화 액자]', e)); },
+  load() { return loading ||= C.DB.byOwner(FRAME_OWNER).then(list => { for (const f of list) if (f.kind === 'illust-frame') store.set(f.id, f as unknown as FrameRec); }).catch(e => console.warn('[삽화 액자]', e)); },
   list: () => [...store.values()].sort((a, b) => (a.ts || 0) - (b.ts || 0)),
   get: (id: string) => store.get(id),
   async add(file: File): Promise<FrameRec> {
     if (store.size >= 24) throw new Error('액자 그림은 최대 24개예요.');
-    const rec: FrameRec = { id: C().uid(), owner: FRAME_OWNER, kind: 'illust-frame', ...await readFrameImage(file), ts: C().now() };
-    await C().DB.put('assets', rec); store.set(rec.id, rec); return rec;
+    const rec: FrameRec = { id: C.uid(), owner: FRAME_OWNER, kind: 'illust-frame', ...await readFrameImage(file), ts: C.now() };
+    await C.DB.put('assets', rec); store.set(rec.id, rec); return rec;
   },
-  async remove(id: string) { await C().DB.del('assets', id); store.delete(id); },
+  async remove(id: string) { await C.DB.del('assets', id); store.delete(id); },
 };
 
 /** 가운데가 투명한 PNG · WebP 에서 창의 위치와 모양을 찾는다 */

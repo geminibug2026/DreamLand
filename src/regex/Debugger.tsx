@@ -1,12 +1,14 @@
 // 정규식 파이프라인 디버거: 글 하나가 어떤 스크립트를 어떤 순서로 거치는지 단계별로 보여 준다
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Btn, Icon } from '../kit';
-import type { Char, Chat } from '../types';
-import { S, arr, copyText, debounce, openModal, type Msg, type Preset } from '../studio/bridge';
+import type { Char } from '../types';
+import type { Msg } from '../studio/parts';
 import { E, G, Lint, RX, TARGETS, WHO, chatLabel, clip, lastChat, lintOf, scName, scShort, type Env, type Sc, type Step, type Target, type Who } from './lib';
 import { openEditor } from './Editor';
 import { DiffText, PlainText } from './parts';
 import { pickMessage } from './pick';
+import { S } from '../lib/core';
+import { arr, copyText, debounce, openModal } from '../studio/parts';
 
 interface Tr { out: string; steps: Step[]; env: Env }
 interface St { chatId: string; text: string; who: Who; depth?: number; charId: string; presetId: string; target: Target; edit: boolean; all: boolean; msg: Msg | null; msgs: Msg[]; auto: { display: number; prompt?: number } | null }
@@ -16,14 +18,14 @@ const scOf = (s: Step): Sc => (s.kind === 'global' ? G : { kind: s.kind, id: s.o
 function StepRow({ s, n, env, rerun }: { s: Step; n: number; env: Env; rerun: () => void }) {
   const [drawn, setDrawn] = useState(false);
   const hits = s.matches?.length || 0, changed = !s.skip && s.after !== s.before, kind = s.skip ? 'skip' : changed ? 'hit' : 'miss';
-  const status = s.skip ? Lint().SKIP_TEXT[s.skip] || s.skip : changed ? `${hits}곳 바꿈` : hits ? `${hits}곳 찾았지만 글은 그대로` : '맞는 곳 없음';
+  const status = s.skip ? Lint.SKIP_TEXT[s.skip] || s.skip : changed ? `${hits}곳 바꿈` : hits ? `${hits}곳 찾았지만 글은 그대로` : '맞는 곳 없음';
   const openBtn = <Btn label="스크립트 열기" cls="ghost" ic="edit" onClick={() => openEditor(s.r, scOf(s), { onClose: rerun })} />;
   let body = null;
-  if (drawn && s.skip) body = <div className="rx-step-body"><p>{Lint().skipDetail(s.skip, s.r, env)}</p>{s.kind !== 'global' && <small className="hint">{scName(scOf(s))}</small>}<div className="row">{openBtn}</div></div>;
+  if (drawn && s.skip) body = <div className="rx-step-body"><p>{Lint.skipDetail(s.skip, s.r, env)}</p>{s.kind !== 'global' && <small className="hint">{scName(scOf(s))}</small>}<div className="row">{openBtn}</div></div>;
   else if (drawn) {
-    const T = Lint().tally(s.matches), before = s.before || '', after = s.after || '';
+    const T = Lint.tally(s.matches), before = s.before || '', after = s.after || '';
     body = <div className="rx-step-body"><code className="rx-src">{s.source}</code>
-      {hits ? <DiffText text={before} matches={s.matches} /> : <ul className="rx-why">{Lint().whyNoMatch(lintOf(s.r), before).map((t, i) => <li key={i}>{t}</li>)}</ul>}
+      {hits ? <DiffText text={before} matches={s.matches} /> : <ul className="rx-why">{Lint.whyNoMatch(lintOf(s.r), before).map((t, i) => <li key={i}>{t}</li>)}</ul>}
       <div className="row wrap">{hits ? <small className="hint">{`${T.removed.toLocaleString()}자를 ${T.added.toLocaleString()}자로 · ${before.length.toLocaleString()}자 → ${after.length.toLocaleString()}자`}</small> : null}{openBtn}</div></div>;
   }
   return <details className={`rx-step ${kind}`} onToggle={e => { if (e.currentTarget.open) setDrawn(true); }}>
@@ -35,21 +37,21 @@ function Body({ init }: { init: { chatId?: string; text?: string } }) {
   const [st] = useState<St>(() => ({ chatId: init.chatId ?? lastChat()?.id ?? '', text: init.text || '', who: 'ai', depth: 0, charId: '', presetId: '', target: 'display', edit: false, all: false, msg: null, msgs: [], auto: null }));
   const [traces, setTraces] = useState<Partial<Record<Target, Tr>>>({}), [gen, setGen] = useState(0), draw = () => setGen(n => n + 1);
   const seq = useRef(0), alive = useRef(true);
-  const chatOf = () => S().get<Chat>('chats', st.chatId) || null;
+  const chatOf = () => S.get('chats', st.chatId) || null;
   const envFor = (target: Target) => {
     const chat = chatOf(), depth = target === 'store' ? undefined : st.auto ? st.auto[target] : st.depth;
-    return E().regexEnv({ who: st.who, target, depth, charId: st.charId || (chat?.charIds?.length === 1 ? chat.charIds[0] : undefined), chat, preset: st.presetId ? S().get<Preset>('presets', st.presetId) : undefined, edit: target === 'store' && st.edit });
+    return E.regexEnv({ who: st.who, target, depth, charId: st.charId || (chat?.charIds?.length === 1 ? chat.charIds[0] : undefined), chat, preset: st.presetId ? S.get('presets', st.presetId) : undefined, edit: target === 'store' && st.edit });
   };
   /** 한 단계씩: 건너뛸지 판정 → 멈추지 않는지 확인 → 실행. engine.js 의 traceRegex 와 같은 판정 · 같은 실행 */
   const trace = async (target: Target, my: number): Promise<Tr | null> => {
     const env = envFor(target), steps: Step[] = []; let text = st.text;
-    for (const it of E().regexScripts({ chat: env.chat, charId: env.charId, preset: env.preset, all: true })) {
-      if (!(it.skip || E().regexSkip(it.r, env))) {
-        const re = E().compileRegex(E().regexFind(it.r, env.ctx));
+    for (const it of E.regexScripts({ chat: env.chat, charId: env.charId, preset: env.preset, all: true })) {
+      if (!(it.skip || E.regexSkip(it.r, env))) {
+        const re = E.compileRegex(E.regexFind(it.r, env.ctx));
         if (re && text && !(await RX().probe(re.source, re.flags, text)).ok) { steps.push({ id: it.r.id, name: it.r.name, kind: it.kind, owner: it.owner, r: it.r, skip: 'hang' }); continue; }
         if (my !== seq.current) return null;
       }
-      const s = E().regexStep(it, text, env); steps.push(s); if (!s.skip) text = s.after ?? text;
+      const s = E.regexStep(it, text, env); steps.push(s); if (!s.skip) text = s.after ?? text;
     }
     return { out: text, steps, env };
   };
@@ -73,7 +75,7 @@ function Body({ init }: { init: { chatId?: string; text?: string } }) {
     ctl();
   };
 
-  const chat = chatOf(), chars = arr(chat?.charIds).map(id => S().get<Char>('chars', id)).filter((c): c is Char => !!c), auto = chat ? S().presetFor(chat) : S().preset();
+  const chat = chatOf(), chars = arr(chat?.charIds).map(id => S.get('chars', id)).filter((c): c is Char => !!c), auto = chat ? S.presetFor(chat) : S.preset();
   const tr = traces[st.target];
   const tabs = <div className="rx-chips">{TARGETS.map(([t, label]) => { const x = traces[t], n = x ? x.steps.filter(s => !s.skip && s.after !== s.before).length : 0; return <button key={t} type="button" className={'chip' + (st.target === t ? ' on' : '')} onClick={() => { st.target = t; if (st.auto) st.depth = st.auto[t === 'prompt' ? 'prompt' : 'display']; draw(); }}>{label}{x ? <small>{n ? `${n}개가 바꿈` : '그대로'}</small> : null}</button>; })}</div>;
   let out = <>{tabs}<p className="dim">글을 넣으면 어떤 스크립트가 어떤 순서로 적용되는지 단계별로 보여 줍니다.</p></>;
@@ -94,7 +96,7 @@ function Body({ init }: { init: { chatId?: string; text?: string } }) {
   return <div className="rx-dbg">
     <div className="rx-dbg-ctl"><div className="form">
       <label className="field"><span className="field-label">대화방</span><select className="inp" value={st.chatId} onChange={e => { st.chatId = e.target.value; st.msg = null; st.auto = null; ctl(); }}>
-        <option value="">대화 없이 (전역 + 고른 프리셋)</option>{[...S().chats].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 150).map(c => <option key={c.id} value={c.id}>{clip(chatLabel(c), 50)}</option>)}</select></label>
+        <option value="">대화 없이 (전역 + 고른 프리셋)</option>{[...S.chats].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 150).map(c => <option key={c.id} value={c.id}>{clip(chatLabel(c), 50)}</option>)}</select></label>
       <div className="rx-dbg-msg"><Btn label={st.msg ? '다른 메시지 고르기' : '대화에서 메시지 고르기'} ic="chat" onClick={() => void pick()} />
         <small className="hint">{st.msg ? `#${st.msgs.indexOf(st.msg) + 1} 메시지를 보고 있어요. 대상과 깊이는 메시지에 맞춰 두었습니다.` : chat ? '메시지를 고르면 대상 · 깊이 · 화자가 저절로 맞춰집니다.' : '대화를 고르면 그 방의 캐릭터 · 프리셋 범위까지 함께 봅니다.'}</small></div>
       <label className="field"><span className="field-label">확인할 글</span><textarea className="inp rx-mono" rows={5} spellCheck={false} placeholder="확인할 글을 붙여 넣거나, 위에서 대화의 메시지를 고르세요." value={st.text} onChange={e => { st.text = e.target.value; ctl(); }} /></label>
@@ -103,7 +105,7 @@ function Body({ init }: { init: { chatId?: string; text?: string } }) {
       <label className="field half" hidden={chars.length < 2}><span className="field-label">화자</span><select className="inp" value={st.charId} onChange={e => { st.charId = e.target.value; ctl(); }}>
         <option value="">{chars.length > 1 ? '내 글 · 화자 없음' : chars[0]?.name || '캐릭터 없음'}</option>{chars.length > 1 ? chars.map(c => <option key={c.id} value={c.id}>{c.name}</option>) : null}</select></label>
       <label className="field half"><span className="field-label">프리셋</span><select className="inp" value={st.presetId} onChange={e => { st.presetId = e.target.value; ctl(); }}>
-        <option value="">{`${chat ? '이 대화의 프리셋' : '사용 중인 프리셋'} · ${auto?.name || ''}`}</option>{S().presets.filter(p => p !== auto).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+        <option value="">{`${chat ? '이 대화의 프리셋' : '사용 중인 프리셋'} · ${auto?.name || ''}`}</option>{S.presets.filter(p => p !== auto).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
       <label className="check pill" hidden={!store}><input type="checkbox" checked={st.edit} onChange={e => { st.edit = e.target.checked; ctl(); }} /><i /><span>메시지를 고쳐 저장하는 경우</span></label>
     </div></div>
     <div className="rx-dbg-out">{out}</div>

@@ -2,20 +2,26 @@
 import { useEffect, useState } from 'react';
 import type { FeatureDef } from '../main';
 import { Btn } from '../kit';
-import { B, NEEDS, errMsg, type ChatX, type Msg } from '../addons/legacy';
+import type { ChatX, Msg } from '../addons/types';
+import { errMsg } from '../addons/parts';
 import { Check, Select, reactNode, useRedraw, type Opt } from '../addons/parts';
 import { DEFAULT_LABELS, TAG_QUICK, canonLabel, extractTag, hidePartial } from '../expressions/pure';
 import { MODES, Sprites, byKeyword, candidates, cfg, charIdOf, classify, currentOf, fullName, lastReply, live, nameOf, ownerOf, persist, save, setExpr, stripLater, tagInstruction, toggleStanding, typingIn, universe } from '../expressions/store';
 import { schedule, sync, watchStage } from '../expressions/stage';
 import { openPicker } from '../expressions/Picker';
 import { ExprStudio } from '../expressions/Studio';
+import { DB, on, S } from '../lib/core';
+import { go } from '../lib/router';
+import { toast } from '../ui';
+import { X } from '../lib/hooks';
+import { chatApi } from '../chat/actions';
 
-function openStudioTab() { B.ui.go('studio'); const t = [...document.querySelectorAll<HTMLElement>('#page .tabs .tab')].find(b => b.textContent === '표정'); if (t && !t.classList.contains('on')) t.click(); }
+function openStudioTab() { go('studio'); const t = [...document.querySelectorAll<HTMLElement>('#page .tabs .tab')].find(b => b.textContent === '표정'); if (t && !t.classList.contains('on')) t.click(); }
 
 /** 장면 패널: 지금 표정 (초상 영역이 없는 좁은 화면에서도 보고 바꿀 수 있게) */
 function ExprPanel({ chat, msgs }: { chat: ChatX; msgs: Msg[] }) {
-  const draw = useRedraw(), c = cfg(), toast = B.ui.toast;
-  const chars = chat.charIds.map(id => B.S.get('chars', id)).filter(x => !!x);
+  const draw = useRedraw(), c = cfg();
+  const chars = chat.charIds.map(id => S.get('chars', id)).filter(x => !!x);
   const [ready, setReady] = useState(() => chars.every(ch => Sprites.has(ch.id)));
   useEffect(() => {
     if (ready) return; let alive = true;
@@ -44,7 +50,7 @@ function ExprPanel({ chat, msgs }: { chat: ChatX; msgs: Msg[] }) {
 }
 
 const emote = async (arg: string) => {
-  const S = B.S, toast = B.ui.toast, { chat, msgs } = B.chat.current(); if (!chat) return toast('열린 대화가 없어요', 'err');
+  const { chat, msgs } = chatApi.current(); if (!chat) return toast('열린 대화가 없어요', 'err');
   let text = String(arg || '').trim(), charId = '';
   // 그룹: "/emote 이름: 감정" 또는 "/emote 이름 감정"
   for (const ch of chat.charIds.map(id => S.get('chars', id)).filter(x => !!x)) if (text.toLowerCase().startsWith(ch.name.toLowerCase()) && /^[\s:：]/.test(text.slice(ch.name.length))) { charId = ch.id; text = text.slice(ch.name.length).replace(/^[\s:：]+/, ''); break; }
@@ -59,7 +65,6 @@ const emote = async (arg: string) => {
 };
 
 function setup() {
-  const { on, DB } = B.core, S = B.S, X = B.X, toast = B.ui.toast;
 
   on('generate:start', () => live.clear());
   on('generate:end', () => { live.clear(); schedule(); });
@@ -84,14 +89,14 @@ function setup() {
       if (label || (ex.found && !later)) await persist(chat, msg);
       sync();
       if (c.mode === 'call' && c.show && has && candidates(charId).length > 1) {
-        const text = sw.text, here = () => B.chat.current().chat?.id === chat.id;
-        const msgs = here() ? B.chat.current().msgs : await S.msgs(chat.id);
-        if (here()) B.chat.setStatus('표정 고르는 중…');
+        const text = sw.text, here = () => chatApi.current().chat?.id === chat.id;
+        const msgs = here() ? chatApi.current().msgs : await S.msgs(chat.id);
+        if (here()) chatApi.setStatus('표정 고르는 중…');
         try {
           const got = await classify(chat, msgs, msg);
           if (got && msg.swipes[msg.sw] === sw && extractTag(sw.text).text === extractTag(text).text) { sw.expr = got; delete sw.exprPick; await persist(chat, msg); sync(); }
         } catch (e) { console.warn('[표정]', e); toast('표정 판정 실패: ' + errMsg(e), 'err'); }
-        finally { if (here()) B.chat.setStatus(''); }
+        finally { if (here()) chatApi.setStatus(''); }
       }
     } catch (e) { console.warn('[표정]', e); }
   });
@@ -99,14 +104,14 @@ function setup() {
     const chat = data as ChatX;
     try {
       await Sprites.load(chat.charIds);
-      const cur = B.chat.current();
+      const cur = chatApi.current();
       if (cur.chat?.id === chat.id) {   // 지난번에 떼지 못한 태그가 남아 있으면 정리
         let dirty = false;
         for (const m of cur.msgs) if (m.role === 'assistant') for (const sw of m.swipes || []) if (sw.text && TAG_QUICK.test(sw.text)) {
           const ex = extractTag(sw.text); if (!ex.found) continue;
           sw.text = ex.text; const l = canonLabel(ex.label, universe(charIdOf(m, chat))); if (l && !sw.expr) sw.expr = l; dirty = true;
         }
-        if (dirty) await B.chat.save();
+        if (dirty) await chatApi.save();
       }
     } catch (e) { console.warn('[표정]', e); }
     sync();
@@ -132,18 +137,18 @@ function setup() {
   const exprAt = X.filters.findIndex(f => f.owner === 'modules');
   X.filters.splice(exprAt < 0 ? X.filters.length : exprAt, 0, { owner: 'expr', fn: (text, info) => {
     if (!text || text.indexOf('<') < 0) return text;
-    const busy = B.chat.current().busy, ex = extractTag(text);
+    const busy = chatApi.current().busy, ex = extractTag(text);
     if (ex.found && busy && info?.msg && info.role === 'assistant' && ex.label) {
       const l = canonLabel(ex.label, universe(charIdOf(info.msg, info.chat)));
       if (l && live.get(info.msg.id) !== l) { live.set(info.msg.id, l); schedule(); }
     }
     return busy ? hidePartial(ex.text) : ex.text;
   } });
-  X.macros.set('expression', { owner: 'expr', fn: () => { const { chat, msgs } = B.chat.current(); return chat ? currentOf(chat, msgs, chat.charIds[0]).label : ''; } });
+  X.macros.set('expression', { owner: 'expr', fn: () => { const { chat, msgs } = chatApi.current(); return chat ? currentOf(chat, msgs, chat.charIds[0]).label : ''; } });
 
   // ── 메시지 ⋯ 메뉴 · 입력창 + 메뉴 · 명령어 ──
   X.actions = X.actions.filter(a => a.owner !== 'expr');
-  X.actions.push({ owner: 'expr', id: 'expr-pick', label: '표정 바꾸기', icon: 'user', run: (msg, chat) => openPicker(msg, chat) });
+  X.actions.push({ owner: 'expr', id: 'expr-pick', label: '표정 바꾸기', icon: 'user', run: (msg, chat) => openPicker(msg, chat!) });
   X.composer = X.composer.filter(a => a.owner !== 'expr');
   X.composer.push({ owner: 'expr', id: 'expr-standing', icon: 'user', get label() { return cfg().standing ? '스탠딩 끄기' : '스탠딩 보기'; }, run: () => toggleStanding() });
   X.commands.set('/emote', { owner: 'expr', help: '마지막 답변의 표정을 바꿉니다 · 예: /emote 기쁨, /emote anger (비우면 고르는 창)', run: emote });
@@ -159,4 +164,4 @@ function setup() {
   watchStage();
 }
 
-export const feature: FeatureDef = { name: 'expressions', needs: [...NEEDS, 'assets'], setup };
+export const feature: FeatureDef = { name: 'expressions', setup };

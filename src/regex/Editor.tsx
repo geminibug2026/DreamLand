@@ -2,10 +2,11 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Btn, Icon, IconBtn } from '../kit';
-import { toast, confirmBox, Switch, arr, copyText, debounce, openModal, type ModalX, type Regex } from '../studio/bridge';
+import type { ModalX, Regex } from '../studio/parts';
 import { E, Lint, MODES, RX, WHO, chatLabel, clip, ctxOf, exportOne, lastChat, redrawChat, scName, type Match, type Sc } from './lib';
 import { DiffText, HitsText, Issues, PlainText } from './parts';
 import { pickMessage, pickTarget } from './pick';
+import { Switch, arr, confirmBox, copyText, debounce, openModal, toast } from '../studio/parts';
 
 const samples = new Map<string, string>();   // 스크립트 id → 마지막 시험 입력 (이번 실행 동안)
 type View = 'diff' | 'hits' | 'result' | 'each';
@@ -27,16 +28,16 @@ function Body({ r, ctl, m, tab0 }: { r: Regex; ctl: Ctl; m: ModalX; tab0: 'form'
   const run = async () => {
     const my = ++ctl.seq, text = sampleRef.current; samples.set(r.id, text);
     const set = (o: Out) => { if (alive.current && my === ctl.seq) setOut(o); };
-    const lint = Lint().lintScript(r);
+    const lint = Lint.lintScript(r);
     if (!text) return set({ kind: 'empty' });
     if (!lint.ok) return set({ kind: 'stop', msg: '찾기 문장에 오류가 있어 돌릴 수 없어요. 위의 진단을 먼저 확인하세요.' });
-    const chat = lastChat(), ctx = ctxOf(chat), src = E().regexFind(r, ctx), re = E().compileRegex(src);
-    if (!re) { const why = Lint().lintScript({ ...r, find: src }).issues.find(x => x.level === 'error')?.msg || ''; return set({ kind: 'stop', msg: `매크로를 넣은 뒤의 패턴 ${clip(src, 80)} 을(를) 정규식으로 읽지 못했어요. ${why} "기호를 글자로 바꿔 넣기" 를 써 보세요.` }); }
+    const chat = lastChat(), ctx = ctxOf(chat), src = E.regexFind(r, ctx), re = E.compileRegex(src);
+    if (!re) { const why = Lint.lintScript({ ...r, find: src }).issues.find(x => x.level === 'error')?.msg || ''; return set({ kind: 'stop', msg: `매크로를 넣은 뒤의 패턴 ${clip(src, 80)} 을(를) 정규식으로 읽지 못했어요. ${why} "기호를 글자로 바꿔 넣기" 를 써 보세요.` }); }
     const pr = await RX().probe(re.source, re.flags, text); if (my !== ctl.seq) return;
     if (!pr.ok) return set({ kind: 'stop', msg: HANG });
-    const tr: { matches?: Match[] } = {}, result = E().runRegexScript({ ...r, enabled: true }, text, ctx, tr), T = Lint().tally(tr.matches);
+    const tr: { matches?: Match[] } = {}, result = E.runRegexScript({ ...r, enabled: true }, text, ctx, tr), T = Lint.tally(tr.matches);
     const note = /\{\{/.test(r.find + r.replace + arr(r.trim).join('')) ? (chat ? `매크로는 "${chatLabel(chat)}" 기준으로 채웠어요.` : '열린 대화가 없어 매크로는 채우지 않았어요.') : '';
-    if (!T.found) return set({ kind: 'none', why: Lint().whyNoMatch(lint, text), note });
+    if (!T.found) return set({ kind: 'none', why: Lint.whyNoMatch(lint, text), note });
     set({ kind: 'ok', text, result, matches: tr.matches || [], ...T, note });
   };
   const test = useMemo(() => debounce(() => { void run(); }, 220), []);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -45,7 +46,7 @@ function Body({ r, ctl, m, tab0 }: { r: Regex; ctl: Ctl; m: ModalX; tab0: 'form'
   useEffect(() => { alive.current = true; test(); return () => { alive.current = false; }; }, []);
   useEffect(() => { const h2 = head.current?.querySelector('h2'); if (h2) h2.textContent = r.name || '이름 없는 정규식'; });
 
-  const lint = Lint().lintScript(r);
+  const lint = Lint.lintScript(r);
   const note = (t: string) => t ? <small className="hint">{t}</small> : null;
   let result: ReactNode = null;
   if (out.kind === 'empty') result = <p className="dim">시험할 글을 넣으면 찾은 곳 · 괄호로 잡은 부분 · 바뀐 결과를 단계별로 보여 줍니다.</p>;

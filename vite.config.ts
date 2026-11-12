@@ -1,10 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// React 판: next.html → dist/next.html. 아직 옮기지 않은 화면은 /js 의 모듈을 실행 중에 그대로 불러 쓴다
+// index.html → dist/index.html. 서버는 / 에서 dist/index.html 을 연다 (dist/ 는 저장소에 함께 넣는다)
 export default defineConfig({
   plugins: [react()],
   base: '/dist/',
   publicDir: false,
-  build: { outDir: 'dist', emptyOutDir: true, rollupOptions: { input: 'next.html' } },
+  build: { outDir: 'dist', emptyOutDir: true, rollupOptions: { input: 'index.html' } },
 });

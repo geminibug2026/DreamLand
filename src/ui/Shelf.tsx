@@ -1,12 +1,12 @@
 // 목록 정리: 정렬(최근 사용 · 자주 쓰는 순 · 이름 · 만든 순 · 직접 순서) · 즐겨찾기 · 폴더 · 검색 · 쪽 나누기
 // LibraryPage 의 list 자리에 넣어 쓴다: list={ctx => <Shelf ctx={ctx} coll="presets" … />}
 import { useLayoutEffect, useReducer, useRef, useState, type ReactNode } from 'react';
-import { L } from '../legacy';
 import { Icon, IconBtn } from '../kit';
 import { useDragSort } from './dragSort';
 import { menu, type MenuItem } from './menu';
 import { confirmBox, openModal, promptBox } from './Modal';
 import { crossPageItems, usePaged } from './Pager';
+import { S, uid } from '../lib/core';
 
 /** 항목에 붙는 정리 필드. 내보낼 때는 stripShelf 로 뺀다 */
 export interface ShelfFields { pinned?: boolean; folder?: string; order?: number; usedAt?: number; useCount?: number; createdAt?: number }
@@ -20,7 +20,7 @@ interface ShelfPrefs { sort?: ShelfSort; closed?: string[]; flat?: boolean }
 
 type Item = { id: string; name?: string } & ShelfFields & Record<string, unknown>;
 interface AnyStore { settings: Record<string, unknown>; get(coll: string, id: string): unknown; save(coll: string, o: unknown, silent?: boolean): Promise<unknown>; set(patch: Record<string, unknown>): void }
-const St = () => L.core.S as unknown as AnyStore & Record<string, unknown>;
+const St = () => S as unknown as AnyStore & Record<string, unknown>;
 
 /** 쓰였다고 적는다. count 가 false 면 시각만 (생성할 때마다 횟수가 불어나지 않게, 30분 안에 다시 쓰면 횟수는 그대로) */
 export async function markUsed(coll: string, id: string | undefined, explicit = true) {
@@ -110,7 +110,7 @@ export function Shelf<T extends { id: string }>({ ctx, coll, active, text, folde
   // ── 폴더 ──
   const newFolder = async () => {
     const v = await promptBox('폴더 이름', '', { placeholder: '예: 자주 쓰는 것, 실험용, 친구가 준 것' }); if (!v?.trim()) return null;
-    const fo = { id: L.core.uid(), name: v.trim().slice(0, 40) }; saveFolders([...folders, fo]); if (prefs.flat) setPrefs(coll, { flat: false }); redraw(); return fo;
+    const fo = { id: uid(), name: v.trim().slice(0, 40) }; saveFolders([...folders, fo]); if (prefs.flat) setPrefs(coll, { flat: false }); redraw(); return fo;
   };
   const moveTo = async (ids: string[], fid: string) => { for (const id of ids) { const o = S.get(coll, id) as Item | undefined; if (o && (o.folder || '') !== fid) { o.folder = fid; await save(o); } } };
   const fill = (fo: ShelfFolder) => pickMany(`"${fo.name}"에 담기`, [...all].sort(byName), all.filter(o => folderOf(o) === fo.id).map(o => o.id),

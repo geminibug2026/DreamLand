@@ -1,14 +1,18 @@
 // 장기기억 — 개요 탭 (옛 f-memoria.js 의 vOverview): 주입 미리보기 · 회상 경로 · 장면 연출 · 서고에 질문 · 사서에게 정정 요청
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { Btn, Icon } from '../../kit';
-import { Memory, memMod, toast, tokens, type EditorOp, type LogLine, type RecallRow } from '../bridge';
+import type { EditorOp, LogLine, RecallRow } from '../types';
 import { Ib, Ico, KindBadge, None, Sec, Stats, busyBtn, confirmList, histOf, review, safe, showSource, turnTag, withCheckpoint, type StOpen } from './parts';
+import { Memory } from '../../lib/memory';
+import { toast } from '../../ui';
+import { tokens } from '../../lib/engine';
+import * as memMod from '../../lib/memory';
 
 const SEC_KO: Record<string, string> = { Canon: '캐논', Cast: '인물', Bonds: '관계선', 'Notable Items': '물건', 'Turning Points': '전환점', 'Story So Far': '요약', Pledges: '서약', 'Recent Turns': '최근 턴', 'Recalled Moments': '회상', 'Hidden Knowledge': '비공개', 'Source Excerpts': '자료실', 'Scene Now': '현재 장면', 'Status Board': '상태', Direction: '연출' };
 const PLEDGE_ST: Record<string, string> = { active: '유효', resolved: '해결됨', dormant: '잠듦' };
 /** 사서가 제안한 정정 한 건을 사람이 읽는 글로 */
 export function opText(o: EditorOp): string {
-  const { KINDS, LOCKS, fmtDays } = memMod(), k = String(o.kind || '');
+  const { KINDS, LOCKS, fmtDays } = memMod, k = String(o.kind || '');
   const f: Record<string, () => string> = {
     canon: () => `캐논: ${o.scopeName ? `${o.scopeName}의 ` : ''}${o.key} → "${o.value}"`, status: () => `상태: ${o.entity}.${o.slot} → "${o.value}"${o.claim === 'belief' ? ` (${o.owner || '누군가'}의 믿음)` : ''}`,
     clock: () => `서사 시계: t${o.fromTurn}–t${o.toTurn} 구간을 총 ${fmtDays(+(o.totalDays || 0) || 0)}(으)로 재조정`, addMemory: () => `기억 추가 (${KINDS[k] || o.kind || KINDS.fact}) → "${o.summary}"`, editMemory: () => `기억 수정 (${o.id}) → "${o.summary}"`, deleteMemory: () => `기억 삭제 (${o.id})`,
@@ -20,7 +24,7 @@ export function opText(o: EditorOp): string {
 const enter = (fn: () => void) => (e: KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); fn(); } };
 
 export function Overview({ st }: { st: StOpen }) {
-  const M = Memory(), cfg = M.cfg(), { chat, mem, msgs } = st, hist = histOf(msgs);
+  const M = Memory, cfg = M.cfg(), { chat, mem, msgs } = st, hist = histOf(msgs);
   const p = M.packet(chat, hist, { preview: true, msgs, force: true }), auto = M.packet(chat, hist, { preview: true, fresh: true, msgs, force: true });
   const once = M.overridden(chat.id), pin = mem.packetPin?.text, lastReal = M.last(chat.id), budget = cfg.tokenBudget;
   // 미리보기 글 — 다시 그려도 치던 글 · 커서가 남는다. 초안 · 장부가 바뀌었을 때만 새 값으로

@@ -3,11 +3,16 @@ import { useEffect, useReducer, useRef, type CSSProperties, type MouseEvent, typ
 import { flushSync } from 'react-dom';
 import { Btn, Icon, IconBtn, Moon, mountInto } from '../kit';
 import { confirmBox, menu, promptBox } from '../ui';
-import { Illust, K, S, core, ui } from './bridge';
 import { bindDialog, editPrompts, fontDialog, memoDialog } from './dialogs';
 import { DIARY_DEF, MEMO_DEF, TYPE, answerNote, book, charOf, dreamOf, fontOf, fontStyle, jumpTo, loadChat, pagesOf, save, syncChat, tellErr, titleOf, writeDiary } from './logic';
 import { MoonDial, Paras, Polaroid, Ticket } from './parts';
-import type { DChat, DiaryEntry, Msg, Page } from './types';
+import type { DChar as Char, DChat, DiaryEntry, Msg, Page } from './types';
+import { Illust } from '../lib/illust';
+import { S } from '../lib/core';
+import { moonPhase } from '../lib/moon';
+import { go } from '../lib/router';
+import * as core from '../lib/core';
+import * as K from '../lib/f-keepsake';
 
 // ── 책장 넘기기 ──
 // 넘어가는 종이(leaf)의 앞면은 지금 쪽, 뒷면은 다음 펼침의 맞은편 쪽. 아직 가려져 있어야 할 반대쪽에는 옛 쪽을 잠깐 덮어 둔다.
@@ -42,7 +47,7 @@ function flipLeaves(bookEl: HTMLElement, before: Required<Look>, dir: number, fa
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 const md = (t: number) => { const d = new Date(t); return `${d.getMonth() + 1}.${pad2(d.getDate())}`; };
-const calm = () => S().settings.motion === false || matchMedia('(prefers-reduced-motion: reduce)').matches;
+const calm = () => S.settings.motion === false || matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function Book({ chat, msgs, at, close }: { chat: DChat; msgs: Msg[]; at?: string; close: () => void }) {
   const [, bump] = useReducer((x: number) => x + 1, 0);
@@ -51,7 +56,7 @@ function Book({ chat, msgs, at, close }: { chat: DChat; msgs: Msg[]; at?: string
   if (!st.current) { const all = pagesOf(chat); let page = at ? all.findIndex(p => p.id === at) : all.length - 1; if (page < 0) page = Math.max(0, all.length - 1); st.current = { page, busy: '', writing: false }; }
   const s = st.current, pages = pagesOf(chat);
   if (s.page > pages.length - 1) s.page = Math.max(0, pages.length - 1);
-  const page = s.page, busy = s.busy, ch = charOf(chat) || { id: '', name: '?' }, user = S().persona(chat)?.name || '나';
+  const page = s.page, busy = s.busy, ch: Char = charOf(chat) || ({ id: '', name: '?' } as Char), user = S.persona(chat)?.name || '나';
 
   const draw = () => { if (alive.current) bump(); };
   const reload = (keep?: string) => { const all = pagesOf(chat), i = keep ? all.findIndex(p => p.id === keep) : -1; s.page = i >= 0 ? i : Math.min(Math.max(0, all.length - 1), s.page); };
@@ -74,7 +79,7 @@ function Book({ chat, msgs, at, close }: { chat: DChat; msgs: Msg[]; at?: string
       if (e.key === 'Escape') live.current.close(); if (e.key === 'ArrowLeft') live.current.turn(-1); if (e.key === 'ArrowRight') live.current.turn(1);
     };
     document.addEventListener('keydown', key);
-    const offRoute = core().on('route', () => live.current.close()), offFont = core().on('almanac:font', () => { if (alive.current) bump(); });
+    const offRoute = core.on('route', () => live.current.close()), offFont = core.on('almanac:font', () => { if (alive.current) bump(); });
     return () => { alive.current = false; document.removeEventListener('keydown', key); offRoute(); offFont(); };
   }, []);
   useEffect(() => {
@@ -82,7 +87,7 @@ function Book({ chat, msgs, at, close }: { chat: DChat; msgs: Msg[]; at?: string
     if (wantFocus.current && noteEl.current) { wantFocus.current = false; const ta = noteEl.current; setTimeout(() => ta.focus(), 30); }
   });
 
-  const p: Page | undefined = pages[page], when = p ? new Date(p.ts || core().now()) : new Date(), no = pad2(page + 1);
+  const p: Page | undefined = pages[page], when = p ? new Date(p.ts || core.now()) : new Date(), no = pad2(page + 1);
   const startWriting = () => { s.writing = true; wantFocus.current = true; draw(); };
 
   // ── 오른쪽 쪽: 종류마다
@@ -91,25 +96,25 @@ function Book({ chat, msgs, at, close }: { chat: DChat; msgs: Msg[]; at?: string
       <div className="bk-ex-head"><span>교환 일기</span><small>{`${user}의 자리`}</small></div>
       <textarea key={e.id} ref={noteEl} className="bk-note-inp" rows={3} maxLength={800} placeholder={`${ch.name}의 일기 옆에 몇 줄 적어 보세요.`} defaultValue={e.note || ''} />
       <div className="bk-ex-acts"><button className="bk-btn" onClick={() => { s.writing = false; draw(); }}>그만두기</button>
-        <button className="bk-btn ink" onClick={async () => { const v = (noteEl.current?.value || '').trim(); if (v !== (e.note || '')) { if (v) { e.note = v; e.noteTs = core().now(); } else { delete e.note; delete e.noteTs; delete e.answer; delete e.answerTs; } await save(chat); } s.writing = false; draw(); }}>적어 두기</button></div>
+        <button className="bk-btn ink" onClick={async () => { const v = (noteEl.current?.value || '').trim(); if (v !== (e.note || '')) { if (v) { e.note = v; e.noteTs = core.now(); } else { delete e.note; delete e.noteTs; delete e.answer; delete e.answerTs; } await save(chat); } s.writing = false; draw(); }}>적어 두기</button></div>
     </div>;
     if (!e.note) return <div className="bk-ex"><button className="bk-ex-add" onClick={startWriting}><Icon name="feather" size={15} /><span>옆에 몇 줄 적기</span><small>교환 일기</small></button></div>;
     return <div className="bk-ex">
       <div className="bk-ex-head"><span>교환 일기</span><small>{e.noteTs ? md(e.noteTs) : ''}</small></div>
       <div className="bk-note"><Paras text={e.note} /><span className="bk-by">{`— ${user}`}</span><button className="bk-mini" title="고쳐 적기" onClick={startWriting}><Icon name="edit" size={13} /></button></div>
-      {e.answer ? <div className="bk-ans"><Paras text={e.answer} /><span className="bk-by">{`— ${S().get('chars', e.by)?.name || ch.name}`}</span></div> : null}
+      {e.answer ? <div className="bk-ans"><Paras text={e.answer} /><span className="bk-by">{`— ${S.get('chars', e.by)?.name || ch.name}`}</span></div> : null}
       <div className="bk-ex-acts"><button className="bk-btn ink" disabled={!!busy} onClick={() => void run('answer', async () => { await answerNote(chat, e); return e.id; })}>{busy === 'answer' ? `${ch.name}이(가) 여백에 적는 중…` : e.answer ? '답글 다시 받기 · 호출 1회' : '답글 받기 · 호출 1회'}</button></div>
     </div>;
   };
   const rightOf = (pg: Page): ReactNode => {
-    const sign = `— ${S().get('chars', 'by' in pg.ref ? pg.ref.by : '')?.name || ch.name}`;
+    const sign = `— ${S.get('chars', 'by' in pg.ref ? pg.ref.by : '')?.name || ch.name}`;
     const foot = (mid?: ReactNode) => <div className="book-foot"><span className="book-no">{`${page + 1} / ${pages.length}`}</span>{mid}<span className="book-sign">{sign}</span></div>;
     const head = (small?: string) => <div className="book-head"><span>{when.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</span>{small ? <small>{small}</small> : null}</div>;
     if (pg.type === 'diary') { const e = pg.ref; return <>{head(e.to > e.from ? `대화 ${e.from + 1}–${e.to}번째` : '')}<div className="bk-scroll"><div className="book-text"><Paras text={e.text} /></div>{exchange(e)}</div>{foot()}</>; }
-    if (pg.type === 'dream') { const e = pg.ref; return <>{head(`${e.phaseName || ui().moonPhase(when).name} 뜬 밤의 꿈`)}<div className="bk-scroll"><div className="book-text"><Paras text={e.text} /></div></div>{foot(<span className="bk-stamp">꿈 · 정사가 아님</span>)}</>; }
+    if (pg.type === 'dream') { const e = pg.ref; return <>{head(`${e.phaseName || moonPhase(when).name} 뜬 밤의 꿈`)}<div className="bk-scroll"><div className="book-text"><Paras text={e.text} /></div></div>{foot(<span className="bk-stamp">꿈 · 정사가 아님</span>)}</>; }
     if (pg.type === 'letter') { const e = pg.ref; return <>{head(`${e.days || 0}일의 이야기를 담아`)}<div className="bk-scroll"><div className="book-text"><Paras text={e.text} />{e.ps ? <p className="bk-ps">{`추신. ${e.ps}`}</p> : null}</div></div>{foot()}</>; }
     // 기념품: 인화 사진 + 한 줄
-    const e = pg.ref, scene = K().scenesOf(msgs).find(x => x.id === e.id), ids = [...new Set((scene?.photos || []).map(x => x.id).filter((id): id is string => !!id && !!Illust().data(id)))], src = Illust().data(e.photo);
+    const e = pg.ref, scene = K.scenesOf(msgs).find(x => x.id === e.id), ids = [...new Set((scene?.photos || []).map(x => x.id).filter((id): id is string => !!id && !!Illust.data(id)))], src = Illust.data(e.photo);
     const swap = ids.length > 1 ? async () => { e.photo = ids[(ids.indexOf(e.photo) + 1) % ids.length]; e.picked = true; await save(chat); draw(); } : undefined;
     return <>{head(`장면 ${e.lines || 0}마디${e.photoCount ? ` · 사진 ${e.photoCount}장` : ''}`)}
       <div className="bk-scroll bk-keep">{src ? <Polaroid src={src} cls="big" onClick={swap} title={swap ? '눌러서 다른 사진으로' : ''} /> : <div className="bk-nophoto"><Moon size={54} date={when} /><small>이 장면에는 남은 사진이 없어요.</small></div>}
@@ -123,7 +128,7 @@ function Book({ chat, msgs, at, close }: { chat: DChat; msgs: Msg[]; at?: string
     if (pg.type === 'keepsake') return <Ticket k={pg.ref} />;
     if (pg.type === 'dream') return <div className="book-moon"><Moon size={96} date={when} /></div>;
     if (pg.type === 'letter') return <div className="bk-seal"><MoonDial st={{ target: pg.ref.days || 15, active: pg.ref.days || 15, fill: 1, full: true }} cls="small" /></div>;
-    const pic = pg.ref.illust && Illust().data(pg.ref.illust);
+    const pic = pg.ref.illust && Illust.data(pg.ref.illust);
     return pic ? <div className="book-photo"><img src={pic} alt="" /></div> : blankMid();
   };
   const chipsOf = (pg: Page) => {
@@ -143,20 +148,20 @@ function Book({ chat, msgs, at, close }: { chat: DChat; msgs: Msg[]; at?: string
       await save(chat); reload(); draw(); } },
     p && '-',
     range && { label: '이 일기의 대화로 가기', ic: 'chat', onclick: () => { close(); void jumpTo(chat.id, range.id); } },
-    { label: '달력에서 보기', ic: 'moon', onclick: () => { close(); ui().go('diary', { tab: 'calendar', chatId: chat.id, day: p ? K().dayKey(p.ts) : undefined }); } },
+    { label: '달력에서 보기', ic: 'moon', onclick: () => { close(); go('diary', { tab: 'calendar', chatId: chat.id, day: p ? K.dayKey(p.ts) : undefined }); } },
     { label: `${ch.name}의 글씨체`, ic: 'feather', hint: fontOf(charOf(chat) || null).ko, onclick: () => { fontDialog(charOf(chat), { chat, onChange: draw }); } },
     { label: '지시문 고치기', ic: 'sliders', onclick: () => { editPrompts(['dream', 'exchange', 'letter'], '일기장 지시문', [DIARY_DEF, MEMO_DEF]); } },
     '-',
     { label: '한 권으로 묶기', ic: 'book', hint: '인쇄용', onclick: () => void bindDialog(chat) },
-    (chat.diary || []).length ? { label: '일기 글만 내보내기', ic: 'import', hint: '.txt', onclick: () => core().download(`${ch.name}-diary.txt`, (chat.diary || []).map(x => `${new Date(x.ts).toLocaleDateString('ko-KR')} ${x.storyDate ? `(${x.storyDate}) ` : ''}${x.title}\n\n${x.text}${x.note ? `\n\n[${user}] ${x.note}${x.answer ? `\n[${ch.name}] ${x.answer}` : ''}` : ''}`).join('\n\n— ✦ —\n\n'), 'text/plain') } : null]);
+    (chat.diary || []).length ? { label: '일기 글만 내보내기', ic: 'import', hint: '.txt', onclick: () => core.download(`${ch.name}-diary.txt`, (chat.diary || []).map(x => `${new Date(x.ts).toLocaleDateString('ko-KR')} ${x.storyDate ? `(${x.storyDate}) ` : ''}${x.title}\n\n${x.text}${x.note ? `\n\n[${user}] ${x.note}${x.answer ? `\n[${ch.name}] ${x.answer}` : ''}` : ''}`).join('\n\n— ✦ —\n\n'), 'text/plain') } : null]);
   const tool = (ic: string, label: string, cost: string, title: string, onClick: () => void, cls = '') => <button type="button" className={`bk-tool${cls}`} title={title} disabled={!!busy} onClick={onClick}><Icon name={ic} size={16} /><span>{label}</span>{cost ? <em>{cost}</em> : null}</button>;
   const memod = p && p.type !== 'keepsake' ? !!(p.ref.memIds?.length || p.ref.memId) : false;
 
   return <>
-    <div ref={bookEl} className={`book${p ? ' is-' + p.type : ''}`} style={fontStyle(S().get('chars', p && 'by' in p.ref ? p.ref.by : '') || (ch.id ? ch : null), { ink: p?.type !== 'dream' }) as CSSProperties}>
+    <div ref={bookEl} className={`book${p ? ' is-' + p.type : ''}`} style={fontStyle(S.get('chars', p && 'by' in p.ref ? p.ref.by : '') || (ch.id ? ch : null), { ink: p?.type !== 'dream' }) as CSSProperties}>
       <i className="book-ribbon" />
       <div className="book-page left">
-        <div className="book-top"><span className="book-tag">{p ? `No. ${no} · ${TYPE[p.type][0]}` : 'DIARY'}</span><span className="book-phase"><Moon size={26} date={when} />{ui().moonPhase(when).name}</span></div>
+        <div className="book-top"><span className="book-tag">{p ? `No. ${no} · ${TYPE[p.type][0]}` : 'DIARY'}</span><span className="book-phase"><Moon size={26} date={when} />{moonPhase(when).name}</span></div>
         <div className="book-day"><b>{pad2(when.getDate())}</b><span>{when.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })}<small>{when.toLocaleDateString('ko-KR', { weekday: 'long' })}</small></span></div>
         {p ? <><h3 className="book-title">{titleOf(p)}</h3>{chipsOf(p)}</> : <h3 className="book-title">{`${ch.name}의 일기장`}</h3>}
         <div className="book-mid">{p ? leftMid(p) : blankMid()}</div>

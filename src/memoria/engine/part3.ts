@@ -1,9 +1,10 @@
 // memory.js 1336–1950 줄을 그대로 옮긴 것. 본문은 고치지 않고 타입(Part3)만 붙인다
+import { S, DB, uid, msgText } from '../../lib/core';
+import { embedTexts, embedKind, embedModel } from '../../lib/embed';
 import type { MemoryApi } from './api';
 import type { StatusBar } from './part1';
 import type { CastCard, Cfg, ChatM, Mem, MemItem, Msg, Summary, SummarySrc, Turn } from '../types';
 import { G, NARRATOR, PUBLIC_ONLY, PAST_QUERY_RE, str, list, clip, low, cleanStr, visibleProse, sanitizeRecord, ekey, vec, cos, cueText, indexText, vecOf, cleanMultiline, normScope, sameKnowledgeScope, storyFossilWeight, grams, lexical, gramOverlap, calibrate, parseLoose, toDays, ago, dcache, dvec, normLockKind, normVisibility, overrides, pendingEmbeds, queryEmbedCache, preps } from './base';
-import { S, DB, uid, msgText, embedTexts, embedKind, embedModel } from './legacy';
 import * as MP from '../prompts';
 import { THREAD_KINDS, withDeadline, hasPhrase, splitClosedLine } from '../craft';
 

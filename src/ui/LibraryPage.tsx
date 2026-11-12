@@ -1,8 +1,9 @@
 // 목록 + 편집기 2단 화면 (옛 ui.js 의 libraryPage)
 import { Fragment, useReducer, useState, type ReactNode } from 'react';
-import { L } from '../legacy';
 import { Btn, Icon, IconBtn } from '../kit';
 import { usePaged } from './Pager';
+import { route } from '../lib/router';
+import { S } from '../lib/core';
 
 export interface LibApi {
   /** 목록만 다시 그린다 (편집기는 그대로) */
@@ -38,14 +39,14 @@ export interface LibraryProps<T extends { id: string }> {
 interface AnyStore { get(coll: string, id: string): unknown; save(coll: string, o: unknown, silent?: boolean): Promise<unknown> }
 
 export function LibraryPage<T extends { id: string }>({ arg, title, eyebrow, coll, ic, create, label, sub, thumb, trail, note, editor, actions = [], empty, list, paged }: LibraryProps<T>) {
-  const S = L.core.S as unknown as AnyStore & Record<string, unknown>;
-  const all = (S[coll] as T[] | undefined) || [];
+  const St = S as unknown as AnyStore & Record<string, unknown>;
+  const all = (St[coll] as T[] | undefined) || [];
   const [current, setCurrent] = useState<string | undefined>(() => (typeof arg === 'string' && arg) || all[0]?.id);
   const [show, setShow] = useState(!!arg);
   const [gen, draw] = useReducer((x: number) => x + 1, 0);       // 편집기까지 새로
   const [, redraw] = useReducer((x: number) => x + 1, 0);        // 목록만
-  const pick = (id: string) => { setCurrent(id); L.ui.route.arg = id; setShow(true); draw(); };
-  const o = current ? S.get(coll, current) as T | undefined : undefined;
+  const pick = (id: string) => { setCurrent(id); route.arg = id; setShow(true); draw(); };
+  const o = current ? St.get(coll, current) as T | undefined : undefined;
   const row = (x: T) => {
     const item = <button key={x.id} className={'lib-item' + (x.id === current ? ' on' : '') + (thumb ? ' has-thumb' : '')} onClick={() => pick(x.id)}>
       {thumb && thumb(x)}<div className="lib-text"><b>{label(x)}</b>{sub && <small>{sub(x)}</small>}</div>
@@ -59,7 +60,7 @@ export function LibraryPage<T extends { id: string }>({ arg, title, eyebrow, col
         <div className="phead-text"><span className="eyebrow">{`${eyebrow || coll} · ${String(all.length).padStart(2, '0')}`}</span><h1>{title}</h1></div>
         <div className="row">
           {actions.map((a, i) => <IconBtn key={i} ic={a.ic} title={a.title} onClick={() => a.onclick(draw)} />)}
-          <IconBtn ic="plus" title="새로 만들기" cls="accent" onClick={async () => { const n = create(); await S.save(coll, n, true); pick(n.id); }} />
+          <IconBtn ic="plus" title="새로 만들기" cls="accent" onClick={async () => { const n = create(); await St.save(coll, n, true); pick(n.id); }} />
         </div>
       </header>
       {note ? <div className="lib-note">{note()}</div> : null}
@@ -70,7 +71,7 @@ export function LibraryPage<T extends { id: string }>({ arg, title, eyebrow, col
     <div className="lib-editor">
       <Btn label="목록으로" ic="left" cls="ghost lib-back" onClick={() => setShow(false)} />
       <Fragment key={gen}>{o
-        ? editor(o, { redraw, save: () => S.save(coll, o, true), reselect: id => { setCurrent(id); draw(); } })
+        ? editor(o, { redraw, save: () => St.save(coll, o, true), reselect: id => { setCurrent(id); draw(); } })
         : <div className="empty"><Icon name={ic} size={34} /><p>{empty || '왼쪽에서 항목을 고르거나 새로 만들어 보세요.'}</p></div>}</Fragment>
     </div>
   </section>;

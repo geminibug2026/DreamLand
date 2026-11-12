@@ -1,13 +1,14 @@
 // 장기기억 — 기억 탭 (옛 memoria-views.js 의 vMemories)
 import { Btn } from '../../kit';
 import type { FormDefs } from '../../ui';
-import { memMod, toast } from '../bridge';
 import type { MemItem } from '../types';
 import { Chip, Del, Ib, Ico, KindBadge, Meter, None, Sec, VIS_IC, editBox, pct, safe, showSource, turnTag, useBump, type StOpen } from './parts';
 import { MANUAL_MAX, Mx, cut, noMap, onJump } from './viewsShared';
+import { toast } from '../../ui';
+import * as memMod from '../../lib/memory';
 
 const memDefs = (owners: string[]): FormDefs => {
-  const { KINDS, VIS } = memMod();
+  const { KINDS, VIS } = memMod;
   return [
     { k: 'summary', label: '기억', type: 'area', rows: 3 }, { k: 'kind', label: '종류', type: 'select', opts: Object.entries(KINDS), third: true }, { k: 'visibility', label: '누가 아는가', type: 'select', opts: Object.entries(VIS), third: true }, { k: 'owner', label: '소유자 (개인 · 비밀일 때)', third: true, ph: owners.join(', ') },
     { k: 'knowers', label: '아는 사람 (개인 · 비밀일 때 — 소유자 말고도 이 일을 아는 인물)', type: 'tags', hint: '비밀은 누가 아는지까지 적어야 지켜집니다. 소유자만 적으면 함께 아는 인물까지 모르는 척하게 됩니다. 공개 기억에서는 비워집니다.' },
@@ -32,7 +33,7 @@ const sorts: Record<string, Sorter> = { new: (a, b) => (b.turn ?? 0) - (a.turn ?
 type FilterKey = 'kind' | 'vis' | 'owner' | 'sort' | 'only';
 
 export function Memories({ st }: { st: StOpen }) {
-  const { KINDS, VIS } = memMod(), mem = st.mem, no = noMap(st), owners = [...new Set(mem.memories.map(m => m.owner).filter(Boolean))] as string[];
+  const { KINDS, VIS } = memMod, mem = st.mem, no = noMap(st), owners = [...new Set(mem.memories.map(m => m.owner).filter(Boolean))] as string[];
   // 검색칸에 글을 치는 동안에는 목록만 갈아 끼운다 — 검색칸까지 새로 만들면 한글 조합이 끊긴다
   const drawList = useBump();
   const save = async () => { await Mx().save(mem); drawList(); };

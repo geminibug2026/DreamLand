@@ -1,18 +1,15 @@
 // 장기기억 자료 꼴 (IndexedDB 의 mem 저장소 · 설정 · 메시지). 옛 memory.js 가 쓰는 그대로다 — 꼴을 바꾸지 않는다
-import type { Chat } from '../types';
+import type { Char, Chat, ModalAction, Msg as LibMsg } from '../lib/types';
+import type { CmdApi, PromptPiece } from '../lib/hooks';
 
 /** 메시지에 붙는 연속성 검사 결과 */
 export interface CheckIssue { quote?: string; problem?: string; evidence?: string; source?: string; why?: string }
 export interface MemCheck { issues?: CheckIssue[]; filtered?: CheckIssue[]; hash?: string; /** 점검한 글의 해시 */ h?: string; at?: number; [k: string]: unknown }
-export interface Swipe { text: string; ts?: number; reasoning?: string; [k: string]: unknown }
-export interface Msg {
-  id: string; role: string; charId?: string; name?: string; hidden?: boolean; greeting?: boolean; viaCommand?: boolean;
-  swipes?: Swipe[]; sw?: number; ts?: number;
-  /** 장기기억이 숨긴 메시지 · 막간 표시 · 연속성 검사 */
-  memHidden?: boolean; memSide?: boolean; memCheck?: MemCheck;
-  [k: string]: unknown;
-}
-export interface ChatM extends Chat { count?: number; parent?: string; personaId?: string; mode?: string; memBundle?: string }
+export type { Swipe } from '../lib/types';
+/** 메시지 (공용 꼴) — 연속성 검사 결과가 붙는다 */
+export type Msg = LibMsg & { memCheck?: MemCheck };
+/** 대화방 (공용 꼴) */
+export type ChatM = Chat;
 
 export interface Turn { msgId: string; weight?: number; when?: string; where?: string; hash?: string; digest?: string; days?: number; failed?: boolean; error?: string; at?: number; [k: string]: unknown }
 export interface MemItem {
@@ -79,3 +76,148 @@ export interface Cfg {
   noticed: Record<string, unknown>; promptRev: number; settingsRev: number; promptOutdated: Record<string, number>;
   [k: string]: unknown;
 }
+
+// ── 화면이 쓰는 꼴 (장기기억 엔진이 돌려주는 것 · 등록부 · 폼) ──
+export type Obj = Record<string, unknown>;
+type Opt = readonly [string | number, string];
+/** 옛 form() 의 항목 정의 */
+export interface FormDef {
+  k?: string; label?: string; type?: string; section?: string; el?: Node; hint?: string; ph?: string; rows?: number;
+  half?: boolean; third?: boolean; live?: boolean; min?: number; max?: number; step?: number; opts?: readonly (string | Opt)[]; nullable?: boolean;
+}
+export type FormDefs = (FormDef | false | null | undefined | '')[];
+export interface ModalX { close(): void; el?: HTMLElement }
+export interface ModalActionX extends ModalAction { ic?: string }
+export interface ModalOpts { title?: string; body?: Node; actions?: ModalActionX[]; wide?: boolean; onClose?: () => void }
+
+export interface SettingsM { memory?: Cfg; lastChat?: string; [k: string]: unknown }
+export interface StoreM {
+  chars: Char[]; chats: ChatM[]; settings: SettingsM;
+  get(coll: 'chats', id?: string | null): ChatM | undefined;
+  get(coll: 'chars', id?: string | null): Char | undefined;
+  set(patch: Partial<SettingsM>): void;
+  msgs(chatId: string): Promise<Msg[]>;
+  saveMsgs(chat: ChatM, msgs: Msg[]): Promise<void>;
+}
+export interface ChatApi {
+  current(): { chat: ChatM | null; msgs: Msg[]; busy?: boolean };
+  redraw(): void; save(): Promise<void>; scrollTo(id: string): void; setStatus(text: string): void;
+  groupTitle(chat: ChatM): string; roomName(chat: ChatM): string;
+}
+/** 명령어가 받는 대화 화면 API (chatApi 와 같다) */
+export type { CmdApi } from '../lib/hooks';
+
+// ── hooks.js 의 등록부 ──
+export type { PromptPiece } from '../lib/hooks';
+export interface PromptInfo { chat: ChatM; history: HistLine[]; msgs?: Msg[]; type?: string; commit?: boolean }
+export interface Hooks {
+  commands: Map<string, { owner: string; help: string; run(arg: string, api: CmdApi): unknown }>;
+  macros: Map<string, { owner: string; fn(): string }>;
+  panels: { owner: string; id?: string; title: string; icon?: string; render(chat: ChatM, msgs: Msg[]): Node }[];
+  actions: { owner: string; id: string; label: string; icon?: string; run(msg: Msg, chat: ChatM): unknown }[];
+  prompt: { owner: string; fn(info: PromptInfo): PromptPiece[] }[];
+  before: { owner: string; fn(info: { chat: ChatM; msgs: Msg[]; type?: string; signal?: AbortSignal }): unknown }[];
+  studio: { owner: string; title: string; render(): Node }[];
+}
+
+// ── memory.js 가 돌려주는 것들 ──
+export interface HistLine { role: string; content: string }
+export interface SceneNow { any: boolean; location?: string; date?: string; time?: string; present?: string; mood?: string }
+export interface RecallParts { cos: number; lex: number; imp: number; rec: number; bonus: number }
+export interface RecallRow { id: string; kind: string; summary: string; included: boolean; reason?: string; excluded?: string; via?: string; score?: number; parts?: RecallParts }
+export interface PacketDiag {
+  sections: { name: string; tokens: number }[]; rows?: RecallRow[]; fallback?: boolean; narrator?: boolean; hidden: number;
+  split?: { stableTokens?: number; nowTokens?: number; refreshed?: boolean; frozenAtTurn?: number | null; delta?: number };
+}
+export interface Packet { text: string; fixed?: string | boolean; trim: number; diag?: PacketDiag; stable?: string; live?: string; tokens: number; picked: unknown[] }
+export interface Change { type: 'added' | 'changed' | 'removed'; shelf: string; before?: string; after?: string; impBefore?: number; impAfter?: number }
+export interface CheckpointInfo { id: string; label: string; at: number; turn: number; bytes: number }
+/** 사서가 제안하는 정정 한 건 */
+export interface EditorOp {
+  op: string; id?: string; key?: string; value?: string; scopeName?: string; entity?: string; slot?: string; claim?: string; owner?: string;
+  fromTurn?: number; toTurn?: number; totalDays?: number | string; kind?: string; summary?: string; status?: string; name?: string; patch?: Obj; from?: string; to?: string; stage?: string;
+  [k: string]: unknown;
+}
+export interface ActivityRow { kind: string; text: string; count: number; at: number }
+export interface RecallTrace { score?: number }
+export interface RecallResult { pinned: MemItem[]; triggered: MemItem[]; selected: MemItem[]; trace: Map<string, RecallTrace> }
+export interface CarryCount { summaries: number; memories: number; cast: number; canon: number; pledges: number; bonds?: number }
+export interface ExportRead { store: Obj; label: string; foreign?: boolean }
+export interface PendingOpt { includeHidden?: boolean; from?: number; to?: number }
+
+/** 화면이 부르는 Memory 메서드. 쓰는 것만 적는다 — 더 필요하면 여기에 서명을 보탠다 */
+export interface MemoryUi {
+  load(chatId: string): Promise<Mem>;
+  get(chatId?: string | null): Mem | null;
+  save(mem: Mem): Promise<void>;
+  reset(chatId: string): Promise<Mem>;
+  replace(chatId: string, data: Mem): Promise<Mem>;
+  cfg(): Cfg;
+  busy(): number;
+  // 기록 · 맞추기
+  commit(chat: ChatM, msgs: Msg[], ai: Msg, opts?: { force?: boolean; signal?: AbortSignal }): Promise<Mem>;
+  reconcile(mem: Mem, msgs: Msg[]): boolean;
+  pending(mem: Mem, msgs: Msg[], o?: PendingOpt): Msg[];
+  dropTurn(mem: Mem, msgId: string): void;
+  recalClock(chat: ChatM, mem: Mem, o?: { signal?: AbortSignal; onProgress?: (done: number, total: number) => void }): Promise<{ before: number; after: number; failed?: number } | null>;
+  add(chatId: string, rec: Partial<MemItem>): Promise<unknown>;
+  autoHide(chat: ChatM, msgs: Msg[]): number;
+  post(chat: ChatM, msgs: Msg[], signal?: AbortSignal): Promise<unknown>;
+  received(chat: ChatM, msg: Msg): Promise<unknown>;
+  prepare(chat: ChatM, msgs: Msg[], o?: { type?: string; background?: boolean }): unknown;
+  // 막간 · 연속성 검사
+  isSideMessage(msg: Msg): boolean;
+  tagSideMessage?(chat: ChatM, msgs: Msg[], msg: Msg, type?: string): unknown;
+  checkOf?(msg: Msg): MemCheck | null;
+  checkReply?(chat: ChatM, msgs: Msg[], msg: Msg): unknown;
+  // 장부
+  packet(chat: ChatM, history: HistLine[], opts?: { preview?: boolean; fresh?: boolean; msgs?: Msg[]; force?: boolean; type?: string }): Packet | null;
+  injection?(chat: ChatM, history: HistLine[], opts?: { msgs?: Msg[]; type?: string; preview?: boolean }): PromptPiece[];
+  reinjectNow?(chat: ChatM): void;
+  last(chatId: string): { tokens: number; fixed?: string | boolean; picked: unknown[] } | null | undefined;
+  override(chatId: string, text: string | null): void;
+  overridden(chatId: string): string;
+  pin(chatId: string, text: string | null): Promise<void>;
+  rewritePacket(chat: ChatM, history: HistLine[], signal?: AbortSignal): Promise<string>;
+  scene(mem: Mem): SceneNow;
+  direct(chat: ChatM, msgs: Msg[], signal?: AbortSignal): Promise<unknown>;
+  // 질문 · 정정
+  ask(chat: ChatM, question: string, signal?: AbortSignal): Promise<string>;
+  propose(chat: ChatM, request: string, log?: LogLine[]): Promise<{ reply?: string; ops?: EditorOp[] }>;
+  applyOps(mem: Mem, ops: EditorOp[], skipped?: string[]): number;
+  recallEx(chat: ChatM, mem: Mem, history: HistLine[], opt?: { query?: string; topK?: number }): RecallResult;
+  // 복구 지점 · 백업 · 인계
+  snapshot(mem: Mem): Mem;
+  diff(before: Mem, after: Mem): Change[];
+  checkpoint(mem: Mem, label: string): Promise<CheckpointInfo | null | undefined>;
+  checkpoints(chatId: string): Promise<CheckpointInfo[]>;
+  checkpointData(chatId: string, id: string): Promise<Mem | null | undefined>;
+  normalize(data: Obj, chatId: string): Mem;
+  exportData(chat: ChatM, mem: Mem | Obj): Obj;
+  readExport(payload: unknown): ExportRead;
+  carry(mem: Mem, src: Obj, label: string): CarryCount;
+  consolidate(chat: ChatM, mem: Mem, signal?: AbortSignal): Promise<unknown>;
+  regroup(chat: ChatM, mem: Mem, signal?: AbortSignal): Promise<number | null | undefined>;
+  // 인물
+  foldAliases(mem: Mem): { states: number; memories: number };
+  mergeCast(mem: Mem, keep: CastCard, src: CastCard): void;
+  bondNow?(b: Bond): Bond['log'][number] | null;
+  // 사서 일지
+  activity?(): ActivityRow[];
+  activityLog?: { list?(): ActivityRow[]; clear?(): void };
+  clearActivity?(): void;
+  logActivity?(kind: string, text: string, extra?: Obj): void;
+}
+/** 편집 대화(사서에게 정정 요청)의 한 줄 */
+export interface LogLine { role: 'user' | 'ai'; text: string; ops?: EditorOp[]; applied?: boolean; cancelled?: boolean; done?: number; skipped?: string[] }
+
+export interface MemoryMod {
+  Memory: MemoryUi;
+  KINDS: Record<string, string>; LOCKS: Record<string, string>; VIS: Record<string, string>; SCOPES: string[];
+  SHELF_LABELS: Record<string, string>; PROMPTS: Record<string, string>; LANGS: Record<string, string>;
+  NARRATOR: string; PUBLIC_ONLY: string; MEMORY_DEFAULTS: Cfg; DOSSIER_MAX: number;
+  fmtDays(d: number): string;
+  visibleProse(s: unknown): string;
+  chunkDossier(text: string): string[];
+}
+

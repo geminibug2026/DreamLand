@@ -1,13 +1,16 @@
 // 틀: 옆(아래) 내비 · 더보기 · 빠른 이동
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { L } from './legacy';
 import { Avatar, Icon, Moon, mountInto, useEvents } from './kit';
 import type { Char, NavItem } from './types';
 import { menu, openModal } from './ui';
+import { go, route } from './lib/router';
+import { S } from './lib/core';
+import { navItems } from './lib/boot';
+import { startChat } from './chat/start';
 
 function MoreGrid({ close }: { close: () => void }) {
-  return <>{L.boot.navItems().filter(n => !n[3]).map(([page, label, ic]) =>
-    <button key={page} onClick={() => { close(); L.ui.go(page); }}><Icon name={ic} size={24} />{label}</button>)}</>;
+  return <>{navItems().filter(n => !n[3]).map(([page, label, ic]) =>
+    <button key={page} onClick={() => { close(); go(page); }}><Icon name={ic} size={24} />{label}</button>)}</>;
 }
 function moreSheet() {
   const m = openModal({ title: '더보기', body: <div className="more-grid"><MoreGrid close={() => m.close()} /></div> });
@@ -15,18 +18,18 @@ function moreSheet() {
 
 export function Rail() {
   useEvents('route', 'rail');
-  const page = L.ui.route.page, items = L.boot.navItems(), rest = items.filter(n => !n[5]);
+  const page = route.page, items = navItems(), rest = items.filter(n => !n[5]);
   const tab = ([p, label, ic, main, en, top]: NavItem) =>
-    <button key={p} className={[main && 'main', top && 'top', page === p && 'on'].filter(Boolean).join(' ') || undefined} data-page={p} title={label} onClick={() => L.ui.go(p)}>
+    <button key={p} className={[main && 'main', top && 'top', page === p && 'on'].filter(Boolean).join(' ') || undefined} data-page={p} title={label} onClick={() => go(p)}>
       <Icon name={ic} size={21} /><span className="ko">{label}</span><span className="en">{en || label}</span>
     </button>;
   return <>
-    <button className="logo" title="Dreamland" onClick={() => L.ui.go('home')}><Moon size={22} /><b>DREAMLAND</b></button>
+    <button className="logo" title="Dreamland" onClick={() => go('home')}><Moon size={22} /><b>DREAMLAND</b></button>
     <div className="rail-nav">{items.map(tab)}<button className="more" title="더보기" onClick={moreSheet}><Icon name="menu" size={21} /><span className="ko">더보기</span></button></div>
     <div className="rail-foot">
       <button title="빠른 이동 (Ctrl+K)" onClick={openPalette}><Icon name="search" size={19} /></button>
-      <button title="꾸미기" onClick={() => L.ui.go('themes')}><Icon name="heart" size={19} /></button>
-      <button title="더 많은 메뉴" onClick={e => menu(e.currentTarget, rest.map(([p, label, ic]) => ({ label, ic, onclick: () => L.ui.go(p) })))}><Icon name="menu" size={19} /></button>
+      <button title="꾸미기" onClick={() => go('themes')}><Icon name="heart" size={19} /></button>
+      <button title="더 많은 메뉴" onClick={e => menu(e.currentTarget, rest.map(([p, label, ic]) => ({ label, ic, onclick: () => go(p) })))}><Icon name="menu" size={19} /></button>
     </div>
   </>;
 }
@@ -37,11 +40,10 @@ function Palette({ close }: { close: () => void }) {
   const inp = useRef<HTMLInputElement>(null);
   useEffect(() => { inp.current?.focus(); }, []);
   const all = useMemo<PaletteItem[]>(() => {
-    const S = L.core.S;
     return [
-      ...L.boot.navItems().map(([page, label, ic]) => ({ key: 'n' + page, label, hint: '메뉴', ic, run: () => L.ui.go(page) })),
-      ...S.chars.map(c => ({ key: 'c' + c.id, label: c.name, hint: '캐릭터와 최근 대화', av: c, run: () => { const last = S.chats.filter(x => x.charIds.includes(c.id)).sort((a, b) => b.updatedAt - a.updatedAt)[0]; if (last) L.ui.go('chat', last.id); else void L.chat.startChat([c.id]); } })),
-      ...[...S.chats].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 200).map(c => ({ key: 'r' + c.id, label: (c.name || c.preview || '대화').slice(0, 60), hint: c.charIds.map(i => S.get('chars', i)?.name).filter(Boolean).join(', '), ic: 'chat', run: () => L.ui.go('chat', c.id) })),
+      ...navItems().map(([page, label, ic]) => ({ key: 'n' + page, label, hint: '메뉴', ic, run: () => go(page) })),
+      ...S.chars.map(c => ({ key: 'c' + c.id, label: c.name, hint: '캐릭터와 최근 대화', av: c, run: () => { const last = S.chats.filter(x => x.charIds.includes(c.id)).sort((a, b) => b.updatedAt - a.updatedAt)[0]; if (last) go('chat', last.id); else void startChat([c.id]); } })),
+      ...[...S.chats].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 200).map(c => ({ key: 'r' + c.id, label: (c.name || c.preview || '대화').slice(0, 60), hint: c.charIds.map(i => S.get('chars', i)?.name).filter(Boolean).join(', '), ic: 'chat', run: () => go('chat', c.id) })),
     ];
   }, []);
   const term = q.trim().toLowerCase();

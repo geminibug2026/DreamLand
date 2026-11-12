@@ -1,11 +1,12 @@
 // memory.js 865–1335 줄을 그대로 옮긴 것. 본문은 고치지 않고 타입(Part2)만 붙인다
+import { S, uid, now, msgText } from '../../lib/core';
+import { activeBooks } from '../../lib/engine';
+import type { Char as CharM } from '../../lib/types';
 import type { MemoryApi } from './api';
 import type { Part1 } from './part1';
 import type { Part3 } from './part3';
 import type { Mem, Msg, ChatM, CastCard, Bond, BondStep, MemItem, Pledge, Relation, StatusRow } from '../types';
 import { SCOPES, NARRATOR, MEMORY_DEFAULTS, CHARACTER_LINES_MAX, CHARACTER_GROWTH_MAX, BOND_LOG_MAX, BOND_SETTLE_TURNS, cache, mesHashOf, list, low, cleanStr, clipStr, toSnake, num01, firstSentence, canonSlot, na, visibleProse, ekey, overlap, parseDurationDays, normKind, normLockKind, normVisibility, pledgeId, upsertRow } from './base';
-import { S, uid, now, msgText, activeBooks } from './legacy';
-import type { CharM } from './legacy';
 import { THREAD_KINDS } from '../craft';
 
 /** 사서가 돌려준 JSON (읽기 전의 날것 — 칸마다 믿을 수 없다) */

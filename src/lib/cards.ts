@@ -2,6 +2,7 @@
 import { tplKind, tplImport, KINDS } from './advanced';
 import { stQrToSet, qrAddSet } from './qr-data';
 import { S, uid, now, arr, bool, parseMaybe, parseDate, bytesToDataURL, dataURLToBytes, mimeOf, shrinkImage, newChar, newPersona, newLore, newEntry, newRegex, newChat, newMsg, defaultPreset, MARKERS, emit } from './core';
+import type { Chat, Msg, Regex } from './types';
 
 // ── 자료 꼴 ──
 type O = Record<string, unknown>;
@@ -13,10 +14,7 @@ export interface LoreEntry {
   automationId?: string; charFilter?: CharFilter; triggers?: string[]; useRegex?: boolean; vectorized?: boolean; more?: { addMemo?: boolean; vectorized?: boolean; [k: string]: unknown }; [k: string]: unknown;
 }
 export interface LoreBook { id: string; name: string; description?: string; scanDepth?: number; tokenBudget?: number; recursive?: boolean; caseSensitive?: boolean; wholeWord?: boolean; entries: LoreEntry[]; src?: string; [k: string]: unknown }
-export interface DRegex {
-  id: string; name?: string; find?: string; replace?: string; trim?: unknown; onUser?: boolean; onAI?: boolean; onSlash?: boolean; onLore?: boolean; onReason?: boolean; mode?: string; enabled?: boolean;
-  runOnEdit?: boolean; subst?: number; minDepth?: number | null; maxDepth?: number | null; scope?: string; order?: number; src?: string; [k: string]: unknown;
-}
+export type DRegex = Regex;
 export interface DepthPrompt { prompt: string; depth: number; role: string }
 export interface DChar {
   id: string; name: string; avatar?: string; description?: string; personality?: string; scenario?: string; firstMes?: string; altGreetings?: string[]; mesExample?: string; systemPrompt?: string;
@@ -416,7 +414,7 @@ export function stChatToChat(text: string, { charIds, name, resolve }: { charIds
   if (msgs.length) chat.updatedAt = msgs[msgs.length - 1].ts;
   return { chat, msgs };
 }
-export function chatToStJsonl(chat: DChat, msgs: DMsg[], userName: string, charName: string): string {
+export function chatToStJsonl(chat: Chat, msgs: Msg[], userName: string, charName: string): string {
   const stamp = (t: number) => new Date(t).toISOString();
   const lines = [JSON.stringify({ user_name: userName, character_name: charName, create_date: stamp(chat.createdAt), chat_metadata: { note_prompt: chat.note?.text || '', note_depth: chat.note?.depth ?? 4, variables: chat.vars || {} } })];
   for (const m of msgs) lines.push(JSON.stringify({ name: m.role === 'user' ? userName : (m.name || charName), is_user: m.role === 'user', is_system: m.role === 'system' || !!m.hidden, send_date: stamp(m.ts), mes: m.swipes[m.sw].text, swipes: m.role === 'assistant' ? m.swipes.map(s => s.text) : undefined, swipe_id: m.role === 'assistant' ? m.sw : undefined, extra: m.role === 'system' ? { type: 'narrator' } : {} }));

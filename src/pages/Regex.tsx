@@ -1,17 +1,19 @@
 // 정규식: 범위 셋(전역 · 프리셋 · 캐릭터) + 전체 · 검색 · 거르기 · 순서 바꾸기 · 일괄 조작 · 가져오기/내보내기
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
-import { L } from '../legacy';
 import { Avatar, Btn, Icon, IconBtn } from '../kit';
-import type { Char } from '../types';
-import { PageHead, S, Switch, arr, confirmBox, core, errMsg, menu, plain, toast, useDragSort, type Preset, type Regex } from '../studio/bridge';
-import { Cards, G, RX, allowState, chatApi, clip, exportMany, exportOne, isAllowed, isGlobal, modeShort, needs, redrawChat, safeName, scKey, scName, setAllow, whoShort, worst, type Entry, type Sc } from '../regex/lib';
+import type { Regex } from '../studio/parts';
+import { Cards, G, RX, allowState, chatApi, clip, exportMany, exportOne, isAllowed, isGlobal, modeShort, redrawChat, safeName, scKey, scName, setAllow, whoShort, worst, type Entry, type Sc } from '../regex/lib';
 import { crossPageItems, usePaged } from '../ui';
 import { openDebugger } from '../regex/Debugger';
 import { openEditor } from '../regex/Editor';
 import { importFlow, setsDialog } from '../regex/dialogs';
 import { pickChar, pickTarget } from '../regex/pick';
+import { go, route } from '../lib/router';
+import { uid, S } from '../lib/core';
+import * as core from '../lib/core';
+import { PageHead, Switch, arr, confirmBox, errMsg, menu, plain, toast, useDragSort } from '../studio/parts';
 
-export const page = { name: 'regex', Component: RegexPage, needs };
+export const page = { name: 'regex', Component: RegexPage };
 
 type Tab = 'global' | 'preset' | 'char' | 'all';
 // 화면을 떠났다 돌아와도 남는 보기 상태
@@ -26,11 +28,11 @@ function enter(arg: unknown): Entry | null {
     if (arg.startsWith('preset:')) { view.tab = 'preset'; view.presetId = arg.slice(7); }
     else if (arg.startsWith('char:')) { view.tab = 'char'; view.charId = arg.slice(5); }
     else { const hit = RX().findScript(arg); if (hit) { view.tab = hit.sc.kind; if (hit.sc.kind === 'preset') view.presetId = hit.sc.id || ''; if (hit.sc.kind === 'char') view.charId = hit.sc.id || ''; openAfter = hit; } }
-    L.ui.route.arg = null;
+    route.arg = null;
   }
-  const chat = chatApi().current().chat;
-  if (!S().get('presets', view.presetId)) view.presetId = (chat ? S().presetFor(chat) : S().preset())?.id || '';
-  if (!S().get('chars', view.charId)) view.charId = chat?.charIds?.[0] || S().regex.find(r => !isGlobal(r) && S().get('chars', r.scope))?.scope || S().chars[0]?.id || '';
+  const chat = chatApi.current().chat;
+  if (!S.get('presets', view.presetId)) view.presetId = (chat ? S.presetFor(chat) : S.preset())?.id || '';
+  if (!S.get('chars', view.charId)) view.charId = chat?.charIds?.[0] || S.regex.find(r => !isGlobal(r) && S.get('chars', r.scope))?.scope || S.chars[0]?.id || '';
   view.pick = false; view.picked.clear(); view.shown = 120;
   return openAfter;
 }
@@ -54,7 +56,7 @@ function RegexPage({ arg }: { arg?: unknown }) {
     const sc = curScope() || G;
     if (view.tab === 'preset' && !curScope()) return toast('먼저 프리셋을 골라 주세요', 'err');
     if (view.tab === 'char' && !curScope()) return toast('먼저 캐릭터를 골라 주세요', 'err');
-    const r = await Scope.add(sc, core().newRegex());
+    const r = await Scope.add(sc, core.newRegex());
     if (!isAllowed(sc)) setAllow(sc, true);
     drawAll(); openEditor(r, sc, { onClose: after });
   };
@@ -63,7 +65,7 @@ function RegexPage({ arg }: { arg?: unknown }) {
   const drag = useDragSort((from, to) => { const sc = curScope(); if (sc && canSort()) void move(sc, base.current.start + from, base.current.start + to); });
   const copy = async (e: Entry) => {
     const rest: Regex = structuredClone(e.r); delete rest.src; delete rest.mod;
-    const c = await Scope.add(e.sc, { ...rest, id: L.core.uid(), name: `${e.r.name} (사본)` });
+    const c = await Scope.add(e.sc, { ...rest, id: uid(), name: `${e.r.name} (사본)` });
     const list = Scope.list(e.sc), at = list.indexOf(e.r);
     if (at >= 0) { list.splice(list.indexOf(c), 1); list.splice(at + 1, 0, c); await Scope.reorder(e.sc, list); }
     after();
@@ -110,21 +112,21 @@ function RegexPage({ arg }: { arg?: unknown }) {
   const sc = curScope();
   let scope: ReactNode;
   if (view.tab === 'preset') {
-    const p = sc && S().get<Preset>('presets', sc.id);
+    const p = sc && S.get('presets', sc.id);
     const merge = async () => {
-      const [f] = await core().pickFiles({ accept: '.json' }); if (!f || !sc) return;
-      try { const j: unknown = JSON.parse(await f.text()); if (!plain(j)) throw new Error('프리셋 파일이 아니에요'); core().download(f.name, JSON.stringify(Cards().stPresetWithRegex(j, Scope.list(sc)), null, 4)); toast('정규식을 실은 프리셋 파일을 내려받았어요', 'ok'); } catch (err) { toast(errMsg(err), 'err'); }
+      const [f] = await core.pickFiles({ accept: '.json' }); if (!f || !sc) return;
+      try { const j: unknown = JSON.parse(await f.text()); if (!plain(j)) throw new Error('프리셋 파일이 아니에요'); core.download(f.name, JSON.stringify(Cards.stPresetWithRegex(j, Scope.list(sc)), null, 4)); toast('정규식을 실은 프리셋 파일을 내려받았어요', 'ok'); } catch (err) { toast(errMsg(err), 'err'); }
     };
     scope = <><div className="rx-scope-row">
-      <select className="inp rx-owner" aria-label="프리셋 고르기" value={view.presetId} onChange={e => { view.presetId = e.target.value; view.picked.clear(); drawAll(); }}>{S().presets.map(x => <option key={x.id} value={x.id}>{`${x.name}${x.id === S().settings.activePreset ? ' · 사용 중' : ''} (${arr(x.regex).length})`}</option>)}</select>
+      <select className="inp rx-owner" aria-label="프리셋 고르기" value={view.presetId} onChange={e => { view.presetId = e.target.value; view.picked.clear(); drawAll(); }}>{S.presets.map(x => <option key={x.id} value={x.id}>{`${x.name}${x.id === S.settings.activePreset ? ' · 사용 중' : ''} (${arr(x.regex).length})`}</option>)}</select>
       {sc && allowRow(sc, '이 프리셋')}
       {p && <IconBtn ic="more" title="프리셋 내보내기" onClick={e => menu(e.currentTarget, [
-        { label: '실리태번 프리셋으로 내보내기 (정규식 포함)', ic: 'import', onclick: () => core().download(`${safeName(p.name)}.json`, JSON.stringify(Cards().presetToSt(p), null, 4)) },
+        { label: '실리태번 프리셋으로 내보내기 (정규식 포함)', ic: 'import', onclick: () => core.download(`${safeName(p.name)}.json`, JSON.stringify(Cards.presetToSt(p as unknown as Cards.DPreset), null, 4)) },
         { label: '가진 실리태번 프리셋 파일에 이 정규식 싣기', ic: 'merge', onclick: merge },
-        { label: '프리셋 화면에서 열기', ic: 'sliders', onclick: () => L.ui.go('presets', p.id) }])} />}</div>
+        { label: '프리셋 화면에서 열기', ic: 'sliders', onclick: () => go('presets', p.id) }])} />}</div>
       <small className="hint">이 프리셋을 쓰는 대화에서만 적용되고, 프리셋을 내보내거나 복제하면 함께 따라갑니다. 전역 다음, 캐릭터 앞 순서로 돕니다.</small></>;
   } else if (view.tab === 'char') {
-    const c = sc && S().get<Char>('chars', sc.id);
+    const c = sc && S.get('chars', sc.id);
     scope = <><div className="rx-scope-row">
       <button type="button" className="rx-owner rx-charbtn" title="캐릭터 고르기" onClick={async () => { const id = await pickChar('어느 캐릭터의 정규식을 볼까요?'); if (id) { view.charId = id; view.picked.clear(); drawAll(); } }}>{c ? <Avatar o={c} cls="xs" /> : <Icon name="user" size={18} />}<b>{c?.name || '캐릭터 고르기'}</b><Icon name="down" size={14} /></button>
       {sc && allowRow(sc, '이 캐릭터')}</div>
@@ -135,8 +137,8 @@ function RegexPage({ arg }: { arg?: unknown }) {
   const bulk = (label: string, ic: string, fn: (items: Entry[], anchor: Element) => unknown, cls = '') => <Btn label={label} ic={ic} cls={cls} onClick={e => { const items = pickedEntries(), anchor = e.currentTarget; if (!items.length) return toast('먼저 정규식을 골라 주세요'); void fn(items, anchor); }} />;
   const setOn = async (items: Entry[], v: boolean) => {
     const presets = new Set<string>();
-    for (const { r, sc: s } of items) { if (!!r.enabled === v) continue; r.enabled = v; if (s.kind === 'preset') presets.add(s.id || ''); else await S().save('regex', r, true); }
-    for (const id of presets) { const p = S().get<Preset>('presets', id); if (p) await S().save('presets', p, true); }
+    for (const { r, sc: s } of items) { if (!!r.enabled === v) continue; r.enabled = v; if (s.kind === 'preset') presets.add(s.id || ''); else await S.save('regex', r, true); }
+    for (const id of presets) { const p = S.get('presets', id); if (p) await S.save('presets', p, true); }
     after();
   };
 

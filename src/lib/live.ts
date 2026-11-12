@@ -5,19 +5,13 @@ import { S, now, uid, on } from './core';
 import { X } from './hooks';
 import { Clock } from './clock';
 import { scheduleOf, blockAt, todayLine, STATUS, STATUS_EN, DAY_EN, dayIndex, fmtMin, MOTIVES, MOTIVE_ORDER, motiveLabel, SCHEDULE_PROMPT, Schedule, type SchedChar } from './f-schedule';
-import type { TrackState } from './types';
+import type { AutoPlan, Chat, Motive, TrackState } from './types';
 
 export interface Field { key: string; desc: string; min?: number; max?: number }
 export interface Patch { w: Record<string, string>; c: Record<string, Record<string, string>>; gone: string[] }
 interface PresenceRec { status: string; activity?: string; until?: number; hold?: boolean }
-interface DiffRec { from: string; d?: number | null; at: number }
 /** 이 파일이 읽고 쓰는 대화 칸 */
-export interface LiveChat {
-  id: string; charIds?: string[]; mode?: string; scene?: { on?: boolean; title?: string; place?: string }; sceneLive?: boolean;
-  presence?: PresenceRec; presenceBy?: Record<string, PresenceRec>;
-  tracker?: Record<string, string>; cast?: Record<string, Record<string, string>>; trackLock?: Record<string, boolean>; trackHide?: Record<string, boolean>;
-  trackDiff?: Record<string, DiffRec>; castDiff?: Record<string, DiffRec>; trackLog?: { t: number; v: Record<string, string> }[]; snaps?: number; snap0?: TrackState; [k: string]: unknown;
-}
+export type LiveChat = Chat;
 export interface LiveMsg { role?: string; sw: number; swipes: { state?: TrackState | null; [k: string]: unknown }[]; [k: string]: unknown }
 export type LiveChar = SchedChar & { id?: string; name: string };
 type Bag = Record<string, unknown>;
@@ -206,7 +200,7 @@ export const inQuietHours = (d = new Date()) => quietLeft(SS().settings.modes?.q
 const clock = (t: number) => { const d = new Date(t), n = new Date(), days = Math.round((+new Date(d.getFullYear(), d.getMonth(), d.getDate()) - +new Date(n.getFullYear(), n.getMonth(), n.getDate())) / 86400000); return `${days === 0 ? '오늘' : days === 1 ? '내일' : days === -1 ? '어제' : `${d.getMonth() + 1}/${d.getDate()}`} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 const span = (ms: number) => { const m = Math.max(1, Math.round(ms / 60000)); return m < 60 ? `${m}분` : m < 1440 ? `${Math.floor(m / 60)}시간${m % 60 ? ` ${m % 60}분` : ''}` : `${Math.floor(m / 1440)}일${Math.floor(m % 1440 / 60) ? ` ${Math.floor(m % 1440 / 60)}시간` : ''}`; };
 
-export interface Pending { kind: string; about?: string; hours?: number | string; from?: string; activity?: string; before?: string; [k: string]: unknown }
+export type Pending = Motive;
 export interface Extracted { text: string; scene: Record<string, string> | null; sceneEnd: Record<string, string> | null; later: Record<string, string>[]; stats: Record<string, string> | null; patch: Patch | null }
 type Mx = (t: string) => string;
 
@@ -216,7 +210,7 @@ export const Live = {
   /** 이 생성에만 덧붙일 사정 (약속한 연락, 선톡 동기, 끼어들기) */
   pending: null as Pending | null,
   /** 대화 화면이 채워 주는 연결 고리 */
-  onChange: null as (() => void) | null, onUser: null as ((s: string) => void) | null, planOf: null as ((chat: LiveChat) => unknown) | null, poke: null as ((chat: LiveChat) => unknown) | null,
+  onChange: null as (() => void) | null, onUser: null as ((s: string) => void) | null, planOf: null as ((chat: LiveChat) => AutoPlan | null) | null, poke: null as ((chat: LiveChat) => Promise<boolean>) | null,
   view: null as { chat: string; i: number } | null, unseen: 0,
   /** 화면 쪽이 채우는 창들 (옛 live.js 에서는 여기서 그렸다) */
   hud: null as ((chat: LiveChat, opt?: Bag) => unknown) | null, editState: null as ((chat: LiveChat, opt?: Bag) => unknown) | null, settings: null as ((tab?: string, chat?: LiveChat) => unknown) | null,

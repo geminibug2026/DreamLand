@@ -2,9 +2,14 @@
 // 서고가 한 저장소(IndexedDB mem)에 있어 바로 읽는다
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { Avatar, Icon } from '../../kit';
-import { DB, Memory, S, chatApi, core, memMod, toast } from '../bridge';
 import type { ChatM, Mem } from '../types';
 import { Ib, Ico, Meter, None, Sec, chatTitle, cur, useBump, type St } from './parts';
+import { DB, S } from '../../lib/core';
+import { Memory } from '../../lib/memory';
+import { chatApi } from '../../chat/actions';
+import { toast } from '../../ui';
+import * as memMod from '../../lib/memory';
+import * as core from '../../lib/core';
 
 const LIB_OWNERS = 8, LIB_CHATS = 10;   // 한 번에 보여 줄 캐릭터 수 · 캐릭터마다 대화 수 — 나머지는 「더 보기」
 type MemLike = Partial<Mem> & { id: string };
@@ -27,8 +32,8 @@ export function Library({ st }: { st: St }) {
   useEffect(() => {
     let live = true;
     (async () => {
-      const mems = new Map((await DB().all<Mem>('mem')).map(m => [m.id, m]));
-      const list = S().chats.map(chat => ({ chat, m: (mems.get(chat.id) || { id: chat.id }) as MemLike, key: keyOf(chat), name: chatApi().groupTitle(chat) || '삭제된 캐릭터' }));
+      const mems = new Map((await DB.all('mem') as Mem[]).map(m => [m.id, m]));
+      const list = S.chats.map(chat => ({ chat, m: (mems.get(chat.id) || { id: chat.id }) as MemLike, key: keyOf(chat), name: chatApi.groupTitle(chat) || '삭제된 캐릭터' }));
       if (live) setEvery(list);
     })().catch(e => { console.error(e); if (live) setErr('서고를 읽지 못했어요: ' + (e as Error).message); });
     return () => { live = false; };
@@ -36,7 +41,7 @@ export function Library({ st }: { st: St }) {
   if (err) return <div className="mm-view"><None text={err} /></div>;
   if (!every) return <div className="mm-view"><None text="서고를 살피는 중…" /></div>;
 
-  const { fmtDays } = memMod(), { download, fmtTime } = core(), M = Memory();
+  const { fmtDays } = memMod, { download, fmtTime } = core, M = Memory;
   const all = every.filter(has);
   const sel = (st.libSel ||= new Set<string>()) as Set<string>, open = (st.libOpen ||= new Map<string, number | null>()) as Map<string, number | null>, fold = (st.libFold ||= new Set<string>()) as Set<string>, more = (st.libMore ||= new Map<string, number>()) as Map<string, number>;
   const q = String(st.libQ || ''), sort = String(st.libSort || 'recent'), filter = String(st.libFilter || 'recorded');
@@ -51,23 +56,23 @@ export function Library({ st }: { st: St }) {
   const backup = async (rows: Entry[]) => {
     rows = rows.filter(has); if (!rows.length) return toast('백업할 기록이 있는 대화를 선택해 주세요.'); if (busy.current) return; busy.current = true; say('최신 기록을 읽어 백업 파일을 준비합니다…');
     try {
-      const items = []; for (const x of rows) items.push(M.exportData(x.chat, M.get(x.chat.id) || await DB().get<Mem>('mem', x.chat.id) || x.m));
+      const items = []; for (const x of rows) items.push(M.exportData(x.chat, M.get(x.chat.id) || (await DB.get('mem', x.chat.id) as Mem | undefined) || x.m as Mem));
       if (rows.length === 1) { download(`memoria-${safeName(chatTitle(rows[0].chat))}.json`, JSON.stringify(items[0], null, 2)); say('JSON 다운로드를 요청했습니다. 기기의 다운로드 목록에서 파일을 확인해 주세요.'); }
       else { download(`memoria-library-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ type: 'dreamland-memoria-library', version: 1, exportedAt: new Date().toISOString(), items }, null, 2)); say(`${N(rows.length)}개 대화의 묶음 백업 다운로드를 요청했습니다. 기기의 다운로드 목록에서 파일을 확인해 주세요.`); }
     } catch (e) { console.error('[장기기억] 서고 백업:', e); say('백업하지 못했습니다: ' + (e as Error).message); } finally { busy.current = false; }
   };
 
   const words = q.normalize('NFKC').toLowerCase().split(/\s+/).filter(Boolean);
-  const rows = every.filter(pass).filter(x => { const t = `${x.name} ${chatTitle(x.chat)} ${chatApi().roomName(x.chat)}`.normalize('NFKC').toLowerCase(); return words.every(w => t.includes(w)); });
+  const rows = every.filter(pass).filter(x => { const t = `${x.name} ${chatTitle(x.chat)} ${chatApi.roomName(x.chat)}`.normalize('NFKC').toLowerCase(); return words.every(w => t.includes(w)); });
   const groups = new Map<string, Entry[]>(); for (const x of rows) { if (!groups.has(x.key)) groups.set(x.key, []); groups.get(x.key)!.push(x); }
   const order = (a: Entry, b: Entry) => (sort === 'mem' ? cnt(b.m).mem - cnt(a.m).mem : sort === 'sum' ? cnt(b.m).sum - cnt(a.m).sum : 0) || (b.chat.updatedAt || 0) - (a.chat.updatedAt || 0);
-  const gs = [...groups].map(([key, xs]) => ({ key, name: xs[0].name, group: xs[0].chat.charIds.length > 1, char: S().get('chars', xs[0].chat.charIds[0]), xs: xs.sort(order), mem: xs.reduce((n, x) => n + cnt(x.m).mem, 0), sum: xs.reduce((n, x) => n + cnt(x.m).sum, 0), at: Math.max(...xs.map(x => x.chat.updatedAt || 0)) }))
+  const gs = [...groups].map(([key, xs]) => ({ key, name: xs[0].name, group: xs[0].chat.charIds.length > 1, char: S.get('chars', xs[0].chat.charIds[0]), xs: xs.sort(order), mem: xs.reduce((n, x) => n + cnt(x.m).mem, 0), sum: xs.reduce((n, x) => n + cnt(x.m).sum, 0), at: Math.max(...xs.map(x => x.chat.updatedAt || 0)) }))
     .sort((a, b) => (sort === 'mem' ? b.mem - a.mem : sort === 'sum' ? b.sum - a.sum : sort === 'name' ? 0 : b.at - a.at) || String(a.name).localeCompare(String(b.name), 'ko', { numeric: true }));
   const pick = rows.filter(has), shown = Number(st.libOwners) || LIB_OWNERS;
   const chatRow = (x: Entry, mx: number) => {
     const c = cnt(x.m), ok = has(x), id = x.m.id;
-    return <div key={id} className={`mm-libchat${sel.has(id) ? ' on' : ''}${st.chat?.id === id ? ' cur' : ''}${ok ? '' : ' blank'}`}><Check disabled={!ok} checked={sel.has(id)} label={`${x.name} · ${chatApi().roomName(x.chat)} 선택`} onChange={on => { if (on) sel.add(id); else sel.delete(id); draw(); }} />
-      <div className="mm-libmain"><button className="mm-libopen" title="이 대화의 서고 열기" onClick={() => { st.tab = 'overview'; void st.load(id); }}><b>{chatApi().roomName(x.chat)}</b><small>{ok ? `요약 ${N(c.sum)} · 기억 ${N(c.mem)} · ${N(c.turns)}턴${cur().chat?.id === id ? ' · 현재 대화' : ''}${(x.m.clockDays || 0) >= 1 ? ` · 이야기 속 ${fmtDays(x.m.clockDays || 0)}` : ''} · ${fmtTime(x.chat.updatedAt)}` : `빈 서고 · ${fmtTime(x.chat.updatedAt)}`}</small>{ok ? <Meter v={c.mem} max={mx} /> : null}</button>{open.has(id) ? detail(x) : null}</div>
+    return <div key={id} className={`mm-libchat${sel.has(id) ? ' on' : ''}${st.chat?.id === id ? ' cur' : ''}${ok ? '' : ' blank'}`}><Check disabled={!ok} checked={sel.has(id)} label={`${x.name} · ${chatApi.roomName(x.chat)} 선택`} onChange={on => { if (on) sel.add(id); else sel.delete(id); draw(); }} />
+      <div className="mm-libmain"><button className="mm-libopen" title="이 대화의 서고 열기" onClick={() => { st.tab = 'overview'; void st.load(id); }}><b>{chatApi.roomName(x.chat)}</b><small>{ok ? `요약 ${N(c.sum)} · 기억 ${N(c.mem)} · ${N(c.turns)}턴${cur().chat?.id === id ? ' · 현재 대화' : ''}${(x.m.clockDays || 0) >= 1 ? ` · 이야기 속 ${fmtDays(x.m.clockDays || 0)}` : ''} · ${fmtTime(x.chat.updatedAt)}` : `빈 서고 · ${fmtTime(x.chat.updatedAt)}`}</small>{ok ? <Meter v={c.mem} max={mx} /> : null}</button>{open.has(id) ? detail(x) : null}</div>
       {ok ? <Ib name={open.has(id) ? 'up' : 'down'} title="자세히" onClick={async () => { if (open.has(id)) { open.delete(id); return draw(); } open.set(id, null); draw(); open.set(id, (await M.checkpoints(id).catch(() => [])).length); draw(); }} /> : null}{ok ? <Ib name="import" title="이 대화 JSON 백업" onClick={() => backup([x])} /> : null}</div>;
   };
   const opt = (list: [string, string][]) => list.map(([k, l]) => <option key={k} value={k}>{l}</option>);

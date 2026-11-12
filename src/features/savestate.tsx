@@ -1,10 +1,9 @@
 // "고치는 중 → 저장 중 → 저장됨" 표시. 저장은 자동이므로 버튼 대신 상태를 보여 준다 (옛 js/savestate.js 를 대신한다)
 import { useSyncExternalStore } from 'react';
-import { mod } from '../legacy';
 import { mountInto } from '../kit';
+import * as libCore from '../lib/core';
 
 type DbFn = (...a: unknown[]) => unknown;
-interface Db { put: DbFn; del: DbFn }
 
 const view = { state: '', text: '', on: false };
 let snap = { ...view };
@@ -33,10 +32,10 @@ function touched(e: Event) {
 }
 
 export const feature = {
-  name: 'savestate', needs: ['core'],
+  name: 'savestate',
   setup() {
     document.querySelectorAll('body > .save-pill').forEach(el => el.remove());   // 옛 표시는 내린다 (옛 모듈의 감시는 떼어 낸 요소만 건드린다)
-    const DB = mod<{ DB: Db }>('core').DB;
+    const DB = libCore.DB as unknown as Record<'put' | 'del', DbFn>;
     // 저장소에 쓰는 모든 길목을 지켜본다 (어느 화면에서 저장하든 같은 표시)
     for (const fn of ['put', 'del'] as const) {
       const raw = DB[fn];

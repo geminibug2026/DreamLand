@@ -1,11 +1,12 @@
 // 에셋 관리판 (캐릭터 · 페르소나 공용)
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Btn, Icon } from '../kit';
-import { usePaged } from '../ui';
-import { B, type AssetRec } from '../addons/legacy';
+import { usePaged, confirmBox, promptBox, toast } from '../ui';
+import type { AssetRec } from '../addons/types';
 import { Check, PathIcon, useRedraw } from '../addons/parts';
 import { A, PATHS, cfg, copy, safeDecode, save, upload, uploadFromUrl } from './logic';
 import { SBtn, Tiny, lightbox, openGallery, smartRename } from './windows';
+import { pickFiles } from '../lib/core';
 
 export function Sec({ ic, title, desc, children }: { ic?: ReactNode; title: string; desc?: ReactNode; children?: ReactNode }) {
   return <div className="ast-sec-head"><div><h4>{ic}{title}</h4>{desc ? <p>{desc}</p> : null}</div>{children ? <div className="ast-actions">{children}</div> : null}</div>;
@@ -13,7 +14,7 @@ export function Sec({ ic, title, desc, children }: { ic?: ReactNode; title: stri
 
 interface Props { owner: string; ver?: string; src?: string; locked?: boolean; lockMsg?: string; title?: string; onChange?: () => void }
 export function Manager({ owner, ver = '', src = owner, locked = false, lockMsg = '', title = '에셋', onChange = () => { } }: Props) {
-  const c = cfg(), As = A(), { toast, confirmBox, promptBox } = B.ui, { pickFiles } = B.core;
+  const c = cfg(), As = A();
   const redraw = useRedraw(), picked = useRef(new Set<string>()).current, [q, setQ] = useState('');
   const prog = useRef<HTMLDivElement>(null), bar = useRef<HTMLElement>(null);
   useEffect(() => { let alive = true; void As.load([owner, src]).then(() => { if (alive) redraw(); }); return () => { alive = false; }; /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);

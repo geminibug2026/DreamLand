@@ -1,11 +1,16 @@
 // 기능 화면 › 번역: 기본(연결 · 언어 · 지시문 프리셋 · 시험 번역) / 설정(요청 · 단추 · 번역 기록 지우기)
 import { useRef, useState, type MouseEvent } from 'react';
 import { Btn, Icon, IconBtn, useEvents } from '../kit';
-import { B, errMsg } from '../addons/legacy';
+import { errMsg } from '../addons/parts';
 import { Check, Field, PathIcon, Select, type Opt } from '../addons/parts';
 import { DEFAULT_PROMPT, LANGS, VARS, findLang, langLabel } from './lang';
 import { cfg, deleteRange, presetOf, save, translate, translatedCount, type LangKey, type TrCfg, type TrPreset } from './logic';
 import { GLOBE, SHEET, SPIRAL, redecorate } from './chat';
+import { S, clamp } from '../lib/core';
+import { confirmBox, promptBox, toast } from '../ui';
+import { go } from '../lib/router';
+import { X } from '../lib/hooks';
+import { chatApi } from '../chat/actions';
 
 let sub: 'basic' | 'options' = 'basic';
 const MODE = { none: '자동 꺼짐', responses: '답변 자동', inputs: '입력 자동', both: '답변 · 입력 자동' };
@@ -15,13 +20,13 @@ function LangSelect({ c, k, fallback, draw }: { c: TrCfg; k: LangKey; fallback: 
   const cur = c[k] || fallback, known = findLang(cur);
   const opts: Opt[] = [...LANGS.map(l => [l[1], `${l[2]} · ${l[1]}`] as const), ...(known ? [] : [[cur, `${cur} (직접 적음)`] as const]), ['\u0001', '직접 적기…']];
   return <Select value={known ? known[1] : cur} opts={opts} onChange={async v => {
-    if (v === '\u0001') { const t = await B.ui.promptBox('언어 이름', known ? '' : cur, { placeholder: '예: Old English, 경상도 사투리' }); if (t?.trim()) c[k] = t.trim(); save(); return draw(); }
+    if (v === '\u0001') { const t = await promptBox('언어 이름', known ? '' : cur, { placeholder: '예: Old English, 경상도 사투리' }); if (t?.trim()) c[k] = t.trim(); save(); return draw(); }
     c[k] = v; save(); redecorate(); draw();
   }} />;
 }
 
 function Basic({ c, p, mode, draw }: { c: TrCfg; p: TrPreset; mode: Mode; draw: () => void }) {
-  const S = B.S, toast = B.ui.toast, helpers = S.settings.helpers as Record<string, string>;
+  const helpers = S.settings.helpers as Record<string, string>;
   const area = useRef<HTMLTextAreaElement>(null);
   const [test, setTest] = useState(''), [out, setOut] = useState({ cls: '', text: '' });
   const alive = useRef(true);
@@ -29,12 +34,12 @@ function Basic({ c, p, mode, draw }: { c: TrCfg; p: TrPreset; mode: Mode; draw: 
     const b = e.currentTarget; if (!test.trim()) return toast('번역해 볼 글을 적어 주세요');
     b.disabled = true; setOut({ cls: 'wait', text: '번역하는 중…' });
     let next;
-    try { next = { cls: 'done', text: await (B.X.translate || translate)(test, c.lang, { chat: B.chat.current().chat, context: [] }) }; }
+    try { next = { cls: 'done', text: await (X.translate || translate)(test, c.lang, { chat: chatApi.current().chat, context: [] }) }; }
     catch (err) { next = { cls: 'fail', text: '실패: ' + errMsg(err) }; }
     b.disabled = false; if (alive.current && b.isConnected) setOut(next);
   };
   const named = async (title: string, first: string) => {
-    const name = (await B.ui.promptBox(title, first))?.trim(); if (!name || name === first) return '';
+    const name = (await promptBox(title, first))?.trim(); if (!name || name === first) return '';
     if (c.presets.some(x => x.name === name)) { toast('같은 이름의 프리셋이 있어요', 'err'); return ''; }
     return name;
   };
@@ -43,7 +48,7 @@ function Basic({ c, p, mode, draw }: { c: TrCfg; p: TrPreset; mode: Mode; draw: 
       <h3 className="form-sec">연결과 언어</h3>
       <Field label="번역에 쓸 연결" hint="번역만 값싸고 빠른 모델에 맡길 수 있어요."><div className="trx-row">
         <Select value={helpers.translate} opts={[['', '대화에 쓰는 연결'], ...S.conns.map(x => [x.id, `${x.name}${x.model ? ' · ' + x.model : ''}`] as const)]} onChange={v => { helpers.translate = v; save(); draw(); }} />
-        <IconBtn ic="plug" title="API 연결 화면으로" onClick={() => B.ui.go('conns')} /></div></Field>
+        <IconBtn ic="plug" title="API 연결 화면으로" onClick={() => go('conns')} /></div></Field>
       <Field label="자동 번역" hint="내 글을 번역해서 보내면 화면에는 내가 쓴 글이, 모델에는 번역문이 갑니다.">
         <Select value={mode} opts={[['none', '하지 않음'], ['responses', '답변을 번역해서 보여 주기'], ['inputs', '내 글을 번역해서 보내기'], ['both', '둘 다']]} onChange={v => { c.auto = v === 'responses' || v === 'both'; c.autoInput = v === 'inputs' || v === 'both'; save(); draw(); }} /></Field>
       <Field label="답변을 옮길 언어" cls="half"><LangSelect c={c} k="lang" fallback="Korean" draw={draw} /></Field>
@@ -62,12 +67,12 @@ function Basic({ c, p, mode, draw }: { c: TrCfg; p: TrPreset; mode: Mode; draw: 
         }} />
         <IconBtn ic="trash" title="프리셋 삭제" onClick={async () => {
           if (p.id === 'default') return toast('기본 프리셋은 지울 수 없어요');
-          if (!(await B.ui.confirmBox(`"${p.name}" 프리셋을 지울까요?`, '삭제', true))) return;
+          if (!(await confirmBox(`"${p.name}" 프리셋을 지울까요?`, '삭제', true))) return;
           c.presets = c.presets.filter(x => x !== p); c.preset = c.presets[0].id; save(); draw();
         }} /></div></div>
       <div className="field">
         <span className="field-label">지시문<button type="button" className="trx-restore" title="이 프리셋의 지시문을 기본 지시문으로 되돌립니다"
-          onClick={async () => { if (await B.ui.confirmBox('지시문을 기본값으로 되돌릴까요?', '되돌리기')) { p.content = DEFAULT_PROMPT; p.filter = true; save(); draw(); } }}><Icon name="refresh" size={13} />기본값으로</button></span>
+          onClick={async () => { if (await confirmBox('지시문을 기본값으로 되돌릴까요?', '되돌리기')) { p.content = DEFAULT_PROMPT; p.filter = true; save(); draw(); } }}><Icon name="refresh" size={13} />기본값으로</button></span>
         <textarea className="inp trx-prompt" ref={area} value={p.content} rows={14} spellCheck={false} onChange={e => { p.content = e.target.value; save(); draw(); }} />
         <div className="trx-vars">{VARS.map(([v, d]) => <button key={v} type="button" className="trx-var" title={d + ' · 눌러서 넣기'} onClick={() => {
           const a = area.current; if (!a) return; const at = a.selectionStart ?? a.value.length; a.setRangeText(v, at, a.selectionEnd ?? at, 'end'); a.focus(); p.content = a.value; save(); draw();
@@ -80,7 +85,7 @@ function Basic({ c, p, mode, draw }: { c: TrCfg; p: TrPreset; mode: Mode; draw: 
 }
 
 function Options({ c, p, draw }: { c: TrCfg; p: TrPreset; draw: () => void }) {
-  const clamp = B.core.clamp, { chat, msgs } = B.chat.current();
+  const { chat, msgs } = chatApi.current();
   const tok = useRef<HTMLInputElement>(null), ok = useRef<HTMLSpanElement>(null), from = useRef<HTMLInputElement>(null), to = useRef<HTMLInputElement>(null);
   const n = chat ? translatedCount(msgs) : 0;
   const show = (k: 'btnQuick' | 'btnTranslate' | 'btnRe' | 'btnEdit') => (v: boolean) => { c[k] = v; save(); redecorate(); draw(); };

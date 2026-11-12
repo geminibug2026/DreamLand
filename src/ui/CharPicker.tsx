@@ -1,9 +1,9 @@
 // 캐릭터 고르기: 많아져도 찾을 수 있게 검색 + 목록 (옛 ui.js 의 charPicker)
 import { useReducer, useState } from 'react';
-import { L } from '../legacy';
 import { Avatar, Icon } from '../kit';
 import type { Char } from '../types';
 import { openModal, type ModalHandle } from './Modal';
+import { S } from '../lib/core';
 
 export interface CharPickerOptions {
   title?: string; selected?: string[];
@@ -16,7 +16,7 @@ export interface CharPickerOptions {
 
 function Picker({ picked, multi, note, one }: { picked: Set<string>; multi: boolean; note: (c: Char) => string; one: (id: string) => void }) {
   const [q, setQ] = useState(''), [, bump] = useReducer((x: number) => x + 1, 0);
-  const chars = L.core.S.chars, t = q.trim().toLowerCase();
+  const chars = S.chars, t = q.trim().toLowerCase();
   const rows = chars.filter(c => !t || (c.name + ' ' + (c.tags || []).join(' ')).toLowerCase().includes(t)).sort((a, b) => +picked.has(b.id) - +picked.has(a.id) || a.name.localeCompare(b.name, 'ko'));
   return <div className="col">
     <input className="inp search" placeholder="이름이나 태그로 찾기" value={q} onChange={e => setQ(e.target.value)} />

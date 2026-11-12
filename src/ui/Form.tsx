@@ -1,6 +1,6 @@
 // 폼: 정의 배열로 입력 칸을 그린다 (옛 ui.js 의 form · tipBtn)
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
-import { L, type Legacy } from '../legacy';
+import { pickFiles, readDataURL, shrinkImage } from '../lib/core';
 import { Btn, Dom, Icon } from '../kit';
 
 type Opt = string | number | readonly [value: string | number, label: string];
@@ -77,13 +77,11 @@ function ColorCtl({ v, set }: { v: unknown; set: Setter }) {
   </div>;
 }
 
-interface Files { pickFiles(o?: { accept?: string; multiple?: boolean }): Promise<File[]>; readDataURL(f: File): Promise<string>; shrinkImage(src: string, max?: number): Promise<string> }
 function ImageCtl({ d, v, set }: { d: FieldDef; v: unknown; set: Setter }) {
   const [url, setUrl] = useState(str(v));
   const pick = async () => {
-    const core = L.core as Legacy['core'] & Files;
-    const [f] = await core.pickFiles({ accept: 'image/*' }); if (!f) return;
-    const u = await core.shrinkImage(await core.readDataURL(f), d.max || 720); setUrl(u); set(u);
+    const [f] = await pickFiles({ accept: 'image/*' }); if (!f) return;
+    const u = await shrinkImage(await readDataURL(f), d.max || 720); setUrl(u); set(u);
   };
   return <div className="img-row">
     <div className="img-pick" style={url ? { backgroundImage: `url("${url}")` } : undefined}>{url ? null : <Icon name="image" size={26} />}</div>

@@ -1,8 +1,11 @@
 // 벡터 검색 — 지난 대화와 로어북을 "뜻"으로 찾아 프롬프트에 싣는다 (옛 js/f-vectors.js 의 로직)
 // 흐름: 메시지를 조각 내어 임베딩해 두고, 최근 메시지를 질의로 삼아 비슷한 조각을 골라 싣는다.
 // 임베딩 호출은 답변 직전에 한 번(질의) + 아직 벡터가 없는 조각만큼. 벡터는 kv 저장소의 'vec:<대화 id>' · 'vec:lore' 에 두고 백업에는 넣지 않는다.
-import { mod } from '../legacy';
-import { B, type ChatX, type Conn, type Msg } from '../addons/legacy';
+import type { ChatX, Conn, Msg } from '../addons/types';
+import * as libEmbed from '../lib/embed';
+import { DB, S, msgText } from '../lib/core';
+import { activeBooks } from '../lib/engine';
+import { chatApi } from '../chat/actions';
 
 export interface EmbedOpt { connId?: string; kind?: string; model?: string; signal?: AbortSignal; timeoutMs?: number; query?: boolean }
 export interface EmbedMod {
@@ -12,7 +15,7 @@ export interface EmbedMod {
   cosine(a?: Float32Array, b?: Float32Array): number;
   embedTexts(texts: string[], opt?: EmbedOpt): Promise<Float32Array[]>;
 }
-export const embed = () => mod<EmbedMod>('embed');
+export const embed = () => libEmbed;
 
 export const VEC_TEMPLATE = 'Past events relevant to the current scene (retrieved from earlier in this chat, oldest first):\n{{text}}';
 export const VEC_DEFAULTS = {
@@ -22,7 +25,7 @@ export const VEC_DEFAULTS = {
 };
 export type VecCfg = typeof VEC_DEFAULTS;
 export const cfg = (): VecCfg => {
-  const v = (B.S.settings.vectors ||= {}) as Record<string, unknown>, d = VEC_DEFAULTS as Record<string, unknown>;
+  const v = (S.settings.vectors ||= {}) as Record<string, unknown>, d = VEC_DEFAULTS as Record<string, unknown>;
   for (const k in d) if (v[k] === undefined) v[k] = d[k];
   return v as VecCfg;
 };
@@ -48,7 +51,7 @@ const stores = new Map<string, VecStore>();   // id → { id, sig, items: { hash
 export async function loadStore(id: string, sig: string, peek = false): Promise<VecStore> {
   let st = stores.get(id);
   if (!st) {
-    const raw = await B.core.DB.get('kv', id).catch(() => null) as { sig?: string; items?: Record<string, unknown> } | null;
+    const raw = await DB.get('kv', id).catch(() => null) as { sig?: string; items?: Record<string, unknown> } | null;
     st = { id, sig: raw?.sig || '', items: {} };
     for (const [k, v] of Object.entries(raw?.items || {})) st.items[k] = v instanceof Float32Array ? v : Float32Array.from(Object.values((v || {}) as Record<string, number>));
     stores.set(id, st);
@@ -56,8 +59,8 @@ export async function loadStore(id: string, sig: string, peek = false): Promise<
   if (st.sig !== sig) { if (peek) return { id, sig, items: {} }; st.sig = sig; st.items = {}; }   // 임베딩 모델이 바뀌면 처음부터 (상태만 볼 때는 건드리지 않는다)
   return st;
 }
-const saveStore = (st: VecStore) => B.core.DB.put('kv', { id: st.id, sig: st.sig, items: st.items });
-export const sigOf = (c: VecCfg) => { const conn = B.S.get('conns', c.connId), E = embed(); return conn ? `${E.embedKind(conn, c.kind)}:${E.embedModel(conn, c.kind, c.model)}` : ''; };
+const saveStore = (st: VecStore) => DB.put('kv', { id: st.id, sig: st.sig, items: st.items });
+export const sigOf = (c: VecCfg) => { const conn = S.get('conns', c.connId), E = embed(); return conn ? `${E.embedKind(conn, c.kind)}:${E.embedModel(conn, c.kind, c.model)}` : ''; };
 export const embedOpt = (c: VecCfg, extra: EmbedOpt = {}): EmbedOpt => ({ connId: c.connId, kind: c.kind, model: c.model, ...extra });
 
 export interface Piece { key: string; text: string }
@@ -79,11 +82,11 @@ export async function sync(st: VecStore, pieces: Piece[], c: VecCfg, { signal, o
 
 // ── 지난 대화 ──
 export function chatPieces(chat: ChatX, msgs: Msg[], c: VecCfg): ChatPiece[] {
-  const user = B.S.persona(chat)?.name || 'User', vis = msgs.filter(m => !m.hidden && m.role !== 'system' && !m.dice), old = vis.slice(0, Math.max(0, vis.length - Math.max(0, +c.protect || 0))), out: ChatPiece[] = [];
-  old.forEach((m, n) => { const who = m.role === 'user' ? user : (m.name || 'Character'); chunkText(B.core.msgText(m), +c.chunk || 0).forEach((t, k) => out.push({ key: hash(m.id + '|' + k + '|' + t), text: t, who, order: n * 1000 + k, ts: m.ts })); });
+  const user = S.persona(chat)?.name || 'User', vis = msgs.filter(m => !m.hidden && m.role !== 'system' && !m.dice), old = vis.slice(0, Math.max(0, vis.length - Math.max(0, +c.protect || 0))), out: ChatPiece[] = [];
+  old.forEach((m, n) => { const who = m.role === 'user' ? user : (m.name || 'Character'); chunkText(msgText(m), +c.chunk || 0).forEach((t, k) => out.push({ key: hash(m.id + '|' + k + '|' + t), text: t, who, order: n * 1000 + k, ts: m.ts })); });
   return out;
 }
-function queryText(msgs: Msg[], c: VecCfg) { return msgs.filter(m => !m.hidden && m.role !== 'system').slice(-Math.max(1, +c.query || 2)).map(m => clean(B.core.msgText(m))).filter(Boolean).join('\n').slice(-4000); }
+function queryText(msgs: Msg[], c: VecCfg) { return msgs.filter(m => !m.hidden && m.role !== 'system').slice(-Math.max(1, +c.query || 2)).map(m => clean(msgText(m))).filter(Boolean).join('\n').slice(-4000); }
 
 const hits = new Map<string, { text: string; n: number }>();        // 대화 id → { text, n }
 const loreHits = new Set<string>();    // 이번 턴에 벡터가 깨운 로어북 항목 id
@@ -92,14 +95,14 @@ let lastInfo: LastInfo | null = null;           // 화면에 보여 줄 마지�
 export const lastSearch = () => lastInfo;
 
 function lorePieces(chat: ChatX, c: VecCfg): LorePiece[] {
-  const S = B.S, chars = (chat.charIds || []).map(id => S.get('chars', id)).filter(x => !!x), books = B.engine.activeBooks(chat, chars, S.persona(chat)), out: LorePiece[] = [];
+  const chars = (chat.charIds || []).map(id => S.get('chars', id)).filter(x => !!x), books = activeBooks(chat, chars, S.persona(chat)), out: LorePiece[] = [];
   for (const b of books) for (const e of b.entries || []) { if (e.enabled === false || e.constant || !(e.content || '').trim() || !(c.loreAll || e.vectorized)) continue; const text = clean([e.name, (e.keys || []).join(', '), e.content].filter(Boolean).join('\n')); out.push({ key: e.id + ':' + hash(text), text, id: e.id, name: e.name || (e.keys || [])[0] || '항목' }); }
   return out;
 }
 
 /** 로어북 벡터: 고쳐서 낡은 것과, 이제 없는 항목의 것을 치운다 */
 function pruneLore(st: VecStore, lore: LorePiece[]) {
-  const live = new Set(lore.map(p => p.key)), here = new Set(lore.map(p => p.id)), all = new Set(B.S.lore.flatMap(b => (b.entries || []).map(e => e.id))); let n = 0;
+  const live = new Set(lore.map(p => p.key)), here = new Set(lore.map(p => p.id)), all = new Set(S.lore.flatMap(b => (b.entries || []).map(e => e.id))); let n = 0;
   for (const k of Object.keys(st.items)) { const id = k.includes(':') ? k.slice(0, k.lastIndexOf(':')) : ''; if (!id || !all.has(id) || (here.has(id) && !live.has(k))) { delete st.items[k]; n++; } }
   if (n) saveStore(st).catch(() => { });
 }
@@ -107,14 +110,14 @@ function pruneLore(st: VecStore, lore: LorePiece[]) {
 export async function prepare({ chat, msgs, type }: { chat?: ChatX; msgs?: Msg[]; type?: string }): Promise<void> {
   const c = cfg(), E = embed(); if (chat) hits.delete(chat.id); loreHits.clear();
   if (!c.enabled || !chat || !msgs?.length) return;
-  if (!B.S.get('conns', c.connId)) return;
+  if (!S.get('conns', c.connId)) return;
   const qm = (type === 'regen' || type === 'swipe') && msgs[msgs.length - 1]?.role === 'assistant' ? msgs.slice(0, -1) : msgs;   // 다시 쓸 답변은 질의에서 뺀다
   const q = queryText(qm, c); if (q.length < 2) return;
   const sig = sigOf(c), pieces = c.chat ? chatPieces(chat, msgs, c) : [], lore = c.lore ? lorePieces(chat, c) : [];
   if (!pieces.length && !lore.length) return;
   const cst = pieces.length ? await loadStore('vec:' + chat.id, sig) : null, lst = lore.length ? await loadStore('vec:lore', sig) : null;
   const fresh = (cst ? pieces.filter(p => !cst.items[p.key]).length : 0) + (lst ? lore.filter(p => !lst.items[p.key]).length : 0);
-  if (fresh > 24) B.chat.setStatus?.(`벡터 만드는 중… ${fresh}조각`);
+  if (fresh > 24) chatApi.setStatus?.(`벡터 만드는 중… ${fresh}조각`);
   // 답변 직전에는 가장 최근 조각 256개까지만 새로 만든다 (나머지는 다음 턴이나 「지금 만들기」에서)
   if (cst) await sync(cst, pieces, c, { max: 256 });
   if (lst) { await sync(lst, lore, c, { prune: false, max: 256 }); pruneLore(lst, lore); }
@@ -133,5 +136,5 @@ export async function prepare({ chat, msgs, type }: { chat?: ChatX; msgs?: Msg[]
 export const loreWoken = (id: string) => cfg().enabled && cfg().lore && loreHits.has(id);
 export const hitOf = (chatId: string) => hits.get(chatId);
 /** 이 대화의 벡터를 지운다 */
-export async function dropChat(chatId: string, db = true) { stores.delete('vec:' + chatId); hits.delete(chatId); if (db) await B.core.DB.del('kv', 'vec:' + chatId); }
+export async function dropChat(chatId: string, db = true) { stores.delete('vec:' + chatId); hits.delete(chatId); if (db) await DB.del('kv', 'vec:' + chatId); }
 export const dropAll = () => stores.clear();

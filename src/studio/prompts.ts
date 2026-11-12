@@ -18,7 +18,7 @@ export function registerStudioPrompts() {
   X.covered = (chat: { id: string }) => Memory.get(chat.id)?.turns.length || 0;
   X.prompt = X.prompt.filter((p: { owner?: string }) => p.owner !== 'mode' && p.owner !== 'illust');
   X.prompt.push(
-    { owner: 'mode', fn: (i: Record<string, unknown>): Piece[] => { const { chat, ctx } = i as unknown as PromptArgs; return chat.mode === 'talk' ? [{ where: 'end', content: macro(S.settings.modes.talkPrompt || TALK_PROMPT, ctx), src: '대화 모드 지시' }] : []; } },
-    { owner: 'illust', fn: (i: Record<string, unknown>): Piece[] => { const { chat, msgs, type } = i as unknown as PromptArgs; return (type === 'normal' || type === 'regen') && Illust.wantsPlan(chat, msgs, type) ? [{ where: 'end', content: Illust.instruction(chat), src: '삽화 계획 지시' }] : []; } },
+    { owner: 'mode', fn: (i): Piece[] => { const { chat, ctx } = i as unknown as PromptArgs; return chat.mode === 'talk' ? [{ where: 'end', content: macro(String(S.settings.modes.talkPrompt || TALK_PROMPT), ctx), src: '대화 모드 지시' }] : []; } },
+    { owner: 'illust', fn: (i): Piece[] => { const { chat, msgs, type } = i as unknown as PromptArgs; return (type === 'normal' || type === 'regen') && Illust.wantsPlan(chat, msgs, type) ? [{ where: 'end', content: Illust.instruction(chat), src: '삽화 계획 지시' }] : []; } },
   );
 }

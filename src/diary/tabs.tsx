@@ -2,7 +2,6 @@
 import { useEffect, useReducer, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Avatar, Btn, Icon, IconBtn, Moon } from '../kit';
 import { Form, confirmBox, menu, toast, type FieldDef } from '../ui';
-import { Illust, K, S, core, ui } from './bridge';
 import { openDiary } from './Book';
 import { editPrompts, pickChat, promiseDialog, showLetter } from './dialogs';
 import {
@@ -11,10 +10,16 @@ import {
 } from './logic';
 import { BusyBtn, Glyph, MoonDial, MoonMini, Polaroid, Ticket, useAlive } from './parts';
 import type { DChat, DayRec, Days, GridCell, Msg, PromiseRec, PromiseState } from './types';
+import { Illust } from '../lib/illust';
+import { S } from '../lib/core';
+import { go } from '../lib/router';
+import { moonPhase } from '../lib/moon';
+import * as core from '../lib/core';
+import * as K from '../lib/f-keepsake';
 
 export interface DiaryArg { tab?: string; chatId?: string; day?: string }
 const useDraw = () => useReducer((x: number) => x + 1, 0)[1];
-const now = () => core().now();
+const now = () => core.now();
 
 // ════════ 달이 차오르는 달력 ════════
 export function Calendar({ arg }: { arg: DiaryArg }) {
@@ -22,7 +27,7 @@ export function Calendar({ arg }: { arg: DiaryArg }) {
   const [data, setData] = useState<{ chat: DChat; msgs: Msg[] } | 'none' | null>(null), [err, setErr] = useState('');
   const cur = useRef<DChat | null>(null);
   const load = async (patch: DiaryArg = {}) => {
-    const k = K();
+    const k = K;
     if (patch.chatId) view.chatId = patch.chatId; if (patch.day && k.validKey(patch.day)) { view.sel = patch.day; view.mk = patch.day.slice(0, 7); }
     const chat = defaultChat();
     if (!chat) { cur.current = null; setData('none'); return; }
@@ -35,15 +40,15 @@ export function Calendar({ arg }: { arg: DiaryArg }) {
   const reopen = (patch: DiaryArg = {}) => void load(patch).catch(e => { console.error(e); if (alive.current) setErr(errMsg(e)); });
   useEffect(() => {
     reopen(arg);
-    return core().on<DChat | null>('almanac:changed', c => { if (cur.current && (!c || c.id === cur.current.id)) draw(); });
+    return core.on<DChat | null>('almanac:changed', c => { if (cur.current && (!c || c.id === cur.current.id)) draw(); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (err) return <div className="empty"><p>{'달력을 펼치지 못했어요: ' + err}</p></div>;
-  if (data === 'none') return <div className="empty"><Moon size={46} /><p>아직 대화가 없어요. 대화를 시작하면 달이 차오르기 시작합니다.</p><Btn label="캐릭터 보러 가기" ic="home" cls="primary" onClick={() => ui().go('home')} /></div>;
+  if (data === 'none') return <div className="empty"><Moon size={46} /><p>아직 대화가 없어요. 대화를 시작하면 달이 차오르기 시작합니다.</p><Btn label="캐릭터 보러 가기" ic="home" cls="primary" onClick={() => go('home')} /></div>;
   if (!data) return <div className="alm-loading"><Moon size={28} /><span>달력을 펼치는 중…</span></div>;
 
-  const { chat, msgs } = data, k = K(), today = k.dayKey(now());
+  const { chat, msgs } = data, k = K, today = k.dayKey(now());
   const a = A(), days = k.collectDays(chat, msgs), st = k.monthStats(days, view.mk, a.goal, today), [y, mo] = view.mk.split('-').map(Number), ch = charOf(chat);
   const letter = (chat.letters || []).find(l => l.month === view.mk);
   const askLetter = async (again: boolean) => {
@@ -59,7 +64,7 @@ export function Calendar({ arg }: { arg: DiaryArg }) {
   const whoBar = <div className="alm-who">
     <button className="alm-me" title="다른 대화 고르기" onClick={pick}><Avatar o={ch || { name: namesOf(chat) }} /><div><b>{namesOf(chat)}</b><small>{`${roomOf(chat)} · ${roomLine(chat)}`}</small></div><Icon name="down" size={15} /></button>
     {others.length ? <div className="alm-others">{others.map(g => <button key={g.chat.id} title={`${g.name} · ${roomLine(g.chat)}`} onClick={() => { view.sel = ''; reopen({ chatId: g.chat.id }); }}><Avatar o={g.ch || { name: g.name }} cls="sm" /><span>{g.name}</span></button>)}</div> : null}
-    <div className="alm-who-side"><IconBtn ic="search" title="대화 고르기" onClick={pick} /><IconBtn ic="chat" title="이 대화로 가기" onClick={() => ui().go('chat', chat.id)} /><IconBtn ic="book" title="일기장 펼치기" onClick={() => core().emit('diary:open', chat)} /></div>
+    <div className="alm-who-side"><IconBtn ic="search" title="대화 고르기" onClick={pick} /><IconBtn ic="chat" title="이 대화로 가기" onClick={() => go('chat', chat.id)} /><IconBtn ic="book" title="일기장 펼치기" onClick={() => core.emit('diary:open', chat)} /></div>
   </div>;
 
   // ── 그달의 달
@@ -108,14 +113,14 @@ export function Calendar({ arg }: { arg: DiaryArg }) {
 
 /** 고른 날 */
 function DayDetail({ chat, msgs, days, today, draw, elRef }: { chat: DChat; msgs: Msg[]; days: Days; today: string; draw: () => void; elRef: React.RefObject<HTMLElement | null> }) {
-  const k = K(), key = view.sel;
+  const k = K, key = view.sel;
   if (!key) return <div className="alm-detail none" ref={elRef as React.RefObject<HTMLDivElement | null>}><p className="hint">날짜를 누르면 그날의 일기 · 사진 · 기념품 · 약속이 여기에 펼쳐져요.</p></div>;
-  const blank: DayRec = { key, n: 0, user: 0, ai: 0, firstId: '', lastId: '', photos: [], diary: [], dreams: [], keepsakes: [], promises: [] };
-  const d = days.get(key) || blank, date = k.keyDate(key), ph = ui().moonPhase(date), gap = k.diffDays(today, key);
+  const blank = { key, n: 0, user: 0, ai: 0, firstId: '', lastId: '', photos: [], diary: [], dreams: [], keepsakes: [], promises: [] } as unknown as DayRec;
+  const d = days.get(key) || blank, date = k.keyDate(key), ph = moonPhase(date), gap = k.diffDays(today, key);
   const rel = gap === 0 ? '오늘' : gap === 1 ? '내일' : gap === -1 ? '어제' : gap > 0 ? `${gap}일 뒤` : `${-gap}일 전`;
   const pics = d.photos.map(p => ({ ...p, src: photoSrc(p) })).filter(p => p.src);
   const sec = (title: string, n: number, kids: ReactNode) => <div className="alm-sec"><h4>{title}{n ? <i>{String(n)}</i> : null}</h4>{kids}</div>;
-  const open = (at: string) => core().emit('diary:open', { chat, at });
+  const open = (at: string) => core.emit('diary:open', { chat, at });
   const prow = (p: PromiseRec) => { const s = k.promiseState(p, today); return <div key={p.id} className={`alm-pr ${s}`}>
     {p.later ? <Glyph name="today" title="연락 약속" /> : <button className="alm-pr-check" title={p.done ? '지킨 약속 — 눌러서 되돌리기' : '지켰어요'} onClick={async () => { await Promises.toggle(chat, p); draw(); }}><Glyph name={s === 'upcoming' ? 'open' : s} /></button>}
     <div className="alm-pr-text"><b>{p.what}</b><small>{[p.time, BY[p.by] || '', s === 'missed' ? '지켜지지 않고 지나갔어요' : s === 'kept' ? '지켰어요' : ''].filter(Boolean).join(' · ')}</small></div>
@@ -130,7 +135,7 @@ function DayDetail({ chat, msgs, days, today, draw, elRef }: { chat: DChat; msgs
     {d.promises.length ? sec('약속', d.promises.length, d.promises.map(prow)) : null}
     {d.diary.length ? sec('일기', d.diary.length, d.diary.map(e => <button key={e.id} className="alm-entry" onClick={() => open(e.id)}><Glyph name="diary" /><div><b>{e.title || '제목 없는 밤'}</b><p>{String(e.text).replace(/\s+/g, ' ').slice(0, 150)}</p></div>{e.note ? <i className="alm-chip">{e.answer ? '교환 일기 · 답글' : '교환 일기'}</i> : null}</button>)) : null}
     {d.dreams.length ? sec('꿈', 0, d.dreams.map(e => <button key={e.id} className="alm-entry dream" onClick={() => open(e.id)}><Glyph name="dream" /><div><b>{e.title || '이름 없는 꿈'}</b><p>{String(e.text).replace(/\s+/g, ' ').slice(0, 150)}</p></div><i className="alm-chip">정사가 아님</i></button>)) : null}
-    {d.keepsakes.length ? sec('장면 기념품', d.keepsakes.length, <div className="alm-keeps">{d.keepsakes.map(x => { const src = x.photo && Illust().data(x.photo); return <div key={x.id} className="alm-keep"><Ticket k={x} onClick={() => open(x.id)} />{src ? <Polaroid src={src} onClick={() => void jumpTo(chat.id, x.id)} title="이 장면으로 가기" /> : null}</div>; })}</div>) : null}
+    {d.keepsakes.length ? sec('장면 기념품', d.keepsakes.length, <div className="alm-keeps">{d.keepsakes.map(x => { const src = x.photo && Illust.data(x.photo); return <div key={x.id} className="alm-keep"><Ticket k={x} onClick={() => open(x.id)} />{src ? <Polaroid src={src} onClick={() => void jumpTo(chat.id, x.id)} title="이 장면으로 가기" /> : null}</div>; })}</div>) : null}
     {pics.length ? sec('사진', pics.length, <div className="alm-pics">{pics.slice(0, 12).map((p, i) => <Polaroid key={i} src={p.src} title={p.title || '대화에서 보기'} onClick={() => void jumpTo(chat.id, p.msgId)} />)}{pics.length > 12 ? <small className="hint">{`외 ${pics.length - 12}장 — 대화에서 볼 수 있어요.`}</small> : null}</div>) : null}
     {!d.n && !d.promises.length && !d.diary.length && !d.dreams.length && !d.keepsakes.length ? <p className="hint">{gap >= 0 ? '아직 비어 있는 날이에요. 약속을 적어 둘 수 있어요.' : '이날은 남은 것이 없어요.'}</p> : null}
   </section>;
@@ -141,18 +146,18 @@ export function PromisesTab({ arg }: { arg: DiaryArg }) {
   const draw = useDraw();
   const [chat, setChat] = useState(() => { if (arg.chatId) view.chatId = arg.chatId; const c = defaultChat(); if (c) view.chatId = c.id; return c; });
   const [shown, setShown] = useState<Record<string, number>>({ missed: 12, kept: 12, upcoming: 40 });
-  useEffect(() => core().on('almanac:changed', draw), [draw]);
-  const k = K(), today = k.dayKey(now()), all = view.scope === 'all' || !chat;
+  useEffect(() => core.on('almanac:changed', draw), [draw]);
+  const k = K, today = k.dayKey(now()), all = view.scope === 'all' || !chat;
   interface Row { p: PromiseRec; c: DChat; s: PromiseState }
-  const rows: Row[] = (all ? S().chats : chat ? [chat] : []).flatMap(c => Promises.of(c).map(p => ({ p, c, s: k.promiseState(p, today) })));
+  const rows: Row[] = (all ? S.chats : chat ? [chat] : []).flatMap(c => Promises.of(c).map(p => ({ p, c, s: k.promiseState(p, today) })));
   const by = (s: PromiseState) => rows.filter(r => r.s === s), up = by('upcoming').sort((x, z) => x.p.date.localeCompare(z.p.date)), missed = by('missed').sort((x, z) => z.p.date.localeCompare(x.p.date)), kept = by('kept').sort((x, z) => z.p.date.localeCompare(x.p.date));
-  const toCal = (c: DChat, p: PromiseRec) => ui().go('diary', { tab: 'calendar', chatId: c.id, day: p.date });
+  const toCal = (c: DChat, p: PromiseRec) => go('diary', { tab: 'calendar', chatId: c.id, day: p.date });
   const row = ({ p, c, s }: Row) => { const d = k.keyDate(p.date), gap = k.diffDays(today, p.date); return <div key={c.id + p.id} className={`alm-prow ${s}`}>
     <button className="alm-pdate" title="달력에서 보기" onClick={() => toCal(c, p)}><b>{`${k.pad(d.getMonth() + 1)}.${k.pad(d.getDate())}`}</b><small>{`${k.WEEK[d.getDay()]} · ${gap === 0 ? '오늘' : gap > 0 ? `D-${gap}` : `${-gap}일 전`}`}</small></button>
     <div className="alm-ptext"><b>{p.what}</b><small>{[p.time, all ? `${namesOf(c)} · ${roomOf(c)}` : '', BY[p.by] || ''].filter(Boolean).join(' · ')}</small></div>
     {s === 'missed' ? <Glyph name="missed" title="지나간 약속" /> : null}
     {p.later ? null : <button className="alm-pr-check" title={p.done ? '되돌리기' : '지켰어요'} onClick={() => void Promises.toggle(c, p)}><Glyph name={p.done ? 'kept' : 'open'} /></button>}
-    <IconBtn ic="more" title="더 보기" cls="tiny" onClick={e => menu(e.currentTarget, [!p.later && { label: '고치기', ic: 'edit', onclick: () => void promiseDialog(c, p) }, { label: '달력에서 보기', ic: 'moon', onclick: () => toCal(c, p) }, !!p.msgId && { label: '약속한 대화로 가기', ic: 'chat', onclick: () => void jumpTo(c.id, p.msgId) }, !p.msgId && { label: '이 대화로 가기', ic: 'chat', onclick: () => ui().go('chat', c.id) },
+    <IconBtn ic="more" title="더 보기" cls="tiny" onClick={e => menu(e.currentTarget, [!p.later && { label: '고치기', ic: 'edit', onclick: () => void promiseDialog(c, p) }, { label: '달력에서 보기', ic: 'moon', onclick: () => toCal(c, p) }, !!p.msgId && { label: '약속한 대화로 가기', ic: 'chat', onclick: () => void jumpTo(c.id, p.msgId) }, !p.msgId && { label: '이 대화로 가기', ic: 'chat', onclick: () => go('chat', c.id) },
       s === 'missed' && !p.later && { label: p.excused ? '다시 서운해해도 돼요' : '서운해하지 않게 넘어가기', ic: 'heart', onclick: async () => { p.excused = !p.excused; await save(c); changed(c); } }, '-', { label: '지우기', ic: 'trash', danger: true, onclick: async () => { if (await confirmBox('이 약속을 지울까요?', '지우기', true)) await Promises.remove(c, p); } }])} />
   </div>; };
   const sec = (title: string, list: Row[], key: string, note?: string) => list.length ? <div className="alm-psec"><h3 className="form-sec">{title}<i className="badge">{String(list.length)}</i></h3>{note ? <small className="hint">{note}</small> : null}{list.slice(0, shown[key] || 99).map(row)}{list.length > (shown[key] || 99) ? <Btn label={`더 보기 (${list.length - shown[key]})`} cls="ghost wide" onClick={() => setShown({ ...shown, [key]: shown[key] + 40 })} /> : null}</div> : null;
@@ -179,15 +184,15 @@ export function SettingsTab() {
     { section: '교환 일기' },
     { k: 'almanac.exchangeInject', label: '내가 일기 옆에 적은 글과 답글을 다음 대화에 은근히 반영하기 (적은 뒤 7일 동안)', type: 'check' },
     { section: '지시문' }, DIARY_DEF, ...promptDefs(Object.keys(PROMPTS)), moodDef];
-  const onChange = () => { const al = S().settings.almanac ||= {}; if (!al.goal) delete al.goal; al.weekStart = +(al.weekStart ?? 0) || 0; S().set({}); changed(null); };
-  return <div className="card"><p className="hint">모델을 따로 부르는 기능은 버튼을 누를 때만 움직이고, 버튼에 "호출 1회"라고 적혀 있습니다. 아래 체크 항목들은 추가 호출 없이 프롬프트에 몇 줄을 더할 뿐입니다.</p><Form obj={S().settings} defs={defs} onChange={onChange} /></div>;
+  const onChange = () => { const al = S.settings.almanac ||= {}; if (!al.goal) delete al.goal; al.weekStart = +(al.weekStart ?? 0) || 0; S.set({}); changed(null); };
+  return <div className="card"><p className="hint">모델을 따로 부르는 기능은 버튼을 누를 때만 움직이고, 버튼에 "호출 1회"라고 적혀 있습니다. 아래 체크 항목들은 추가 호출 없이 프롬프트에 몇 줄을 더할 뿐입니다.</p><Form obj={S.settings} defs={defs} onChange={onChange} /></div>;
 }
 
 // ════════ 책장 ════════
 const hue = (s: string) => { let n = 0; for (const c of String(s)) n = (n * 31 + c.charCodeAt(0)) % 360; return n; };
 export function Shelf() {
   const [q, setQ] = useState('');
-  const chats = S().chats, named = (c: DChat) => charOf(c)?.name || '';
+  const chats = S.chats, named = (c: DChat) => charOf(c)?.name || '';
   const t = q.trim().toLowerCase(), all = chats.filter(c => pageCount(c) && charOf(c)).sort((a, b) => lastTs(b) - lastTs(a));
   const books = all.filter(c => !t || `${named(c)} ${c.name || ''}`.toLowerCase().includes(t));
   const recent = [...chats].sort((a, b) => b.updatedAt - a.updatedAt).filter(c => !pageCount(c) && charOf(c)).slice(0, 6);

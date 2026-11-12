@@ -6,9 +6,10 @@
 import { S, on, emit } from './core';
 import { X } from './hooks';
 import { toast } from '../ui';
+import type { Chat } from './types';
 
-export interface ClockCfg { mode?: 'real' | 'story' | 'none' | string; at: number; setAt?: number; flow?: 'real' | 'step' | 'hold' | string; step?: number; ai?: boolean }
-export interface ClockChat { id?: string; clock?: ClockCfg; [k: string]: unknown }
+export type { ClockCfg } from './types';
+export type ClockChat = Chat;
 export interface ClockMsg { ts?: number; st?: number; sw?: number; swipes?: { ts?: number }[]; [k: string]: unknown }
 interface SApi { save(coll: string, obj: unknown, quiet?: boolean): Promise<unknown> }
 interface Cmd { owner: string; args: string; help: string; run(arg: string, api: { current(): { chat: ClockChat | null } }): unknown }
@@ -43,12 +44,12 @@ export const Clock = {
   current: null as ClockChat | null,              // 지금 열려 있는 대화방 (일정 · 상태 계산이 기본으로 따르는 시계)
   mode: (chat: ClockChat | null | undefined) => cfg(chat)?.mode || 'real',
   /** 이 방의 지금 (ms) */
-  ms(chat: ClockChat | null | undefined): number { const c = cfg(chat); if (!c || c.mode !== 'story') return Date.now(); return c.flow === 'real' ? c.at + (Date.now() - (c.setAt || Date.now())) : c.at; },
+  ms(chat: ClockChat | null | undefined): number { const c = cfg(chat); if (!c || c.mode !== 'story') return Date.now(); return c.flow === 'real' ? c.at! + (Date.now() - (c.setAt || Date.now())) : c.at!; },
   now(chat: ClockChat | null | undefined) { return new Date(this.ms(chat)); },
   /** 열려 있는 방의 지금. 일정표 · 상태 계산처럼 대화방을 넘겨받지 않는 곳에서 쓴다 */
   date() { return this.now(this.current); },
   /** 메시지가 놓인 시각 (ms). 이야기 시계에서는 메시지에 적어 둔 이야기 시각 */
-  timeOf(chat: ClockChat | null | undefined, m: ClockMsg | null | undefined): number { const c = cfg(chat), t = m?.swipes?.[m.sw as number]?.ts || m?.ts || Date.now(); if (!c || c.mode !== 'story') return t; return m?.st ?? (c.flow === 'real' ? c.at + (t - (c.setAt || t)) : c.at); },
+  timeOf(chat: ClockChat | null | undefined, m: ClockMsg | null | undefined): number { const c = cfg(chat), t = m?.swipes?.[m.sw as number]?.ts || m?.ts || Date.now(); if (!c || c.mode !== 'story') return t; return m?.st ?? (c.flow === 'real' ? c.at! + (t - (c.setAt || t)) : c.at!); },
   /** 시계를 옮긴다: { set: '22:30' | '2024-03-02 22:30' } 또는 { advance: '2h' }. 옮겼으면 true */
   async move(chat: ClockChat, { set, advance }: { set?: string; advance?: string } = {}) {
     const c = cfg(chat); if (!c || c.mode !== 'story') return false;
@@ -73,7 +74,7 @@ export const Clock = {
 async function mark({ msg, chat }: { msg?: ClockMsg; chat: ClockChat }) {
   const c = cfg(chat); if (!c || c.mode !== 'story' || !msg || msg.st != null) return;
   if (c.flow !== 'step') { msg.st = Clock.ms(chat); return; }
-  c.at += Math.max(0, +(c.step as number) || 0) * 60000; c.setAt = Date.now(); msg.st = c.at;   // 메시지에 먼저 적고 나서 저장한다
+  c.at! += Math.max(0, +(c.step as number) || 0) * 60000; c.setAt = Date.now(); msg.st = c.at;   // 메시지에 먼저 적고 나서 저장한다
   await SS().save('chats', chat, true).catch(() => { }); emitX('clock:tick', chat);
 }
 onX('message:sent', mark); onX('message:received', mark);

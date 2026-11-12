@@ -1,19 +1,20 @@
 // 기능: 번역 · 삽화 · 에셋 · 보조 연결 설정 + 기능 모듈이 꽂은 탭
 import { useMemo, useState, type ReactNode } from 'react';
-import { mod } from '../legacy';
 import { Btn } from '../kit';
-import { Host, LForm, PageHead, S, textModal, type FormDefs, type Opt } from '../studio/bridge';
+import type { FormDefs, Opt } from '../studio/parts';
+import * as libIllust from '../lib/illust';
+import * as libHooks from '../lib/hooks';
+import * as libAssets from '../lib/assets';
+import { S } from '../lib/core';
+import { Host, LForm, PageHead, textModal } from '../studio/parts';
 
-interface IllustMod { NAI_MODELS: string[]; PLAN_PROMPT: string; TRANSLATE_PROMPT: string }
-interface AssetsMod { ASSET_PROMPT: string }
-interface HooksMod { X: { studio: { title: string; render(): Node }[] } }
 interface StudioSettings { illust: { backend: string } }
 
 // 화면을 떠났다 돌아와도 남는 탭
 let tab = '번역';
 const TAB_ORDER = ['번역', '삽화', '에셋', '보조 연결', '일정', '표정', '벡터 검색', '장기기억'];
 
-export const page = { name: 'studio', Component: Studio, needs: ['illust', 'assets', 'hooks'] };
+export const page = { name: 'studio', Component: Studio };
 
 /** 기능 모듈이 등록한 탭: 옛 코드가 만든 DOM 을 그대로 끼운다 */
 function ExtTab({ render }: { render: () => Node }) {
@@ -24,9 +25,9 @@ function ExtTab({ render }: { render: () => Node }) {
 
 function Studio() {
   const [, setTab] = useState(tab), [epoch, setEpoch] = useState(0);
-  const st = S().settings as unknown as StudioSettings, sv = () => S().set({});
-  const { NAI_MODELS, PLAN_PROMPT, TRANSLATE_PROMPT } = mod<IllustMod>('illust'), { ASSET_PROMPT } = mod<AssetsMod>('assets');
-  const conns: Opt[] = [['', '대화에 쓰는 연결'], ...S().conns.map(c => [c.id, `${c.name}${c.model ? ' · ' + c.model : ''}`] as const)];
+  const st = S.settings as unknown as StudioSettings, sv = () => S.set({});
+  const { NAI_MODELS, PLAN_PROMPT, TRANSLATE_PROMPT } = libIllust, { ASSET_PROMPT } = libAssets;
+  const conns: Opt[] = [['', '대화에 쓰는 연결'], ...S.conns.map(c => [c.id, `${c.name}${c.model ? ' · ' + c.model : ''}`] as const)];
   const il = st.illust, nai = il.backend === 'nai', api = il.backend === 'openai' || il.backend === 'gemini', sd = il.backend === 'a1111';
   const card = (defs: FormDefs, ...rest: ReactNode[]) => <div className="card"><LForm obj={st} defs={defs} onChange={sv} />{rest}</div>;
 
@@ -45,7 +46,7 @@ function Studio() {
       nai && { k: 'illust.naiKey', label: 'NovelAI 키 (Persistent API Token)', type: 'password', half: true },
       nai && { k: 'illust.model', label: '모델', type: 'select', opts: NAI_MODELS, half: true },
       nai && { k: 'illust.sampler', label: '샘플러', type: 'select', opts: ['k_euler_ancestral', 'k_euler', 'k_dpmpp_2m', 'k_dpmpp_2m_sde', 'k_dpmpp_sde', 'k_dpmpp_2s_ancestral'], half: true },
-      api && { k: 'illust.connId', label: '쓸 연결 (키와 주소를 빌려 씁니다)', type: 'select', opts: [['', '골라 주세요'], ...S().conns.map(c => [c.id, c.name] as const)], half: true },
+      api && { k: 'illust.connId', label: '쓸 연결 (키와 주소를 빌려 씁니다)', type: 'select', opts: [['', '골라 주세요'], ...S.conns.map(c => [c.id, c.name] as const)], half: true },
       api && { k: 'illust.imgModel', label: '이미지 모델', ph: il.backend === 'gemini' ? 'gemini-3.1-flash-image' : 'gpt-image-1', half: true },
       sd && { k: 'illust.a1111', label: 'WebUI 주소 (--api 로 실행)', half: true },
       { k: 'illust.width', label: '너비', type: 'num', step: 64, third: true }, { k: 'illust.height', label: '높이', type: 'num', step: 64, third: true },
@@ -69,7 +70,7 @@ function Studio() {
       { k: 'helpers.translate', label: '번역', type: 'select', opts: conns, third: true }, { k: 'helpers.memory', label: '장기기억', type: 'select', opts: conns, third: true }, { k: 'helpers.illust', label: '삽화 계획', type: 'select', opts: conns, third: true }]),
   };
   // 기능 모듈이 등록한 탭이 같은 이름의 기본 탭을 대신한다
-  for (const t of mod<HooksMod>('hooks').X.studio) views[t.title] = () => <ExtTab render={() => t.render()} />;
+  for (const t of libHooks.X.studio) views[t.title] = () => <ExtTab render={() => t.render()} />;
   // 탭 순서는 옛 판과 같게 (기능이 등록되는 순서가 달라져도). 여기에 없는 탭은 등록된 순서대로 뒤에 온다
   const rank = (t: string) => { const i = TAB_ORDER.indexOf(t); return i < 0 ? TAB_ORDER.length : i; };
   const names = Object.keys(views).map((t, i) => [t, i] as const).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(x => x[0]);

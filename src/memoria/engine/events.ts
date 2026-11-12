@@ -1,10 +1,10 @@
 // memory.js 2696–2728 줄(이벤트)을 그대로 옮긴 것
+import { S, emit, on, msgText } from '../../lib/core';
 import type { ChatM, Mem, Msg } from '../types';
 import type { PromptMsg } from './part5';
 import type { Unused } from './base';
 import { Memory } from './memory';
 import { G, cache, visibleProse, updateTimers } from './base';
-import { S, msgText, emit, on } from './legacy';
 
 /** 이벤트가 실어 오는 것 */
 interface PromptReady { messages?: PromptMsg[]; type?: string }

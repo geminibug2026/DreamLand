@@ -2,10 +2,14 @@
 // 사서 일지 · 색인 · 맞추기 · 서사 시계 · 서고 정리 · 복구 지점 · 인계 · 스토리 바이블 · 백업
 import { Fragment, useEffect, useReducer, useRef, useState, type MouseEvent } from 'react';
 import { Btn } from '../../kit';
-import { confirmBox } from '../../ui';
-import { Memory, chatApi, core, memMod, toast, type CheckpointInfo, type ExportRead, type Obj } from '../bridge';
+import { confirmBox, toast } from '../../ui';
+import type { CheckpointInfo, ExportRead, Obj } from '../types';
 import type { Bond, ChatM, Mem } from '../types';
 import { Ico, None, Sec, busyBtn, chatTitle, confirmList, editBox, ensureCfg, isCur, msgsOf, persistMsgs, progressBox, review, safe, type StOpen } from './parts';
+import { Memory } from '../../lib/memory';
+import { chatApi } from '../../chat/actions';
+import * as memMod from '../../lib/memory';
+import * as core from '../../lib/core';
 
 /** 명령어 목록 [이름, 설명] — 도구 탭 맨 아래 안내와 명령 등록이 함께 쓴다 */
 export const COMMANDS: [string, string][] = [['/memoria', '켜기/끄기'], ['/memoria-autorecord', '자동 기록 켜기/끄기'], ['/memoria-remember 내용', '수동 기억'], ['/memoria-search 검색어', '기억 검색'], ['/memoria-ask 질문', '서고에 질문'], ['/memoria-index', '전체 색인'], ['/memoria-clock', '서사 시계 재계산'], ['/memoria-reconcile', '대화와 기록 맞추기'], ['/memoria-open', '서고 열기']];
@@ -13,7 +17,7 @@ export const COMMANDS: [string, string][] = [['/memoria', '켜기/끄기'], ['/m
 // ════════ 작업 ════════
 /** 「기록」 — 마지막 답변 턴을 지금 바로 기록한다 */
 export async function recordNow(chat: ChatM) {
-  const M = Memory(), api = chatApi();
+  const M = Memory, api = chatApi;
   ensureCfg(); const msgs = await msgsOf(chat), last = [...msgs].reverse().find(m => m.role === 'assistant' && !m.hidden && !m.greeting);
   if (!last) return toast('기록할 답변이 없습니다.');
   toast('마지막 턴을 기록합니다…'); if (isCur(chat)) api.setStatus('기억 정리 중…');
@@ -22,7 +26,7 @@ export async function recordNow(chat: ChatM) {
 }
 /** 「색인」 — 아직 기록되지 않은 턴과 기록에 실패한 턴을 순서대로 기록한다. 끝나면(10턴 이상) 서사 시계를 한 번 재계산한다 */
 export async function backfill(chat: ChatM, { from = 0, to = Infinity, includeHidden = false }: { from?: number; to?: number; includeHidden?: boolean } = {}) {
-  const M = Memory();
+  const M = Memory;
   if (!ensureCfg().enabled) return toast('장기기억이 꺼져 있습니다.');
   const msgs = await msgsOf(chat), mem = await M.load(chat.id); M.reconcile(mem, msgs);
   const todo = M.pending(mem, msgs, { includeHidden, from, to });
@@ -35,12 +39,12 @@ export async function backfill(chat: ChatM, { from = 0, to = Infinity, includeHi
     // 일괄 색인은 턴을 하나씩 떼어 보므로 경과 시간 어림이 쌓여 어긋난다 — 어느 정도 쌓였으면 전체를 이어 읽어 시계를 바로잡는다
     if (!pb.stopped() && n >= 10 && M.cfg().storyClock !== false) { pb.say('색인이 끝나 서사 시계를 재계산합니다…'); await M.recalClock(chat, mem, { signal: pb.signal }).catch(() => { }); }
   } catch (e) { const err = e as Error; if (err.name !== 'AbortError') toast('색인 실패: ' + err.message, 'err'); }
-  pb.close(); if (isCur(chat)) chatApi().redraw();
+  pb.close(); if (isCur(chat)) chatApi.redraw();
 }
 
 /** 스토리 바이블 — 지금까지의 서고 전체를 사람이 읽는 마크다운 문서로. 모델을 부르지 않는다 */
 export function bible(chat: ChatM, m: Mem): string {
-  const M = Memory(), { fmtDays, LOCKS, KINDS } = memMod();
+  const M = Memory, { fmtDays, LOCKS, KINDS } = memMod;
   const md = [`# 스토리 바이블 — ${chatTitle(chat)}`, `> 장기기억 서고가 정리한 이 이야기의 기록입니다. (${new Date().toLocaleString('ko-KR')} · ${m.turns.length}턴 · 기억 ${m.memories.length}개)`], sc = M.scene(m);
   if (sc.any) md.push(`\n**현재 장면** — ${[sc.location, sc.date, sc.time].filter(Boolean).join(' · ')}`);
   const total = m.turns.reduce((a, t) => a + (t.days || 0), 0); if (total >= 1) md.push(`\n**서사 시계** — 이야기 시작 후 약 ${fmtDays(total)} 경과`);
@@ -77,7 +81,7 @@ export function bible(chat: ChatM, m: Mem): string {
 const ACT_IC: Record<string, string> = { check: 'check', side: 'shuffle', recall: 'search', record: 'feather', summary: 'book', defer: 'glass', ledger: 'snow', update: 'edit', bundle: 'layers', error: 'warn' };
 /** 사서 일지 — 저절로 일어난 일(회상 · 기록 · 요약 · 미룸 · 오류). 최신이 위, 60줄까지 */
 export function ActivityRows() {
-  const M = Memory(), rows = M.activity?.() || M.activityLog?.list?.() || [], clock = (at: number) => new Date(at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const M = Memory, rows = M.activity?.() || M.activityLog?.list?.() || [], clock = (at: number) => new Date(at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   return rows.length ? <>{rows.slice(0, 60).map((r, i) => <div key={i} className={`mm-row mm-act a-${safe(r.kind)}`}><Ico name={ACT_IC[r.kind] || 'note'} size={14} /><span className="mm-row-text">{r.text}{r.count > 1 ? <small>{` ×${r.count}`}</small> : null}</span><small className="mm-act-at">{clock(r.at)}</small></div>)}</>
     : <None text="아직 기록이 없습니다. 회상·기록·요약처럼 저절로 일어난 일이 여기에 남습니다." />;
 }
@@ -85,11 +89,11 @@ export function ActivityRows() {
 const DBtn = ({ label, ic, cls, title, onClick }: { label: string; ic: string; cls: string; title?: string; onClick: (e: MouseEvent<HTMLButtonElement>) => unknown }) => <Btn label={label} ic={ic} cls={cls} title={title} onClick={e => void onClick(e)} />;
 
 export function Tools({ st }: { st: StOpen }) {
-  const M = Memory(), { download, pickFiles } = core(), { fmtDays } = memMod();
+  const M = Memory, { download, pickFiles } = core, { fmtDays } = memMod;
   const { chat, mem, msgs } = st, cfg = M.cfg();
   // 사서 일지는 이 탭이 열려 있을 때만 알림을 받아 다시 그린다
   const [, bumpAct] = useReducer((x: number) => x + 1, 0);
-  useEffect(() => core().on('memory:activity', core().debounce(bumpAct, 120)), []);
+  useEffect(() => core.on('memory:activity', core.debounce(bumpAct, 120)), []);
   const [cps, setCps] = useState<CheckpointInfo[] | null>(null), [prog, setProg] = useState(''), [cprog, setCprog] = useState('');
   const drawCps = () => M.checkpoints(chat.id).then(setCps, () => setCps([]));
   // eslint-disable-next-line react-hooks/exhaustive-deps

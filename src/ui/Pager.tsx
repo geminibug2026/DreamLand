@@ -2,8 +2,8 @@
 // · 쪽 번호(지금 근처 + 처음 · 끝 · 생략표) · 이전 · 다음 · 한 쪽 개수 고르기(설정 pageSizes[id] 에 기억)
 // · resetKey 가 바뀌면 1쪽 · 지워서 쪽이 비면 앞쪽 · 쪽을 넘기면 목록(listRef) 맨 위로
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { L } from '../legacy';
 import { Icon } from '../kit';
+import { S } from '../lib/core';
 
 export interface PagedOpts {
   /** 한 쪽 개수를 기억할 이름. 없으면 기억하지 않는다 */
@@ -21,8 +21,8 @@ export interface PagedOpts {
 export interface Paged<T> { rows: T[]; start: number; page: number; pages: number; perPage: number; setPage(p: number): void; pager: ReactNode; listRef: (el: HTMLElement | null) => void }
 
 type Sizes = Record<string, number>;
-const saved = (id?: string) => (id ? ((L.core.S.settings as unknown as { pageSizes?: Sizes }).pageSizes || {})[id] : undefined);
-const remember = (id: string, n: number) => { const S = L.core.S as unknown as { settings: { pageSizes?: Sizes }; set(p: object): void }; S.set({ pageSizes: { ...(S.settings.pageSizes || {}), [id]: n } }); };
+const saved = (id?: string) => (id ? ((S.settings as unknown as { pageSizes?: Sizes }).pageSizes || {})[id] : undefined);
+const remember = (id: string, n: number) => { const St = S as unknown as { settings: { pageSizes?: Sizes }; set(p: object): void }; St.set({ pageSizes: { ...(St.settings.pageSizes || {}), [id]: n } }); };
 
 /** 1 … 4 5 [6] 7 8 … 20 */
 export function pageList(page: number, pages: number): (number | '…')[] {

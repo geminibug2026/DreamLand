@@ -1,10 +1,10 @@
 // memory.js 2299–2693 줄을 그대로 옮긴 것. 본문은 고치지 않고 타입(Part5)만 붙인다
+import { S, DB, uid, now, msgText, emit } from '../../lib/core';
 import type { MemoryApi } from './api';
 import type { HistoryMsg } from './part3';
 import type { CastInput } from './part2';
 import type { Mem, MemItem, Msg, ChatM, Plan, Relation, Bond, BondStep, CastNote, CanonRow, StatusRow } from '../types';
 import { KINDS, LOCKS, VIS, SCOPES, NARRATOR, PUBLIC_ONLY, SHELVES, SHELF_LABELS, DOSSIER_MAX, CHARACTER_LINES_MAX, CHARACTER_GROWTH_MAX, empty, clamp01, str, list, snake, clip, low, cleanStr, toSnake, canonSlot, copy, cleanRecord, visibleProse, prose, ekey, cleanMultiline, parseLoose, fmtDays, ago, normKind, normLockKind, normVisibility, overrides, audits, lasts, freezes, PACKET_HEADER, PACKET_FOOTER } from './base';
-import { S, DB, uid, now, msgText, emit } from './legacy';
 import * as MP from '../prompts';
 import { stripPhrases } from '../craft';
 
@@ -380,14 +380,14 @@ export const part5: Part5 & ThisType<MemoryApi> = {
   /** 지금 서고를 복구 지점으로 보관한다 (최근 3개 · 합계 6MB) */
   async checkpoint(mem, label) {
     const data = JSON.stringify(copy(mem)), bytes = new Blob([data]).size; if (bytes > 3 * 1024 * 1024) return null;
-    const key = 'memcp:' + mem.id, rec: CheckpointRow = (await DB.get<CheckpointRow>('kv', key)) || { id: key, list: [] };
+    const key = 'memcp:' + mem.id, rec: CheckpointRow = (await DB.get('kv', key) as CheckpointRow | undefined) || { id: key, list: [] };
     const point: CheckpointPoint = { id: uid(), label: String(label).slice(0, 100), at: now(), turn: mem.turns.length, bytes, data }; let total = 0;
     rec.list = [point, ...(rec.list || [])].slice(0, 3).filter((p, i) => i === 0 || (total += p.bytes) + bytes <= 6 * 1024 * 1024);
     await DB.put('kv', rec); emit('memory:checkpoint', mem.id);
     return point;
   },
-  async checkpoints(chatId) { return ((await DB.get<CheckpointRow>('kv', 'memcp:' + chatId))?.list || []).map(({ data, ...p }) => p); },
-  async checkpointData(chatId, id) { const p = ((await DB.get<CheckpointRow>('kv', 'memcp:' + chatId))?.list || []).find(x => x.id === id); return p ? this.normalize(JSON.parse(p.data), chatId) : null; },
+  async checkpoints(chatId) { return ((await DB.get('kv', 'memcp:' + chatId) as CheckpointRow | undefined)?.list || []).map(({ data, ...p }) => p); },
+  async checkpointData(chatId, id) { const p = ((await DB.get('kv', 'memcp:' + chatId) as CheckpointRow | undefined)?.list || []).find(x => x.id === id); return p ? this.normalize(JSON.parse(p.data), chatId) : null; },
   /** 불러온 서고를 이 대화의 서고 모양으로 */
   normalize(data, chatId) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('서고 파일의 형식이 올바르지 않아요.');

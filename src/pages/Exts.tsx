@@ -1,21 +1,17 @@
 // 확장 · 플러그인: 설치(파일 · 주소 · 코드) · 켜고 끄기 · 삭제 · 시작 틀 (불러오기와 API 는 옛 ext.js 가 맡는다)
 import { useEffect, useRef } from 'react';
-import { mod } from '../legacy';
 import { Btn, Icon, IconBtn, useEvents } from '../kit';
-import { promptBox, confirmBox, PageHead, core } from '../studio/bridge';
+import * as libExt from '../lib/ext';
+import * as core from '../lib/core';
+import { PageHead, confirmBox, promptBox } from '../studio/parts';
 
 interface ExtItem { id: string; name: string; version?: string; author?: string; description?: string; source: 'folder' | 'installed' }
-interface ExtMod {
-  catalog: ExtItem[]; loaded: Map<string, { error: string }>; TEMPLATE: string;
-  enabled(id: string): boolean; unload(id: string): void; readCatalog(): Promise<ExtItem[]>;
-  setEnabled(item: ExtItem, on: boolean): Promise<void>; install(code: string, hint?: string): Promise<void>; installFromUrl(url: string): Promise<void>;
-}
 
-export const page = { name: 'exts', Component: Exts, needs: ['ext'] };
+export const page = { name: 'exts', Component: Exts };
 
 function Exts() {
   const redraw = useEvents('ext:changed');
-  const E = mod<ExtMod>('ext'), C = core(), alive = useRef(true);
+  const E = libExt, C = core, alive = useRef(true);
   const draw = () => { if (alive.current) redraw(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { alive.current = true; void E.readCatalog().then(draw); return () => { alive.current = false; }; }, []);

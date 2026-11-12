@@ -1,14 +1,18 @@
 // 표정: 대화 화면에 반영 (초상 · 아바타 · 스탠딩). 대화 화면이 그린 DOM 위에 그림을 얹는 층이라 DOM 을 직접 다룬다
-import { L } from '../legacy';
-import { B, type CharX, type ChatX, type Msg } from '../addons/legacy';
+import type { CharX, ChatX, Msg } from '../addons/types';
 import { openPicker } from './Picker';
 import { Sprites, bus, cfg, charIdOf, currentOf, exprOf, lastReply, live, nameOf, pickSprite, toggleStanding, type ExprState, type Sprite } from './store';
+import { I } from '../lib/icons';
+import { S, on } from '../lib/core';
+import { toast } from '../ui';
+import { modal } from '../ui/dom';
+import { chatApi } from '../chat/actions';
 
 type Pic = Pick<Sprite, 'id' | 'data'>;
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
 function iconEl(name: string, size: number): SVGSVGElement {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('width', String(size)); s.setAttribute('height', String(size)); s.classList.add('ic');
-  s.innerHTML = `<path d="${L.ui.I[name] || L.ui.I.sparkle}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`; return s;
+  s.innerHTML = `<path d="${I[name] || I.sparkle}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`; return s;
 }
 
 const shown = new Map<string, string>();   // 자리 → 마지막으로 보여 준 그림 id (화면이 다시 그려져도 부드럽게 잇기 위해)
@@ -23,7 +27,7 @@ function setImg(host: Element, sprite: Pic | null | undefined, slot: string, { f
   if (!old && fade && slot && shown.has(slot) && shown.get(slot) !== sprite.id) { const prev = Sprites.find(shown.get(slot)!); if (prev) { old = mk(prev); host.append(old); } }
   if (slot) shown.set(slot, sprite.id);
   const img = mk(sprite);
-  if (!old || !fade || B.S.settings.motion === false) { host.querySelectorAll(':scope > img.exs-img').forEach(x => x.remove()); host.append(img); return; }
+  if (!old || !fade || S.settings.motion === false) { host.querySelectorAll(':scope > img.exs-img').forEach(x => x.remove()); host.append(img); return; }
   imgs.filter(x => x !== old).forEach(x => x.remove());
   img.classList.add('in'); host.append(img);
   if (cross) old.classList.add('out'); else old.classList.add('under');
@@ -58,7 +62,7 @@ function applyDossier(layout: Element, chars: CharX[], state: Map<string, ExprSt
   if (!st) next.append(el('span', 'exs-cap-label', '표정'));
   else {
     const b = el('button', 'exs-cap-btn'); b.type = 'button'; b.title = '이 답변의 표정 바꾸기';
-    b.addEventListener('click', () => { const { chat: ch, msgs } = B.chat.current(); const m = ch && lastReply(msgs, ch, ch.charIds[0]); if (ch && m) void openPicker(m, ch); else B.ui.toast('아직 답변이 없어요'); });
+    b.addEventListener('click', () => { const { chat: ch, msgs } = chatApi.current(); const m = ch && lastReply(msgs, ch, ch.charIds[0]); if (ch && m) void openPicker(m, ch); else toast('아직 답변이 없어요'); });
     b.append(el('i', '', '✦'), el('span', '', st.label ? nameOf(st.label) : '기본 표정'), iconEl('down', 12)); next.append(b);
   }
   const sb = el('button', 'exs-cap-btn exs-cap-stand' + (c.standing ? ' on' : ''), c.standing ? '스탠딩 끄기' : '스탠딩 보기'); sb.type = 'button'; sb.title = '화면 한쪽에 큰 초상을 세웁니다';
@@ -116,9 +120,9 @@ export function sync() {
   try {
     const layout = document.querySelector('#page .chat-layout'); if (!layout) return;
     document.documentElement.dataset.exsAv = cfg().avatarFit === 'cover' ? 'cover' : 'contain';
-    const { chat, msgs } = B.chat.current(); if (!chat || !layout.querySelector('.msgs')) return;
+    const { chat, msgs } = chatApi.current(); if (!chat || !layout.querySelector('.msgs')) return;
     if (chat.charIds.some(id => !Sprites.has(id))) { Sprites.load(chat.charIds).then(schedule).catch(e => console.warn('[표정]', e)); return; }
-    const chars = chat.charIds.map(id => B.S.get('chars', id)).filter(x => !!x);
+    const chars = chat.charIds.map(id => S.get('chars', id)).filter(x => !!x);
     const state = new Map(chars.map(ch => [ch.id, currentOf(chat, msgs, ch.id)]));
     const last = lastReply(msgs, chat);
     applyAvatars(layout, chat, msgs);
@@ -135,13 +139,13 @@ export function watchStage() {
     for (const r of recs) { const t = r.target as Element, cl = t.classList; if (t.id === 'page' || t.parentElement?.id === 'page' || (cl && (cl.contains('msgs') || cl.contains('dossier') || cl.contains('chat-main')))) return sync(); }
   });
   const page = document.getElementById('page'); if (page) watcher.observe(page, { childList: true, subtree: true });
-  B.core.on('settings', p => { if (p && typeof p === 'object' && 'expressions' in p) schedule(); });
+  on('settings', p => { if (p && typeof p === 'object' && 'expressions' in p) schedule(); });
   // 초상 영역의 표정 그림을 누르면 그 그림을 크게 (카드 초상 대신)
   document.addEventListener('click', e => {
     const img = (e.target as Element | null)?.closest?.<HTMLImageElement>('.dossier .sheet-window .exs-img'); if (!img) return;
     e.stopPropagation(); e.preventDefault();
     const full = el('img', 'full-img'); full.src = img.src; full.alt = '';
-    B.ui.modal({ title: '', wide: true, body: full });
+    modal({ title: '', wide: true, body: full });
   }, true);
   schedule();   // 대화 화면이 이미 떠 있는 채로 불려 왔을 때
 }

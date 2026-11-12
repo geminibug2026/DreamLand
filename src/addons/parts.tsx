@@ -40,3 +40,11 @@ export function openModal(o: { title?: string; wide?: boolean; spec?: string; ac
   box = uiModal({ title: o.title, wide: o.wide, actions: o.actions, onClose: o.onClose, body: <Tag className={cls.join(' ') || undefined}>{render(() => box?.close())}</Tag> });
   return box;
 }
+
+/** 기능의 스타일 파일을 한 번만 건다 (옛 모듈이 하던 일) */
+export function useCss(file: string) {
+  if (document.querySelector(`link[rel="stylesheet"][href$="css/${file}"]`)) return;
+  const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = `/css/${file}`; document.head.append(l);
+}
+export const errMsg = (e: unknown) => e instanceof Error ? e.message : String(e);
+export const isAbort = (e: unknown) => e instanceof Error && e.name === 'AbortError';

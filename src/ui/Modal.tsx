@@ -5,9 +5,9 @@ import { createRoot } from 'react-dom/client';
 import { Btn, IconBtn } from '../kit';
 
 /** 창 아래 버튼. onclick 이 false 를 돌려주면(약속이어도 된다) 창을 닫지 않는다 */
-export interface ModalAction { label: string; ic?: string; cls?: string; onclick?: () => unknown }
+import type { ModalAction, ModalHandle } from '../lib/types';
+export type { ModalAction, ModalHandle };
 /** el 은 #modals 바로 아래의 .modal-wrap */
-export interface ModalHandle { close(): void; el: HTMLDivElement }
 export interface ModalProps {
   title?: ReactNode; wide?: boolean; actions?: ModalAction[];
   /** 닫힐 때 한 번 불린다 (X · 바깥 누름 · Esc · 버튼 · 뒤로 가기 · close()) */

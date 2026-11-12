@@ -1,11 +1,13 @@
 // 기능 화면 › 에셋: 프롬프트 · 에셋 · 렌더링 · 도구
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type ReactElement } from 'react';
 import { Avatar, Btn, Icon } from '../kit';
-import { B } from '../addons/legacy';
 import { Check, PathIcon, Select, openModal, useRedraw } from '../addons/parts';
 import { A, DEFAULT_PRESETS, MACROS, PATHS, SAMPLE, STYLES, cfg, charCfg, copy, exportPreset, exportSettings, exportZip, importPresets, importSettings, presetOf, renderPrompt, save } from './logic';
 import { Manager, Sec } from './Manager';
 import { SBtn, Tiny } from './windows';
+import { confirmBox, promptBox, toast } from '../ui';
+import { S } from '../lib/core';
+import { chatApi } from '../chat/actions';
 
 let sub = 'prompt';
 const asMax = (px: string) => ({ '--as-max': px }) as CSSProperties;
@@ -15,8 +17,8 @@ export function AssetsStudio() {
   // draw: 옛 draw() 처럼 탭 안을 새로 만든다 · soft: 값만 다시 읽어 그린다
   const [gen, setGen] = useState(0), draw = () => setGen(g => g + 1), soft = useRedraw();
   const area = useRef<HTMLTextAreaElement>(null);
-  const S = B.S, As = A(), { toast, confirmBox, promptBox } = B.ui;
-  const pickChar = () => { const c = cfg(), { chat } = B.chat.current(); return S.get('chars', c.ui.char) || S.get('chars', chat?.charIds?.[0]) || S.chars[0] || null; };
+  const As = A();
+  const pickChar = () => { const c = cfg(), { chat } = chatApi.current(); return S.get('chars', c.ui.char) || S.get('chars', chat?.charIds?.[0]) || S.chars[0] || null; };
   useEffect(() => {
     let alive = true; const first = pickChar();
     As.load([...(first ? [As.ownerOfChar(first.id)] : []), ...S.personas.map(p => As.ownerOfPersona(p.id))]).then(() => { if (alive) draw(); }).catch(e => console.warn('[에셋]', e));
@@ -28,7 +30,7 @@ export function AssetsStudio() {
   const owner = char ? As.ownerOfChar(char.id) : '', cc = char ? charCfg(char.id) : null;
   if (char && cc && cc.link && (cc.link === char.id || !S.get('chars', cc.link))) cc.link = '';
   const src = owner ? As.source(owner) : '', linked = !!owner && src !== owner, linkChar = linked ? S.get('chars', cc?.link) : undefined, ver = cc?.ver || '';
-  const cur = B.chat.current().chat;
+  const cur = chatApi.current().chat;
   const persona = S.get('personas', c.ui.persona) || (cur ? S.persona(cur) : undefined) || S.get('personas', S.settings.activePersona as string) || S.personas[0];
   const owners = char ? [owner, ...(persona ? [As.ownerOfPersona(persona.id)] : [])] : [];
   const copyPrompt = () => void copy(renderPrompt(owners, char?.id), '안내문을 복사했어요');

@@ -2,8 +2,17 @@
 // (옛 diary.js 의 writeDiary 와 f-almanac.js 의 계산 · 호출 부분. 날짜 · 달 계산은 f-keepsake.js 를 다리로 쓴다)
 import type { CSSProperties } from 'react';
 import { toast, type FieldDef } from '../ui';
-import { Illust, K, Memory, S, buildBook, chatApi, core, parseLoose, quickCall, ui, type PromptInfo, type PromptPiece } from './bridge';
+import type { PromptInfo, PromptPiece } from './types';
 import type { AlmSettings, DChar, DChat, DiaryEntry, Dream, FontPick, FoundPromise, Keepsake, Letter, Msg, Page, Photo, PromiseRec } from './types';
+import { Illust } from '../lib/illust';
+import { Memory, parseLoose } from '../lib/memory';
+import { S } from '../lib/core';
+import { buildBook } from '../lib/f-bind';
+import { chatApi } from '../chat/actions';
+import { quickCall } from '../lib/engine';
+import { go, route } from '../lib/router';
+import * as core from '../lib/core';
+import * as K from '../lib/f-keepsake';
 
 // ════════ 지시문 (모두 설정에서 고칠 수 있다. 비우면 아래 기본값) ════════
 export const DIARY_PROMPT = `You are {{char}}, writing tonight's page in a diary nobody else will ever read. The record below is what happened since your last entry.
@@ -59,9 +68,9 @@ Ink colours: {{inks}}.
 Reply with ONE JSON object and nothing else: {"font":"the exact name from the list","reason":"one short sentence in Korean saying why this hand suits {{char}}","ink":"one ink key from the list, or empty","size":"small, normal or large — how big {{char}} writes"}` },
 };
 export const DEFAULTS = { goal: 15, weekStart: 0, keepsakeToast: true, promiseInject: true, promiseSulk: true, promiseTag: 'talk', exchangeInject: true };
-export const A = (): AlmSettings & typeof DEFAULTS => ({ ...DEFAULTS, ...(S().settings.almanac || {}) }) as AlmSettings & typeof DEFAULTS;
-export const P = (key: string) => { const v = String(S().settings.almanac?.prompts?.[key] ?? '').trim(); return v || PROMPTS[key].text; };
-const moods = () => { const mine = String(S().settings.almanac?.dreamMoods || '').split('\n').map(s => s.trim()); return DREAM_MOODS.map((d, i) => mine[i] || d); };
+export const A = (): AlmSettings & typeof DEFAULTS => ({ ...DEFAULTS, ...(S.settings.almanac || {}) }) as AlmSettings & typeof DEFAULTS;
+export const P = (key: string) => { const v = String(S.settings.almanac?.prompts?.[key] ?? '').trim(); return v || PROMPTS[key].text; };
+const moods = () => { const mine = String(S.settings.almanac?.dreamMoods || '').split('\n').map(s => s.trim()); return DREAM_MOODS.map((d, i) => mine[i] || d); };
 const fillT = (t: string, map: Record<string, string | number>) => String(t).replace(/\{\{(\w+)\}\}/g, (m, k: string) => k in map ? String(map[k]) : m);
 const str = (v: unknown) => String(v || '');
 const errName = (e: unknown) => (e as { name?: string } | null)?.name;
@@ -70,25 +79,25 @@ export const errMsg = (e: unknown) => (e as { message?: string } | null)?.messag
 export const tellErr = (e: unknown) => { if (errName(e) !== 'AbortError') toast(errMsg(e), 'err'); };
 
 // ════════ 대화 한 편 ════════
-export const charOf = (chat?: DChat | null) => S().get('chars', chat?.charIds?.[0]);
-export const namesOf = (chat?: DChat | null) => (chat?.charIds || []).map(i => S().get('chars', i)?.name).filter(Boolean).join(', ') || '삭제된 캐릭터';
-export const roomOf = (chat: DChat) => { try { return chatApi().roomName(chat); } catch { return chat?.name || '대화'; } };
-export const who = (chat?: DChat | null) => ({ char: charOf(chat)?.name || namesOf(chat), user: S().persona(chat)?.name || '나' });
-export const cleanText = (m: Msg) => { const s = K().swipeOf(m); return K().stripPromiseTags(Illust().strip(s.showTr && s.tr ? s.tr : s.text || '')); };
-const speaker = (m: Msg, chat: DChat) => m.role === 'user' ? who(chat).user : m.role === 'system' ? 'Narrator' : (m.name || S().get('chars', m.charId)?.name || who(chat).char);
-export const save = (chat: DChat) => S().save('chats', chat, true);
-export const changed = (chat: DChat | null) => core().emit('almanac:changed', chat);
+export const charOf = (chat?: DChat | null) => S.get('chars', chat?.charIds?.[0]);
+export const namesOf = (chat?: DChat | null) => (chat?.charIds || []).map(i => S.get('chars', i)?.name).filter(Boolean).join(', ') || '삭제된 캐릭터';
+export const roomOf = (chat: DChat) => { try { return chatApi.roomName(chat); } catch { return chat?.name || '대화'; } };
+export const who = (chat?: DChat | null) => ({ char: charOf(chat)?.name || namesOf(chat), user: S.persona(chat)?.name || '나' });
+export const cleanText = (m: Msg) => { const s = K.swipeOf(m); return K.stripPromiseTags(Illust.strip(s.showTr && s.tr ? s.tr : s.text || '')); };
+const speaker = (m: Msg, chat: DChat) => m.role === 'user' ? who(chat).user : m.role === 'system' ? 'Narrator' : (m.name || S.get('chars', m.charId)?.name || who(chat).char);
+export const save = (chat: DChat) => S.save('chats', chat, true);
+export const changed = (chat: DChat | null) => core.emit('almanac:changed', chat);
 /** 지금 열려 있는 방이면 그 메시지 배열을, 아니면 저장된 것을 */
 export async function loadChat(chat: DChat): Promise<Msg[]> {
-  const live = chatApi().current(), msgs = live.chat?.id === chat.id ? live.msgs : await S().msgs(chat.id);
-  await Promise.all([Illust().load(chat.id), Memory().load(chat.id)]).catch(e => console.warn('[달력]', e));
+  const live = chatApi.current(), msgs = live.chat?.id === chat.id ? live.msgs : await S.msgs(chat.id);
+  await Promise.all([Illust.load(chat.id), Memory.load(chat.id)]).catch(e => console.warn('[달력]', e));
   return msgs;
 }
-export const photoSrc = (p?: Photo | null) => p?.src || Illust().data(p?.id) || '';
+export const photoSrc = (p?: Photo | null) => p?.src || Illust.data(p?.id as string) || '';
 
 // ════════ 장면 기념품 (추가 호출 없음) ════════
 export async function syncChat(chat: DChat, msgs: Msg[], { quiet = false } = {}) {
-  const r = K().syncKeepsakes(chat.keepsakes || [], msgs);
+  const r = K.syncKeepsakes(chat.keepsakes || [], msgs);
   if (!r.changed) return r;
   chat.keepsakes = r.list; await save(chat);
   if (r.added.length) { if (!quiet && A().keepsakeToast) toast(`장면 기념품을 일기장에 꽂아 두었어요 — ${r.added[r.added.length - 1].title || '이름 없는 장면'}`); changed(chat); }
@@ -108,20 +117,20 @@ export const titleOf = (p: Page) => p.type === 'diary' ? (p.ref.title || '제목
 /** 마지막 일기 이후의 대화를 읽고 캐릭터가 일기를 쓴다 */
 export async function writeDiary(chat: DChat, msgs: Msg[], signal?: AbortSignal): Promise<DiaryEntry> {
   const ch = charOf(chat); if (!ch) throw new Error('이 대화의 캐릭터를 찾을 수 없어요.');
-  const user = S().persona(chat)?.name || '나';
+  const user = S.persona(chat)?.name || '나';
   let at = chat.diaryAt || 0;   // 메시지를 지워 자리가 어긋났으면 마지막 일기 뒤에 온 메시지부터
-  if (at > msgs.length) { const t = (chat.diary || []).slice(-1)[0]?.ts || 0; at = msgs.findIndex(m => K().msgTs(m) > t); if (at < 0) at = msgs.length; }
+  if (at > msgs.length) { const t = (chat.diary || []).slice(-1)[0]?.ts || 0; at = msgs.findIndex(m => K.msgTs(m) > t); if (at < 0) at = msgs.length; }
   const fresh = msgs.slice(at).filter(m => !m.hidden);
   if (fresh.length < 2) throw new Error('일기에 적을 새 이야기가 아직 없어요.');
-  const script = fresh.slice(-40).map(m => `${m.role === 'user' ? user : m.role === 'system' ? 'Narrator' : (m.name || ch.name)}: ${K().stripPromiseTags(Illust().strip(core().msgText(m))).slice(0, 1500)}`).join('\n\n');
+  const script = fresh.slice(-40).map(m => `${m.role === 'user' ? user : m.role === 'system' ? 'Narrator' : (m.name || ch.name)}: ${K.stripPromiseTags(Illust.strip(core.msgText(m))).slice(0, 1500)}`).join('\n\n');
   const prev = (chat.diary || []).slice(-1)[0];
-  const sys = (String(S().settings.diary?.prompt || '').trim() || DIARY_PROMPT).replace(/\{\{char\}\}/g, ch.name).replace(/\{\{user\}\}/g, user);
-  const out = await quickCall(sys, `[About ${ch.name}]\n${[ch.description, ch.personality].filter(Boolean).join('\n').slice(0, 2500)}\n\n${prev ? `[Previous entry]\n${prev.text.slice(0, 800)}\n\n` : ''}[What happened since]\n${script}`, { maxTokens: 1500, signal, conn: S().helperConn('all', chat) });
+  const sys = (String(S.settings.diary?.prompt || '').trim() || DIARY_PROMPT).replace(/\{\{char\}\}/g, ch.name).replace(/\{\{user\}\}/g, user);
+  const out = await quickCall(sys, `[About ${ch.name}]\n${[ch.description, ch.personality].filter(Boolean).join('\n').slice(0, 2500)}\n\n${prev ? `[Previous entry]\n${prev.text.slice(0, 800)}\n\n` : ''}[What happened since]\n${script}`, { maxTokens: 1500, signal, conn: S.helperConn('all', chat) });
   const j = parseLoose(out);
   const text = String(j?.text || out).trim(); if (!text) throw new Error('일기가 비어 있어요.');
-  const scene = (Memory().get(chat.id)?.status || []).find(s => s.entity === 'scene' && s.slot === 'date');
+  const scene = (Memory.get(chat.id)?.status || []).find(s => s.entity === 'scene' && s.slot === 'date');
   const pic = [...fresh].reverse().flatMap(m => m.swipes[m.sw]?.illust || []).filter(i => i && !i.hidden).map(i => i!.id)[0] || '';
-  const entry: DiaryEntry = { id: core().uid(), ts: core().now(), title: str(j?.title).trim(), storyDate: str(j?.date || scene?.value).trim(), mood: str(j?.mood).trim().slice(0, 24), weather: str(j?.weather).trim().slice(0, 24), text, by: ch.id, illust: pic, from: at, to: msgs.length };
+  const entry: DiaryEntry = { id: core.uid(), ts: core.now(), title: str(j?.title).trim(), storyDate: str(j?.date || scene?.value).trim(), mood: str(j?.mood).trim().slice(0, 24), weather: str(j?.weather).trim().slice(0, 24), text, by: ch.id, illust: pic, from: at, to: msgs.length };
   (chat.diary ||= []).push(entry); chat.diaryAt = msgs.length;
   await save(chat);
   return entry;
@@ -130,27 +139,27 @@ export async function writeDiary(chat: DChat, msgs: Msg[], signal?: AbortSignal)
 // ════════ 약속 수첩 ════════
 type PromiseFields = { date: string; time?: string; what: string };
 export const Promises = {
-  make: (f: PromiseFields, by = 'user', more: Partial<PromiseRec> = {}): PromiseRec => ({ id: core().uid(), date: f.date, time: f.time || '', what: String(f.what).trim().slice(0, 120), by, made: core().now(), done: false, ...more }),
+  make: (f: PromiseFields, by = 'user', more: Partial<PromiseRec> = {}): PromiseRec => ({ id: core.uid(), date: f.date, time: f.time || '', what: String(f.what).trim().slice(0, 120), by, made: core.now(), done: false, ...more }),
   async add(chat: DChat, f: PromiseFields, by = 'user', more: Partial<PromiseRec> = {}) { const p = Promises.make(f, by, more); (chat.promises ||= []).push(p); await save(chat); changed(chat); return p; },
   async remove(chat: DChat, p: PromiseRec) { if (p.later) chat.later = (chat.later || []).filter(l => l.id !== p.id); else chat.promises = (chat.promises || []).filter(x => x.id !== p.id); await save(chat); changed(chat); },
-  async toggle(chat: DChat, p: PromiseRec) { p.done = !p.done; p.doneAt = p.done ? core().now() : 0; await save(chat); changed(chat); },
+  async toggle(chat: DChat, p: PromiseRec) { p.done = !p.done; p.doneAt = p.done ? core.now() : 0; await save(chat); changed(chat); },
   /** 대화방 하나의 약속 + 연락 약속(chat.later)을 날짜 순으로 */
   of(chat: DChat): PromiseRec[] {
-    const k = K(), laters = (chat.later || []).filter(l => l?.at).map((l): PromiseRec => ({ id: l.id, date: k.dayKey(l.at), time: `${k.pad(new Date(l.at).getHours())}:${k.pad(new Date(l.at).getMinutes())}`, what: l.about || '연락하기로 한 약속', by: 'later', later: true, made: l.made || 0 }));
+    const k = K, laters = (chat.later || []).filter(l => l?.at).map((l): PromiseRec => ({ id: l.id, date: k.dayKey(l.at), time: `${k.pad(new Date(l.at).getHours())}:${k.pad(new Date(l.at).getMinutes())}`, what: l.about || '연락하기로 한 약속', by: 'later', later: true, made: l.made || 0 }));
     return [...(chat.promises || []).filter(p => k.validKey(p?.date)), ...laters].sort((a, b) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || ''));
   },
 };
 export const BY: Record<string, string> = { char: '캐릭터가 적음', user: '내가 적음', extract: '대화에서 뽑음', later: '연락 약속' };
 /** 대화에서 약속을 지금 뽑는다 (추가 호출 1회) */
 export async function extractByCall(chat: DChat, msgs: Msg[], signal?: AbortSignal) {
-  const k = K(), rows = msgs.filter(m => m && !m.hidden && m.role !== 'system' && k.msgTs(m)).slice(-60);
+  const k = K, rows = msgs.filter(m => m && !m.hidden && m.role !== 'system' && k.msgTs(m)).slice(-60);
   if (rows.length < 2) throw new Error('약속을 찾을 대화가 아직 없어요.');
-  const today = k.dayKey(core().now()), w = who(chat);
+  const today = k.dayKey(core.now()), w = who(chat);
   const script = rows.map(m => { const dk = k.dayKey(k.msgTs(m)); return `[${dk} ${WD_EN[k.keyDate(dk).getDay()].slice(0, 3)}] ${speaker(m, chat)}: ${cleanText(m).replace(/\s+/g, ' ').slice(0, 600)}`; }).join('\n');
-  const out = await quickCall(fillT(P('extract'), { ...w, today, weekday: WD_EN[k.keyDate(today).getDay()] }), script, { maxTokens: 1200, signal, conn: S().helperConn('all', chat) });
+  const out = await quickCall(fillT(P('extract'), { ...w, today, weekday: WD_EN[k.keyDate(today).getDay()] }), script, { maxTokens: 1200, signal, conn: S.helperConn('all', chat) });
   const j = parseLoose(out), list = Array.isArray(j?.promises) ? j.promises as { date?: unknown; time?: unknown; what?: unknown }[] : null;
   if (!list) throw new Error('약속 목록을 읽지 못했어요. 다시 해 보세요.');
-  const found: FoundPromise[] = list.map(x => ({ date: k.resolveDate(x?.date, core().now()), time: k.normTime(x?.time), what: str(x?.what).replace(/\s+/g, ' ').trim().slice(0, 120) })).filter(x => x.date && x.what);
+  const found: FoundPromise[] = list.map(x => ({ date: k.resolveDate(x?.date, core.now()), time: k.normTime(x?.time), what: str(x?.what).replace(/\s+/g, ' ').trim().slice(0, 120) })).filter(x => x.date && x.what);
   const added = k.mergePromises(chat.promises ||= [], found, f => Promises.make(f, 'extract'));
   await save(chat); changed(chat);
   return { added, found };
@@ -159,8 +168,8 @@ export async function extractByCall(chat: DChat, msgs: Msg[], signal?: AbortSign
 // ════════ 이달의 편지 (추가 호출 1회) ════════
 export async function writeLetter(chat: DChat, msgs: Msg[], mk: string, signal?: AbortSignal): Promise<Letter> {
   const ch = charOf(chat); if (!ch) throw new Error('이 대화의 캐릭터를 찾을 수 없어요.');
-  const k = K(), w = who(chat), inMonth = (t?: number) => !!t && k.monthKey(t) === mk, st = k.monthStats(k.collectDays(chat, msgs), mk, A().goal);
-  const diary = (chat.diary || []).filter(e => inMonth(e.ts)).slice(-8), mem = Memory().get(chat.id), ids = new Set(msgs.filter(m => inMonth(k.msgTs(m))).map(m => m.id));
+  const k = K, w = who(chat), inMonth = (t?: number) => !!t && k.monthKey(t) === mk, st = k.monthStats(k.collectDays(chat, msgs), mk, A().goal);
+  const diary = (chat.diary || []).filter(e => inMonth(e.ts)).slice(-8), mem = Memory.get(chat.id), ids = new Set(msgs.filter(m => inMonth(k.msgTs(m))).map(m => m.id));
   const mems = (mem?.memories || []).filter(m => m?.summary && (inMonth(m.ts) || ids.has(m.msgId || ''))).sort((a, b) => (b.importance || 0) - (a.importance || 0)).slice(0, 16);
   const keeps = (chat.keepsakes || []).filter(x => !x.gone && inMonth(x.ts)), prs = (chat.promises || []).filter(p => String(p.date).startsWith(mk));
   const parts = [`[About ${ch.name}]\n${[ch.description, ch.personality].filter(Boolean).join('\n').slice(0, 2000)}`];
@@ -174,9 +183,9 @@ export async function writeLetter(chat: DChat, msgs: Msg[], mk: string, signal?:
     parts.push(`[Moments from this month's conversation]\n${pick.map(m => `(${k.dayKey(k.msgTs(m))}) ${speaker(m, chat)}: ${cleanText(m).replace(/\s+/g, ' ').slice(0, 420)}`).join('\n')}`);
   }
   const [y, mo] = mk.split('-').map(Number), month = `${new Date(y, mo - 1, 1).toLocaleDateString('en-US', { month: 'long' })} ${y}`;
-  const out = await quickCall(fillT(P('letter'), { ...w, month, days: st.active }), parts.join('\n\n'), { maxTokens: 2000, signal, conn: S().helperConn('all', chat) });
+  const out = await quickCall(fillT(P('letter'), { ...w, month, days: st.active }), parts.join('\n\n'), { maxTokens: 2000, signal, conn: S.helperConn('all', chat) });
   const j = parseLoose(out), text = String(j?.text || out).trim(); if (!text) throw new Error('편지가 비어 있어요.');
-  const rec: Letter = { id: core().uid(), month: mk, ts: core().now(), title: str(j?.title).trim().slice(0, 80), text, ps: str(j?.ps).trim().slice(0, 200), by: ch.id, days: st.active };
+  const rec: Letter = { id: core.uid(), month: mk, ts: core.now(), title: str(j?.title).trim().slice(0, 80), text, ps: str(j?.ps).trim().slice(0, 200), by: ch.id, days: st.active };
   chat.letters = [...(chat.letters || []).filter(l => l.month !== mk), rec].sort((a, b) => a.month.localeCompare(b.month));
   await save(chat); changed(chat);
   return rec;
@@ -185,23 +194,23 @@ export async function writeLetter(chat: DChat, msgs: Msg[], mk: string, signal?:
 // ════════ 꿈 페이지 (추가 호출 1회) ════════
 export async function dreamOf(chat: DChat, msgs: Msg[], day?: string, signal?: AbortSignal): Promise<Dream> {
   const ch = charOf(chat); if (!ch) throw new Error('이 대화의 캐릭터를 찾을 수 없어요.');
-  const k = K(), days = k.collectDays(chat, msgs), today = k.dayKey(core().now());
+  const k = K, days = k.collectDays(chat, msgs), today = k.dayKey(core.now());
   day ||= [...days.values()].filter(d => d.n).map(d => d.key).sort().pop();
   const rows = msgs.filter(m => m && !m.hidden && m.role !== 'system' && k.msgTs(m) && k.dayKey(k.msgTs(m)) === day).slice(-30);
   if (rows.length < 2 || !day) throw new Error('꿈의 재료가 될 그날의 대화가 없어요.');
   const night = day === today ? new Date() : new Date(k.keyDate(day).setHours(23, 50)), idx = k.phaseIndex(k.phaseAt(night)), w = who(chat);
   const script = rows.map(m => `${speaker(m, chat)}: ${cleanText(m).slice(0, 900)}`).join('\n\n');
-  const out = await quickCall(fillT(P('dream'), { ...w, moon: MOON_EN[idx], mood: moods()[idx] }), `[About ${ch.name}]\n${[ch.description, ch.personality].filter(Boolean).join('\n').slice(0, 1800)}\n\n[The day's conversation]\n${script}`, { maxTokens: 1200, signal, conn: S().helperConn('all', chat) });
+  const out = await quickCall(fillT(P('dream'), { ...w, moon: MOON_EN[idx], mood: moods()[idx] }), `[About ${ch.name}]\n${[ch.description, ch.personality].filter(Boolean).join('\n').slice(0, 1800)}\n\n[The day's conversation]\n${script}`, { maxTokens: 1200, signal, conn: S.helperConn('all', chat) });
   const j = parseLoose(out), text = String(j?.text || out).trim(); if (!text) throw new Error('꿈이 비어 있어요.');
-  const rec: Dream = { id: core().uid(), ts: +night, day, phase: idx, phaseName: k.PHASES[idx], title: str(j?.title).trim().slice(0, 80), text, by: ch.id };
+  const rec: Dream = { id: core.uid(), ts: +night, day, phase: idx, phaseName: k.PHASES[idx], title: str(j?.title).trim().slice(0, 80), text, by: ch.id };
   (chat.dreams ||= []).push(rec); chat.dreams.sort((a, b) => a.ts - b.ts);
   await save(chat); changed(chat);
   return rec;
 }
 /** 마음에 든 꿈을 장기기억으로 올린다 (꿈이었다는 표시와 함께) */
 export async function promoteDream(chat: DChat, d: Dream) {
-  const k = K(), ch = S().get('chars', d.by) || charOf(chat), body = String(d.text).replace(/\s+/g, ' ');
-  const m = await Memory().add(chat.id, { kind: 'impression', summary: `[꿈 · 실제로 일어난 일이 아님] ${ch?.name || '캐릭터'}이(가) ${k.koDate(d.day || k.dayKey(d.ts), { year: false, week: false })} 밤에 꾼 꿈${d.title ? ` 「${d.title}」` : ''}: ${body.slice(0, 280)}${body.length > 280 ? '…' : ''}`, tags: ['manual', 'dream'], importance: 0.4, entities: ch ? [ch.name] : [] });
+  const k = K, ch = S.get('chars', d.by) || charOf(chat), body = String(d.text).replace(/\s+/g, ' ');
+  const m = await Memory.add(chat.id, { kind: 'impression', summary: `[꿈 · 실제로 일어난 일이 아님] ${ch?.name || '캐릭터'}이(가) ${k.koDate(d.day || k.dayKey(d.ts), { year: false, week: false })} 밤에 꾼 꿈${d.title ? ` 「${d.title}」` : ''}: ${body.slice(0, 280)}${body.length > 280 ? '…' : ''}`, tags: ['manual', 'dream'], importance: 0.4, entities: ch ? [ch.name] : [] });
   d.memId = m.id; await save(chat); changed(chat);
   return m;
 }
@@ -209,11 +218,11 @@ export async function promoteDream(chat: DChat, d: Dream) {
 // ════════ 교환 일기 (답글은 추가 호출 1회) ════════
 export async function answerNote(chat: DChat, entry: DiaryEntry, signal?: AbortSignal) {
   const note = String(entry.note || '').trim(); if (!note) throw new Error('먼저 일기 옆에 몇 줄 적어 주세요.');
-  const ch = S().get('chars', entry.by) || charOf(chat); if (!ch) throw new Error('이 대화의 캐릭터를 찾을 수 없어요.');
-  const w = { char: ch.name, user: S().persona(chat)?.name || '나' };
-  const out = await quickCall(fillT(P('exchange'), w), `[About ${ch.name}]\n${[ch.description, ch.personality].filter(Boolean).join('\n').slice(0, 1800)}\n\n[Your diary entry${entry.title ? ` — ${entry.title}` : ''}]\n${String(entry.text).slice(0, 1600)}\n\n[What ${w.user} wrote beside it]\n${note.slice(0, 800)}`, { maxTokens: 500, signal, conn: S().helperConn('all', chat) });
+  const ch = S.get('chars', entry.by) || charOf(chat); if (!ch) throw new Error('이 대화의 캐릭터를 찾을 수 없어요.');
+  const w = { char: ch.name, user: S.persona(chat)?.name || '나' };
+  const out = await quickCall(fillT(P('exchange'), w), `[About ${ch.name}]\n${[ch.description, ch.personality].filter(Boolean).join('\n').slice(0, 1800)}\n\n[Your diary entry${entry.title ? ` — ${entry.title}` : ''}]\n${String(entry.text).slice(0, 1600)}\n\n[What ${w.user} wrote beside it]\n${note.slice(0, 800)}`, { maxTokens: 500, signal, conn: S.helperConn('all', chat) });
   const text = out.trim().replace(/^["“「]+|["”」]+$/g, '').trim(); if (!text) throw new Error('답글이 비어 있어요.');
-  entry.answer = text.slice(0, 600); entry.answerTs = core().now(); await save(chat); changed(chat);
+  entry.answer = text.slice(0, 600); entry.answerTs = core.now(); await save(chat); changed(chat);
   return entry.answer;
 }
 
@@ -224,33 +233,33 @@ export const memoHave = (e: { memIds?: string[]; memId?: string }) => [...(e.mem
 /** 쪽 하나를 몇 줄로 간추린다 (추가 호출 1회) */
 export async function memoByCall(chat: DChat, p: MemoPage, whoName: string, user: string) {
   const e = p.ref, isDream = p.type === 'dream', note = p.type === 'diary' ? p.ref.note : '', answer = p.type === 'diary' ? p.ref.answer : '', storyDate = p.type === 'diary' ? p.ref.storyDate : '';
-  const sys = (String(S().settings.diary?.memoPrompt || '').trim() || MEMO_PROMPT).replace(/\{\{char\}\}/g, whoName).replace(/\{\{user\}\}/g, user);
-  const out = await quickCall(sys, `[${isDream ? 'A dream ' + whoName + ' had — not a real event. Note it as a dream.' : p.type === 'letter' ? 'A letter from ' + whoName + ' to ' + user : 'Diary page by ' + whoName}]${e.title ? '\nTitle: ' + e.title : ''}${storyDate ? '\nIn-story date: ' + storyDate : ''}\n\n${String(e.text || '').slice(0, 6000)}${note ? `\n\n[${user} wrote beside it]\n${note}` : ''}${answer ? `\n\n[${whoName} answered]\n${answer}` : ''}`, { maxTokens: 500, conn: S().helperConn('all', chat) });
+  const sys = (String(S.settings.diary?.memoPrompt || '').trim() || MEMO_PROMPT).replace(/\{\{char\}\}/g, whoName).replace(/\{\{user\}\}/g, user);
+  const out = await quickCall(sys, `[${isDream ? 'A dream ' + whoName + ' had — not a real event. Note it as a dream.' : p.type === 'letter' ? 'A letter from ' + whoName + ' to ' + user : 'Diary page by ' + whoName}]${e.title ? '\nTitle: ' + e.title : ''}${storyDate ? '\nIn-story date: ' + storyDate : ''}\n\n${String(e.text || '').slice(0, 6000)}${note ? `\n\n[${user} wrote beside it]\n${note}` : ''}${answer ? `\n\n[${whoName} answered]\n${answer}` : ''}`, { maxTokens: 500, conn: S.helperConn('all', chat) });
   const got = memoLines(String(out || '')).slice(0, 6);
   if (!got.length) throw new Error('간추린 내용이 비어 있어요.');
   return got;
 }
 /** 간추린 줄들을 장기기억에 올린다 (먼저 올린 줄은 바꿔 넣는다) */
 export async function memoPut(chat: DChat, p: MemoPage, list: string[], whoName: string) {
-  const e = p.ref, isDream = p.type === 'dream', mem = await Memory().load(chat.id), gone = new Set(memoHave(e));
-  if (gone.size) { mem.memories = mem.memories.filter(m => !gone.has(m.id)); await Memory().save(mem); }
+  const e = p.ref, isDream = p.type === 'dream', mem = await Memory.load(chat.id), gone = new Set(memoHave(e));
+  if (gone.size) { mem.memories = mem.memories.filter(m => !gone.has(m.id)); await Memory.save(mem); }
   const ids: string[] = [];
-  for (const line of list) { const m = await Memory().add(chat.id, { kind: isDream ? 'impression' : 'event', summary: (isDream ? '[꿈 · 실제로 일어난 일이 아님] ' : '') + line.slice(0, 400), tags: ['manual', p.type === 'diary' ? 'diary' : p.type], importance: isDream ? 0.4 : 0.7, entities: [whoName] }); ids.push(m.id); }
+  for (const line of list) { const m = await Memory.add(chat.id, { kind: isDream ? 'impression' : 'event', summary: (isDream ? '[꿈 · 실제로 일어난 일이 아님] ' : '') + line.slice(0, 400), tags: ['manual', p.type === 'diary' ? 'diary' : p.type], importance: isDream ? 0.4 : 0.7, entities: [whoName] }); ids.push(m.id); }
   e.memIds = ids; delete e.memId; await save(chat);
   return ids;
 }
 export async function memoDrop(chat: DChat, p: MemoPage) {
-  const e = p.ref, gone = new Set(memoHave(e)), mem = await Memory().load(chat.id);
-  mem.memories = mem.memories.filter(m => !gone.has(m.id)); await Memory().save(mem); delete e.memIds; delete e.memId; await save(chat);
+  const e = p.ref, gone = new Set(memoHave(e)), mem = await Memory.load(chat.id);
+  mem.memories = mem.memories.filter(m => !gone.has(m.id)); await Memory.save(mem); delete e.memIds; delete e.memId; await save(chat);
 }
 /** 이미 올린 줄이 있으면 그 줄들 */
-export const memoLoaded = (chat: DChat, p: MemoPage) => { const mem0 = Memory().get(chat.id), ids0 = new Set(memoHave(p.ref)); return mem0 && ids0.size ? mem0.memories.filter(m => ids0.has(m.id)).map(m => m.summary.replace(/^\[꿈 · 실제로 일어난 일이 아님\]\s*/, '')).join('\n') : ''; };
+export const memoLoaded = (chat: DChat, p: MemoPage) => { const mem0 = Memory.get(chat.id), ids0 = new Set(memoHave(p.ref)); return mem0 && ids0.size ? mem0.memories.filter(m => ids0.has(m.id)).map(m => m.summary.replace(/^\[꿈 · 실제로 일어난 일이 아님\]\s*/, '')).join('\n') : ''; };
 
 // ════════ 대화 화면과의 연결 (등록은 src/features/diary.tsx) ════════
 /** 프롬프트 조각: 약속 수첩 · 약속 태그 안내 · 교환 일기 */
 export function promptPieces({ chat, ctx, type }: PromptInfo): PromptPiece[] {
   if (!chat || type === 'impersonate') return [];
-  const k = K(), a = A(), out: PromptPiece[] = [], today = k.dayKey(core().now()), weekday = WD_EN[k.keyDate(today).getDay()], w = { char: ctx?.char || who(chat).char, user: ctx?.user || who(chat).user };
+  const k = K, a = A(), out: PromptPiece[] = [], today = k.dayKey(core.now()), weekday = WD_EN[k.keyDate(today).getDay()], w = { char: ctx?.char || who(chat).char, user: ctx?.user || who(chat).user };
   if (a.promiseInject !== false && (chat.promises || []).length) {
     const dg = k.promiseDigest(chat.promises || [], today), lines: string[] = [];
     for (const p of dg.today.slice(0, 3)) lines.push(fillT(P('promiseToday'), { ...w, what: p.what, time: p.time ? ` at ${p.time}` : '' }) + (p.raised === today ? ' (It was already brought up earlier today — do not repeat it unless it fits.)' : ''));
@@ -261,7 +270,7 @@ export function promptPieces({ chat, ctx, type }: PromptInfo): PromptPiece[] {
   if (a.promiseTag === 'all' || (a.promiseTag === 'talk' && chat.mode === 'talk' && !chat.scene?.on)) out.push({ where: 'end', src: '약속 태그 안내', content: `<promise_command>\n${fillT(P('promiseOffer'), { ...w, today, weekday })}\n</promise_command>` });
   if (a.exchangeInject !== false) {
     const e = [...(chat.diary || [])].reverse().find(x => String(x.note || '').trim());
-    if (e && core().now() - (e.noteTs || e.ts || 0) < 7 * 864e5) out.push({ where: 'depth', depth: 4, order: 90, src: '교환 일기', content: `<exchange_diary>\n${fillT(P('exchangeNote'), { ...w, title: e.title || 'untitled', note: String(e.note).trim().slice(0, 500), answer: e.answer ? ` ${w.char} answered in the margin: "${String(e.answer).slice(0, 300)}"` : '' })}\n</exchange_diary>` });
+    if (e && core.now() - (e.noteTs || e.ts || 0) < 7 * 864e5) out.push({ where: 'depth', depth: 4, order: 90, src: '교환 일기', content: `<exchange_diary>\n${fillT(P('exchangeNote'), { ...w, title: e.title || 'untitled', note: String(e.note).trim().slice(0, 500), answer: e.answer ? ` ${w.char} answered in the margin: "${String(e.answer).slice(0, 300)}"` : '' })}\n</exchange_diary>` });
   }
   return out;
 }
@@ -269,14 +278,14 @@ export function promptPieces({ chat, ctx, type }: PromptInfo): PromptPiece[] {
 export async function afterReply({ msg, chat }: { msg?: Msg; chat?: DChat }) {
   try {
     if (!chat || !msg) return;
-    const k = K(), a = A(), today = k.dayKey(core().now()), sw = msg.swipes?.[msg.sw], live = chatApi().current();
-    const list = live.chat?.id === chat.id ? live.msgs : await S().msgs(chat.id); let dirty = false;
+    const k = K, a = A(), today = k.dayKey(core.now()), sw = msg.swipes?.[msg.sw], live = chatApi.current();
+    const list = live.chat?.id === chat.id ? live.msgs : await S.msgs(chat.id); let dirty = false;
     if (sw && /\[promise/i.test(sw.text || '')) {
-      const ex = k.extractPromises(sw.text || '', core().now());
+      const ex = k.extractPromises(sw.text || '', core.now());
       if (ex.text) {
         sw.text = ex.text; const stored = list.find(m => m.id === msg.id);
         if (stored && stored !== msg && stored.swipes?.[stored.sw]) stored.swipes[stored.sw].text = ex.text;
-        await S().saveMsgs(chat, list);
+        await S.saveMsgs(chat, list);
       }
       if (a.promiseTag !== 'off') {
         const added = k.mergePromises(chat.promises ||= [], ex.found, f => Promises.make(f, 'char', { msgId: msg.id }));
@@ -297,21 +306,21 @@ export async function onChatOpen(chat?: DChat | null) {
   try {
     if (!chat) return;
     await syncChat(chat, await loadChat(chat));
-    const today = K().dayKey(core().now()), key = chat.id + today, mine = (chat.promises || []).filter(p => !p.done && p.date === today);
+    const today = K.dayKey(core.now()), key = chat.id + today, mine = (chat.promises || []).filter(p => !p.done && p.date === today);
     if (mine.length && !greeted.has(key)) { greeted.add(key); toast(`오늘은 약속한 날이에요 — ${mine[0].what}${mine.length > 1 ? ` 외 ${mine.length - 1}개` : ''}`); }
   } catch (e) { console.warn('[달력] 대화방 열기', e); }
 }
 /** 손으로 닫은 장면 · 생성이 끝난 뒤: 지금 열린 방이면 바로 기념품으로 */
-export async function syncLive({ chat }: { chat?: DChat } = {}) { try { const live = chatApi().current(); if (chat && live.chat?.id === chat.id) await syncChat(chat, live.msgs); } catch { /* 조용히 */ } }
+export async function syncLive({ chat }: { chat?: DChat } = {}) { try { const live = chatApi.current(); if (chat && live.chat?.id === chat.id) await syncChat(chat, live.msgs); } catch { /* 조용히 */ } }
 
 /** 펼쳐 둔 책을 바로 덮는 손잡이 (책이 열릴 때 Book.tsx 가 채운다) */
 export const book = { shut: () => { } };
 /** 대화 화면의 그 메시지로 간다 (접혀 있는 앞부분은 펼쳐 가며 찾는다) */
 export async function jumpTo(chatId: string, msgId?: string) {
   book.shut();
-  ui().go('chat', chatId); if (!msgId) return;
+  go('chat', chatId); if (!msgId) return;
   for (let i = 0; i < 80; i++) {
-    await core().sleep(110); if (ui().route.page !== 'chat') return;
+    await core.sleep(110); if (route.page !== 'chat') return;
     const el = document.querySelector(`article.msg[data-id="${String(msgId).replace(/["\\]/g, '')}"]`);
     if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('alm-flash'); setTimeout(() => el.classList.remove('alm-flash'), 2000); return; }
     const more = document.querySelector<HTMLElement>('#page .more-btn'); if (more) more.click(); else if (document.querySelector('#page article.msg')) return toast('그 메시지는 지금 대화에 남아 있지 않아요.');
@@ -322,7 +331,7 @@ export async function jumpTo(chatId: string, msgId?: string) {
 export const promptDefs = (keys: string[]): FieldDef[] => keys.map(k => ({ k: `almanac.prompts.${k}`, label: PROMPTS[k].label, type: 'area', rows: 6, ph: PROMPTS[k].text, hint: `${PROMPTS[k].hint} 비워 두면 기본 문장을 씁니다 (칸에 흐리게 보이는 글).` }));
 export const moodDef: FieldDef = { k: 'almanac.dreamMoods', label: '달 위상별 꿈의 분위기 (한 줄에 하나씩: 삭 · 초승달 · 상현달 · 차오르는 달 · 보름달 · 기우는 달 · 하현달 · 그믐달)', type: 'area', rows: 8, ph: DREAM_MOODS.join('\n'), hint: '여덟 줄. 비워 둔 줄은 기본 문장을 씁니다.' };
 /** 체크 항목은 저장된 값이 없어도 기본값(켜짐)이 보이도록, 시작할 때 한 번 채워 둔다 */
-export const seed = () => { const al = (S().settings.almanac ||= {}) as Record<string, unknown>; for (const [k, v] of Object.entries(DEFAULTS)) if (al[k] == null && k !== 'goal') al[k] = v; return al; };
+export const seed = () => { const al = (S.settings.almanac ||= {}) as Record<string, unknown>; for (const [k, v] of Object.entries(DEFAULTS)) if (al[k] == null && k !== 'goal') al[k] = v; return al; };
 
 // ════════ 대화 고르기 · 달력이 보는 대화 ════════
 export const md = (t: number) => { const d = new Date(t); return `${d.getFullYear() === new Date().getFullYear() ? '' : d.getFullYear() + '.'}${d.getMonth() + 1}.${d.getDate()}`; };
@@ -330,12 +339,12 @@ export const roomLine = (c: DChat) => [`${c.count || 0}개`, (c.diary || []).len
 export interface Group { rooms: DChat[]; chat: DChat; name: string; ch?: DChar; at: number; hit?: boolean }
 export const groupsOf = (): Group[] => {
   const map = new Map<string, DChat[]>();
-  for (const c of S().chats) { if (!c.charIds?.length) continue; const key = c.charIds.join('+'); let g = map.get(key); if (!g) map.set(key, g = []); g.push(c); }
+  for (const c of S.chats) { if (!c.charIds?.length) continue; const key = c.charIds.join('+'); let g = map.get(key); if (!g) map.set(key, g = []); g.push(c); }
   return [...map.values()].map(rooms => { rooms.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)); return { rooms, chat: rooms[0], name: namesOf(rooms[0]), ch: charOf(rooms[0]), at: rooms[0].updatedAt || 0 }; }).sort((a, b) => b.at - a.at);
 };
 /** 달력 · 약속 수첩이 지금 보고 있는 것 (화면을 떠났다 돌아와도 남는다) */
 export const view = { chatId: '', mk: '', sel: '', scope: 'one' as 'one' | 'all' };
-export const defaultChat = () => S().get('chats', view.chatId) || S().get('chats', chatApi().current().chat?.id) || S().get('chats', S().settings.lastChat) || [...S().chats].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+export const defaultChat = () => S.get('chats', view.chatId) || S.get('chats', chatApi.current().chat?.id) || S.get('chats', S.settings.lastChat) || [...S.chats].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
 export const levelOf = (n: number) => n >= 40 ? 3 : n >= 12 ? 2 : 1;
 
 // ════════ 캐릭터의 일기장 글씨체 ════════
@@ -375,14 +384,14 @@ export function fontVars(ch?: DChar | null, { ink = true, over = {} as { size?: 
 export const fontStyle = (ch?: DChar | null, o?: { ink?: boolean; over?: { size?: number; lh?: number } }) => fontVars(ch, o) as CSSProperties;
 /** React 밖의 요소에 글씨체 변수를 건다 */
 export function applyFont(el: HTMLElement, ch?: DChar | null, { ink = true } = {}) { for (const [k, v] of Object.entries(fontVars(ch, { ink }))) el.style.setProperty(k, v); if (!ink) el.style.removeProperty('--bk-ink'); }
-export const saveFont = async (ch: DChar, patch: object) => { ch.diaryFont = { ...(ch.diaryFont || {}), ...patch }; await S().save('chars', ch, true); core().emit('almanac:font', ch); };
-export const clearFont = async (ch: DChar) => { delete ch.diaryFont; await S().save('chars', ch, true); core().emit('almanac:font', ch); };
+export const saveFont = async (ch: DChar, patch: object) => { ch.diaryFont = { ...(ch.diaryFont || {}), ...patch }; await S.save('chars', ch, true); core.emit('almanac:font', ch); };
+export const clearFont = async (ch: DChar) => { delete ch.diaryFont; await S.save('chars', ch, true); core.emit('almanac:font', ch); };
 /** AI 에게 글씨체를 골라 달라고 한다 (추가 호출 1회) */
 export async function pickFontByCall(ch: DChar, chat?: DChat | null, signal?: AbortSignal): Promise<FontPick> {
-  const user = (chat ? S().persona(chat)?.name : '') || S().settings.userNameFallback || 'the user';
+  const user = (chat ? S.persona(chat)?.name : '') || S.settings.userNameFallback || 'the user';
   const sys = fillT(P('font'), { char: ch.name, user, fonts: FONTS.map(f => `- ${f.name} — ${f.en}`).join('\n'), inks: Object.entries(INKS).map(([k, v]) => `${k} (${v[2]})`).join(', ') });
   const card = [`[Character: ${ch.name}]`, [ch.description, ch.personality].filter(Boolean).join('\n').slice(0, 3000), ch.mesExample ? `[How ${ch.name} talks]\n${String(ch.mesExample).slice(0, 1400)}` : '', ch.firstMes ? `[First message]\n${String(ch.firstMes).slice(0, 700)}` : ''].filter(Boolean).join('\n\n');
-  const j = parseLoose(await quickCall(sys, card, { maxTokens: 400, signal, conn: S().helperConn('all', chat) }));
+  const j = parseLoose(await quickCall(sys, card, { maxTokens: 400, signal, conn: S.helperConn('all', chat) }));
   const want = str(j?.font).trim().toLowerCase(), hit = FONTS.find(f => f.name.toLowerCase() === want) || FONTS.find(f => want && (want.includes(f.name.toLowerCase()) || f.name.toLowerCase().includes(want)));
   if (!hit) throw new Error('글씨체를 고르지 못했어요. 다시 해 보세요.');
   const inkKey = str(j?.ink).trim().toLowerCase(), size = str(j?.size);
@@ -392,7 +401,7 @@ export async function pickFontByCall(ch: DChar, chat?: DChat | null, signal?: Ab
 }
 /** 글씨 견본에 쓸 한 줄: 이 캐릭터의 가장 최근 일기에서 */
 export const sampleOf = (ch: DChar) => {
-  for (const c of [...S().chats].filter(x => x.charIds?.[0] === ch.id && (x.diary || []).length).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))) { const d = c.diary!, line = String(d[d.length - 1].text || '').split(/\n|(?<=[.!?。…])\s/).map(s => s.trim()).find(s => s.length >= 8); if (line) return line.slice(0, 64); }
+  for (const c of [...S.chats].filter(x => x.charIds?.[0] === ch.id && (x.diary || []).length).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))) { const d = c.diary!, line = String(d[d.length - 1].text || '').split(/\n|(?<=[.!?。…])\s/).map(s => s.trim()).find(s => s.length >= 8); if (line) return line.slice(0, 64); }
   return '오늘은 별일 없었는데, 자꾸 그 말이 생각난다.';
 };
 
@@ -401,7 +410,7 @@ export interface BookOpt { title: string; sub: string; mode: string; size: numbe
 /** 대화 한 편을 f-bind.js 가 받는 모양으로 모은다 */
 export function gatherBook(chat: DChat, msgs: Msg[], o: Partial<BookOpt> = {}) {
   const opt: BookOpt = { title: '', sub: '', mode: 'day', size: 40, page: 'A5', cover: 'avatar', talk: true, diary: true, dreams: true, letters: true, keepsakes: true, photos: true, almanac: true, hand: true, ...o };
-  const k = K(), ch = charOf(chat), w = who(chat), a = A(), today = k.dayKey(core().now()), days = k.collectDays(chat, msgs);
+  const k = K, ch = charOf(chat), w = who(chat), a = A(), today = k.dayKey(core.now()), days = k.collectDays(chat, msgs);
   const hm = (t: number) => { const d = new Date(t); return t ? `${k.pad(d.getMonth() + 1)}.${k.pad(d.getDate())} ${k.pad(d.getHours())}:${k.pad(d.getMinutes())}` : ''; };
   const pics = (m: Msg) => opt.photos ? k.photosOf(m).map(p => ({ src: photoSrc(p), title: p.title })).filter(p => p.src) : [];
   type Extra = { t: string; ts: number; at: number } & Record<string, unknown>;
@@ -409,9 +418,9 @@ export function gatherBook(chat: DChat, msgs: Msg[], o: Partial<BookOpt> = {}) {
     blocks: msgs.slice(c.from, c.to).filter(m => m && !m.hidden).map(m => m.curtain ? { t: 'curtain', ...m.curtain } : m.role === 'system' ? { t: 'sys', text: m.dice ? '' : cleanText(m) } : { t: 'msg', role: m.role, name: speaker(m, chat), text: cleanText(m), time: hm(k.msgTs(m)), style: chat.mode === 'talk' && !m.scene ? 'chat' : 'prose', photos: pics(m) }).filter(b => b.t !== 'sys' || ('text' in b && b.text)) })).filter(c => c.blocks.length);
   const idx = new Map(msgs.map((m, i) => [m.id, i]));
   const items: Extra[] = [
-    ...(opt.diary ? (chat.diary || []).map((e): Extra => ({ t: 'diary', ts: e.ts, at: e.to > 0 ? e.to - 1 : -1, title: e.title, text: e.text, storyDate: e.storyDate, mood: e.mood, weather: e.weather, note: e.note, noteBy: w.user, answer: e.answer, sign: S().get('chars', e.by)?.name || w.char })) : []),
+    ...(opt.diary ? (chat.diary || []).map((e): Extra => ({ t: 'diary', ts: e.ts, at: e.to > 0 ? e.to - 1 : -1, title: e.title, text: e.text, storyDate: e.storyDate, mood: e.mood, weather: e.weather, note: e.note, noteBy: w.user, answer: e.answer, sign: S.get('chars', e.by)?.name || w.char })) : []),
     ...(opt.dreams ? (chat.dreams || []).map((e): Extra => ({ t: 'dream', ts: e.ts, at: -1, title: e.title, text: e.text, phaseName: e.phaseName })) : []),
-    ...(opt.keepsakes ? (chat.keepsakes || []).filter(x => !x.gone).map((x: Keepsake): Extra => ({ t: 'keepsake', ts: x.ts, at: idx.get(x.id) ?? -1, id: x.id, no: x.no, title: x.title, place: x.place, time: x.time, summary: x.summary, memo: x.memo, day: k.dayKey(x.ts || core().now()), photo: opt.photos ? Illust().data(x.photo) : '' })) : []),
+    ...(opt.keepsakes ? (chat.keepsakes || []).filter(x => !x.gone).map((x: Keepsake): Extra => ({ t: 'keepsake', ts: x.ts, at: idx.get(x.id) ?? -1, id: x.id, no: x.no, title: x.title, place: x.place, time: x.time, summary: x.summary, memo: x.memo, day: k.dayKey(x.ts || core.now()), photo: opt.photos ? Illust.data(x.photo) : '' })) : []),
   ].sort((x, y) => (x.ts || 0) - (y.ts || 0));
   const loose: Extra[] = [];
   for (const it of items) {
@@ -431,7 +440,7 @@ export function gatherBook(chat: DChat, msgs: Msg[], o: Partial<BookOpt> = {}) {
   return { title: opt.title.trim() || `${w.char}와(과)의 이야기`, sub: opt.sub.trim(), charName: w.char, userName: w.user, page: opt.page, accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(), madeKey: today, hand: opt.hand ? { family: f.name, q: f.q || '', scale: +(f.k * f.size).toFixed(3), lh: f.lh, color: f.color } : null,
     avatar: opt.cover === 'avatar' ? ch?.avatar || '' : '', cover: firstPic || '', moonFill: months.length ? months[months.length - 1].fill : 0.18,
     stats: { msgs: [...days.values()].reduce((n, d) => n + d.n, 0), days: keys.length, from: first || '', to: last || '' }, chapters, loose,
-    letters: opt.letters ? (chat.letters || []).map(l => ({ t: 'letter', label: `${l.month.slice(0, 4)}년 ${+l.month.slice(5)}월`, title: l.title, text: l.text, ps: l.ps, sign: S().get('chars', l.by)?.name || w.char })) : [],
+    letters: opt.letters ? (chat.letters || []).map(l => ({ t: 'letter', label: `${l.month.slice(0, 4)}년 ${+l.month.slice(5)}월`, title: l.title, text: l.text, ps: l.ps, sign: S.get('chars', l.by)?.name || w.char })) : [],
     months, promises: opt.almanac ? (chat.promises || []).filter(p => k.validKey(p.date)).sort((x, y) => x.date.localeCompare(y.date)).map(p => ({ date: p.date, time: p.time, what: p.what, state: k.promiseState(p, today) })) : [] };
 }
 export const makeBook = (chat: DChat, msgs: Msg[], o: Partial<BookOpt>) => buildBook(gatherBook(chat, msgs, o));

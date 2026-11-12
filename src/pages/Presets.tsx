@@ -1,13 +1,18 @@
 // 프리셋: 생성 설정 · 프리셋 변수 · 프롬프트 블록
 import { useLayoutEffect, useRef } from 'react';
-import { L } from '../legacy';
 import { Btn, Icon, IconBtn } from '../kit';
 import { Form, LibraryPage, Shelf, confirmBox, stripShelf, toast, useDragSort, type FormDefs } from '../ui';
 import { PresetVarsEditor } from '../editors/PresetVars';
-import { NEEDS, cards, core, engine, errMsg, store, type Block, type Preset } from '../editors/bridge';
+import type { Block, Preset } from '../editors/types';
 import { editorApi, useBump, useDebounced, type EditorApi } from '../editors/parts';
+import { go } from '../lib/router';
+import { errMsg } from '../editors/refresh';
+import { S } from '../lib/core';
+import * as engine from '../lib/engine';
+import * as core from '../lib/core';
+import * as cards from '../lib/cards';
 
-export const page = { name: 'presets', Component: PresetsPage, needs: NEEDS };
+export const page = { name: 'presets', Component: PresetsPage };
 
 /** 자리 표시 블록 가운데 내용을 감싸는 틀로 쓰는 것 (메인 프롬프트 · 후속 지시는 내용 그대로) */
 const wraps = (b: Block) => b.kind !== 'text' && b.kind !== 'main' && b.kind !== 'jailbreak';
@@ -20,7 +25,7 @@ const blockDefs = (b: Block): FormDefs => [
 const NONE = '보내지 않음';
 
 function PresetEditor({ p, api }: { p: Preset; api: EditorApi }) {
-  const S = store(), { uid, download, MARKERS } = core(), { tokens, CONTINUE_NUDGE, IMPERSONATE_NUDGE, GROUP_NUDGE } = engine();
+  const { uid, download, MARKERS } = core, { tokens, CONTINUE_NUDGE, IMPERSONATE_NUDGE, GROUP_NUDGE } = engine;
   const redraw = useBump(), sv = useDebounced(() => api.save(), 300), open = useRef(new Set<string>()).current;
   const list = useRef<HTMLDivElement | null>(null), focus = useRef(-1);
   const moveBlock = (from: number, to: number, grab = false) => { if (to < 0 || to >= p.blocks.length || to === from) return; const [x] = p.blocks.splice(from, 1); p.blocks.splice(to, 0, x); sv(); if (grab) focus.current = to; redraw(); };
@@ -32,7 +37,7 @@ function PresetEditor({ p, api }: { p: Preset; api: EditorApi }) {
     <header className="editor-head"><h2>{p.name}</h2><div className="row">
       {active ? <em className="badge on">사용 중</em> : <Btn label="이 프리셋 사용" ic="check" cls="primary" onClick={() => { S.set({ activePreset: p.id }); api.refresh(); }} />}
       <IconBtn ic="copy" title="복제" onClick={async () => { await S.save('presets', { ...stripShelf(structuredClone(p)), id: uid(), name: p.name + ' (사본)', src: '', folder: p.folder }, true); api.refresh(); }} />
-      <IconBtn ic="code" title={`이 프리셋의 정규식 (${(p.regex || []).length})`} onClick={() => L.ui.go('regex', 'preset:' + p.id)} />
+      <IconBtn ic="code" title={`이 프리셋의 정규식 (${(p.regex || []).length})`} onClick={() => go('regex', 'preset:' + p.id)} />
       <IconBtn ic="import" title="내보내기" onClick={() => download(`${p.name}.dreamland-preset.json`, JSON.stringify(stripShelf(p), null, 2))} />
       <IconBtn ic="trash" title="삭제" onClick={async () => { if (S.presets.length < 2) return toast('마지막 프리셋은 지울 수 없어요'); if (await confirmBox(`"${p.name}" 프리셋을 삭제할까요?`, '삭제', true)) { await S.remove('presets', p.id); if (active) S.set({ activePreset: S.presets[0].id }); api.refresh(); } }} />
     </div></header>
@@ -70,15 +75,14 @@ function PresetEditor({ p, api }: { p: Preset; api: EditorApi }) {
 }
 
 function PresetsPage({ arg }: { arg?: unknown }) {
-  const S = store();
-  return <LibraryPage<Preset> arg={arg} title="프리셋" eyebrow="preset" coll="presets" ic="sliders" create={() => { const p = core().defaultPreset(); p.name = '새 프리셋'; return p; }} label={p => p.name}
+  return <LibraryPage<Preset> arg={arg} title="프리셋" eyebrow="preset" coll="presets" ic="sliders" create={() => { const p = core.defaultPreset(); p.name = '새 프리셋'; return p; }} label={p => p.name}
     sub={p => `${p.blocks.filter(b => b.enabled).length}개 블록${p.id === S.settings.activePreset ? ' · 사용 중' : ''}`}
     actions={[{ ic: 'import', title: '프리셋 가져오기 (실리태번 · 마리나라 · 드림랜드)', onclick: async draw => {
-      const [f] = await core().pickFiles({ accept: '.json' }); if (!f) return;
+      const [f] = await core.pickFiles({ accept: '.json' }); if (!f) return;
       try {
         const j = JSON.parse(await f.text()) as Partial<Preset>;
-        if (j.blocks && j.params) { await S.save('presets', { ...stripShelf(j), id: core().uid() } as Preset, true); toast('프리셋을 가져왔어요', 'ok'); }
-        else { const T = await cards().importFiles([f]); toast(cards().summarize(T), T.errors.length ? 'err' : 'ok'); }
+        if (j.blocks && j.params) { await S.save('presets', { ...stripShelf(j), id: core.uid() } as Preset, true); toast('프리셋을 가져왔어요', 'ok'); }
+        else { const T = await cards.importFiles([f]); toast(cards.summarize(T), T.errors.length ? 'err' : 'ok'); }
       } catch (e) { toast(errMsg(e), 'err'); }
       draw();
     } }]}

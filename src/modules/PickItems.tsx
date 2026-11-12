@@ -2,7 +2,8 @@
 import { useState } from 'react';
 import { Avatar, Btn, Icon } from '../kit';
 import type { Char } from '../types';
-import { openModal, type ModalX } from '../studio/bridge';
+import type { ModalX } from '../studio/parts';
+import { openModal } from '../studio/parts';
 
 export interface PickItem { id: string; title: string; sub?: string; search: string; ic?: string; thumb?: string; av?: Char }
 interface PickOpts { title: string; items: PickItem[]; multi?: boolean; okLabel?: string; ph?: string; empty?: string; onDone: (ids: string[]) => void }

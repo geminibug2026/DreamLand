@@ -1,7 +1,6 @@
 // ════════ 장면 편집기 ════════ 장면 · 인물 배치 · 최종 프롬프트 + 이번 작업의 생성 설정
 import { useEffect, useRef, useState } from 'react';
-import { Form, type FieldDef } from '../ui';
-import { C, IL, Illust, U, blankScene, chatApi, clone, configLine, cur, errText, flat, guard, mustBeOpen, pickKeys } from './bridge';
+import { Form, type FieldDef, confirmBox, menu, toast } from '../ui';
 import { Area, Btn, Chk, Empty, Fld, IBtn, Sel, Seg, Text, openModal, useBump, type Box } from './parts';
 import { Board } from './Board';
 import { ORIENTATIONS } from './framing';
@@ -10,9 +9,15 @@ import { schedule } from './decorate';
 import { guide } from './dialogs';
 import type { Chat, GenConfig, Msg, Person, Scene, Swipe } from './types';
 
+import { chatApi } from '../chat/actions';
+import * as IL from '../lib/illust';
+import * as C from '../lib/core';
+import { blankScene, clone, configLine, cur, errText, flat, guard, mustBeOpen, pickKeys } from './util';
+import { Illust } from './illust';
+
 // ════════ 이번 작업의 생성 설정 ════════
 function genFields(d: GenConfig): (FieldDef | false)[] {
-  const { MODELS, SAMPLERS, SCHEDULERS } = IL(), nai = d.backend === 'nai', v5 = MODELS[d.model]?.family === 5, sd = d.backend === 'a1111';
+  const { MODELS, SAMPLERS, SCHEDULERS } = IL, nai = d.backend === 'nai', v5 = MODELS[d.model]?.family === 5, sd = d.backend === 'a1111';
   return [
     nai && { k: 'model', label: '모델', type: 'select', opts: Object.entries(MODELS).map(([id, m]) => [id, m.label]), half: true, live: true },
     { k: 'width', label: '가로', type: 'num', min: 64, max: 4096, step: 64, third: true }, { k: 'height', label: '세로', type: 'num', min: 64, max: 4096, step: 64, third: true },
@@ -25,7 +30,7 @@ function genFields(d: GenConfig): (FieldDef | false)[] {
     nai && { k: 'budgetGuard', label: '비용 보호', type: 'check', hint: '1,048,576픽셀 · 28 Steps 를 넘는 요청을 막습니다. 무료 생성을 보장하지는 않아요.' },
   ];
 }
-export function fixModel(d: GenConfig) { if (d.backend !== 'nai') return; if (IL().MODELS[d.model]?.family === 5) d.scheduler = 'karras'; else d.transparent = false; }
+export function fixModel(d: GenConfig) { if (d.backend !== 'nai') return; if (IL.MODELS[d.model]?.family === 5) d.scheduler = 'karras'; else d.transparent = false; }
 function GenForm({ d, hold }: { d: GenConfig; hold: { redo: () => void } }) {
   const [ver, setVer] = useState(0), last = useRef(d.model);
   hold.redo = () => setVer(v => v + 1);
@@ -35,7 +40,7 @@ function genEditor(config: GenConfig, onApply: (c: GenConfig) => void) {
   const d = clone(config), hold = { redo: () => { } };
   openModal({ title: '생성 설정', cls: 'col', actions: [
     { label: '무작위 시드', cls: 'ghost', onclick: () => { d.seed = -1; hold.redo(); return false; } },
-    { label: '적용', cls: 'primary', onclick: () => { try { fixModel(d); onApply(Illust().validate(d)); } catch (e) { U().toast(errText(e), 'err'); return false; } } }] }, () => <GenForm d={d} hold={hold} />);
+    { label: '적용', cls: 'primary', onclick: () => { try { fixModel(d); onApply(Illust.validate(d)); } catch (e) { toast(errText(e), 'err'); return false; } } }] }, () => <GenForm d={d} hold={hold} />);
 }
 
 // ════════ 장면 편집기 ════════
@@ -81,10 +86,10 @@ function SceneTab({ t }: { t: Tools }) {
     const before = JSON.stringify(st.drafts); setBusy(true); t.note('장면 분석 중…');
     try {
       mustBeOpen(x.msg);
-      const out = await Illust().analyze(x.chat, cur().msgs as Msg[], x.msg, null, { existing: clone(st.drafts), direction: dir, scope: scope.current, manual: true });
+      const out = await Illust.analyze(x.chat, cur().msgs as Msg[], x.msg, null, { existing: clone(st.drafts), direction: dir, scope: scope.current, manual: true });
       if (JSON.stringify(st.drafts) !== before) throw new Error('분석하는 동안 고친 내용이 있어 결과로 덮어쓰지 않았어요.');
-      t.snap(); st.drafts = out; t.redo(); U().toast('분석 완료 · 바뀐 내용을 확인해 주세요', 'ok');
-    } catch (err) { t.note(''); U().toast('분석 실패 · 기존 내용을 그대로 두었어요. ' + errText(err), 'err'); } finally { if (alive.current) setBusy(false); }
+      t.snap(); st.drafts = out; t.redo(); toast('분석 완료 · 바뀐 내용을 확인해 주세요', 'ok');
+    } catch (err) { t.note(''); toast('분석 실패 · 기존 내용을 그대로 두었어요. ' + errText(err), 'err'); } finally { if (alive.current) setBusy(false); }
   };
   return <div className="col sb-ed-pane">
     {x.inline ? <AnchorPicker t={t} /> : null}
@@ -101,16 +106,16 @@ function SceneTab({ t }: { t: Tools }) {
 }
 
 function CastTab({ t }: { t: Tools }) {
-  const bump = useBump(), { x, s } = t, st = x.st, cfg = st.cfg, { MODELS } = IL();
+  const bump = useBump(), { x, s } = t, st = x.st, cfg = st.cfg, { MODELS } = IL;
   const cast: Person[] = (s.characters ||= []); st.person = Math.max(0, Math.min(st.person, cast.length - 1));
   const person = st.person, c: Person | undefined = cast[person], fx = useRef<HTMLInputElement>(null), fy = useRef<HTMLInputElement>(null);
   const castMax = () => cfg.backend === 'nai' ? (MODELS[cfg.model]?.characters || 6) : 4;
   const boardModel = cfg.backend !== 'nai' || MODELS[cfg.model]?.family === 5 ? 'nai-diffusion-5-full' : cfg.model;
   const moved = () => { cfg.useCoords = true; t.touch(); bump(); };
   const swap = (d: number) => { const to = person + d; if (to < 0 || to >= cast.length) return; t.snap(); [cast[person], cast[to]] = [cast[to], cast[person]]; st.person = to; t.redo(); };
-  const del = async () => { if (!c || !(await U().confirmBox(`“${c.name || '선택한 인물'}”을 이 장면에서 뺄까요? 되돌리기로 살릴 수 있어요.`, '빼기', true))) return; t.snap(); cast.splice(person, 1); st.person = Math.max(0, person - 1); t.redo(); };
-  const lib = Illust().library(x.chat).filter(p => !cast.some(q => q.name === p.name));
-  const add = (base?: Person | null) => { if (cast.length >= castMax()) return U().toast(`이 모델은 인물 ${castMax()}명까지예요`); t.snap(); cast.push(base || { name: `인물 ${cast.length + 1}`, prompt: '', negative: '', x: 0.5, y: 0.5 }); st.person = cast.length - 1; t.redo(); };
+  const del = async () => { if (!c || !(await confirmBox(`“${c.name || '선택한 인물'}”을 이 장면에서 뺄까요? 되돌리기로 살릴 수 있어요.`, '빼기', true))) return; t.snap(); cast.splice(person, 1); st.person = Math.max(0, person - 1); t.redo(); };
+  const lib = Illust.library(x.chat).filter(p => !cast.some(q => q.name === p.name));
+  const add = (base?: Person | null) => { if (cast.length >= castMax()) return toast(`이 모델은 인물 ${castMax()}명까지예요`); t.snap(); cast.push(base || { name: `인물 ${cast.length + 1}`, prompt: '', negative: '', x: 0.5, y: 0.5 }); st.person = cast.length - 1; t.redo(); };
   const num = (k: 'x' | 'y', ref: typeof fx) => <input ref={ref} className="inp" type="number" min={0} max={1} step={0.01} defaultValue={c?.[k] ?? 0.5} onChange={e => { if (c) c[k] = Math.min(1, Math.max(0, +e.target.value || 0)); moved(); }} />;
   return <div className="sb-cast">
     <div className="sb-cast-visual">
@@ -122,7 +127,7 @@ function CastTab({ t }: { t: Tools }) {
       <div className="sb-cast-list">{cast.map((p, i) => <button key={i} type="button" className={'chip' + (i === person ? ' on' : '')} title={p.name || `인물 ${i + 1}`} onClick={() => { st.person = i; bump(); }}>{`${i + 1}. ${p.name || `인물 ${i + 1}`}`}</button>)}</div>
       <div className="sb-cast-fields col" key={person}>
         <div className="row sb-cast-actions">
-          <Btn label="인물 추가" ic="plus" cls="ghost" onClick={e => lib.length ? U().menu(e.currentTarget, [{ label: '빈 인물', ic: 'plus', onclick: () => add() }, '-', ...lib.map(p => ({ label: p.name, ic: 'user', hint: p.player ? '내 캐릭터' : '', onclick: () => add(Illust().compileCharacter({ name: p.name, id: p.id }, Illust().library(x.chat), 'always')) }))]) : add()} />
+          <Btn label="인물 추가" ic="plus" cls="ghost" onClick={e => lib.length ? menu(e.currentTarget, [{ label: '빈 인물', ic: 'plus', onclick: () => add() }, '-', ...lib.map(p => ({ label: p.name, ic: 'user', hint: p.player ? '내 캐릭터' : '', onclick: () => add(Illust.compileCharacter({ name: p.name, id: p.id }, Illust.library(x.chat), 'always')) }))]) : add()} />
           <span className="sb-grow" /><IBtn ic="up" title="인물 앞으로" disabled={person === 0 || !c} onClick={() => swap(-1)} /><IBtn ic="down" title="인물 뒤로" disabled={person >= cast.length - 1} onClick={() => swap(1)} /><IBtn ic="trash" title="인물 삭제" disabled={!c} onClick={() => void del()} />
         </div>
         {!c ? <Empty>인물을 추가하면 프롬프트와 위치를 고칠 수 있어요.</Empty> : <>
@@ -136,8 +141,8 @@ function CastTab({ t }: { t: Tools }) {
 }
 
 function FinalTab({ t }: { t: Tools }) {
-  const { x, s } = t, cfg = x.st.cfg, { MODELS, snapPoint } = IL();
-  const [made] = useState(() => { try { return { p: Illust().compose(x.chat, s, cfg), err: '' }; } catch (e) { return { p: null, err: errText(e) }; } });
+  const { x, s } = t, cfg = x.st.cfg, { MODELS, snapPoint } = IL;
+  const [made] = useState(() => { try { return { p: Illust.compose(x.chat, s, cfg), err: '' }; } catch (e) { return { p: null, err: errText(e) }; } });
   const [pos, setPos] = useState(made.p?.base ?? ''), [neg, setNeg] = useState(made.p?.negative ?? '');
   if (!made.p) return <p className="err">{made.err}</p>;
   const p = made.p, boardModel = cfg.backend !== 'nai' || MODELS[cfg.model]?.family === 5 ? 'nai-diffusion-5-full' : cfg.model;
@@ -153,7 +158,7 @@ function FinalTab({ t }: { t: Tools }) {
 }
 
 function Composer({ x }: { x: Ctx }) {
-  const bump = useBump(), [ver, setVer] = useState(0), [busyNote, setNote] = useState(''), st = x.st, { MODELS, RENDER_KEYS } = IL();
+  const bump = useBump(), [ver, setVer] = useState(0), [busyNote, setNote] = useState(''), st = x.st, { MODELS, RENDER_KEYS } = IL;
   st.at = Math.max(0, Math.min(st.at, st.drafts.length - 1));
   const s: Scene | undefined = st.drafts[st.at];
   const redo = () => { setNote(''); setVer(v => v + 1); };
@@ -161,16 +166,16 @@ function Composer({ x }: { x: Ctx }) {
   const snap = () => { st.undo.push(clone({ drafts: st.drafts, cfg: st.cfg, at: st.at, person: st.person })); if (st.undo.length > 20) st.undo.shift(); st.dirty = true; bump(); };
   const move = (d: number) => { const to = st.at + d; if (to < 0 || to >= st.drafts.length) return; snap(); [st.drafts[st.at], st.drafts[to]] = [st.drafts[to], st.drafts[st.at]]; st.at = to; redo(); };
   const undo = () => { const u = st.undo.pop(); if (!u) return; Object.assign(st, u); st.dirty = true; redo(); };
-  const add = () => { if (st.drafts.length >= LIMIT) return U().toast(`장면은 최대 ${LIMIT}개예요`); snap(); st.drafts.push(blankScene(st.drafts.length + 1)); st.at = st.drafts.length - 1; st.person = 0; redo(); };
-  const del = async () => { if (!s || !(await U().confirmBox(`장면 ${st.at + 1}을 지울까요? 되돌리기로 살릴 수 있어요.`, '지우기', true))) return; snap(); st.drafts.splice(st.at, 1); st.at = Math.max(0, st.at - 1); st.person = 0; redo(); };
-  const gen = guard(async () => { draw(x.msg, st.drafts, st.cfg, x.slot); if (!x.slot) { x.sw.illustDraft = []; delete x.sw.illustDraftConfig; } st.dirty = false; await chatApi().save(); x.close(); });
-  const fileMenu = (anchor: Element) => U().menu(anchor, [
-    { label: '장면 내보내기', ic: 'import', onclick: () => C().download('scenebook-scenes.json', JSON.stringify({ kind: 'scenebook-scenes', schema: 1, config: pickKeys(st.cfg, RENDER_KEYS.filter(k => !['references', 'connId', 'a1111'].includes(k))), scenes: st.drafts.map(({ anchor: _a, ...rest }) => rest) }, null, 2)) },
+  const add = () => { if (st.drafts.length >= LIMIT) return toast(`장면은 최대 ${LIMIT}개예요`); snap(); st.drafts.push(blankScene(st.drafts.length + 1)); st.at = st.drafts.length - 1; st.person = 0; redo(); };
+  const del = async () => { if (!s || !(await confirmBox(`장면 ${st.at + 1}을 지울까요? 되돌리기로 살릴 수 있어요.`, '지우기', true))) return; snap(); st.drafts.splice(st.at, 1); st.at = Math.max(0, st.at - 1); st.person = 0; redo(); };
+  const gen = guard(async () => { draw(x.msg, st.drafts, st.cfg, x.slot); if (!x.slot) { x.sw.illustDraft = []; delete x.sw.illustDraftConfig; } st.dirty = false; await chatApi.save(); x.close(); });
+  const fileMenu = (anchor: Element) => menu(anchor, [
+    { label: '장면 내보내기', ic: 'import', onclick: () => C.download('scenebook-scenes.json', JSON.stringify({ kind: 'scenebook-scenes', schema: 1, config: pickKeys(st.cfg, RENDER_KEYS.filter(k => !['references', 'connId', 'a1111'].includes(k))), scenes: st.drafts.map(({ anchor: _a, ...rest }) => rest) }, null, 2)) },
     { label: '장면 가져오기', ic: 'upload', onclick: guard(async () => {
-      const [f] = await C().pickFiles({ accept: '.json,application/json' }); if (!f) return; if (f.size > 300000) throw new Error('300KB 이하 장면 파일을 골라 주세요.');
+      const [f] = await C.pickFiles({ accept: '.json,application/json' }); if (!f) return; if (f.size > 300000) throw new Error('300KB 이하 장면 파일을 골라 주세요.');
       const v = JSON.parse(await f.text()) as { kind?: string; scenes?: Scene[]; config?: object } | null; if (v?.kind !== 'scenebook-scenes' || !Array.isArray(v.scenes) || !v.scenes.length) throw new Error('장면 파일이 아니에요.');
-      const next = Illust().validate({ ...st.cfg, ...pickKeys(v.config || {}, RENDER_KEYS.filter(k => !['references', 'connId', 'a1111', 'budgetGuard', 'backend'].includes(k))) });
-      snap(); st.drafts = v.scenes.slice(0, LIMIT).map(sc => Illust().compileScene(x.chat, { ...sc, anchor: '' })); st.cfg = next; st.at = st.person = 0; redo(); U().toast('장면을 불러왔어요', 'ok');
+      const next = Illust.validate({ ...st.cfg, ...pickKeys(v.config || {}, RENDER_KEYS.filter(k => !['references', 'connId', 'a1111', 'budgetGuard', 'backend'].includes(k))) });
+      snap(); st.drafts = v.scenes.slice(0, LIMIT).map(sc => Illust.compileScene(x.chat, { ...sc, anchor: '' })); st.cfg = next; st.at = st.person = 0; redo(); toast('장면을 불러왔어요', 'ok');
     }) },
     { label: '사용법', ic: 'note', onclick: guide },
   ]);
@@ -195,18 +200,18 @@ function Composer({ x }: { x: Ctx }) {
 
 export function openComposer({ chat, msg, scenes, config, slot = null, preview = '' }: { chat: Chat; msg: Msg; scenes: Scene[]; config: GenConfig; slot?: string | null; preview?: string }) {
   const sw = msg.swipes[msg.sw], st: Ctx['st'] = { drafts: clone(scenes), cfg: clone(config), at: 0, person: 0, tab: 'scene', dirty: false, undo: [] };
-  const saveDraft = async (quiet: boolean) => { mustBeOpen(msg); sw.illustDraft = clone(st.drafts); sw.illustDraftConfig = clone(st.cfg); st.dirty = false; await chatApi().save(); schedule(); U().toast(quiet ? '편집하던 장면을 초안으로 저장했어요' : '초안을 저장했어요'); };
+  const saveDraft = async (quiet: boolean) => { mustBeOpen(msg); sw.illustDraft = clone(st.drafts); sw.illustDraftConfig = clone(st.cfg); st.dirty = false; await chatApi.save(); schedule(); toast(quiet ? '편집하던 장면을 초안으로 저장했어요' : '초안을 저장했어요'); };
   let asking = false;
   const askClose = () => {   // 저장하지 않은 변경이 있으면 닫기 전에 물어본다
     if (!st.dirty) return box.close(); if (asking) return; asking = true;
     openModal({ title: '편집 내용', tag: 'p', onClose: () => { asking = false; }, actions: [
       { label: '계속 편집', cls: 'ghost' },
       { label: '저장 없이 닫기', cls: 'ghost', onclick: () => { st.dirty = false; box.close(); } },
-      { label: '저장 후 닫기', cls: 'primary', onclick: async () => { try { await saveDraft(true); box.close(); } catch (e) { U().toast(errText(e), 'err'); return false; } } }] }, () => '저장하지 않은 변경 사항이 있어요.');
+      { label: '저장 후 닫기', cls: 'primary', onclick: async () => { try { await saveDraft(true); box.close(); } catch (e) { toast(errText(e), 'err'); return false; } } }] }, () => '저장하지 않은 변경 사항이 있어요.');
   };
   const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape' && box.el === document.getElementById('modals')?.lastElementChild) { e.stopImmediatePropagation(); e.preventDefault(); askClose(); } };
-  const box: Box = openModal({ title: slot ? '장면 편집 · 다시 그리기' : '장면 편집', wide: true, cls: 'sb-ed', onClose: () => { document.removeEventListener('keydown', onEsc, true); if (st.dirty && !slot) saveDraft(true).catch(e => U().toast(errText(e), 'err')); } },
-    b => <Composer x={{ chat, msg, sw, slot, preview, inline: Illust().cfg().placement === 'inline', blocks: Illust().blocks(C().msgText(msg)), st, saveDraft, close: () => b.close() }} />);
+  const box: Box = openModal({ title: slot ? '장면 편집 · 다시 그리기' : '장면 편집', wide: true, cls: 'sb-ed', onClose: () => { document.removeEventListener('keydown', onEsc, true); if (st.dirty && !slot) saveDraft(true).catch(e => toast(errText(e), 'err')); } },
+    b => <Composer x={{ chat, msg, sw, slot, preview, inline: Illust.cfg().placement === 'inline', blocks: Illust.blocks(C.msgText(msg)), st, saveDraft, close: () => b.close() }} />);
   document.addEventListener('keydown', onEsc, true);
   box.el.addEventListener('mousedown', e => { if (e.target === box.el) e.stopImmediatePropagation(); }, true);   // 바깥을 잘못 눌러도 편집하던 내용이 사라지지 않게
   box.el.querySelector('.modal-head .ibtn')?.addEventListener('click', e => { e.stopImmediatePropagation(); e.stopPropagation(); askClose(); }, true);   // 닫기 단추도 물어보고 닫는다

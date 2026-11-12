@@ -4,14 +4,19 @@ import { Avatar, Btn, IconBtn } from '../kit';
 import { Form, LibraryPage, Shelf, charPicker, confirmBox, toast } from '../ui';
 import { chatPicker, roomLabel } from '../editors/ChatPicker';
 import { LorePicker } from '../editors/lore';
-import { NEEDS, assets, core, engine, store, studio, type Persona, type XChat } from '../editors/bridge';
-import { Host, editorApi, useBump, useDebounced, type EditorApi } from '../editors/parts';
+import type { Persona, XChat } from '../editors/types';
+import { editorApi, useBump, useDebounced, type EditorApi } from '../editors/parts';
+import { Assets } from '../lib/assets';
+import { S } from '../lib/core';
+import { AssetsPane } from '../studio/AssetsPane';
+import * as engine from '../lib/engine';
+import * as core from '../lib/core';
 
-export const page = { name: 'personas', Component: PersonasPage, needs: NEEDS };
+export const page = { name: 'personas', Component: PersonasPage };
 
 /** 페르소나 연결: 대화 > 캐릭터 > 기본 순으로 적용된다 */
 function PersonaLinks({ p, api }: { p: Persona; api: EditorApi }) {
-  const S = store(), draw = useBump();
+  const draw = useBump();
   const chars = S.chars, mine = chars.filter(c => c.bind?.personaId === p.id), chats = S.chats.filter(c => c.personaId === p.id && c.personaAuto === false).sort((a, b) => b.updatedAt - a.updatedAt);
   const cur = S.get('chats', S.settings.lastChat);
   const nameOf = (c: XChat) => c.charIds.map(i => S.get('chars', i)?.name).filter(Boolean).join(', ') || '삭제된 캐릭터';
@@ -22,7 +27,7 @@ function PersonaLinks({ p, api }: { p: Persona; api: EditorApi }) {
     <div className="link-row"><span className="field-label">캐릭터</span><div className="link-chips">
       {mine.map(c => <button key={c.id} className="chip with-av on" title="눌러서 연결 풀기" onClick={async () => { c.bind = { ...(c.bind || {}), personaId: '' }; await S.save('chars', c, true); draw(); }}><Avatar o={c} cls="xs" />{c.name}{' ✕'}</button>)}
       <Btn label="캐릭터 고르기" ic="search" cls="ghost" onClick={() => charPicker({ title: `${p.name}(으)로 말할 캐릭터`, selected: mine.map(c => c.id), note: c => other(S.get('chars', c.id)?.bind?.personaId),
-        onDone: async ids => { for (const c of S.chars) { const want = ids.includes(c.id), has = c.bind?.personaId === p.id; if (want !== has) { c.bind = { connId: '', presetId: '', ...(c.bind || {}), personaId: want ? p.id : '' }; await S.save('chars', c, true); } } draw(); } })} />
+        onDone: async ids => { for (const c of S.chars) { const want = ids.includes(c.id), has = c.bind?.personaId === p.id; if (want !== has) { c.bind = c.bind ? { ...c.bind, personaId: want ? p.id : '' } : { connId: '', presetId: '', personaId: want ? p.id : '' }; await S.save('chars', c, true); } } draw(); } })} />
     </div></div>
     <div className="link-row"><span className="field-label">대화</span><div className="link-chips">
       {chats.slice(0, 8).map(c => <button key={c.id} className="chip on" title="눌러서 연결 풀기" onClick={async () => { c.personaId = ''; c.personaAuto = undefined; await S.save('chats', c, true); draw(); }}>{nameOf(c)}{' · '}{roomLabel(c).slice(0, 18)}{' ✕'}</button>)}
@@ -35,10 +40,9 @@ function PersonaLinks({ p, api }: { p: Persona; api: EditorApi }) {
 }
 
 function PersonaEditor({ p, api }: { p: Persona; api: EditorApi }) {
-  const S = store(), A = assets();
+  const A = Assets;
   const changed = useDebounced(() => { void api.save(); api.redraw(); }, 400), save = useDebounced(() => api.save(), 300);
-  const pane = useMemo(() => studio().assetsPane(A.ownerOfPersona(p.id), p, save), [A, p, save]);
-  const hint = useMemo(() => `≈${engine().tokens(p.description)} 토큰`, [p]);   // 열 때의 값 (옛 것과 같게)
+  const hint = useMemo(() => `≈${engine.tokens(p.description)} 토큰`, [p]);   // 열 때의 값 (옛 것과 같게)
   return <div className="editor">
     <header className="editor-head"><h2>{p.name}</h2><div className="row">
       {p.id === S.settings.activePersona ? <em className="badge on">기본</em> : <Btn label="기본으로" ic="check" cls="primary" onClick={() => { S.set({ activePersona: p.id }); api.refresh(); }} />}
@@ -50,13 +54,12 @@ function PersonaEditor({ p, api }: { p: Persona; api: EditorApi }) {
     <Form obj={p} defs={[{ k: 'name', label: '이름', hint: '{{user}} 로 쓰입니다.' }, { k: 'avatar', label: '초상', type: 'image' }, { k: 'description', label: '설명', type: 'area', rows: 10, hint }]} onChange={changed} />
     <PersonaLinks p={p} api={api} />
     <LorePicker holder={p} save={save} hint="이 페르소나로 말하는 대화에서 함께 쓰는 로어북입니다." />
-    <Host node={pane} />
+    <span style={{ display: 'contents' }}><AssetsPane owner={A.ownerOfPersona(p.id)} holder={p} save={save} /></span>
   </div>;
 }
 
 function PersonasPage({ arg }: { arg?: unknown }) {
-  const S = store();
-  return <LibraryPage<Persona> arg={arg} title="페르소나" eyebrow="persona" coll="personas" ic="user" thumb={p => <Avatar o={p} cls="sm" />} create={() => core().newPersona({ name: '새 페르소나' })} label={p => p.name}
+  return <LibraryPage<Persona> arg={arg} title="페르소나" eyebrow="persona" coll="personas" ic="user" thumb={p => <Avatar o={p} cls="sm" />} create={() => core.newPersona({ name: '새 페르소나' })} label={p => p.name}
     sub={p => p.id === S.settings.activePersona ? '기본 페르소나' : (p.description.slice(0, 40) || ' ')}
     list={ctx => <Shelf ctx={ctx} coll="personas" active={S.settings.activePersona} text={p => p.name + ' ' + (p.description || '')} pageSize={20} placeholder="페르소나 찾기" />}
     editor={(p, api) => <PersonaEditor p={p} api={editorApi(api, 'personas')} />} />;

@@ -2,20 +2,21 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { Btn, Icon } from '../../kit';
-import { confirmBox, promptBox } from '../../ui';
-import { core, memMod, toast } from '../bridge';
+import { confirmBox, promptBox, toast } from '../../ui';
 import { THREAD_KINDS } from '../craft';
 import { buildTimelineRows, filterTimelineRows, layoutTimelineGraph, timelineCsv, timelineMarkdown, type TimelineRow } from '../scene';
 import { bondCardsHtml, bondMapSvg, flowHtml, heroHtml, pulseSvg, railHtml, statusListHtml, tableHtml } from '../story';
 import type { Milestone, Summary, Turn } from '../types';
 import { Del, Ib, None, Sec, busyBtn, confirmList, editBox, pct, useBump, type StOpen } from './parts';
 import { MANUAL_MAX, Mx, bondViewRows, cut, cutLines, koDuration, noMap, onJump, sceneSlot, storeOf, storyState } from './viewsShared';
+import * as memMod from '../../lib/memory';
+import * as core from '../../lib/core';
 
 const JumpBtn = ({ n }: { n: number }) => <button className="mm-st-jump" type="button" data-mes={n}>{`#${n}`}</button>;
 interface Slot { el: Element; s: Summary; chunk: boolean }
 
 export function Story({ st }: { st: StOpen }) {
-  const { fmtDays } = memMod(), { uid, download } = core(), M = Mx();
+  const { fmtDays } = memMod, { uid, download } = core, M = Mx();
   const v = storyState(st), mem = st.mem, chat = st.chat, cfg = M.cfg(), T = mem.turns.length;
   // 보기만 다시 그린다 — 검색칸은 그대로 남아 한글 조합이 끊기지 않는다
   const drawView = useBump();

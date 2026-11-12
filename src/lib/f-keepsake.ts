@@ -1,15 +1,13 @@
 // ── Dreamland keepsake: 날짜 · 달 · 월간 집계 · 약속 태그 · 장면 기념품 · 장(章) 나누기 ── (옛 js/f-keepsake.js, 동작 그대로)
 // 화면도 저장소도 건드리지 않는 계산만 모아 둔 파일.
 
-export interface KSwipe { text?: string; ts?: number; illust?: { id?: string; title?: string; hidden?: boolean }[] | null; [k: string]: unknown }
-export interface Curtain { kind?: string; title?: string; place?: string; time?: string; summary?: string }
-export interface KMsg { id?: string; role?: string; ts?: number; sw?: number; hidden?: boolean; swipes?: KSwipe[]; images?: unknown; curtain?: Curtain; [k: string]: unknown }
-export interface Photo { id?: string; src?: string; title: string; msgId?: string }
-export interface Promise_ { id?: string; date: string; time?: string; what: string; by?: string; later?: boolean; made?: number; done?: boolean; aired?: boolean; excused?: boolean; [k: string]: unknown }
-export interface Keepsake { id: string; openId?: string; no?: number; title?: string; place?: string; time?: string; summary?: string; openTs?: number; ts?: number; lines?: number; photo?: string; photoCount?: number; memo?: string; picked?: boolean; gone?: boolean; [k: string]: unknown }
-interface Dated { ts?: number; [k: string]: unknown }
-export interface KChat { diary?: Dated[]; dreams?: Dated[]; keepsakes?: Keepsake[]; promises?: Promise_[]; later?: { id?: string; at?: number; about?: string; made?: number }[]; [k: string]: unknown }
-export interface Day { key: string; n: number; user: number; ai: number; firstId: string; lastId: string; firstIdx: number; lastIdx: number; photos: Photo[]; diary: Dated[]; dreams: Dated[]; keepsakes: Keepsake[]; promises: Promise_[] }
+import type { Chat, Curtain, DayRec, Keepsake, Msg, Photo, PromiseRec, Swipe } from './types';
+export type { Curtain, Keepsake, Photo };
+export type KSwipe = Swipe;
+export type KMsg = Msg;
+export type Promise_ = PromiseRec;
+export type KChat = Chat;
+export type Day = DayRec;
 
 export const pad = (n: unknown) => String(n).padStart(2, '0');
 const clamp01 = (v: unknown) => Math.min(1, Math.max(0, +(v as number) || 0));
@@ -71,7 +69,7 @@ export const photosOf = (m: KMsg): Photo[] => [
 const blankDay = (key: string): Day => ({ key, n: 0, user: 0, ai: 0, firstId: '', lastId: '', firstIdx: -1, lastIdx: -1, photos: [], diary: [], dreams: [], keepsakes: [], promises: [] });
 
 /** 대화 한 편을 날짜별로 모은다 → Map(날짜 → { n, user, ai, firstId, photos, diary, dreams, keepsakes, promises }) */
-export function collectDays(chat: KChat = {}, msgs: KMsg[] = []) {
+export function collectDays(chat: KChat = {} as KChat, msgs: KMsg[] = []) {
   const days = new Map<string, Day>(), at = (k: string) => { let d = days.get(k); if (!d) days.set(k, d = blankDay(k)); return d; };
   msgs.forEach((m, i) => {
     const ts = msgTs(m); if (!m || m.hidden || !ts) return;

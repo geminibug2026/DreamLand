@@ -6,6 +6,7 @@ import { unzip } from './assets';
 import { parseLoose } from './memory';
 import * as SB from '../scenebook/prompts';
 import { orientation, sizeFor, LOOKS, withLook, parsePlanText } from '../scenebook/framing';
+import type { IllustDraft, IllustDraftChar, IllustGenConfig, IllustItem, IllustScene, IllustVersion, Swipe } from './types';
 
 type Bag = Record<string, unknown>;
 export interface Conn { id?: string; provider?: string; baseUrl?: string; apiKey?: string; proxy?: boolean; [k: string]: unknown }
@@ -36,12 +37,12 @@ export interface Profile { id: string; name?: string; appearance?: string; outfi
 export interface LibPerson { id?: string; name?: string; appearance?: string; outfit?: string; negative?: string; player?: boolean; profiles: Profile[]; [k: string]: unknown }
 export interface VisualSet { world?: string; direction?: string; playerMode?: string; library?: LibPerson[] }
 export interface IChat { id: string; charIds: string[]; illustVisual?: VisualSet; [k: string]: unknown }
-export interface ISwipe { text?: string; ts?: number; illust?: Slot[]; illustDraft?: Compiled[]; illustDraftConfig?: Bag; illustPlan?: { status?: string; [k: string]: unknown }; [k: string]: unknown }
+export type ISwipe = Swipe;
 export interface IMsg { role?: string; name?: string; hidden?: boolean; sw: number; swipes: ISwipe[]; [k: string]: unknown }
-export interface CompiledChar { name: string; prompt: string; negative: string; x: number; y: number }
-export interface Compiled { title: string; camera: string; prompt: string; negative: string; finalPrompt: boolean; anchor: string; characters: CompiledChar[]; size?: string; [k: string]: unknown }
-export interface Version { id: string; seed: number | null; ts: number; config: Bag | null; scene: Bag | null }
-export interface Slot { slotId?: string; id?: string; versions?: Version[]; sel?: number; hidden?: boolean; title?: string; camera?: string; prompt?: string; negative?: string; characters?: unknown[]; finalPrompt?: boolean; anchor?: string; [k: string]: unknown }
+export type CompiledChar = IllustDraftChar;
+export type Compiled = IllustDraft;
+export type Version = IllustVersion;
+export type Slot = IllustItem;
 export interface AssetRec { id: string; owner?: string; kind?: string; name?: string; data: string; width?: number; height?: number; vibes?: Record<string, string>; review?: unknown; scene?: Bag; config?: Bag | null; seed?: number; ts?: number; title?: string; prompt?: string; [k: string]: unknown }
 export interface Ref { id: string; kind: 'vibe' | 'precise' | string; mode?: string; strength?: number; fidelity?: number; information?: number }
 /** 삽화 설정 (core 기본값 + ILLUST_EXTRA) */
@@ -383,7 +384,7 @@ export const Illust = {
   /** 예전 형식의 삽화 항목에도 자리 id 와 버전 목록을 붙인다 */
   slot(it: Slot) {
     it.slotId ||= uid();
-    if (!Array.isArray(it.versions) || !it.versions.length) it.versions = it.id ? [{ id: it.id, seed: null, ts: 0, config: null, scene: { title: it.title || '', camera: it.camera || '', prompt: it.prompt || '', negative: it.negative || '', characters: it.characters || [] } }] : [];
+    if (!Array.isArray(it.versions) || !it.versions.length) it.versions = it.id ? [{ id: it.id, seed: null, ts: 0, config: null, scene: { title: it.title || '', camera: it.camera || '', prompt: it.prompt || '', negative: it.negative || '', characters: (it.characters || []) as IllustScene['characters'] } }] : [];
     if (!((it.sel as number) >= 0 && (it.sel as number) < it.versions.length)) it.sel = Math.max(0, it.versions.findIndex(v => v.id === it.id));
     return it as Slot & { versions: Version[]; sel: number };
   },
@@ -398,7 +399,7 @@ export const Illust = {
     const c = this.cfg(), sw = msg.swipes[msg.sw], auto = isAuto(scene) && !opts.manual, later = (e?: unknown) => setTimeout(() => onDone?.((e as Error) || null));
     let compiled: Compiled;
     try { compiled = this.compileScene(chat, scene || {}); } catch (e) { return later(e); }
-    const draft = () => { (sw.illustDraft ||= []).push(compiled); sw.illustDraftConfig = this.genConfig(opts.config); emitX('illust:draft', { chat, msg }); };
+    const draft = () => { (sw.illustDraft ||= []).push(compiled); sw.illustDraftConfig = this.genConfig(opts.config) as IllustGenConfig; emitX('illust:draft', { chat, msg }); };
     if (auto && c.automatic !== 'generate') { draft(); return later(); }   // 초안만: 그리지 않고 장면만 남긴다
     try {
       const waiting = Q.items.filter(x => x.state === 'waiting').length;
@@ -440,16 +441,16 @@ export const Illust = {
   /** 완성된 그림을 답변에 붙인다 (같은 자리면 새 버전으로) */
   attach(job: { sw: ISwipe; slot?: string | null }, rec: AssetRec) {
     const list = (job.sw.illust ||= []);
-    let it = job.slot && list.find(x => x.slotId === job.slot);
-    if (!it) { it = { slotId: job.slot || uid(), versions: [] }; list.push(it); }
-    this.slot(it).versions.push({ id: rec.id, seed: rec.seed as number, ts: rec.ts as number, scene: rec.scene as Bag, config: rec.config as Bag });
+    let it: Slot | undefined = (job.slot && list.find(x => x.slotId === job.slot)) || undefined;
+    if (!it) { it = { slotId: job.slot || uid(), versions: [] } as unknown as Slot; list.push(it); }
+    this.slot(it).versions.push({ id: rec.id, seed: rec.seed as number, ts: rec.ts as number, scene: rec.scene as unknown as IllustScene, config: rec.config as IllustGenConfig });
     it.hidden = false; this.select(it, it.versions!.length - 1);
     if (job.sw.illustPlan?.status === 'queued') job.sw.illustPlan.status = 'done';
     return it;
   },
   /** 갤러리의 그림을 답변 아래에 다시 넣는다 */
   insert(sw: ISwipe, rec: AssetRec) {
-    const it: Slot = { slotId: uid(), versions: [{ id: rec.id, seed: rec.seed ?? null, ts: rec.ts as number, scene: rec.scene || { title: rec.title || '', prompt: rec.prompt || '', camera: '', negative: '', characters: [] }, config: rec.config || null }] };
+    const it: Slot = { slotId: uid(), versions: [{ id: rec.id, seed: rec.seed ?? null, ts: rec.ts as number, scene: (rec.scene as unknown as IllustScene) || { title: rec.title || '', prompt: rec.prompt || '', camera: '', negative: '', characters: [] }, config: (rec.config as IllustGenConfig) || null }] } as unknown as Slot;
     (sw.illust ||= []).push(it); cache.set(rec.id, rec.data); return this.select(it, 0);
   },
   /** 장면 하나를 그려서 보관함에 넣는다 → 에셋 기록 */

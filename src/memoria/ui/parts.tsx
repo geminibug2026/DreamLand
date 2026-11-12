@@ -2,10 +2,16 @@
 import { useReducer, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { L } from '../../legacy';
-import { Form, confirmBox, openModal, type FormDefs } from '../../ui';
-import { Memory, S, chatApi, core, memMod, toast, ui, type Change, type LogLine, type SceneNow } from '../bridge';
+import { Form, confirmBox, openModal, type FormDefs, toast } from '../../ui';
+import type { Change, LogLine, SceneNow } from '../types';
 import type { CastCard, Cfg, ChatM, Mem, MemItem, Msg } from '../types';
+import { I } from '../../lib/icons';
+import { go, route } from '../../lib/router';
+import { Memory } from '../../lib/memory';
+import { S } from '../../lib/core';
+import { chatApi } from '../../chat/actions';
+import * as memMod from '../../lib/memory';
+import * as core from '../../lib/core';
 
 // ════════ 서고 화면의 상태 ════════
 /**
@@ -43,7 +49,7 @@ type ClickFn = (e: React.MouseEvent<HTMLButtonElement>) => unknown;
 /** 아이콘 사전을 주면 그 사전을 먼저 찾는 Ico · Ib 를 만든다 (없는 이름은 공용 아이콘) */
 export function makeIcons(dict: Record<string, string>) {
   function Ico({ name, size = 16 }: { name: string; size?: number }) {
-    return <svg viewBox="0 0 24 24" width={size} height={size} className="ic"><path d={dict[name] || L.ui.I[name] || L.ui.I.sparkle} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" /></svg>;
+    return <svg viewBox="0 0 24 24" width={size} height={size} className="ic"><path d={dict[name] || I[name] || I.sparkle} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" /></svg>;
   }
   /** 작은 아이콘 단추 (button.ibtn.tiny) */
   function Ib({ name, title, onClick, cls = '' }: { name: string; title: string; onClick?: ClickFn; cls?: string }) {
@@ -56,22 +62,22 @@ export const { Ico, Ib } = makeIcons(IC);
 // ════════ 작은 도구 ════════
 export const safe = (v: unknown) => String(v ?? '').replace(/[^\w-]/g, '') || 'x';
 export const pct = (v?: number | null) => `${Math.round((v || 0) * 100)}%`;
-export const cur = () => chatApi().current();
+export const cur = () => chatApi.current();
 export const isCur = (chat?: ChatM | null) => cur().chat?.id === chat?.id;
-export const chatTitle = (chat?: ChatM | null) => chat?.name || (chat?.charIds || []).map(id => S().get('chars', id)?.name).filter(Boolean).join(', ') || '대화';
-export const msgsOf = async (chat: ChatM) => isCur(chat) ? cur().msgs : await S().msgs(chat.id);
-export const persistMsgs = async (chat: ChatM, msgs: Msg[]) => { if (isCur(chat)) { await chatApi().save(); chatApi().redraw(); } else await S().saveMsgs(chat, msgs); };
-export const histOf = (msgs: Msg[]) => { const c = Memory().cfg(), vis = msgs.filter(m => !m.hidden); return (c.trim ? vis.slice(-(c.keepRecent || 20)) : vis.slice(-30)).map(m => ({ role: m.role, content: core().msgText(m) })); };
+export const chatTitle = (chat?: ChatM | null) => chat?.name || (chat?.charIds || []).map(id => S.get('chars', id)?.name).filter(Boolean).join(', ') || '대화';
+export const msgsOf = async (chat: ChatM) => isCur(chat) ? cur().msgs : await S.msgs(chat.id);
+export const persistMsgs = async (chat: ChatM, msgs: Msg[]) => { if (isCur(chat)) { await chatApi.save(); chatApi.redraw(); } else await S.saveMsgs(chat, msgs); };
+export const histOf = (msgs: Msg[]) => { const c = Memory.cfg(), vis = msgs.filter(m => !m.hidden); return (c.trim ? vis.slice(-(c.keepRecent || 20)) : vis.slice(-30)).map(m => ({ role: m.role, content: core.msgText(m) })); };
 /** 설정에 아직 없는 키를 기본값으로 채운다 (칸이 빈 값을 보여 주지 않게) */
 export function ensureCfg(): Cfg {
-  const s = S().settings, m = (s.memory ||= {} as Cfg) as Record<string, unknown>;
-  for (const [k, v] of Object.entries(memMod().MEMORY_DEFAULTS)) {
+  const s = S.settings, m = (s.memory ||= {} as Cfg) as Record<string, unknown>;
+  for (const [k, v] of Object.entries(memMod.MEMORY_DEFAULTS)) {
     if (m[k] === undefined) m[k] = v && typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : v;
     else if (v && typeof v === 'object' && !Array.isArray(v) && m[k] && typeof m[k] === 'object') { const t = m[k] as Record<string, unknown>; for (const [k2, v2] of Object.entries(v as object)) if (t[k2] === undefined) t[k2] = v2; }
   }
   return m as Cfg;
 }
-export const saveCfg = () => S().set({ memory: { ...S().settings.memory } as Cfg });
+export const saveCfg = () => S.set({ memory: { ...S.settings.memory } as Cfg });
 export const turnTag = (_mem: Mem, x: { manual?: boolean; turn?: number | null }) => x.manual || x.turn == null ? '수동' : `t${x.turn + 1}`;
 export const copyText = (t: string) => navigator.clipboard?.writeText(t).then(() => toast('복사했어요'), () => toast('복사하지 못했어요', 'err'));
 /** 단추를 잠그고 일을 한다 (끝나면 푼다). 오류는 알림으로 */
@@ -85,19 +91,19 @@ export function Sec({ title, desc, tools, children }: { title: ReactNode; desc?:
 }
 export const None = ({ text }: { text: ReactNode }) => <div className="mm-empty"><i className="mm-star">✦</i><span>{text}</span></div>;
 export const Chip = ({ text, cls = '' }: { text: ReactNode; cls?: string }) => <span className={('mm-chip ' + cls).trim()}>{text}</span>;
-export const KindBadge = ({ k }: { k?: string }) => <em className={`mm-kind k-${safe(k)}`}>{memMod().KINDS[k || ''] || String(k || '')}</em>;
+export const KindBadge = ({ k }: { k?: string }) => <em className={`mm-kind k-${safe(k)}`}>{memMod.KINDS[k || ''] || String(k || '')}</em>;
 export const Meter = ({ v, max, cls = '' }: { v: number; max: number; cls?: string }) => <div className={('mm-meter ' + cls).trim()} title={`${Math.round(v)} / ${Math.round(max)}`}><i style={{ width: Math.min(100, max ? v / max * 100 : 0) + '%' }} /></div>;
 export const VIS_IC: Record<string, string> = { public: 'globe', private: 'lock', secret: 'mask' };
 
 /** 지금 장면 한 줄 — 장소 · 날짜 · 시간 · 자리에 있는 사람들 · 분위기 */
-export function SceneLine({ m, sc = Memory().scene(m) }: { m: Mem; sc?: SceneNow }) {
+export function SceneLine({ m, sc = Memory.scene(m) }: { m: Mem; sc?: SceneNow }) {
   if (!sc.any) return null;
   return <div className="mm-scene">{sc.location ? <span title="장소"><Ico name="place" />{sc.location}</span> : null}{sc.date ? <span title="날짜"><Ico name="cal" />{sc.date}</span> : null}{sc.time ? <span title="시간"><Ico name="clock" />{sc.time}</span> : null}
     {sc.present ? <span title="지금 장면에 있는 사람들"><Ico name="users" />{sc.present}</span> : null}{sc.mood ? <span title="장면의 분위기"><Ico name="moon" />{sc.mood}</span> : null}</div>;
 }
 /** 숫자 띠 + 지금 장면 (개요 맨 위) */
 export function Stats({ st }: { st: StOpen }) {
-  const m = st.mem, failed = m.turns.filter(t => t.failed).length, { fmtDays } = memMod();
+  const m = st.mem, failed = m.turns.filter(t => t.failed).length, { fmtDays } = memMod;
   const tile = (n: ReactNode, l: string, cls?: string) => <div className={cls}><b>{String(n)}</b><span>{l}</span></div>;
   return <div className="mm-top"><div className="mm-stats">{tile(m.turns.length, '턴')}{tile(m.memories.length, '기억')}{tile(m.cast.length, '인물')}{tile(m.pledges.filter(p => p.status === 'active').length, '서약')}{tile(m.chunks.length + m.arcs.length, '요약')}{tile(m.clockDays >= 1 / 24 ? fmtDays(m.clockDays) : '–', '서사 시계')}{failed ? tile(failed, '기록 실패', 'bad') : null}</div>
     <SceneLine m={m} /></div>;
@@ -105,7 +111,7 @@ export function Stats({ st }: { st: StOpen }) {
 type ArrKey = 'memories' | 'canon' | 'status' | 'pledges' | 'cast' | 'chunks' | 'arcs' | 'items' | 'milestones' | 'dossier' | 'bonds';
 /** 줄 지우기 단추: 확인받고 st.mem[arr] 에서 x 를 뺀 뒤 저장하고 다시 그린다 */
 export function Del({ st, arr, x, what }: { st: StOpen; arr: ArrKey; x: object; what: string }) {
-  return <Ib name="trash" title="삭제" cls="del" onClick={async () => { if (!(await confirmBox(`${what}을(를) 삭제할까요?`, '삭제', true))) return; const list = st.mem[arr] as object[], i = list.indexOf(x); if (i >= 0) list.splice(i, 1); await Memory().save(st.mem); st.draw(); }} />;
+  return <Ib name="trash" title="삭제" cls="del" onClick={async () => { if (!(await confirmBox(`${what}을(를) 삭제할까요?`, '삭제', true))) return; const list = st.mem[arr] as object[], i = list.indexOf(x); if (i >= 0) list.splice(i, 1); await Memory.save(st.mem); st.draw(); }} />;
 }
 
 // ════════ 창 ════════
@@ -133,7 +139,7 @@ export function progressBox(title: string): Progress {
 }
 /** 바뀔 내용을 먼저 보여 주고 확인받는다 */
 export function review(changes: Change[], title: string, note = '확인한 변경만 적용합니다. 적용 직전의 서고는 복구 지점에 보관합니다.'): Promise<boolean> {
-  const SHELF_KO: Record<string, string> = { ...memMod().SHELF_LABELS, canon: '캐논', pledges: '서약' };
+  const SHELF_KO: Record<string, string> = { ...memMod.SHELF_LABELS, canon: '캐논', pledges: '서약' };
   return new Promise(res => {
     let ok = false; const n = (t: string) => changes.filter(c => c.type === t).length, LB = { added: '추가', changed: '변경', removed: '삭제' };
     openModal({
@@ -146,7 +152,7 @@ export function review(changes: Change[], title: string, note = '확인한 변�
 }
 /** 기억이 나온 원문(그 답변과 바로 앞 입력)을 보여 준다 */
 export function showSource(st: StOpen, m: MemItem) {
-  const { msgText } = core(), { visibleProse } = memMod();
+  const { msgText } = core, { visibleProse } = memMod;
   const i = st.msgs.findIndex(x => x.id === m.msgId), msg = st.msgs[i] as Msg | undefined, user = msg && [...st.msgs.slice(0, i)].reverse().find(x => x.role === 'user');
   const prose = (x: Msg) => visibleProse(msgText(x)) || msgText(x);
   openModal({
@@ -154,13 +160,13 @@ export function showSource(st: StOpen, m: MemItem) {
     body: <div className="col"><p className="mm-src-sum">{m.summary}</p>
       {msg ? <>{user ? <div className="mm-src"><b>{`#${st.msgs.indexOf(user) + 1} · ${user.name || '나'}`}</b><pre>{prose(user)}</pre></div> : null}<div className="mm-src"><b>{`#${i + 1} · ${msg.name || '답변'}`}</b><pre>{prose(msg)}</pre></div></>
         : <p className="dim">{m.manual || (m.tags || []).includes('carried') ? '수동 또는 인계된 기억입니다. 이 대화에서 원문을 확인할 수 없습니다.' : '원문이 편집·삭제되었거나 기록과 일치하지 않습니다. 도구의 「대화와 기록 맞추기」를 실행해 주세요.'}</p>}</div>,
-    actions: [...(msg && isCur(st.chat) ? [{ label: '대화에서 보기', ic: 'chat', onclick: () => { st.close?.(); if (ui().route.page !== 'chat') L.ui.go('chat', st.chat.id); setTimeout(() => chatApi().scrollTo(msg.id), 300); } }] : []), { label: '닫기', cls: 'primary' }],
+    actions: [...(msg && isCur(st.chat) ? [{ label: '대화에서 보기', ic: 'chat', onclick: () => { st.close?.(); if (route.page !== 'chat') go('chat', st.chat.id); setTimeout(() => chatApi.scrollTo(msg.id), 300); } }] : []), { label: '닫기', cls: 'primary' }],
   });
 }
 const nkey = (v: unknown) => String(v || '').toLowerCase().replace(/[\s._\-'"`]+/g, '');
 /** 다른 인물 카드나 갈라진 이름을 이 카드로 접는다 */
 export async function mergeCast(st: StOpen, keep: CastCard) {
-  const mem = st.mem, others = mem.cast.filter(c => c !== keep), M = Memory();
+  const mem = st.mem, others = mem.cast.filter(c => c !== keep), M = Memory;
   // 카드는 없는데 상태 보드 · 기억에만 떠도는 표기
   const known = new Set(mem.cast.flatMap(c => [c.name, ...(c.aka || [])]).map(nkey)), stray = [...new Set([...mem.status.map(s => s.entity), ...mem.memories.flatMap(m => m.entities || [])])].filter(n => n && nkey(n) !== 'scene' && !known.has(nkey(n))).slice(0, 40);
   if (!others.length && !stray.length) return toast('병합할 다른 인물 카드나 갈라진 이름이 없습니다.');
@@ -178,7 +184,7 @@ export async function mergeCast(st: StOpen, keep: CastCard) {
   toast(`「${name}」 → 「${keep.name}」 별칭으로 묶었습니다 (상태 ${folded.states}건 · 기억 ${folded.memories}건 합침)`, 'ok');
 }
 /** 복구 지점을 남기고 고친 뒤 저장 · 다시 그리기 */
-export async function withCheckpoint(st: StOpen, label: string, fn: () => unknown) { await Memory().checkpoint(st.mem, label).catch(() => { }); await fn(); await Memory().save(st.mem); st.draw(); }
+export async function withCheckpoint(st: StOpen, label: string, fn: () => unknown) { await Memory.checkpoint(st.mem, label).catch(() => { }); await fn(); await Memory.save(st.mem); st.draw(); }
 
 // ════════ 옛 화면 · 옛 창에 React 올리기 ════════
 interface Live { el: HTMLElement; root: Root; seen: boolean; at: number }

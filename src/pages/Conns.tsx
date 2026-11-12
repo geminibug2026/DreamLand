@@ -1,21 +1,26 @@
 // API 연결: 제공자 · 주소 · 키(넣은 뒤에는 다시 보여 주지 않는다) · 모델 · 고급 설정 · 연결 테스트
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { L } from '../legacy';
 import { Btn, Icon, IconBtn } from '../kit';
 import { Form, LibraryPage, confirmBox, toast } from '../ui';
-import { NEEDS, adv, core, engine, errMsg, store, type Conn, type Provider } from '../editors/bridge';
+import type { Conn, Provider } from '../editors/types';
 import { editorApi, useBump, useDebounced, type EditorApi } from '../editors/parts';
+import { go } from '../lib/router';
+import { errMsg } from '../editors/refresh';
+import { S } from '../lib/core';
+import * as engine from '../lib/engine';
+import * as core from '../lib/core';
+import * as adv from '../lib/advanced';
 
-export const page = { name: 'conns', Component: ConnsPage, needs: NEEDS };
+export const page = { name: 'conns', Component: ConnsPage };
 
 const GROUPS = ['주요', '클라우드', '모음 서비스', '내 컴퓨터', '기타'];
 /** 화면에 내보일 꼬리: 저장된 키는 끝 네 글자만 */
-const keyTail = (c: Conn) => core().Secrets.is(c.apiKey) ? core().Secrets.tail(c.id, 'apiKey') : (String(c.apiKey || '').length > 8 ? String(c.apiKey).slice(-4) : '');
-const whereTag = (held: boolean) => held ? '서버 보관' : core().Vault.on ? '암호화' : '브라우저';
+const keyTail = (c: Conn) => core.Secrets.is(c.apiKey) ? core.Secrets.tail(c.id, 'apiKey') : (String(c.apiKey || '').length > 8 ? String(c.apiKey).slice(-4) : '');
+const whereTag = (held: boolean) => held ? '서버 보관' : core.Vault.on ? '암호화' : '브라우저';
 
 /** API 키 칸: 한 번 넣은 키는 다시 보여 주지 않는다. 바꾸려면 새로 넣고, 지우려면 지우기 */
 function KeyField({ c, def, api }: { c: Conn; def: Provider; api: EditorApi }) {
-  const { Secrets, Vault } = core(), inp = useRef<HTMLInputElement>(null);
+  const { Secrets, Vault } = core, inp = useRef<HTMLInputElement>(null);
   const saved = !!c.apiKey, held = Secrets.is(c.apiKey);
   const commit = async () => {
     const v = inp.current?.value.trim(); if (!v) return;
@@ -39,12 +44,12 @@ function KeyField({ c, def, api }: { c: Conn; def: Provider; api: EditorApi }) {
 
 /** 서비스 계정 키: 이메일만 보여 주고 본문은 다시 보여 주지 않는다 */
 function SaField({ c, api }: { c: Conn; api: EditorApi }) {
-  const { Secrets, pickFiles } = core(), ta = useRef<HTMLTextAreaElement>(null);
+  const { Secrets, pickFiles } = core, ta = useRef<HTMLTextAreaElement>(null);
   const saved = !!c.serviceAccount, held = Secrets.is(c.serviceAccount);
   const email = held ? c.saEmail : (() => { try { return (JSON.parse(c.serviceAccount || '') as { client_email?: string }).client_email; } catch { return saved ? '키 형식 오류' : ''; } })();
   const take = async (text: string) => {
     try {
-      const j = engine().parseServiceAccount(text); c.project = j.project_id || c.project || ''; c.saEmail = j.client_email || ''; c.saProject = j.project_id || '';
+      const j = engine.parseServiceAccount(text); c.project = j.project_id || c.project || ''; c.saEmail = j.client_email || ''; c.saProject = j.project_id || '';
       c.serviceAccount = Secrets.on ? await Secrets.put(c.id, 'serviceAccount', JSON.stringify(j), ['googleapis.com'], c.saEmail) : JSON.stringify(j);
       await api.save(); toast(`${j.client_email} 키를 저장했어요`, 'ok'); api.refresh();
     } catch (e) { toast(errMsg(e), 'err'); }
@@ -61,7 +66,7 @@ function SaField({ c, api }: { c: Conn; api: EditorApi }) {
 }
 
 function ConnEditor({ c, api }: { c: Conn; api: EditorApi }) {
-  const S = store(), { Secrets, uid } = core(), { PROVIDERS, listModels, streamChat } = engine(), { TEXT_PROVIDER_KINDS, tplList, instructName } = adv();
+  const { Secrets, uid } = core, { PROVIDERS, listModels, streamChat } = engine, { TEXT_PROVIDER_KINDS, tplList, instructName } = adv;
   const redraw = useBump(), alive = useRef(true);
   const def = PROVIDERS[c.provider] || PROVIDERS.custom;
   const [models, setModels] = useState<string[] | null>(null), [chips, setChips] = useState(def.models), [model, setModel] = useState(c.model || '');
@@ -87,7 +92,7 @@ function ConnEditor({ c, api }: { c: Conn; api: EditorApi }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const active = c.id === S.settings.activeConn, textKind = TEXT_PROVIDER_KINDS.includes(def.kind);
-  const names = (kind: string) => tplList(kind).map(t => [t.name, t.name] as const);
+  const names = (kind: string) => tplList(kind).map(t => [t.name as string, t.name as string] as const);
   const run = async () => {
     setTest({ text: '보내는 중…', cls: '' });
     try { const r = await streamChat(c, { stream: false, maxTokens: 64 }, [{ role: 'user', content: 'Say "hello" in one word.' }]); if (alive.current) setTest({ text: '응답: ' + (r.text.trim() || '(빈 응답)'), cls: ' ok' }); }
@@ -136,10 +141,10 @@ function ConnEditor({ c, api }: { c: Conn; api: EditorApi }) {
 }
 
 function ConnsPage({ arg }: { arg?: unknown }) {
-  const S = store(), { PROVIDERS } = engine();
-  return <LibraryPage<Conn> arg={arg} title="API 연결" eyebrow="connect" coll="conns" ic="plug" create={() => core().newConn()} label={c => c.name}
+  const { PROVIDERS } = engine;
+  return <LibraryPage<Conn> arg={arg} title="API 연결" eyebrow="connect" coll="conns" ic="plug" create={() => core.newConn()} label={c => c.name}
     sub={c => `${PROVIDERS[c.provider]?.name || c.provider}${c.model ? ' · ' + c.model : ''}${c.id === S.settings.activeConn ? ' · 사용 중' : ''}`}
     empty="모델에 연결하려면 오른쪽 위의 + 를 눌러 연결을 추가하세요."
-    actions={[{ ic: 'folder', title: '연결 프로필 (연결 · 프리셋 · 포맷팅 템플릿 묶음)', onclick: () => L.ui.go('quick', 'profiles') }]}
+    actions={[{ ic: 'folder', title: '연결 프로필 (연결 · 프리셋 · 포맷팅 템플릿 묶음)', onclick: () => go('quick', 'profiles') }]}
     editor={(c, api) => <ConnEditor c={c} api={editorApi(api, 'conns')} />} />;
 }

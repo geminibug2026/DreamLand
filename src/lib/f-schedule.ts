@@ -13,7 +13,7 @@ type RawBlock = { from?: unknown; to?: unknown; status?: unknown; activity?: unk
 
 export const DAYS = ['월', '화', '수', '목', '금', '토', '일'];
 export const DAY_EN = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-export const STATUS: Record<Status, string> = { online: '온라인', idle: '자리 비움', dnd: '방해 금지', offline: '오프라인' };
+export const STATUS: Record<string, string> = { online: '온라인', idle: '자리 비움', dnd: '방해 금지', offline: '오프라인' };
 export const STATUS_EN: Record<Status, string> = { online: 'online', idle: 'idle / half-available', dnd: 'busy / do not disturb', offline: 'offline' };
 export const DAY = 1440, WEEK = 10080, FREE = '자유 시간';
 const isStatus = (v: unknown): v is Status => typeof v === 'string' && Object.prototype.hasOwnProperty.call(STATUS, v);

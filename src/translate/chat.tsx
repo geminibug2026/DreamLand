@@ -2,10 +2,14 @@
 import { useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Btn } from '../kit';
-import { B, errMsg, type Msg } from '../addons/legacy';
+import type { Msg } from '../addons/types';
+import { errMsg } from '../addons/parts';
 import { PathIcon } from '../addons/parts';
 import { langLabel } from './lang';
 import { artOf, busy, cfg, persist, translate, translateMsg } from './logic';
+import { toast } from '../ui';
+import { X } from '../lib/hooks';
+import { chatApi } from '../chat/actions';
 
 export const GLOBE = 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM3 12h18M12 3c2.6 2.7 3.9 5.7 3.9 9s-1.3 6.3-3.9 9c-2.6-2.7-3.9-5.7-3.9-9s1.3-6.3 3.9-9z';
 export const SPIRAL = 'M20 11a8 8 0 1 0-2.3 6.3M20 4v7h-7';   // 다시 번역: 새로 고침 모양
@@ -27,8 +31,8 @@ function EditBox({ value, onClose, onDone }: { value: string; onClose: () => voi
   </>;
 }
 function editTranslation(m: Msg) {
-  const { chat, msgs } = B.chat.current(); const s = m?.swipes?.[m.sw];
-  if (!chat || !s?.tr) return B.ui.toast('고칠 번역문이 없어요. 먼저 번역해 주세요.');
+  const { chat, msgs } = chatApi.current(); const s = m?.swipes?.[m.sw];
+  if (!chat || !s?.tr) return toast('고칠 번역문이 없어요. 먼저 번역해 주세요.');
   const art = artOf(m.id), body = art?.querySelector<HTMLElement>('.msg-body');
   if (!art || !body || art.querySelector('.trx-edit')) return;
   const box = document.createElement('div'); box.className = 'trx-edit';
@@ -47,15 +51,15 @@ async function quickTranslate(b: HTMLButtonElement) {
   const ta = b.closest('.composer-box')?.querySelector('textarea'); if (!ta) return;
   const st = ta.selectionStart, en = ta.selectionEnd, part = en > st && en - st < ta.value.length;
   const src = part ? ta.value.slice(st, en) : ta.value;
-  if (!src.trim()) return B.ui.toast('번역할 내용을 먼저 적어 주세요');
+  if (!src.trim()) return toast('번역할 내용을 먼저 적어 주세요');
   quickBusy = true; b.classList.add('busy');
   try {
-    const out = await (B.X.translate || translate)(src, cfg().inputLang || 'English', { chat: B.chat.current().chat });
+    const out = await (X.translate || translate)(src, cfg().inputLang || 'English', { chat: chatApi.current().chat });
     // React 가 쥔 입력창도 값이 바뀐 것을 알도록 원래 setter 로 넣는다
     const next = part ? ta.value.slice(0, st) + out + ta.value.slice(en) : out;
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(ta, next);
     ta.dispatchEvent(new Event('input', { bubbles: true })); ta.focus();
-  } catch (e) { B.ui.toast('번역 실패: ' + errMsg(e), 'err'); }
+  } catch (e) { toast('번역 실패: ' + errMsg(e), 'err'); }
   finally { quickBusy = false; b.classList.remove('busy'); }
 }
 
@@ -63,10 +67,10 @@ async function quickTranslate(b: HTMLButtonElement) {
 interface BtnDef { cls: string; d: string; title: string; mark: string; fn: (m: Msg) => void }
 function MsgBtns({ id, list }: { id: string; list: BtnDef[] }) {
   return <>{list.map(b => <button key={b.cls} type="button" className={`ibtn trx-btn ${b.cls} ${b.mark}`.trim()} title={b.title} aria-label={b.title}
-    onClick={() => { const cur = B.chat.current().msgs.find(x => x.id === id); if (cur) b.fn(cur); }}><PathIcon d={b.d} /></button>)}</>;
+    onClick={() => { const cur = chatApi.current().msgs.find(x => x.id === id); if (cur) b.fn(cur); }}><PathIcon d={b.d} /></button>)}</>;
 }
 function decorate() {
-  const c = cfg(), { msgs } = B.chat.current();
+  const c = cfg(), { msgs } = chatApi.current();
   for (const tools of document.querySelectorAll<HTMLElement>('article.msg[data-id] .msg-tools:not([data-trx])')) {
     tools.dataset.trx = '1';
     const art = tools.closest<HTMLElement>('article.msg'); if (!art || art.classList.contains('sys')) continue;

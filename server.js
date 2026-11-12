@@ -582,7 +582,10 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
     let rel = decodeURIComponent(url.pathname);
-    if (rel === '/') rel = (await exists(path.join(ROOT, 'dist', 'next.html'))) ? '/dist/next.html' : '/index.html';   // React 판을 빌드해 두었으면 그것을, 아니면 옛 판을 연다
+    if (rel === '/' || rel === '/index.html') {   // 앱은 빌드된 dist/ 에 있다 (저장소에 함께 들어 있다)
+      if (!(await exists(path.join(ROOT, 'dist', 'index.html')))) return send(res, 503, '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dreamland</title><body style="font-family:sans-serif;display:grid;place-items:center;height:90vh;margin:0"><div style="text-align:center;line-height:1.7"><b>dist 폴더가 없어요</b><br>드림랜드 폴더를 다시 받거나, 개발 중이라면 <code>npm install</code> 뒤 <code>npm run build</code> 를 실행해 주세요.</div>', 'text/html; charset=utf-8');
+      rel = '/dist/index.html';
+    }
     if (rel.toLowerCase().startsWith('/node_modules')) return send(res, 403, 'forbidden', 'text/plain');
     if (rel.includes(':') || rel.includes('\0')) return send(res, 403, 'forbidden', 'text/plain');
     const file = path.resolve(ROOT, '.' + rel);
@@ -595,6 +598,16 @@ const server = http.createServer(async (req, res) => {
     else res.end();
   }
 });
+
+/** src/ 를 고친 뒤 빌드하지 않았으면 알려 준다 (받는 사람은 dist/ 를 그대로 쓴다) */
+async function staleBuild() {
+  const built = await fsp.stat(path.join(ROOT, 'dist', 'index.html')).catch(() => null);
+  if (!built) return '  dist/ 가 없습니다 — npm install 뒤 npm run build 를 실행해 주세요.\n';
+  let newest = 0;
+  const walk = async dir => { for (const d of await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])) { const f = path.join(dir, d.name); if (d.isDirectory()) await walk(f); else newest = Math.max(newest, (await fsp.stat(f)).mtimeMs); } };
+  await walk(path.join(ROOT, 'src'));
+  return newest > built.mtimeMs ? '  src/ 가 dist/ 보다 새롭습니다 — 고친 것을 보려면 npm run build 를 실행해 주세요.\n' : '';
+}
 
 module.exports = { Store, server };
 if (require.main !== module) return;
@@ -610,6 +623,7 @@ server.listen(PORT, HOST, () => {
   if (LAN) console.log(`  접속 키  →  ${LAN_KEY}   (다른 기기에서 처음 열 때 한 번 입력)`);
   if (LAN) for (const list of Object.values(os.networkInterfaces())) for (const n of list || []) if (n.family === 'IPv4' && !n.internal) console.log(`  같은 공유기의 기기에서  →  http://${n.address}:${PORT}`);
   console.log('  (이 창을 닫으면 서버가 종료됩니다)\n');
+  staleBuild().then(w => { if (w) console.log(w); }, () => { });
   if (process.argv.includes('--open')) {
     const cmd = process.platform === 'win32' ? `start "" "${u}"` : process.platform === 'darwin' ? `open "${u}"` : process.platform === 'android' ? `termux-open-url "${u}"` : `xdg-open "${u}"`;
     require('child_process').exec(cmd, () => { });   // 열지 못해도 서버는 그대로 둔다 (주소는 위에 적혀 있다)

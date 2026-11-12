@@ -129,7 +129,7 @@ export function parseDate(v: unknown): number {
 // ── 이벤트 버스 ──
 export type Listener = (data?: unknown) => void;
 const listeners: Record<string, Set<Listener>> = {};
-export const on = <T = unknown>(ev: string, fn: (data: T) => void) => { const f = fn as Listener; (listeners[ev] ||= new Set()).add(f); return () => listeners[ev].delete(f); };
+export const on = <T = unknown>(ev: string, fn: (data: T) => void) => { const f = fn as Listener; (listeners[ev] ||= new Set()).add(f); return () => { listeners[ev].delete(f); }; };
 export const emit = (ev: string, data?: unknown) => { (listeners[ev] || []).forEach(fn => { try { fn(data); } catch (e) { console.error(e); } }); };
 
 // ── IndexedDB ──
@@ -375,7 +375,7 @@ export interface Store {
   save<K extends CollName>(coll: K, obj: Colls[K], silent?: boolean): Promise<Colls[K]>;
   remove(coll: CollName, id: string): Promise<void>;
   saveSettings: () => void;
-  set(patch: Partial<Settings>): void;
+  set(patch: { [K in keyof Settings]?: unknown }): void;
   msgs(chatId: string): Promise<Msg[]>;
   msgsFast(chatId: string): Promise<Msg[]>;
   saveMsgs(chat: Chat, list: Msg[]): Promise<void>;

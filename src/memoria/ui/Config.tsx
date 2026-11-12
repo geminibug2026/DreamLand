@@ -1,16 +1,20 @@
 // 장기기억 설정 탭: 설정 찾기 · 설정 세트 · 모든 설정 묶음 · 프롬프트 (부품과 창은 ConfigParts.tsx)
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Btn } from '../../kit';
-import { mod } from '../../legacy';
-import { S, core, memMod, toast, tokens } from '../bridge';
 import type { ChatM, Mem } from '../types';
 import { BundleBar, Grid, Ico, M, Note, Num, SX, SearchBox, Sel, Tb, Tog, Txt, applySearch, bundleDefaults, bundleOwner, get, openRepeatFinder, openSideSorter, put, reinject, searchInput, useNative } from './ConfigParts';
 import { Sec, busyBtn, ensureCfg, persistMsgs, saveCfg, useBump, type St } from './parts';
+import { S } from '../../lib/core';
+import { toast } from '../../ui';
+import { tokens } from '../../lib/engine';
+import * as memMod from '../../lib/memory';
+import * as core from '../../lib/core';
+import * as libEmbed from '../../lib/embed';
 
 export { bundleDefaults, bundleOwner };
 
 // ════════ 기억 · 서술 방식 ════════
-const shared = () => ['', memMod().PUBLIC_ONLY, memMod().NARRATOR];
+const shared = () => ['', memMod.PUBLIC_ONLY, memMod.NARRATOR];
 const hasLocal = (mem: Mem | null) => !mem ? false : M().hasChatPerspective ? !!M().hasChatPerspective!(mem) : typeof mem.perspective === 'string';
 async function setPersp(st: St, value: string, local: boolean) {
   if (typeof value !== 'string' || (!local && !shared().includes(value))) throw new Error('기억·서술 방식의 선택을 확인해 주세요.');
@@ -21,8 +25,8 @@ async function setPersp(st: St, value: string, local: boolean) {
   if (st.chat) Mm.override(st.chat.id, null); st.draft = null;   // 고쳐 둔 장부 · 초안은 새 방식과 맞지 않는다
 }
 function PerspBox({ st }: { st: St }) {
-  const { PUBLIC_ONLY, NARRATOR } = memMod(), SHARED = shared();
-  const m = ensureCfg(), chat = st.chat, mem = st.mem, local = hasLocal(mem), pv = mem ? M().perspective(mem) : (m.perspective || ''), group = (chat?.charIds || []).length > 1, lead = S().get('chars', chat?.charIds?.[0])?.name || '';
+  const { PUBLIC_ONLY, NARRATOR } = memMod, SHARED = shared();
+  const m = ensureCfg(), chat = st.chat, mem = st.mem, local = hasLocal(mem), pv = mem ? M().perspective(mem) : (m.perspective || ''), group = (chat?.charIds || []).length > 1, lead = S.get('chars', chat?.charIds?.[0])?.name || '';
   const opts: [string, string][] = [['', group ? '자동 · 그룹은 공개 기억만' : `자동 · ${lead || '현재 캐릭터'}`], [PUBLIC_ONLY, '공개 기억만'], [NARRATOR, '소설·풀사칭 (모든 인물 참고)']];
   if (local && mem) { const names = new Set(mem.cast.filter(c => !c.disabled).map(c => c.name)); if (lead && !group) names.add(lead); if (mem.perspective && !SHARED.includes(mem.perspective)) names.add(mem.perspective); for (const n of names) opts.push([n, n]); }
   const run = (fn: () => Promise<void>) => void fn().catch((e: Error) => toast(e.message || String(e), 'err')).finally(() => st.draw());
@@ -44,12 +48,12 @@ function PerspBox({ st }: { st: St }) {
 // ════════ 프롬프트 ════════
 const PROMPT_LABELS: Record<string, string> = { archivist: '사서', supervisor: '장면 연출', chunk: '요약', arc: '연대기' };
 const pKey = (k: string) => k === 'archivist' ? 'prompt' : `prompts.${k}`;   // 빈 문자열 = 기본값
-const pDef = (k: string) => M().promptDefault?.(k) ?? memMod().PROMPTS[k];
+const pDef = (k: string) => M().promptDefault?.(k) ?? memMod.PROMPTS[k];
 const pOutdated = () => M().promptOutdated ? M().promptOutdated!() : Object.keys(ensureCfg().promptOutdated || {}).filter(k => get(pKey(k)) && get(pKey(k)) !== pDef(k));
 function PromptEdit({ st, k, label, rows }: { st: St; k: string; label: string; rows: number }) {
   const bump = useBump(), def = pDef(k), mine = String(get(pKey(k)) || '');
   const set = (ta: HTMLTextAreaElement) => { const v = String(ta.value); put(pKey(k), v === def || !v.trim() ? '' : v); saveCfg(); bump(); };
-  const [slow] = useState(() => core().debounce(set, 400));
+  const [slow] = useState(() => core.debounce(set, 400));
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     const ta = ref.current; if (!ta) return;
@@ -73,7 +77,7 @@ let wired = false;
 /** 대화를 열면 그 대화(→ 캐릭터)에 붙인 세트로 설정을 갈아 끼운다. 갈아 끼우는 일 자체는 엔진(Memory.applyBundleForChat)이 맡는다. 시작할 때 한 번 부른다 */
 export function installConfigEvents() {
   if (wired) return; wired = true;
-  core().on('chat:open', async (chat?: ChatM | null) => {
+  core.on('chat:open', async (chat?: ChatM | null) => {
     try { ensureCfg(); if (!(await M().applyBundleForChat?.(chat))) return; } catch (e) { return console.warn('[장기기억]', e); }
     for (const st of shown) { if (!st.host?.isConnected) { shown.delete(st); continue; } if (st.tab === 'config') st.draw(); }
   });
@@ -87,12 +91,12 @@ export function Config({ st }: { st: St }) {
   const banned = useNative<HTMLTextAreaElement>(['change'], ta => { ensureCfg().bannedPhrases = String(ta.value || '').slice(0, 4000); saveCfg(); re(); });
   useLayoutEffect(() => { if (banned.current) banned.current.value = ensureCfg().bannedPhrases || ''; }, [banned]);
 
-  const { LANGS, MEMORY_DEFAULTS } = memMod(), Mm = M();
+  const { LANGS, MEMORY_DEFAULTS } = memMod, Mm = M();
   const m = ensureCfg(), chat = st.chat, mem = st.mem, re = () => reinject(chat), api = m.embed.mode === 'api';
   const conns: [string, string][] = [['', '대화에 쓰는 연결 사용'], ...SX().conns.map(c => [c.id, `${c.name}${c.model ? ' · ' + c.model : ''}`] as [string, string])];
   const langs: [string, string][] = [...Object.entries(LANGS), ...(LANGS[m.language] || !m.language ? [] : [[m.language, m.language] as [string, string]])];
   const outdated = pOutdated();
-  const EMBED_KINDS = mod<{ EMBED_KINDS: Record<string, string> }>('embed').EMBED_KINDS;
+  const EMBED_KINDS = libEmbed.EMBED_KINDS;
 
   return <div className="mm-view mm-cfg" ref={root}>
     <div className="mm-cfg-tools"><SearchBox st={st} /><BundleBar st={st} /></div>

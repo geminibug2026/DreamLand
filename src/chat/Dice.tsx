@@ -1,8 +1,8 @@
 // 주사위: 실제 다면체를 캔버스에 3D 로 그려 굴린다 (외부 라이브러리 없음. 옛 js/dice3d.js)
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../kit';
-import { B } from './bridge';
 import type { Msg } from './types';
+import { S } from '../lib/core';
 
 type V3 = [number, number, number];
 type M3 = [V3, V3, V3];
@@ -136,7 +136,7 @@ export function Die({ sides, value, animate = false, delay = 0, size = 104, tone
 /** 주사위 메시지 한 장 */
 export function DiceCard({ m }: { m: Msg }) {
   const d = m.dice!;
-  const [fresh] = useState(() => Date.now() - m.ts < 10000 && B.S.settings.motion !== false);
+  const [fresh] = useState(() => Date.now() - m.ts < 10000 && S.settings.motion !== false);
   const [done, setDone] = useState(!fresh), left = useRef(d.rolls.length);
   const many = d.rolls.length >= 6;
   const settle = () => { if (--left.current > 0 || !fresh) return; setDone(true); };

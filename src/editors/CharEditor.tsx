@@ -1,15 +1,20 @@
 // 캐릭터 편집기: 기본 · 설정 · 인사말 · 에셋 · 고급 정의
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Btn, IconBtn } from '../kit';
 import type { Char } from '../types';
 import { Form, confirmBox, openModal, type FormDefs } from '../ui';
-import { assets, engine, pageRefresh, store, studio, type XChar } from './bridge';
-import { Host, useBump, useDebounced } from './parts';
+import type { XChar } from './types';
+import { useBump, useDebounced } from './parts';
 import { charTokens } from './CharSheet';
 import { LoreLinker } from './lore';
+import { Assets } from '../lib/assets';
+import { pageRefresh } from './refresh';
+import { S } from '../lib/core';
+import { AssetsPane } from '../studio/AssetsPane';
+import * as engine from '../lib/engine';
 
 const TABS = ['기본', '설정', '인사말', '에셋', '고급 정의'] as const;
-const tokText = (v: unknown) => v ? `≈${engine().tokens(String(v)).toLocaleString()} 토큰` : '';
+const tokText = (v: unknown) => v ? `≈${engine.tokens(String(v)).toLocaleString()} 토큰` : '';
 
 /** 카드에 실려 온 나머지 필드: 고쳐 쓸 수 있게 JSON 으로 보여 준다 */
 function JsonField({ c, k, label, hint, save }: { c: XChar; k: 'ext' | 'more'; label: string; hint: string; save: () => void }) {
@@ -30,7 +35,7 @@ function Greets({ c, save }: { c: XChar; save: () => void }) {
     <label className="field"><span className="field-label">첫 인사</span><textarea className="inp" rows={7} spellCheck={false} defaultValue={c.firstMes ?? ''} onChange={e => { c.firstMes = e.target.value; save(); }} /></label>
     <p className="hint">다른 인사를 넣어 두면 새 대화의 첫 메시지를 좌우로 넘겨 고를 수 있어요.</p>
     {alt.map((g, i) => <label className="field" key={`${gen.current}-${i}`}>
-      <span className="field-label">{`다른 인사 ${i + 1}`}<em className="tok">{g ? `≈${engine().tokens(g).toLocaleString()} 토큰` : ''}</em>
+      <span className="field-label">{`다른 인사 ${i + 1}`}<em className="tok">{g ? `≈${engine.tokens(g).toLocaleString()} 토큰` : ''}</em>
         <IconBtn ic="up" title="위로" cls="tiny" onClick={() => { if (i > 0) swap(i, i - 1); }} />
         <IconBtn ic="down" title="아래로" cls="tiny" onClick={() => { if (i < alt.length - 1) swap(i, i + 1); }} />
         <IconBtn ic="trash" title="삭제" cls="tiny" onClick={async () => { if ((alt[i] || '').trim() && !(await confirmBox('이 첫 메시지를 삭제할까요?', '삭제', true))) return; alt.splice(i, 1); save(); again(); }} /></span>
@@ -40,13 +45,11 @@ function Greets({ c, save }: { c: XChar; save: () => void }) {
 }
 
 function Editor({ c }: { c: XChar }) {
-  const S = store();
   const [tab, setTab] = useState<typeof TABS[number]>('기본'), redraw = useBump(), pane = useRef<HTMLDivElement>(null);
   // 폼의 글자 수 꼬리표(em.tok[data-for])를 채운다
   const counts = () => pane.current?.querySelectorAll<HTMLElement>('em.tok[data-for]').forEach(el => { el.textContent = tokText((el.dataset.for || '').split('.').reduce<unknown>((a, k) => (a as Record<string, unknown> | undefined)?.[k], c)); });
   const saveNow = useDebounced(async () => { await S.save('chars', c, true); redraw(); }, 300);
   useEffect(counts);
-  const assetPane = useMemo(() => studio().assetsPane(assets().ownerOfChar(c.id), c, saveNow), [c, saveNow]);
   const pick = (list: { id: string; name: string }[]) => list.map(x => [x.id, x.name] as const);
   const forms: Record<'기본' | '설정' | '고급 정의', FormDefs> = {
     '기본': [{ k: 'name', label: '이름' }, { k: 'avatar', label: '초상', type: 'image', max: 900 }, { k: 'tags', label: '태그', type: 'tags' }],
@@ -76,7 +79,7 @@ function Editor({ c }: { c: XChar }) {
   return <div>
     <div className="tabs">{TABS.map(t => <button key={t} className={'tab' + (t === tab ? ' on' : '')} onClick={() => setTab(t)}>{t}</button>)}<span className="tokbadge">{`≈${charTokens(c).toLocaleString()} 토큰`}</span></div>
     <div className="tab-pane" ref={pane}>
-      {tab === '인사말' ? <Greets c={c} save={saveNow} /> : tab === '에셋' ? <Host node={assetPane} /> : <Form key={tab} obj={c} defs={forms[tab]} onChange={saveNow} />}
+      {tab === '인사말' ? <Greets c={c} save={saveNow} /> : tab === '에셋' ? <span style={{ display: 'contents' }}><AssetsPane owner={Assets.ownerOfChar(c.id)} holder={c} save={saveNow} /></span> : <Form key={tab} obj={c} defs={forms[tab]} onChange={saveNow} />}
     </div>
   </div>;
 }
@@ -84,5 +87,5 @@ function Editor({ c }: { c: XChar }) {
 export function charEditor(ch: Char) {
   const c = ch as XChar;
   c.bind ||= { connId: '', presetId: '', personaId: '' }; c.depthPrompt ||= { prompt: '', depth: 4, role: 'system' }; c.ext ||= {}; c.more ||= {}; c.altGreetings ||= []; c.loreIds ||= [];
-  openModal({ title: '캐릭터 편집', wide: true, body: <Editor c={c} />, onClose: () => { void store().save('chars', c, true).then(pageRefresh); }, actions: [{ label: '완료', cls: 'primary' }] });
+  openModal({ title: '캐릭터 편집', wide: true, body: <Editor c={c} />, onClose: () => { void S.save('chars', c, true).then(pageRefresh); }, actions: [{ label: '완료', cls: 'primary' }] });
 }

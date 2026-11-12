@@ -1,18 +1,21 @@
 // 대화 모드 설정 창: 선톡 · 일정 · 상태 · 장면 · 상태창을 한곳에서 (옛 js/live.js 의 settings)
+import { rowNode } from '../schedule/Editor';
 import { useEffect, useMemo, useReducer, useState, type ReactNode } from 'react';
+import * as sched from '../lib/f-schedule';
 import { Btn, Dom, Icon } from '../kit';
 import { Form, openModal, toast, type FieldDef, type ModalHandle } from '../ui';
-import { mod } from '../legacy';
-import { B } from './bridge';
 import { charsOf } from './actions';
 import type { Room } from './types';
+import { Live, PROMPTS } from '../lib/live';
+import { S } from '../lib/core';
+import * as libLive from '../lib/live';
 
 type Tab = 'auto' | 'sched' | 'presence' | 'scene' | 'tracker';
 const TABS: [Tab, string][] = [['auto', '먼저 오는 연락'], ['sched', '일정'], ['presence', '상태 · 그룹'], ['scene', '장면 전환'], ['tracker', '상태창']];
 
 /** 연락 현황판: 다음 연락 예정과 막힌 이유 */
 function Board({ chat, close }: { chat?: Room; close: () => void }) {
-  const Live = B.Live, { MOTIVES, MOTIVE_ORDER, motiveLabel } = B.sched;
+  const { MOTIVES, MOTIVE_ORDER, motiveLabel } = sched;
   const p = chat ? Live.planOf?.(chat) : null;
   if (!p) return <div className="plan-board"><p className="hint">{chat ? '이 대화방을 열어 두면 여기에서 다음 연락 예정과 막힌 이유를 볼 수 있어요.' : '대화방 안에서 열면 그 방의 연락 현황이 보입니다.'}</p></div>;
   const next = p.plan.at ? `${Live.clock(p.plan.at)}` : '없음', kindName = p.plan.kind === 'later' ? '약속한 연락' : p.plan.kind === 'owed' ? '복귀 (내 말에 답장)' : p.plan.kind === 'auto' ? `${motiveLabel(p.motive?.kind) || '그냥 안부'} 예상` : '';
@@ -33,10 +36,10 @@ function Board({ chat, close }: { chat?: Room; close: () => void }) {
 
 function Settings({ first, chat, close }: { first: Tab; chat?: Room; close: () => void }) {
   const [tab, setTab] = useState<Tab>(first), [, redraw] = useReducer((x: number) => x + 1, 0);
-  const S = B.S, st = S.settings, Live = B.Live, { MOTIVES, MOTIVE_ORDER, motiveLabel, Schedule } = B.sched;
+  const st = S.settings, { MOTIVES, MOTIVE_ORDER, motiveLabel } = sched;
   const apply = () => { S.set({}); Live.onChange?.(); redraw(); };
   useEffect(() => { const t = setInterval(redraw, 20000); return () => clearInterval(t); }, []);
-  const prompts = (kind: string): FieldDef[] => B.live.PROMPTS[kind].map(([k, label, dflt, hint]) => ({ k, label, type: 'area', rows: 5, ph: dflt, hint: `${hint ? hint + ' ' : ''}비워 두면 기본 문장을 씁니다 (칸에 흐리게 보이는 글).` }));
+  const prompts = (kind: string): FieldDef[] => PROMPTS[kind].map(([k, label, dflt, hint]) => ({ k, label, type: 'area', rows: 5, ph: dflt, hint: `${hint ? hint + ' ' : ''}비워 두면 기본 문장을 씁니다 (칸에 흐리게 보이는 글).` }));
   const form = (defs: (FieldDef | null)[]) => <Form obj={st} defs={defs} onChange={apply} />;
   const fold = (title: string, defs: FieldDef[]): FieldDef => ({ el: <details className="live-fold"><summary><Icon name="edit" size={14} />{title}</summary>{form(defs)}</details> });
   const conns: [string, string][] = [['', '이 대화의 연결 그대로'], ...S.conns.map((c): [string, string] => [c.id, `${c.name}${c.model ? ' · ' + c.model : ''}`])];
@@ -44,7 +47,7 @@ function Settings({ first, chat, close }: { first: Tab; chat?: Room; close: () =
   // 일정 줄은 옛 화면 조각이다. 일정이 바뀔 때만 새로 만든다
   const [schedGen, bumpSched] = useReducer((x: number) => x + 1, 0);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const schedRows = useMemo(() => chars.map(c => <Dom key={c.id} node={Schedule.row(c, () => { Live.onChange?.(); bumpSched(); })} />), [schedGen, chat]);
+  const schedRows = useMemo(() => chars.map(c => <Dom key={c.id} node={rowNode(c, () => { Live.onChange?.(); bumpSched(); })} />), [schedGen, chat]);
   const cdDefs: FieldDef[] = MOTIVE_ORDER.map(k => ({ k: `modes.cd.${k}`, label: `${motiveLabel(k)} (시간)`, type: 'num', min: 0, step: 0.5, third: true, hint: MOTIVES[k][2] }));
   const body: Record<Tab, () => ReactNode> = {
     auto: () => <><p className="hint">먼저 오는 연락 한 통은 보통 답변 한 번과 같은 비용이 듭니다. 아래 한도 안에서만 보내고, 대화방을 열어 두지 않은 캐릭터는 연락하지 않습니다.</p><Board chat={chat} close={close} />
@@ -95,7 +98,7 @@ function Settings({ first, chat, close }: { first: Tab; chat?: Room; close: () =
 
 /** 대화 모드 설정 창을 연다 */
 export function liveSettings(tab: string = 'auto', chat?: Room | null): ModalHandle {
-  mod<{ ensureDefaults(): void }>('live').ensureDefaults();
+  libLive.ensureDefaults();
   const first: Tab = TABS.some(t => t[0] === tab) ? tab as Tab : 'auto';
   const box: ModalHandle = openModal({ title: '대화 모드 설정', wide: true, body: <Settings first={first} chat={chat ?? undefined} close={() => box.close()} />, actions: [{ label: '닫기', cls: 'primary' }] });
   return box;

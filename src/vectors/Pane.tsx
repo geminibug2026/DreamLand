@@ -1,26 +1,29 @@
 // 기능 화면 › 벡터 검색 (div.card.vec-card 안)
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { Btn } from '../kit';
-import { Form, type FormDefs } from '../ui';
-import { B, errMsg } from '../addons/legacy';
+import { Form, type FormDefs, toast } from '../ui';
+import { errMsg } from '../addons/parts';
 import { useRedraw } from '../addons/parts';
 import { VEC_TEMPLATE, cfg, chatPieces, dropChat, embed, embedOpt, lastSearch, loadStore, sigOf, sync } from './logic';
+import { tokens } from '../lib/engine';
+import { S } from '../lib/core';
+import { chatApi } from '../chat/actions';
 
 type Opts = [string, string][];
 export function VectorsPane() {
-  const S = B.S, toast = B.ui.toast, E = embed(), c = cfg(), redraw = useRedraw();
+  const E = embed(), c = cfg(), redraw = useRedraw();
   const [status, setStatus] = useState<ReactNode>(null);
   const alive = useRef(true), shape = JSON.stringify([c.enabled, c.chat, c.lore, c.position, c.connId, c.kind]);
-  const cur = () => B.chat.current();
+  const cur = () => chatApi.current();
   const drawStatus = async () => {
     const { chat, msgs } = cur(), conn = S.get('conns', c.connId);
     let rows: ReactNode;
     if (!conn) rows = <small className="hint">임베딩에 쓸 연결을 고르면 여기에 상태가 보입니다.</small>;
     else {
       const last = lastSearch(); let room: ReactNode = null;
-      if (chat) { const st = await loadStore('vec:' + chat.id, sigOf(c), true), ps = chatPieces(chat, msgs, c), have = ps.filter(p => st.items[p.key]).length; room = <div><span>열려 있는 대화</span><b>{`조각 ${ps.length}개 중 ${have}개 준비됨`}</b><small>{`≈${ps.reduce((n, p) => n + B.engine.tokens(p.text), 0).toLocaleString()} 토큰 분량`}</small></div>; }
+      if (chat) { const st = await loadStore('vec:' + chat.id, sigOf(c), true), ps = chatPieces(chat, msgs, c), have = ps.filter(p => st.items[p.key]).length; room = <div><span>열려 있는 대화</span><b>{`조각 ${ps.length}개 중 ${have}개 준비됨`}</b><small>{`≈${ps.reduce((n, p) => n + tokens(p.text), 0).toLocaleString()} 토큰 분량`}</small></div>; }
       rows = <>
-        <div><span>임베딩</span><b>{`${E.EMBED_KINDS[E.embedKind(conn, c.kind)].split(' — ')[0]} · ${E.embedModel(conn, c.kind, c.model)}`}</b></div>
+        <div><span>임베딩</span><b>{`${(E.EMBED_KINDS as Record<string, string>)[E.embedKind(conn, c.kind)].split(' — ')[0]} · ${E.embedModel(conn, c.kind, c.model)}`}</b></div>
         {room}
         {last && (last.chat.length || last.lore.length) ? <div className="vec-last"><span>마지막 검색</span><div>
           {last.chat.map((x, i) => <p key={i}><em>{x.score.toFixed(2)}</em>{`${x.who}: ${x.text.slice(0, 110)}${x.text.length > 110 ? '…' : ''}`}</p>)}

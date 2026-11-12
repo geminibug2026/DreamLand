@@ -2,11 +2,12 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, type MouseEvent } from 'react';
 import { Avatar, Icon, IconBtn } from '../kit';
 import { menu, promptBox } from '../ui';
-import { B } from './bridge';
 import { bump, cur, ui, useCh } from './store';
 import { charsOf, closeScene, command, commandList, generate, modeOf, openScene, send, translateInput } from './actions';
 import type { CmdItem } from './types';
 import { enterSends } from '../features/usersettings';
+import { S, pickFiles, readDataURL, shrinkImage } from '../lib/core';
+import { X } from '../lib/hooks';
 
 /**
  * 입력창에 / 를 치면 뜨는 명령어 목록. attach 는 반드시 보내기 단축키보다 먼저 붙여야 한다 —
@@ -61,13 +62,13 @@ function Attach() {
   return <div className="attach">{cur.attach.map((u, i) => <div className="attach-item" key={i}><img src={u} /><IconBtn ic="x" title="빼기" cls="tiny" onClick={() => { cur.attach.splice(i, 1); bump('attach'); }} /></div>)}</div>;
 }
 async function addImages(files: File[]) {
-  for (const f of files) { if (!f.type.startsWith('image/')) continue; cur.attach.push(await B.core.shrinkImage(await B.core.readDataURL(f), 1568, 'image/jpeg', 0.88)); }
+  for (const f of files) { if (!f.type.startsWith('image/')) continue; cur.attach.push(await shrinkImage(await readDataURL(f), 1568, 'image/jpeg', 0.88)); }
   bump('attach');
 }
 
 export function Composer() {
   useCh('composer');
-  const S = B.S, chat = cur.chat!, chars = charsOf(chat), talk = modeOf(chat) === 'talk';
+  const chat = cur.chat!, chars = charsOf(chat), talk = modeOf(chat) === 'talk';
   const input = useRef<HTMLTextAreaElement>(null);
   const slash = useSlash(commandList);
   const fit = () => { const el = input.current; if (!el) return; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 220) + 'px'; };
@@ -90,7 +91,7 @@ export function Composer() {
     { label: '나레이션 넣기', ic: 'note', onclick: async () => { const t = await promptBox('나레이션', '', { area: true }); if (t) void command('/sys ' + t); } },
     { label: '주사위 굴리기', ic: 'dice', onclick: async () => { const t = await promptBox('주사위 식', '1d20'); if (t) void command('/roll ' + t); } },
     { label: '입력한 글 번역하기', ic: 'lang', hint: S.settings.translate.inputLang, onclick: () => void translateInput() },
-    ...B.X.composer.map(a => ({ label: a.label, ic: a.icon || 'sparkle', onclick: () => { if (input.current) void a.run(input.current); } })),
+    ...X.composer.map(a => ({ label: a.label, ic: a.icon || 'sparkle', onclick: () => { if (input.current) void a.run(input.current); } })),
     '-',
     { label: '명령어 도움말', ic: 'code', onclick: () => void command('/help') },
   ]);
@@ -107,7 +108,7 @@ export function Composer() {
     <Attach />
     <div className="composer-box">
       <IconBtn ic="plus" title="더 많은 동작" onClick={plus} />
-      <IconBtn ic="image" title="이미지 첨부 (붙여넣기도 됩니다)" onClick={async () => addImages(await B.core.pickFiles({ accept: 'image/*', multiple: true }))} />
+      <IconBtn ic="image" title="이미지 첨부 (붙여넣기도 됩니다)" onClick={async () => addImages(await pickFiles({ accept: 'image/*', multiple: true }))} />
       <textarea className="composer-input" ref={input} rows={1} spellCheck={false} placeholder={talk ? '메시지 보내기…' : '이야기를 이어 가세요… (비워 두고 보내면 AI 가 이어 씁니다)'} />
       <SendBtn />
     </div>

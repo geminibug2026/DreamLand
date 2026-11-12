@@ -1,4 +1,5 @@
 // ── Dreamland cond: 조건식 · {{#if}} 블록 · 프리셋 변수 값 풀기 (화면과 무관한 순수 계산) ──
+import type { PresetVar, PresetVarOption } from './types';
 
 const FALSY = new Set(['', 'false', '0', 'no', 'off', 'null', 'undefined']);
 export const truthy = (v: unknown): boolean => v === true || (v !== false && !FALSY.has(String(v ?? '').trim().toLowerCase()));
@@ -7,18 +8,15 @@ const isNum = (v: unknown) => v !== '' && v != null && !isNaN(Number(v));
 // ════════ 프리셋 변수 ════════
 // preset.vars = [{ id, name, label, hint, type: 'select'|'slider'|'toggle'|'text', default, options: [{ label, value }], min, max, step, onText, offText }]
 // 대화방별 값은 chat.pvars[preset.id][name] 에 둔다. 없으면 정의의 default.
-export interface PvOption { label: string; value?: unknown }
-export interface PvDef {
-  id?: string; name: string; label?: string; hint?: string; type?: 'select' | 'slider' | 'toggle' | 'text' | string;
-  default?: unknown; options?: PvOption[]; min?: unknown; max?: unknown; step?: unknown; onText?: string; offText?: string;
-}
+export type PvOption = PresetVarOption;
+export type PvDef = PresetVar;
 export type PvRaw = string | number | boolean;
 export interface PvValue { type: string; raw: PvRaw; text: string; label: string }
 export type PvMap = Record<string, PvValue>;
 interface PresetLike { id?: string; vars?: unknown; [k: string]: unknown }
 interface ChatLike { pvars?: unknown; [k: string]: unknown }
 
-export const PV_TYPES = { select: '선택지', slider: '슬라이더', toggle: '토글', text: '짧은 글' };
+export const PV_TYPES: Record<string, string> = { select: '선택지', slider: '슬라이더', toggle: '토글', text: '짧은 글' };
 export const pvName = (s: unknown) => String(s ?? '').trim().replace(/[^\p{L}\p{N}_]+/gu, '_').replace(/^_+|_+$/g, '');
 export const pvDefs = (preset: PresetLike | null | undefined): PvDef[] => Array.isArray(preset?.vars) ? (preset.vars as (PvDef | null)[]).filter((v): v is PvDef => !!(v && v.name)) : [];
 const stepFix = (n: number, d: PvDef) => { const st = Number(d.step) > 0 ? Number(d.step) : 0, min = isNum(d.min) ? Number(d.min) : 0; return st ? +(min + Math.round((n - min) / st) * st).toFixed(6) : n; };

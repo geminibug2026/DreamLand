@@ -2,13 +2,15 @@
 import { Fragment, useEffect, useReducer, useRef, useState } from 'react';
 import { Avatar, Btn, Icon, IconBtn } from '../kit';
 import { Form, confirmBox, openModal, toast, type FieldDef, type ModalAction, type ModalHandle } from '../ui';
-import { K, S, core } from './bridge';
 import {
   FONTS, INKS, MEMO_DEF, Promises, TYPE, charOf, clearFont, fontOf, fontStyle, groupsOf, loadChat, loadFont, makeBook, md, memoByCall, memoDrop, memoHave, memoLines, memoLoaded, memoPut,
   moodDef, namesOf, pickFontByCall, promptDefs, roomLine, roomOf, sampleOf, save, changed, saveFont, syncChat, tellErr, who, type BookOpt, type Group,
 } from './logic';
 import { BusyBtn, MoonMini, Paras } from './parts';
 import type { DChar, DChat, FontPref, Letter, Page, PromiseRec } from './types';
+import { S } from '../lib/core';
+import * as core from '../lib/core';
+import * as K from '../lib/f-keepsake';
 
 const acts = (list: (ModalAction | null | false | undefined)[]) => list.filter((a): a is ModalAction => !!a);
 
@@ -16,7 +18,7 @@ const acts = (list: (ModalAction | null | false | undefined)[]) => list.filter((
 /** 버튼 옆의 "지시문" — 그 기능의 지시문만 바로 고친다 */
 export function editPrompts(keys: string[], title = '지시문 고치기', extra: FieldDef[] = []) {
   return openModal({ title, wide: true, actions: [{ label: '닫기', cls: 'primary' }],
-    body: <div className="col"><p className="hint">여기서 고친 지시문은 다음 호출부터 쓰입니다.</p><Form obj={S().settings} defs={[...extra, ...promptDefs(keys), keys.includes('dream') ? moodDef : null]} onChange={() => S().set({})} /></div> });
+    body: <div className="col"><p className="hint">여기서 고친 지시문은 다음 호출부터 쓰입니다.</p><Form obj={S.settings} defs={[...extra, ...promptDefs(keys), keys.includes('dream') ? moodDef : null]} onChange={() => S.set({})} /></div> });
 }
 
 // ════════ 기억에 올리기 ════════
@@ -25,7 +27,7 @@ function MemoBody({ chat, p, whoName, user, live }: { chat: DChat; p: MemoPage; 
   const e = p.ref, kindName = TYPE[p.type][1], src = String(e.text || '').length;
   const [val, setVal] = useState(live.text), [busy, setBusy] = useState(false), alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-  const [state] = useState(() => { const n = memoHave(e).length; return n ? `이 쪽에서 올린 기억 ${n}줄이 장기기억에 있어요. 다시 올리면 그 줄들을 바꿔 넣습니다.` : S().settings.memory?.enabled ? '' : '지금은 장기기억이 꺼져 있어요. 올려 두면 장기기억을 켰을 때부터 쓰입니다.'; });
+  const [state] = useState(() => { const n = memoHave(e).length; return n ? `이 쪽에서 올린 기억 ${n}줄이 장기기억에 있어요. 다시 올리면 그 줄들을 바꿔 넣습니다.` : S.settings.memory?.enabled ? '' : '지금은 장기기억이 꺼져 있어요. 올려 두면 장기기억을 켰을 때부터 쓰입니다.'; });
   const put = (v: string) => { live.text = v; setVal(v); };
   const n = memoLines(val);
   const ask = async () => {
@@ -44,7 +46,7 @@ function MemoBody({ chat, p, whoName, user, live }: { chat: DChat; p: MemoPage; 
 }
 /** 쪽 하나를 간추려 장기기억에 올리는 창 */
 export function memoDialog(chat: DChat, p: MemoPage, { ch, user, onDone = () => { } }: { ch: { name: string }; user: string; onDone?: () => void }) {
-  const e = p.ref, kindName = TYPE[p.type][1], whoName = S().get('chars', e.by)?.name || ch.name, live = { text: memoLoaded(chat, p) };
+  const e = p.ref, kindName = TYPE[p.type][1], whoName = S.get('chars', e.by)?.name || ch.name, live = { text: memoLoaded(chat, p) };
   const put = async () => {
     const list = memoLines(live.text); if (!list.length) { toast('기억에 올릴 줄이 없어요. 직접 적거나 간추리기를 눌러 주세요.', 'err'); return false; }
     const ids = await memoPut(chat, p, list, whoName); toast(`${kindName}에서 기억 ${ids.length}줄을 올렸어요.`, 'ok'); onDone();
@@ -57,7 +59,7 @@ export function memoDialog(chat: DChat, p: MemoPage, { ch, user, onDone = () => 
 // ════════ 약속 적기 · 고치기 ════════
 interface PromiseVals { what: string; date: string; time: string; focus: () => void }
 function PromiseBody({ chat, v }: { chat: DChat; v: PromiseVals }) {
-  const k = K(), today = k.dayKey(core().now()), [, bump] = useReducer((x: number) => x + 1, 0), whatEl = useRef<HTMLInputElement>(null);
+  const k = K, today = k.dayKey(core.now()), [, bump] = useReducer((x: number) => x + 1, 0), whatEl = useRef<HTMLInputElement>(null);
   v.focus = () => whatEl.current?.focus();
   const quick: [string, string][] = [['오늘', today], ['내일', k.addDays(today, 1)], ['이번 토요일', k.resolveDate('이번 주 토요일')], ['다음 주', k.addDays(today, 7)]];
   return <div className="form">
@@ -70,7 +72,7 @@ function PromiseBody({ chat, v }: { chat: DChat; v: PromiseVals }) {
 }
 /** 약속 적기 · 고치기. 적었거나 고쳤으면 그 약속, 지웠으면 'removed', 그만두면 null */
 export function promiseDialog(chat: DChat, p?: PromiseRec | null, preset: { what?: string; date?: string; msgId?: string } = {}) {
-  const k = K(), today = k.dayKey(core().now()), isNew = !p;
+  const k = K, today = k.dayKey(core.now()), isNew = !p;
   const v: PromiseVals = { what: p?.what || preset.what || '', date: p?.date || preset.date || today, time: p?.time || '', focus: () => { } };
   return new Promise<PromiseRec | 'removed' | null>(res => {
     let out: PromiseRec | 'removed' | null = null;
@@ -87,12 +89,12 @@ export function promiseDialog(chat: DChat, p?: PromiseRec | null, preset: { what
 
 // ════════ 대화 고르기 ════════ (캐릭터가 많아도: 검색 + 캐릭터별 묶음 + 방은 분량 · 날짜로 구분)
 function PickBody({ current, onPick }: { current?: string; onPick: (c: DChat) => void }) {
-  const [q, setQ] = useState(''), [openKey, setOpenKey] = useState(() => (current ? S().get('chats', current)?.charIds.join('+') : '') || ''), [shown, setShown] = useState(40);
+  const [q, setQ] = useState(''), [openKey, setOpenKey] = useState(() => (current ? S.get('chats', current)?.charIds.join('+') : '') || ''), [shown, setShown] = useState(40);
   const t = q.trim().toLowerCase(), all = groupsOf();
   const hit = all.map((g): Group | null => { if (!t) return g; const byName = g.name.toLowerCase().includes(t), rooms = byName ? g.rooms : g.rooms.filter(c => `${roomOf(c)} ${c.preview || ''}`.toLowerCase().includes(t)); return rooms.length ? { ...g, rooms, hit: !byName } : null; }).filter((g): g is Group => !!g);
   return <div className="col">
     <input className="inp search" placeholder="캐릭터 이름이나 방 이름으로 찾기" value={q} onChange={e => { setQ(e.target.value); setShown(40); }} />
-    <small className="hint">{`캐릭터 ${all.length}명 · 대화방 ${S().chats.length}개${t ? ` · 찾은 것 ${hit.length}` : ''}`}</small>
+    <small className="hint">{`캐릭터 ${all.length}명 · 대화방 ${S.chats.length}개${t ? ` · 찾은 것 ${hit.length}` : ''}`}</small>
     <div className="picker-list alm-pick">
       {hit.slice(0, shown).map(g => {
         const key = g.chat.charIds.join('+'), one = g.rooms.length === 1, open = !one && (openKey === key || g.hit || (!!t && g.rooms.length <= 3));
@@ -115,20 +117,20 @@ export function pickChat({ current, title = '대화 고르기', onPick }: { curr
 
 // ════════ 편지 한 통 ════════
 export function showLetter(chat: DChat, letter: Letter, { onAgain }: { onAgain?: () => void } = {}) {
-  const ch = S().get('chars', letter.by) || charOf(chat), [y, mo] = letter.month.split('-').map(Number);
+  const ch = S.get('chars', letter.by) || charOf(chat), [y, mo] = letter.month.split('-').map(Number);
   return openModal({ title: '', wide: true,
     body: <div className="alm-letter" style={fontStyle(ch)}><div className="alm-letter-in">
-      <header><span className="alm-tag">{`${y} · ${K().MONTHS_EN[mo - 1]}`}</span><MoonMini fill={1} size={26} /></header><h3>{letter.title || `${mo}월의 편지`}</h3>
+      <header><span className="alm-tag">{`${y} · ${K.MONTHS_EN[mo - 1]}`}</span><MoonMini fill={1} size={26} /></header><h3>{letter.title || `${mo}월의 편지`}</h3>
       <div className="alm-letter-text">{String(letter.text).split(/\n{2,}/).map((p, i) => <p key={i}>{p}</p>)}</div>{letter.ps ? <p className="alm-ps">{`추신. ${letter.ps}`}</p> : null}<div className="alm-sign">{`— ${ch?.name || ''}`}</div>
     </div></div>,
     actions: acts([onAgain && { label: '다시 받기 · 호출 1회', ic: 'refresh', onclick: async () => { if (!(await confirmBox('지금 편지를 지우고 새로 받을까요? (호출 1회)', '다시 받기'))) return false; onAgain(); } },
-      { label: '일기장에 꽂힌 쪽 보기', ic: 'book', onclick: () => core().emit('diary:open', { chat, at: letter.id }) }, { label: '닫기', cls: 'primary' }]) });
+      { label: '일기장에 꽂힌 쪽 보기', ic: 'book', onclick: () => core.emit('diary:open', { chat, at: letter.id }) }, { label: '닫기', cls: 'primary' }]) });
 }
 
 // ════════ 한 권으로 묶기 ════════
 export async function bindDialog(chat: DChat) {
   const msgs = await loadChat(chat); await syncChat(chat, msgs, { quiet: true });
-  const k = K(), w = who(chat), o: BookOpt = { title: `${w.char}와(과)의 이야기`, sub: roomOf(chat), mode: (chat.diary || []).some(e => e.to > 0) ? 'diary' : (chat.keepsakes || []).some(x => !x.gone) ? 'scene' : 'day', size: 40, page: 'A5', cover: 'avatar', talk: true, diary: true, dreams: true, letters: true, keepsakes: true, photos: true, almanac: true, hand: true };
+  const k = K, w = who(chat), o: BookOpt = { title: `${w.char}와(과)의 이야기`, sub: roomOf(chat), mode: (chat.diary || []).some(e => e.to > 0) ? 'diary' : (chat.keepsakes || []).some(x => !x.gone) ? 'scene' : 'day', size: 40, page: 'A5', cover: 'avatar', talk: true, diary: true, dreams: true, letters: true, keepsakes: true, photos: true, almanac: true, hand: true };
   const count = msgs.filter(m => !m.hidden && m.role !== 'system').length, nPics = msgs.flatMap(m => m.hidden ? [] : k.photosOf(m)).length;
   const make = () => makeBook(chat, msgs, o);
   const defs: FieldDef[] = [{ k: 'title', label: '책 제목', half: true }, { k: 'sub', label: '부제 (비워도 돼요)', half: true },
@@ -142,7 +144,7 @@ export async function bindDialog(chat: DChat) {
       <Form obj={o} defs={defs} />
       <small className="hint">{`메시지 ${count}개 · 사진 ${nPics}장 · 일기 ${(chat.diary || []).length} · 꿈 ${(chat.dreams || []).length} · 편지 ${(chat.letters || []).length} · 기념품 ${(chat.keepsakes || []).filter(x => !x.gone).length}. 사진은 파일 안에 함께 담기므로 많으면 파일이 커집니다. 추가 호출은 없습니다.`}</small></div>,
     actions: [{ label: '닫기' }, { label: '열어서 인쇄하기', ic: 'eye', onclick: () => { const url = URL.createObjectURL(new Blob([make()], { type: 'text/html' })); if (!window.open(url, '_blank')) toast('새 창이 막혔어요. "파일로 저장"을 써 주세요.', 'err'); setTimeout(() => URL.revokeObjectURL(url), 120000); return false; } },
-      { label: '파일로 저장', ic: 'import', cls: 'primary', onclick: () => { const html = make(); core().download(`${`${w.char}-${o.title}`.replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 80)}.html`, html, 'text/html'); toast(`책 한 권을 묶었어요 (${(html.length / 1048576).toFixed(1)}MB)`); return false; } }] });
+      { label: '파일로 저장', ic: 'import', cls: 'primary', onclick: () => { const html = make(); core.download(`${`${w.char}-${o.title}`.replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 80)}.html`, html, 'text/html'); toast(`책 한 권을 묶었어요 (${(html.length / 1048576).toFixed(1)}MB)`); return false; } }] });
 }
 
 // ════════ 캐릭터의 일기장 글씨체 ════════

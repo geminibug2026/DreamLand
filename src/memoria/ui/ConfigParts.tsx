@@ -1,12 +1,18 @@
 // 장기기억 설정 탭의 부품: 아이콘 · 설정 값 읽고 쓰기 · 칸 만들기 · 설정 찾기 · 설정 세트 · 말버릇 찾기 · 막간 분류
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { Btn } from '../../kit';
-import { confirmBox, openModal, promptBox } from '../../ui';
-import { Memory, S, chatApi, core, memMod, toast, ui, type MemoryUi, type Obj } from '../bridge';
+import { confirmBox, openModal, promptBox, toast } from '../../ui';
+import type { MemoryUi, Obj } from '../types';
 import { BUNDLE_EXCLUDED, deleteBundle, exportBundle, findRepeatedPhrases, parseBundleFile, parsePhraseList, renameBundle, saveBundle } from '../craft';
 import { isPauseMessage } from '../scene';
 import type { ChatM, Mem, Msg } from '../types';
 import { None, chatTitle, cur, ensureCfg, isCur, makeIcons, persistMsgs, saveCfg, type St } from './parts';
+import { Memory } from '../../lib/memory';
+import { S } from '../../lib/core';
+import { chatApi } from '../../chat/actions';
+import { route } from '../../lib/router';
+import * as memMod from '../../lib/memory';
+import * as core from '../../lib/core';
 
 // ════════ 작은 도구 ════════
 const IC: Record<string, string> = {
@@ -34,29 +40,27 @@ export type MemX = MemoryUi & {
   embedMemories(chat: ChatM, mem: Mem, o?: { all?: boolean; onProgress?: (done: number, total: number) => void }): Promise<number>;
   embedQuery(chat: ChatM, msgs: Msg[]): Promise<unknown>;
 };
-export const M = () => Memory<MemX>();
-interface Conn { id: string; name: string; model?: string }
-type StoreX = ReturnType<typeof S> & { conns: Conn[]; save(coll: string, rec: object, quiet?: boolean): Promise<unknown>; persona(chat?: ChatM | null): { name?: string } | null | undefined };
-export const SX = () => S() as StoreX;
+export const M = () => (Memory as unknown as MemX);
+export const SX = () => S;
 
 const gp = (o: unknown, p: string) => p.split('.').reduce<unknown>((a, k) => (a as Obj | null | undefined)?.[k], o);
 const sp = (o: Obj, p: string, v: unknown) => { const ks = p.split('.'), last = ks.pop()!; ks.reduce<Obj>((a, k) => (a[k] ||= {}) as Obj, o)[last] = v; };
 
 // ════════ 설정 값 ════════
 let soon: (() => void) | null = null;
-const saveSoon = () => (soon ||= core().debounce(saveCfg, 250))();
+const saveSoon = () => (soon ||= core.debounce(saveCfg, 250))();
 /** 설정 경로: 'x' 는 S.settings.memory.x, '@a.b' 는 S.settings.a.b */
 const kp = (k: string) => k[0] === '@' ? k.slice(1) : 'memory.' + k;
-export const get = (k: string) => gp(S().settings, kp(k));
-export const put = (k: string, v: unknown) => sp(S().settings as Obj, kp(k), v);
+export const get = (k: string) => gp(S.settings, kp(k));
+export const put = (k: string, v: unknown) => sp(S.settings as Obj, kp(k), v);
 /**
  * 세트에 담을 수 있는 키의 기본값 — BUNDLE_EXCLUDED 의 이름(customApi · embedApi · prompts · defaultPerspective) 가운데
  * 여기서 이름이 다른 것(embed · prompt · perspective)은 미리 빼고 넘긴다. 사서 연결은 S.settings.helpers 에 있어 처음부터 들지 않는다.
  */
 const BUNDLE_SKIP = ['embed', 'prompt', 'perspective'];
-export const bundleDefaults = (): Record<string, unknown> => M().bundleDefaults?.() || Object.fromEntries(Object.entries(memMod().MEMORY_DEFAULTS).filter(([k]) => !BUNDLE_SKIP.includes(k) && !BUNDLE_EXCLUDED.includes(k)));
+export const bundleDefaults = (): Record<string, unknown> => M().bundleDefaults?.() || Object.fromEntries(Object.entries(memMod.MEMORY_DEFAULTS).filter(([k]) => !BUNDLE_SKIP.includes(k) && !BUNDLE_EXCLUDED.includes(k)));
 /** 세트를 붙일 대상 — 이 대화의 (첫) 캐릭터 */
-export function bundleOwner(chat?: ChatM | null) { const c = S().get('chars', chat?.charIds?.[0]); return c ? { key: `char:${c.id}`, label: `이 캐릭터 (${c.name || ''})` } : { key: '', label: '이 캐릭터' }; }
+export function bundleOwner(chat?: ChatM | null) { const c = S.get('chars', chat?.charIds?.[0]); return c ? { key: `char:${c.id}`, label: `이 캐릭터 (${c.name || ''})` } : { key: '', label: '이 캐릭터' }; }
 /** 장부의 모양을 바꾸는 설정 — 얼려 둔 고정 장부를 버리고 다음 답변에 바로 다시 짓게 한다 */
 export const reinject = (chat?: ChatM | null) => { try { M().reinjectNow?.(chat as ChatM); } catch (e) { console.warn('[장기기억]', e); } };
 
@@ -146,10 +150,10 @@ function BundleManager({ st }: { st: St }) {
       <Ib name="save" title="지금 설정으로 덮어쓰기" onClick={async () => { if (!(await confirmBox(`"${n}" 세트를 지금 설정으로 덮어쓸까요?`, '덮어쓰기'))) return; saveBundle(ensureCfg(), n, bundleDefaults()); saveCfg(); void refreshAll(); }} />
       <Ib name="edit" title="이름 바꾸기" onClick={async () => {
         const to = await askName('새 이름', n); if (!to || to === n) return; if (!renameBundle(ensureCfg(), n, to)) return toast('같은 이름의 세트가 이미 있습니다.', 'err');
-        for (const c of S().chats) if (c.memBundle === n) { c.memBundle = to; await SX().save('chats', c, true); }   // 대화에 붙인 것도 새 이름을 따라간다
+        for (const c of S.chats) if (c.memBundle === n) { c.memBundle = to; await SX().save('chats', c, true); }   // 대화에 붙인 것도 새 이름을 따라간다
         saveCfg(); void refreshAll();
       }} />
-      <Ib name="export" title="파일로 내보내기" onClick={() => { const text = exportBundle(ensureCfg(), n, bundleDefaults()); if (text) core().download(`memoria-bundle-${n.replace(/[^\p{L}\p{N}_-]+/gu, '_')}.json`, text, 'application/json'); }} />
+      <Ib name="export" title="파일로 내보내기" onClick={() => { const text = exportBundle(ensureCfg(), n, bundleDefaults()); if (text) core.download(`memoria-bundle-${n.replace(/[^\p{L}\p{N}_-]+/gu, '_')}.json`, text, 'application/json'); }} />
       <Ib name="trash" title="삭제" cls="del" onClick={async () => { if (!(await confirmBox(`세트 "${n}"을(를) 삭제할까요?`, '삭제', true))) return; deleteBundle(ensureCfg(), n, bundleDefaults()); saveCfg(); void refreshAll(); }} />
     </span></div>;
   // 옛 것처럼 다시 그릴 때마다 안쪽을 통째로 새로 만든다 (고르는 칸이 저장된 값으로 돌아간다)
@@ -167,7 +171,7 @@ function BundleManager({ st }: { st: St }) {
         saveBundle(ensureCfg(), name, bundleDefaults()); saveCfg(); toast(`"${name}" 세트를 저장했습니다. 위에서 대화나 캐릭터에 붙이면 적용됩니다.`, 'ok'); void refreshAll();
       }} />
       <Tb label="가져오기" name="import" title="세트 파일 가져오기" onClick={async () => {
-        const [file] = await core().pickFiles({ accept: '.json' }); if (!file) return; const parsed = parseBundleFile(await file.text(), bundleDefaults());
+        const [file] = await core.pickFiles({ accept: '.json' }); if (!file) return; const parsed = parseBundleFile(await file.text(), bundleDefaults());
         if (!parsed) return toast('장기기억 설정 세트 파일이 아닙니다.', 'err');
         const x = ensureCfg(); x.bundles ||= {}; let name = parsed.name; for (let n = 2; x.bundles[name]; n++) name = `${parsed.name} (${n})`;
         x.bundles[name] = parsed.values; saveCfg(); toast(`"${name}" 세트를 가져왔습니다.`, 'ok'); void refreshAll();
@@ -183,10 +187,10 @@ function openBundleManager(st: St) {
 // ════════ 묵은 말투 · 삼갈 표현 ════════
 /** 최근 AI 답변 40개에서 여러 답변에 되풀이된 표현을 찾아, 고른 것을 삼갈 표현에 넣는다 */
 export function openRepeatFinder(st: St, onDone?: (v: string) => void) {
-  const { msgText } = core(), { visibleProse } = memMod(), msgs = st.msgs || [], replies: string[] = [];
+  const { msgText } = core, { visibleProse } = memMod, msgs = st.msgs || [], replies: string[] = [];
   for (let i = msgs.length - 1; i >= 0 && replies.length < 40; i--) { const m = msgs[i]; if (!m || m.role !== 'assistant' || m.hidden) continue; const text = visibleProse(msgText(m) || ''); if (text.trim()) replies.push(text); }
   if (replies.length < 3) return toast('AI 답변이 3개 이상 쌓인 뒤에 찾을 수 있습니다.');
-  const names = [SX().persona(st.chat)?.name, ...(st.chat?.charIds || []).map(id => S().get('chars', id)?.name), ...(st.mem?.cast || []).flatMap(c => [c.name, ...(c.aka || [])])].filter(Boolean);
+  const names = [SX().persona(st.chat)?.name, ...(st.chat?.charIds || []).map(id => S.get('chars', id)?.name), ...(st.mem?.cast || []).flatMap(c => [c.name, ...(c.aka || [])])].filter(Boolean);
   const already = new Set(parsePhraseList(ensureCfg().bannedPhrases).map(p => p.toLowerCase()));
   const found = findRepeatedPhrases(replies, { names }).filter(f => !already.has(f.phrase.toLowerCase()));
   if (!found.length) return toast(`최근 답변 ${replies.length}개에서 되풀이된 표현을 찾지 못했습니다.`);
@@ -209,7 +213,7 @@ export function openRepeatFinder(st: St, onDone?: (v: string) => void) {
 /** 빠른 답장 · 명령어로 들어온 메시지를 막간/이야기로 직접 고른다 */
 export function openSideSorter(st: St) {
   const { chat, mem, msgs } = st; if (!chat || !mem) return toast('열린 대화가 없습니다.');
-  const { msgText } = core(), { visibleProse } = memMod(), Mm = M();
+  const { msgText } = core, { visibleProse } = memMod, Mm = M();
   const isSide = (m: Msg) => Mm.isSideMessage ? Mm.isSideMessage(m) : m.memSide === true, found: { i: number; m: Msg; side: boolean; guess: boolean }[] = [];
   msgs.forEach((m, i) => {
     if (!m) return;
@@ -218,7 +222,7 @@ export function openSideSorter(st: St) {
     found.push({ i, m, side: tagged ? !!m.memSide : (pause || isSide(m)), guess: !tagged });
   });
   if (!found.length) return toast('명령어로 들어온 메시지가 없습니다.');
-  const jump = (f: { i: number; m: Msg }) => { if (isCur(chat) && ui().route.page === 'chat') chatApi().scrollTo(f.m.id); else toast(`#${f.i + 1} 메시지는 지금 화면에 불러와져 있지 않아요.`); };
+  const jump = (f: { i: number; m: Msg }) => { if (isCur(chat) && route.page === 'chat') chatApi.scrollTo(f.m.id); else toast(`#${f.i + 1} 메시지는 지금 화면에 불러와져 있지 않아요.`); };
   const picks: (HTMLSelectElement | null)[] = [];
   openModal({
     title: '막간 분류', wide: true, body: <div className="mm-dlg">

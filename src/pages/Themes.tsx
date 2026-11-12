@@ -1,31 +1,29 @@
 // 꾸미기: 테마 고르기 · 내 테마 편집 · 가져오기/내보내기 · 글자와 배치 · 사용자 CSS
 import { useState } from 'react';
-import { mod } from '../legacy';
 import { Avatar, Btn, IconBtn } from '../kit';
-import { toast, confirmBox, LForm, PageHead, S, core, textModal, type Opt } from '../studio/bridge';
+import type { Opt } from '../studio/parts';
+import * as libTheme from '../lib/theme';
+import * as libFormat from '../lib/format';
+import { S } from '../lib/core';
+import type { Theme } from '../lib/types';
+import * as core from '../lib/core';
+import { LForm, PageHead, confirmBox, textModal, toast } from '../studio/parts';
 
-interface Theme { id: string; name: string; builtin?: boolean; ext?: string; c: Record<string, string>; sourceCss?: string; bgImage?: string; [k: string]: unknown }
-interface ThemeMod {
-  allThemes(): Theme[]; currentTheme(): Theme; newCustomTheme(base: Theme): Theme; applyTheme(): void;
-  importThemeText(text: string, fileName?: string): Theme | null;
-  COLOR_FIELDS: [string, string][]; FONTS: Record<string, { name: string }>;
-}
-interface FormatMod { render(text: string, o?: { bubbles?: boolean }): string }
 interface LookSettings { customThemes?: Theme[]; bubbles?: boolean }
 
 const NAMES = `/* 색 변수 */\n--bg --bg2 --surface --text --dim --accent --accent2\n--say-bg --say-text --user-bg --user-text --nar --think --r\n\n/* 대화 */\n.msg.ai  .msg.user  .msg.sys      메시지 한 덩어리\n.msg-body                         본문\n.msg-body .nar                    지문\n.say > span                       대사 말풍선\n.think > span                     속마음 풍선\n.avatar  .msg-head  .composer-box 초상 · 이름줄 · 입력창\n\n/* 화면 */\n#rail  .chat-side  .chat-top  .drawer  .card  .btn  .inp`;
 
-export const page = { name: 'themes', Component: Themes, needs: ['theme', 'format'] };
+export const page = { name: 'themes', Component: Themes };
 
 /** 내 테마 다듬기: 옛 폼 안에 끼우는 배경 이미지 칸까지 한 벌 */
 function Editor({ t, live, use, redraw }: { t: Theme; live: () => void; use: (id: string) => void; redraw: () => void }) {
-  const T = mod<ThemeMod>('theme'), C = core();
+  const T = libTheme, C = core;
   const pick = async () => { const [f] = await C.pickFiles({ accept: 'image/*' }); if (!f) return; t.bgImage = await C.shrinkImage(await C.readDataURL(f), 2200, 'image/jpeg', 0.86); live(); };
   // 폼 사이에 들어가는 배경 이미지 칸
   const bg = <div className="field half"><span className="field-label">배경 이미지</span><div className="row"><Btn label="고르기" ic="image" onClick={() => void pick()} /><Btn label="지우기" cls="ghost" onClick={() => { t.bgImage = ''; live(); }} /></div></div>;
   const del = async () => {
     if (!(await confirmBox(`"${t.name}" 테마를 삭제할까요?`, '삭제', true))) return;
-    S().set({ customThemes: ((S().settings as LookSettings).customThemes || []).filter(x => x.id !== t.id), theme: 'rosemilk' }); T.applyTheme(); redraw();
+    S.set({ customThemes: ((S.settings as LookSettings).customThemes || []).filter(x => x.id !== t.id), theme: 'rosemilk' }); T.applyTheme(); redraw();
   };
   return <div className="card"><div className="row"><h3 className="form-sec">내 테마 다듬기</h3>
     <IconBtn ic="copy" title="복제" onClick={() => { const c = T.newCustomTheme(t); saveCustom(c); use(c.id); }} />
@@ -45,17 +43,17 @@ function Editor({ t, live, use, redraw }: { t: Theme; live: () => void; use: (id
 }
 
 function saveCustom(t: Theme) {
-  const list = [...((S().settings as LookSettings).customThemes || [])], i = list.findIndex(x => x.id === t.id);
+  const list = [...((S.settings as LookSettings).customThemes || [])], i = list.findIndex(x => x.id === t.id);
   if (i >= 0) list[i] = t; else list.push(t);
-  S().set({ customThemes: list });
+  S.set({ customThemes: list });
 }
 
 function Themes() {
   const [epoch, setEpoch] = useState(0), redraw = () => setEpoch(n => n + 1);
-  const T = mod<ThemeMod>('theme'), { render } = mod<FormatMod>('format'), C = core();
-  const st = S().settings as LookSettings, cur = T.currentTheme(), editable = !cur.builtin && !cur.ext;
-  const use = (id: string) => { S().set({ theme: id }); T.applyTheme(); redraw(); };
-  const look = () => { S().set({}); T.applyTheme(); };
+  const T = libTheme, { render } = libFormat, C = core;
+  const st = S.settings as LookSettings, cur = T.currentTheme(), editable = !cur.builtin && !cur.ext;
+  const use = (id: string) => { S.set({ theme: id }); T.applyTheme(); redraw(); };
+  const look = () => { S.set({}); T.applyTheme(); };
 
   const importTheme = async () => {
     const files = await C.pickFiles({ accept: '.json,.css,.txt', multiple: true }); let n = 0, lastId = '';
@@ -64,7 +62,7 @@ function Themes() {
     if (!n) return toast('테마로 읽을 수 없는 파일이에요', 'err');
     toast(`테마 ${n}개를 가져왔어요`, 'ok'); use(lastId);
   };
-  const who = S().chars[0] || { name: '세라' }, me = S().persona();
+  const who = S.chars[0] || { name: '세라' }, me = S.persona();
   const fonts: Opt[] = Object.entries(T.FONTS).map(([k, f]) => [k, f.name] as const);
 
   return <section className="pagebox"><PageHead eyebrow="decorate" title="꾸미기" />

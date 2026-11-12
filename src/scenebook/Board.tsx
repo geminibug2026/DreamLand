@@ -1,13 +1,13 @@
 // ════════ 인물 배치판 ════════ 번호 점을 끌거나 눌러서, 방향키로 옮긴다
 import { useRef, type KeyboardEvent, type PointerEvent } from 'react';
-import { IL } from './bridge';
 import { useBump } from './parts';
+import * as IL from '../lib/illust';
 
 export interface BoardEntry { name?: string; x: number; y: number; set(x: number, y: number): void }
 
 export function Board({ model, width, height, bg, entries, selected, onSelect, onMove }: { model: string; width: number; height: number; bg?: string; entries: BoardEntry[]; selected: number; onSelect: (i: number) => void; onMove: () => void }) {
   const bump = useBump(), board = useRef<HTMLDivElement>(null), drag = useRef<number | null>(null);
-  const { MODELS, snapPoint } = IL(), free = MODELS[model]?.family !== 4.5;
+  const { MODELS, snapPoint } = IL, free = MODELS[model]?.family !== 4.5;
   const sel = Math.max(0, Math.min(selected, entries.length - 1)), cur = useRef(sel); cur.current = sel;
   const commit = (i: number, x: number, y: number) => { const e = entries[i]; if (!e) return; const p = snapPoint(x, y, model); e.set(p.x, p.y); onMove(); bump(); };
   const fromPointer = (e: PointerEvent, i: number) => { const r = board.current?.getBoundingClientRect(); if (r?.width && r.height) commit(i, (e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height); };

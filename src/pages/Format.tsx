@@ -1,24 +1,15 @@
 // 고급 포맷팅: 컨텍스트 템플릿 · 인스트럭트 템플릿 · 시스템 프롬프트 · 추론 · 그 밖의 설정 (프롬프트 조립은 옛 advanced.js 가 맡는다)
 import { Fragment, useState, type ReactNode } from 'react';
-import { mod } from '../legacy';
 import { Btn, IconBtn } from '../kit';
-import { LForm, PageHead, S, confirmBox, core, errMsg, promptBox, toast, type Conn, type FormDef, type FormDefs, type Obj, type Opt } from '../studio/bridge';
+import type { FormDef, FormDefs, Opt } from '../studio/parts';
+import * as libEngine from '../lib/engine';
+import * as libAdvanced from '../lib/advanced';
+import { S } from '../lib/core';
+import * as core from '../lib/core';
+import { LForm, PageHead, confirmBox, errMsg, promptBox, toast } from '../studio/parts';
 
 type Kind = 'context' | 'instruct' | 'sysprompt' | 'reasoning';
-interface Tpl { name: string; builtin?: boolean; edited?: boolean; [k: string]: unknown }
-interface Named extends Obj { name: string }
-interface FormatState {
-  context: Named; instruct: Named & { enabled?: boolean }; sysprompt: Named; reasoning: Named;
-  storyMode?: boolean; stopStrings?: string[]; modelMap?: Record<string, { instruct: string; context: string }>;
-}
-interface Resolved { instruct: { name?: string } | null; context: { name?: string }; why?: string }
-interface AdvMod {
-  AF(): FormatState; KINDS: Record<Kind, string>; TEXT_PROVIDER_KINDS: string[];
-  tplList(kind: Kind): Tpl[]; tplCurrent(kind: Kind): Tpl; tplSave(kind: Kind, t: Tpl): void; tplDelete(kind: Kind, name: string): void; tplApply(kind: Kind, name: string): void;
-  tplDirty(kind: Kind): boolean; tplIsBuiltin(kind: Kind, name: string): boolean; tplImport(json: unknown, fileName?: string): { kind: Kind; name: string }[];
-  masterExport(): unknown; resolve(conn: Conn): Resolved;
-}
-interface EngineMod { PROVIDERS: Record<string, { kind: string }> }
+interface Tpl { name?: string; builtin?: boolean; edited?: boolean; [k: string]: unknown }
 
 // 화면을 떠났다 돌아와도 남는 탭
 let afTab = 'context';
@@ -27,15 +18,15 @@ const NAMES_OPTS: Opt[] = [['none', '붙이지 않기'], ['force', '그룹 채�
 const ROLE_OPTS: Opt[] = [[0, '시스템'], [1, '사용자'], [2, '어시스턴트']];
 const seq = (k: string, label: string, hint?: string, o: Partial<FormDef> = {}): FormDef => ({ k, label, type: 'area', rows: 2, half: true, hint, ...o });
 
-export const page = { name: 'format', Component: Format, needs: ['advanced', 'engine'] };
+export const page = { name: 'format', Component: Format };
 
 /** 템플릿 고르기 · 저장 · 이름 바꾸기 · 가져오기 · 내보내기 · 되돌리기 · 삭제 */
 function TplBar({ kind, redraw }: { kind: Kind; redraw: () => void }) {
-  const A = mod<AdvMod>('advanced'), C = core();
+  const A = libAdvanced, C = core;
   const cur = A.AF()[kind], list = A.tplList(kind), known = list.some(t => t.name === cur.name), mine = list.filter(t => !t.builtin), stock = list.filter(t => t.builtin);
   const opt = (t: Tpl) => <option key={t.name} value={t.name}>{t.name + (t.edited ? ' (고침)' : '')}</option>;
-  const saveAs = async () => { const name = (await promptBox('새 템플릿 이름', cur.name ? cur.name + ' (사본)' : ''))?.trim(); if (!name) return; A.tplSave(kind, { ...A.tplCurrent(kind), name }); cur.name = name; S().set({}); toast(`"${name}" 으로 저장했어요`, 'ok'); redraw(); };
-  const rename = async () => { const old = cur.name, name = (await promptBox('템플릿 이름', old))?.trim(); if (!name || name === old) return; A.tplSave(kind, { ...A.tplCurrent(kind), name }); if (old && !A.tplIsBuiltin(kind, old)) A.tplDelete(kind, old); cur.name = name; S().set({}); redraw(); };
+  const saveAs = async () => { const name = (await promptBox('새 템플릿 이름', cur.name ? cur.name + ' (사본)' : ''))?.trim(); if (!name) return; A.tplSave(kind, { ...A.tplCurrent(kind), name }); cur.name = name; S.set({}); toast(`"${name}" 으로 저장했어요`, 'ok'); redraw(); };
+  const rename = async () => { const old = cur.name, name = (await promptBox('템플릿 이름', old))?.trim(); if (!name || name === old) return; A.tplSave(kind, { ...A.tplCurrent(kind), name }); if (old && !A.tplIsBuiltin(kind, old)) A.tplDelete(kind, old); cur.name = name; S.set({}); redraw(); };
   const bring = async () => {
     const files = await C.pickFiles({ accept: '.json', multiple: true }); let n = 0;
     for (const f of files) { try { const got = A.tplImport(JSON.parse(await f.text()), f.name); n += got.length; const hit = got.find(g => g.kind === kind); if (hit) A.tplApply(kind, hit.name); } catch (e) { toast(`${f.name}: ${errMsg(e)}`, 'err'); } }
@@ -45,12 +36,12 @@ function TplBar({ kind, redraw }: { kind: Kind; redraw: () => void }) {
     if (!known) return toast('보관함에 없는 설정이에요');
     const stockOnly = A.tplIsBuiltin(kind, cur.name) && list.find(t => t.name === cur.name)?.edited;
     if (stockOnly && await confirmBox(`"${cur.name}" 을(를) 기본값으로 되돌릴까요? 고쳐서 저장한 내용은 사라집니다.`, '기본값으로')) A.tplDelete(kind, cur.name);
-    A.tplApply(kind, cur.name); redraw();
+    A.tplApply(kind, cur.name as string); redraw();
   };
   const del = async () => {
     if (!known || A.tplIsBuiltin(kind, cur.name)) return toast('기본 제공 템플릿은 지울 수 없어요. 고친 내용은 되돌리기로 지웁니다.');
     if (!(await confirmBox(`"${cur.name}" 템플릿을 삭제할까요?`, '삭제', true))) return;
-    A.tplDelete(kind, cur.name); A.tplApply(kind, A.tplList(kind)[0].name); redraw();
+    A.tplDelete(kind, cur.name as string); A.tplApply(kind, A.tplList(kind)[0].name as string); redraw();
   };
   return <div className="af-bar">
     <select className="inp" title={`지금 쓰는 ${A.KINDS[kind]}`} value={known ? cur.name : ''} onChange={e => { A.tplApply(kind, e.target.value); redraw(); }}>
@@ -72,10 +63,10 @@ function TplBar({ kind, redraw }: { kind: Kind; redraw: () => void }) {
 
 function Format() {
   const [, setTick] = useState(0), [epoch, setEpoch] = useState(0);
-  const A = mod<AdvMod>('advanced'), C = core();
-  const F = A.AF(), conn = S().conn(), def = conn && mod<EngineMod>('engine').PROVIDERS[conn.provider], textConn = !!def && A.TEXT_PROVIDER_KINDS.includes(def.kind);
+  const A = libAdvanced, C = core;
+  const F = A.AF(), conn = S.conn(), def = conn && libEngine.PROVIDERS[conn.provider], textConn = !!def && A.TEXT_PROVIDER_KINDS.includes(def.kind);
   const redraw = () => setEpoch(n => n + 1);                       // 폼까지 새로 만든다 (옛 refresh)
-  const ch = () => { S().set({}); setTick(n => n + 1); };           // 저장하고 상태 줄 · 저장 안 됨 표시만 다시
+  const ch = () => { S.set({}); setTick(n => n + 1); };           // 저장하고 상태 줄 · 저장 안 됨 표시만 다시
   const form = (obj: object, defs: FormDefs) => <LForm obj={obj} defs={defs} onChange={ch} />;
   const card = (cls: string, ...kids: ReactNode[]) => <div className={`card af-card ${cls}${!textConn && conn && cls.includes('af-tc') ? ' af-dim' : ''}`.replace(/\s+/g, ' ').trim()}>{kids.map((k, i) => <Fragment key={i}>{k}</Fragment>)}</div>;
   const bar = (kind: Kind) => <TplBar kind={kind} redraw={redraw} />;
@@ -126,7 +117,7 @@ function Format() {
   else {
     const model = conn?.model || '', map = F.modelMap || {}, bound = !!map[model];
     const stops = (v: string) => { v = v.trim(); let list: string[] | null = null; if (v.startsWith('[')) { try { const j: unknown = JSON.parse(v); if (Array.isArray(j)) list = j.filter((x): x is string => typeof x === 'string' && !!x); } catch { /* JSON 이 아니면 줄 단위로 읽는다 */ } } F.stopStrings = list || v.split('\n').map(x => x.trim()).filter(Boolean); ch(); };
-    const bind = (on: boolean) => { F.modelMap ||= {}; if (on) F.modelMap[model] = { instruct: F.instruct.enabled ? F.instruct.name : '', context: F.context.name }; else delete F.modelMap[model]; ch(); };
+    const bind = (on: boolean) => { F.modelMap ||= {}; if (on) F.modelMap[model] = { instruct: F.instruct.enabled ? F.instruct.name as string : '', context: F.context.name as string }; else delete F.modelMap[model]; ch(); };
     pane = <>
       {card('', <h3 className="form-sec">사용자 정의 중단 문자열</h3>, <label className="field"><textarea className="inp" rows={3} spellCheck={false} placeholder={'한 줄에 하나씩, 또는 ["Ford", "BMW"] 같은 JSON 배열'} defaultValue={(F.stopStrings || []).join('\n')} onChange={e => stops(e.target.value)} /><small className="hint">모든 프리셋과 연결에 함께 적용됩니다. 줄바꿈은 \n 으로 적습니다.</small></label>, form(F, [{ k: 'stopMacro', label: '중단 문자열 안의 매크로 바꾸기', type: 'check', hint: '{{user}} · {{char}}' }]))}
       {card('', form(F, [{ section: '토큰' }, { k: 'tokenPadding', label: '토큰 여유분', type: 'num', half: true, hint: '토큰 수를 어림하므로 컨텍스트에서 이만큼 남겨 둡니다.' }]))}

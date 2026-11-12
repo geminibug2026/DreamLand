@@ -1,9 +1,10 @@
 // memory.js 1–372 줄(작은 도구 · 태그 처리 · 내장 검색 · 모듈 상태)을 그대로 옮긴 것. 본문은 고치지 않고 타입만 붙인다
+import { uid, msgText, on } from '../../lib/core';
+import { tokens } from '../../lib/engine';
 import type { Cfg, Mem, MemItem, Msg, RowHistory, Turn } from '../types';
 import type { PrepResult } from './part3';
 import type { Freeze, PacketResult, StableOpts } from './part4';
 import type { findStatusBars } from '../scene';
-import { uid, msgText, on, tokens } from './legacy';
 import * as MP from '../prompts';
 import { createActivityLog } from '../craft';
 

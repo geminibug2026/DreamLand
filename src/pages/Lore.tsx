@@ -2,14 +2,15 @@
 import { LibraryPage } from '../ui';
 import { importDialog } from '../editors';
 import { LoreEditor, LoreSwitch, loreLinks, loreSettingsDialog } from '../editors/lore';
-import { NEEDS, core, store, type Lore } from '../editors/bridge';
+import type { Lore } from '../editors/types';
 import { editorApi } from '../editors/parts';
+import { S } from '../lib/core';
+import * as core from '../lib/core';
 
-export const page = { name: 'lore', Component: LorePage, needs: NEEDS };
+export const page = { name: 'lore', Component: LorePage };
 
 function LorePage({ arg }: { arg?: unknown }) {
-  const S = store();
-  return <LibraryPage<Lore> arg={arg} title="로어북" eyebrow="lorebook" coll="lore" ic="book" create={() => core().newLore()} label={b => b.name} sub={b => [`항목 ${b.entries.length}개`, ...loreLinks(b)].join(' · ')}
+  return <LibraryPage<Lore> arg={arg} title="로어북" eyebrow="lorebook" coll="lore" ic="book" create={() => core.newLore()} label={b => b.name} sub={b => [`항목 ${b.entries.length}개`, ...loreLinks(b)].join(' · ')}
     note={() => { const n = S.lore.filter(b => S.settings.activeLore.includes(b.id)).length; return <small>{n ? `켠 로어북 ${n}개가 모든 대화에서 쓰여요` : '스위치를 켠 로어북은 모든 대화에서 쓰여요'}</small>; }}
     trail={(b, redraw) => <LoreSwitch b={b} after={redraw} />}
     paged={{ id: 'lore', text: b => b.name + ' ' + (b.description || ''), placeholder: '로어북 찾기' }}

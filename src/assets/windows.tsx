@@ -2,8 +2,7 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Icon, IconBtn } from '../kit';
-import { usePaged } from '../ui';
-import { B } from '../addons/legacy';
+import { usePaged, confirmBox, toast } from '../ui';
 import { PathIcon, Select, openModal, useRedraw } from '../addons/parts';
 import { A, PATHS, TIDY, cfg, copy, save, tidyPlan, type TidyOpt } from './logic';
 
@@ -63,7 +62,6 @@ interface GalleryOpt { locked?: boolean; onChange?: () => void }
 function Gallery({ owner, ver, locked = false, onChange = () => { } }: GalleryOpt & { owner: string; ver: string }) {
   const c = cfg(), redraw = useRedraw(), picked = useRef(new Set<string>()).current;
   const [q, setQ] = useState(''), [size, setSize] = useState(c.ui.grid || 'medium'), [selecting, setSelecting] = useState(false);
-  const { toast, confirmBox } = B.ui;
   const shown = A().inVer(owner, ver).filter(a => !q || a.name.includes(q));
   const pg = usePaged(shown, { id: 'assetGallery', perPage: 60, sizes: [30, 60, 120, 240], resetKey: `${owner}|${ver}|${q}` });
   const del = async () => {
@@ -106,7 +104,7 @@ function Tidy({ owner, ver, o }: { owner: string; ver: string; o: TidyOpt }) {
   </>;
 }
 export function smartRename(owner: string, ver: string, onDone: () => void) {
-  const { toast } = B.ui, list = A().inVer(owner, ver);
+  const list = A().inVer(owner, ver);
   if (!list.length) return toast('정돈할 에셋이 없어요');
   const o = Object.fromEntries(TIDY.map(([k, , , d]) => [k, d])) as TidyOpt;
   openModal({ title: '이름 정돈', spec: 'div.ast-tidy', actions: [{ label: '취소' }, { label: '적용', cls: 'primary', onclick: async () => {

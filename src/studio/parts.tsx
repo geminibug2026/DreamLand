@@ -1,51 +1,15 @@
-// 기능 · 모듈 · 꾸미기 · 고급 포맷팅 · 정규식 · 확장 화면이 함께 쓰는 다리와 작은 부품
+// 기능 · 모듈 · 꾸미기 · 고급 포맷팅 · 정규식 · 확장 화면이 함께 쓰는 작은 부품
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
-import { L } from '../legacy';
-import type { Char, Chat } from '../types';
+import type { Chat } from '../lib/types';
 import { Form, openModal as uiModal, toast, type ModalAction, type ModalHandle } from '../ui';
 
 export { PageHead, charPicker, confirmBox, menu, promptBox, toast, useDragSort, type FormDefs, type FieldDef as FormDef } from '../ui';
 export type Obj = Record<string, unknown>;
 export type Opt = string | readonly [string | number, string];
 export type ModalX = ModalHandle;
-interface Db { get<T = Obj>(store: string, id: string): Promise<T | undefined>; put(store: string, rec: Obj): Promise<unknown>; del(store: string, id: string): Promise<unknown>; all<T = Obj>(store: string): Promise<T[]> }
-interface CoreX {
-  download(name: string, data: string | Blob, type?: string): void;
-  pickFiles(o?: { accept?: string; multiple?: boolean }): Promise<File[]>;
-  readDataURL(f: File): Promise<string>;
-  shrinkImage(src: string, max?: number, mime?: string, q?: number): Promise<string>;
-  newRegex(o?: Partial<Regex>): Regex;
-  msgText(m: Msg): string;
-  DB: Db;
-}
-export const core = () => L.core as unknown as CoreX;
-
 // ── 자료 꼴 (이 묶음이 쓰는 만큼만) ──
-export interface Regex {
-  id: string; name: string; find: string; replace: string; trim: string[]; enabled?: boolean; mode: string; scope?: string; order?: number;
-  subst?: number; runOnEdit?: boolean; minDepth?: number | null; maxDepth?: number | null; mod?: string;
-  onUser?: boolean; onAI?: boolean; onSlash?: boolean; onLore?: boolean; onReason?: boolean;
-  [k: string]: unknown;
-}
-export interface Preset { id: string; name: string; regex?: Regex[]; [k: string]: unknown }
-export interface Lore { id: string; name: string; description?: string; entries?: Obj[]; mod?: string; [k: string]: unknown }
-export interface Conn { id: string; name: string; model?: string; provider: string; [k: string]: unknown }
-export interface Persona { id: string; name: string; avatar?: string }
-export interface Msg { id: string; role: string; name?: string; charId?: string; hidden?: boolean; [k: string]: unknown }
-export interface ChatX extends Chat { count?: number }
-export interface StoreX {
-  chars: Char[]; chats: ChatX[]; lore: Lore[]; presets: Preset[]; conns: Conn[]; regex: Regex[]; settings: Obj;
-  get<T = unknown>(coll: string, id?: string | null): T | undefined;
-  save<T extends object>(coll: string, obj: T, silent?: boolean): Promise<T>;
-  remove(coll: string, id: string): Promise<void>;
-  set(patch: Obj): void;
-  msgs(chatId: string): Promise<Msg[]>;
-  conn(): Conn | undefined;
-  preset(): Preset | undefined;
-  presetFor(chat: Chat): Preset | undefined;
-  persona(chat?: Chat): Persona;
-}
-export const S = () => L.core.S as unknown as StoreX;
+export type { Regex, Preset, Lore, Conn, Persona, Msg } from '../lib/types';
+export type ChatX = Chat;
 export const arr = <T,>(v: T[] | T | null | undefined | ''): T[] => Array.isArray(v) ? v : (v == null || v === '' ? [] : [v as T]);
 export const plain = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v);
 export const errMsg = (e: unknown) => e instanceof Error ? e.message : String(e);

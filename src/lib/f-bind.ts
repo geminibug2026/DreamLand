@@ -141,7 +141,7 @@ body{background:none}.bar{display:none}.book{width:auto;margin:0;box-shadow:none
 export interface BookExtra { t?: string; ts?: number; title?: string; text?: string; storyDate?: string; weather?: string; mood?: string; sign?: string; note?: string; noteBy?: string; answer?: string; phaseName?: string;
   no?: number; place?: string; time?: string; summary?: string; day?: string; id?: string; photo?: string; memo?: string; label?: string; ps?: string; [k: string]: unknown }
 export interface BookBlock { t?: string; kind?: string; title?: string; summary?: string; place?: string; time?: string; text?: string; photos?: BPhoto[]; role?: string; style?: string; name?: string }
-export interface BookMonth { mk: string; fill: number; active: number; target: number; full?: boolean; weeks: (Cell & { n?: number; mark?: boolean })[][] }
+export interface BookMonth { mk: string; fill: number; active: number; target: number; full?: boolean; weeks: (Partial<Cell> & { n?: number; mark?: boolean })[][] }
 export interface BookHand { family?: string; q?: string; scale?: unknown; lh?: unknown; color?: string }
 export interface BookData { title?: string; sub?: string; charName?: string; userName?: string; chapters?: { title?: string; sub?: string; blocks?: BookBlock[]; extras?: BookExtra[] }[]; loose?: BookExtra[]; letters?: BookExtra[]; months?: BookMonth[];
   promises?: { state: string; date: string; time?: string; what: string }[]; stats?: { from?: string; to?: string; days?: number; msgs?: number }; page?: string; accent?: string; hand?: BookHand | null;

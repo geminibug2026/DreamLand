@@ -1,13 +1,13 @@
 // ── Dreamland boot: 시작 절차 · 내비게이션 목록 · 빠른 이동 단축키 ── (옛 js/boot.js 의 화면 밖 부분)
 // start(shell) 로 시작한다. 옆 내비 · 빠른 이동 · 화면 등록은 React 판(src/Shell.tsx · src/main.tsx)이 shell 로 건넨다
-// 옛 판의 DOM 내비(buildRail) · 더보기 · 빠른 이동 창은 이미 src/Shell.tsx 에 있어 옮기지 않았다
-// 기능 모듈 동적 로딩(FEATURES · loadFeatures)은 없앴다 — f-regex 는 src/features/regex.tsx, f-modules 는 보고 참고
+// 기능은 src/features/*.tsx 가 shell.pages 안에서 등록한다
 import { S, h, on, Vault, Secrets, debounce } from './core';
 import { PROVIDERS } from './engine';
 import { go, route } from './router';
 import { applyTheme, initFx } from './theme';
 import { X } from './hooks';
-import { initExtensions, modal } from './ext';
+import { initExtensions } from './ext';
+import { modal } from '../ui/dom';
 import { toast } from '../ui';
 import type { NavItem } from './types';
 
@@ -16,7 +16,7 @@ export const NAV: NavItem[] = [['home', '캐릭터', 'home', true, 'HOME', true]
   ['conns', 'API 연결', 'plug', false, 'CONNECT', true], ['studio', '기능', 'sparkle', false, 'FEATURES', true], ['modules', '모듈', 'panel', false, 'MODULES'], ['diary', '일기장', 'note', false, 'DIARY'], ['themes', '꾸미기', 'heart', false, 'DECOR'], ['format', '고급 포맷팅', 'sliders', false, 'FORMAT'], ['regex', '정규식', 'code', false, 'REGEX'], ['exts', '확장 · 플러그인', 'grip', false, 'PLUGINS'], ['import', '이식', 'folder', false, 'MIGRATE'], ['settings', '설정', 'gear', false, 'SETTINGS']];
 export const navItems = (): NavItem[] => [...NAV, ...X.pages.map((p): NavItem => [p.id, p.label || '확장 화면', p.icon || 'sparkle', false, (p.label || 'EXT').toUpperCase()])];
 
-export interface Shell { rail?: () => void; palette?: () => void; pages?: () => void | Promise<void> }
+export interface Shell { loaded?: () => void; rail?: () => void; palette?: () => void; pages?: () => void | Promise<void> }
 let shell: Shell = {};
 const buildRail = () => shell.rail?.();
 const palette = () => shell.palette?.();
@@ -36,6 +36,7 @@ export async function start(opts: Shell = {}) {
   shell = opts;
   try {
     await S.load();
+    shell.loaded?.();
     // 프리셋의 옛 '요약 메모리' 칸은 이제 장기기억이 들어가는 자리다
     for (const p of S.presets || []) { let ch = false; for (const b of p.blocks || []) if (b.kind === 'summary' && (b.name === '요약 메모리' || b.content === '[Story so far]\n{{slot}}')) { b.name = '장기기억 자리'; if (b.content === '[Story so far]\n{{slot}}') b.content = '{{slot}}'; ch = true; } if (ch) await S.save('presets', p, true); }
     // RP 는 소설처럼 보이는 것이 기본: 예전 판의 기본값(말풍선)이 저장돼 남아 있으면 한 번만 되돌린다. 꾸미기에서 다시 켤 수 있다

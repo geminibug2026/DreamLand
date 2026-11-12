@@ -1,9 +1,10 @@
 // memory.js 1951–2298 줄을 그대로 옮긴 것. 본문은 고치지 않고 타입(Part4)만 붙인다
+import { now, emit } from '../../lib/core';
+import { tokens } from '../../lib/engine';
 import type { MemoryApi } from './api';
 import type { DossierExcerpt, HistoryMsg, LatestStatus, RecallOpts, RecallTrace, SceneSnapshot } from './part3';
 import type { Bond, CanonRow, CastCard, ChatM, Item, Mem, MemItem, Milestone, Plan, Pledge, StatusRow, Summary } from '../types';
 import { G, NARRATOR, VOLATILE, list, low, getStringHash, canonSlot, ekey, cleanMultiline, overlap, ago, packetSections, normLockKind, overrides, audits, lasts, freezes, preps, PACKET_HEADER, PACKET_FOOTER, NOW_HEADER, NOW_FOOTER, STABLE_OPT_KEYS } from './base';
-import { now, emit, tokens } from './legacy';
 import * as MP from '../prompts';
 import { statusOneLine } from '../scene';
 import { hasPhrase, stripPhrases, diffStableEntries, shouldRefreeze, pickPledges, stripOpenLines } from '../craft';

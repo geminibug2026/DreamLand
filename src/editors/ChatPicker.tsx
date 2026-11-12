@@ -2,10 +2,11 @@
 import { useRef, useState } from 'react';
 import { Avatar, Icon } from '../kit';
 import { openModal, type ModalHandle } from '../ui';
-import { store, type XChar, type XChat } from './bridge';
+import type { XChar, XChat } from './types';
 import { useBump } from './parts';
+import { S } from '../lib/core';
 
-const charName = (c: XChat) => c.charIds.map(i => store().get('chars', i)?.name).filter(Boolean).join(', ');
+const charName = (c: XChat) => c.charIds.map(i => S.get('chars', i)?.name).filter(Boolean).join(', ');
 /** 대화방 이름: 가져온 이름 앞의 캐릭터 이름은 떼고, 이름이 없으면 날짜로 */
 export const roomLabel = (c: XChat) => {
   const t = charName(c), n = String(c.name || '').trim();
@@ -16,7 +17,7 @@ const keyOf = (c: XChat) => [...c.charIds].sort().join('+') || '-', titleOf = (c
 const day = (t?: number) => new Date(t || 0).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
 
 function Picker({ picked, note }: { picked: Set<string>; note: (c: XChat) => string }) {
-  const S = store(), redraw = useBump(), open = useRef(new Set<string>()).current, [q, setQ] = useState('');
+  const redraw = useBump(), open = useRef(new Set<string>()).current, [q, setQ] = useState('');
   const t = q.trim().toLowerCase(), groups = new Map<string, XChat[]>();
   for (const c of S.chats) { if (t && !(titleOf(c) + ' ' + roomLabel(c) + ' ' + (c.preview || '')).toLowerCase().includes(t)) continue; const k = keyOf(c); if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(c); }
   const has = (rooms: XChat[]) => +rooms.some(c => picked.has(c.id)), last = (rooms: XChat[]) => Math.max(...rooms.map(c => c.updatedAt || 0));

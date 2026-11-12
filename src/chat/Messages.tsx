@@ -1,15 +1,21 @@
 // 메시지 목록: 필요한 만큼만 그리고, 바뀐 메시지 하나만 다시 그린다
 import { memo, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
-import { L } from '../legacy';
 import { Avatar, Btn, Icon, IconBtn } from '../kit';
 import { menu, openModal, toast } from '../ui';
-import { B } from './bridge';
 import { cur, ui, useCh } from './store';
 import { DiceCard } from './Dice';
 import { bodyHtml, branch, commitEdit, holdView, redraw, delFrom, delMsg, drawScene, editTranslation, generate, msgClock, removeIllust, showMore, speak, swipe, toggleHidden, translate } from './actions';
 import { ux } from '../features/usersettings';
 import type { IllustItem, Msg, SceneSpec, Swipe } from './types';
+import { tint } from '../lib/tone';
+import { tokens } from '../lib/engine';
+import { mo } from '../lib/live';
+import { motiveLabel } from '../lib/f-schedule';
+import { S } from '../lib/core';
+import { X } from '../lib/hooks';
+import { Illust } from '../lib/illust';
+import { Clock } from '../lib/clock';
 
 const dayFmt = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
 const dayOf = (t: number) => { const d = new Date(t || 0); return isNaN(+d) ? '' : dayFmt.format(d); };
@@ -22,16 +28,16 @@ export function illustDialog(m: Msg, preset = '') {
     title: '삽화 그리기',
     body: <div className="col"><textarea className="inp" rows={5} defaultValue={preset} ref={el => { ta = el; }} placeholder={'그릴 장면을 적어 주세요. 비워 두고 "장면에서 뽑기"를 누르면 이 메시지에서 자동으로 만들어요.'} /><p className="hint">인물의 외형은 캐릭터 편집 › 에셋 탭에 적어 둔 내용이 자동으로 붙습니다.</p></div>,
     actions: [
-      { label: '장면에서 뽑기', ic: 'sparkle', onclick: async () => { if (!ta || !cur.chat) return false; try { ta.value = '생각 중…'; const sc = await B.Illust.analyze(cur.chat, cur.msgs, m); ta.value = sc[0]?.prompt || ''; scene = sc[0]; } catch (e) { ta.value = ''; toast(e instanceof Error ? e.message : String(e), 'err'); } return false; } },
+      { label: '장면에서 뽑기', ic: 'sparkle', onclick: async () => { if (!ta || !cur.chat) return false; try { ta.value = '생각 중…'; const sc = await Illust.analyze(cur.chat, cur.msgs, m); ta.value = String(sc[0]?.prompt || ''); scene = sc[0]; } catch (e) { ta.value = ''; toast(e instanceof Error ? e.message : String(e), 'err'); } return false; } },
       { label: '그리기', cls: 'primary', ic: 'image', onclick: () => { const p = ta?.value.trim(); if (!p) { toast('프롬프트가 비어 있어요'); return false; } drawScene(m, { ...(scene || {}), prompt: p }); } }],
   });
 }
 
 function Illusts({ m, s }: { m: Msg; s: Swipe }) {
   if (!s.illust?.length) return null;
-  const big = (it: IllustItem) => openModal({ title: '', wide: true, body: <div className="col"><img className="full-img" src={B.Illust.data(it.id)} />{it.title && <b>{it.title}</b>}<p className="hint">{[it.camera, it.prompt, ...(it.characters || []).map(x => typeof x === 'string' ? x : `${x.name || ''}: ${[x.outfit, x.action].filter(Boolean).join(', ')}`)].filter(Boolean).join(' · ')}</p></div> });
+  const big = (it: IllustItem) => openModal({ title: '', wide: true, body: <div className="col"><img className="full-img" src={Illust.data(it.id)} />{it.title && <b>{it.title}</b>}<p className="hint">{[it.camera, it.prompt, ...(it.characters || []).map(x => typeof x === 'string' ? x : `${x.name || ''}: ${[x.outfit, x.action].filter(Boolean).join(', ')}`)].filter(Boolean).join(' · ')}</p></div> });
   return <div className="illusts">{s.illust.map(it => <figure className="illust" key={it.id}>
-    <img src={B.Illust.data(it.id)} alt="삽화" loading="lazy" onClick={() => big(it)} />
+    <img src={Illust.data(it.id)} alt="삽화" loading="lazy" onClick={() => big(it)} />
     <figcaption>
       <IconBtn ic="refresh" title="다시 그리기" cls="tiny" onClick={() => drawScene(m, { title: it.title, camera: it.camera, prompt: it.prompt, negative: it.negative, characters: it.characters })} />
       <IconBtn ic="edit" title="프롬프트 고쳐서 그리기" cls="tiny" onClick={() => illustDialog(m, it.prompt)} />
@@ -59,7 +65,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
   const [editing, setEditingRaw] = useState(false);
   // 편집 상자로 바뀌어 높이가 달라져도 이 메시지가 화면에서 제자리에 남게
   const setEditing = (v: boolean) => { const back = holdView(m.id); flushSync(() => setEditingRaw(v)); back(); };
-  const S = B.S, chat = cur.chat!;
+  const chat = cur.chat!;
   const s: Swipe = m.swipes[m.sw] || { text: '' };
   const who = m.role === 'user' ? S.persona(chat) : m.role === 'assistant' ? (S.get('chars', m.charId) || { name: m.name }) : null;
   const grouped = chat.charIds.length > 1;
@@ -67,7 +73,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
   const toned = grouped && m.role === 'assistant' && !!(who && 'avatar' in who && who.avatar);   // 여럿이 있는 방: 말하는 이마다 제 색
   const cls = ['msg', m.role === 'user' ? 'user' : m.role === 'assistant' ? 'ai' : 'sys', m.hidden && 'hidden-msg', grouped && m.role !== 'system' && 'grouped', cont && 'cont', m.scene && 'in-scene',
     m.role === 'system' && m.curtain && 'curtain-msg', m.role === 'system' && m.curtain?.kind, m.role === 'system' && !m.curtain && m.dice && 'dice-msg', still && 'still', picked && 'picked'].filter(Boolean).join(' ');
-  const art = (kids: ReactNode) => <article className={cls} data-id={m.id} ref={el => { if (el && toned) L.tone.tint(el, S.get('chars', m.charId) ?? null); }}>{kids}</article>;
+  const art = (kids: ReactNode) => <article className={cls} data-id={m.id} ref={el => { if (el && toned) tint(el, S.get('chars', m.charId) ?? null); }}>{kids}</article>;
   const del = <IconBtn ic="trash" title="삭제" onClick={() => void delMsg(m)} />;
 
   if (m.role === 'system' && m.curtain) {
@@ -90,15 +96,15 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
     s.tr && { label: '번역 고치기', ic: 'edit', onclick: () => void editTranslation(m) },
     { label: '삽화 그리기', ic: 'image', onclick: () => illustDialog(m) },
     { label: '소리 내어 읽기', ic: 'volume', onclick: () => speak(s.text) },
-    ...B.X.actions.map(a => ({ label: a.label, ic: a.icon || 'sparkle', onclick: () => { void a.run(m, cur.chat); } })),
+    ...X.actions.map(a => ({ label: a.label, ic: a.icon || 'sparkle', onclick: () => { void a.run(m, cur.chat); } })),
     { label: m.hidden ? '프롬프트에 다시 포함' : '프롬프트에서 숨기기', ic: m.hidden ? 'eye' : 'eyeoff', onclick: () => void toggleHidden(m) },
     '-',
     { label: '이 메시지 삭제', ic: 'trash', danger: true, onclick: () => void delMsg(m) },
     { label: '여기부터 아래 모두 삭제', ic: 'trash', danger: true, onclick: () => void delFrom(m) },
   ]);
   const clock = msgClock(m, s);
-  const U = ux(), meta = [U.metaTime && clock, ...(S.settings.showMeta ? [U.metaModel && s.model, U.metaTimer && s.ms ? (s.ms / 1000).toFixed(1) + '초' : '', U.metaTokens && s.text ? `≈${B.engine.tokens(s.text)}토큰` : ''] : [])].filter(Boolean).join(' · ');
-  const why = m.why && B.live.mo('showWhy') !== false ? B.sched.motiveLabel(m.why) : '';
+  const U = ux(), meta = [U.metaTime && clock, ...(S.settings.showMeta ? [U.metaModel && s.model, U.metaTimer && s.ms ? (s.ms / 1000).toFixed(1) + '초' : '', U.metaTokens && s.text ? `≈${tokens(s.text)}토큰` : ''] : [])].filter(Boolean).join(' · ');
+  const why = m.why && mo('showWhy') !== false ? motiveLabel(m.why) : '';
   return art(<>
     <Avatar o={who} cls={S.settings.avatarShape === 'tall' ? 'tall' : ''} />
     <div className="msg-main">
@@ -123,7 +129,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
 export function Messages() {
   useCh('msgs');
   const [picked, setPicked] = useState('');
-  const chat = cur.chat!, list = cur.msgs, total = list.length, Clock = B.Clock;
+  const chat = cur.chat!, list = cur.msgs, total = list.length;
   const grouped = chat.charIds.length > 1, clockOn = Clock.mode(chat) !== 'none';
   // 날짜가 바뀌는 자리
   const seps = new Map<number, string>(); let day = '';

@@ -1,13 +1,15 @@
 // 흐름 기능 켜기 (옛 js/f-flow.js 의 등록부). **아직 켜지 않는다** — 옛 판도 FEATURES 에 넣지 않은 미완성 기능이다.
 // 켜려면 src/features/flow.tsx 를 만들어 `export { flowFeature as feature } from '../flow/setup';` 한 줄을 둔다.
 import type { FeatureDef } from '../main';
-import { B, NEEDS, useCss } from '../addons/legacy';
+import { useCss } from '../addons/parts';
 import { reactNode } from '../addons/parts';
 import { cur, directOn, setDirect, wire } from './logic';
 import { AutoPanel, CheckpointPanel, ProfilePanel, askRegen, checkpointAction } from './panels';
+import { toast } from '../ui';
+import { S } from '../lib/core';
+import { X } from '../lib/hooks';
 
 function setup() {
-  const X = B.X, toast = B.ui.toast;
   useCss('quick.css');
   wire();
 
@@ -16,7 +18,7 @@ function setup() {
   X.composer.push({ owner: 'flow', id: 'flow-regen-why', label: '이유를 적어 다시 생성', icon: 'refresh', run: () => askRegen() });
   // "다시 생성" 버튼을 누를 때마다 묻기 (설정에서 켠 경우). Shift 를 누른 채 누르면 묻지 않는다
   document.addEventListener('click', e => {
-    if (!(B.S.settings.regenWhy as { ask?: boolean } | undefined)?.ask || e.shiftKey) return;
+    if (!(S.settings.regenWhy as { ask?: boolean } | undefined)?.ask || e.shiftKey) return;
     const b = (e.target as Element | null)?.closest?.<HTMLElement>('.msg-tools .ibtn'); if (!b || cur().busy) return;
     if (b.title !== '다시 생성' && b.title !== '새 답변 생성') return;
     e.stopPropagation(); e.preventDefault(); askRegen();
@@ -32,4 +34,4 @@ function setup() {
     { owner: 'flow', id: 'flow-auto', title: '자동 진행 · 연출', icon: 'play', render: chat => reactNode('flow-auto', 'div.col', <AutoPanel chat={chat} />) });
 }
 
-export const flowFeature: FeatureDef = { name: 'flow', needs: [...NEEDS, 'advanced'], setup };
+export const flowFeature: FeatureDef = { name: 'flow', setup };

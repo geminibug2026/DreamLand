@@ -1,23 +1,27 @@
 // 홈: 오늘 밤의 창 · 이어서 · 캐릭터 목록(폴더 · 정렬 · 검색 · 카드 크기)
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
-import { L } from '../legacy';
 import { Btn, Emblem, Icon, IconBtn, InkName, Moon, artStyle, tintRef, useEvents } from '../kit';
 import type { Char, Folder } from '../types';
 import { charPicker, confirmBox, menu, promptBox, usePaged } from '../ui';
+import { moonPhase } from '../lib/moon';
+import { go } from '../lib/router';
+import { S, fmtTime, newChar, uid } from '../lib/core';
+import { startMenu } from '../chat/start';
+import { tint } from '../lib/tone';
+import { charEditor, charSheet, importDialog } from '../editors';
 
 // 화면을 떠났다 돌아와도 남는 보기 상태. folder: '' 전체 · '-' 폴더 없음 · 폴더 id
 const view = { q: '', sort: 'recent' as 'recent' | 'new' | 'name', tag: '', fav: false, pick: 0, folder: '' };
 
 // ── 캐릭터 폴더: 폴더 목록은 설정에, 어느 폴더인지는 캐릭터의 folder 에 둔다 ──
-const folders = (): Folder[] => (L.core.S.settings.folders ||= []);
+const folders = (): Folder[] => (S.settings.folders ||= []);
 const folderOf = (c: Char) => folders().some(f => f.id === c.folder) ? c.folder! : '';
-const saveFolders = () => L.core.S.set({ folders: folders() });
+const saveFolders = () => S.set({ folders: folders() });
 async function newFolder(): Promise<Folder | null> {
   const v = await promptBox('폴더 이름', '', { placeholder: '예: 판타지, 현대물, 친구가 준 카드' }); if (!v?.trim()) return null;
-  const fo = { id: L.core.uid(), name: v.trim().slice(0, 40) }; folders().push(fo); saveFolders(); return fo;
+  const fo = { id: uid(), name: v.trim().slice(0, 40) }; folders().push(fo); saveFolders(); return fo;
 }
 async function moveToFolder(ids: string[], folderId: string) {
-  const S = L.core.S;
   for (const id of ids) { const c = S.get('chars', id); if (c && (c.folder || '') !== folderId) { c.folder = folderId; await S.save('chars', c, true); } }
 }
 /** 캐릭터 한 명을 담을 폴더 고르기 */
@@ -37,33 +41,33 @@ const SIZES = [['', '크게'], ['cols-3', '보통'], ['cols-4', '작게']] as co
 /** 오늘 밤: 달의 위상 + 최근에 만난 캐릭터 */
 function Stage({ picks, redraw }: { picks: Char[]; redraw: () => void }) {
   const el = useRef<HTMLDivElement>(null);
-  const now = new Date(), moon = L.ui.moonPhase(now), cur = Math.round(moon.p * 8) % 8;
+  const now = new Date(), moon = moonPhase(now), cur = Math.round(moon.p * 8) % 8;
   const c: Char | undefined = picks[view.pick % Math.max(1, picks.length)];
-  useEffect(() => { if (el.current) L.tone.tint(el.current, c ?? null); });
+  useEffect(() => { if (el.current) tint(el.current, c ?? null); });
   const sky = <div className="dream-sky">
     <div className="moon-row">{Array.from({ length: 8 }, (_, i) => <span key={i} className={i === cur ? 'on' : undefined}><Moon size={i === cur ? 22 : 15} date={phaseDate(i)} /></span>)}</div>
     <small>{`${now.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' })} · ${moon.name}`}</small>
   </div>;
   if (!c) return <div className="dream" ref={el}>
     <div className="dream-text">{sky}<h2 className="dream-name">첫 꿈을 불러와요</h2>
-      <div className="dream-actions"><Btn label="이식 센터" ic="folder" cls="primary" onClick={() => L.ui.go('import')} /><Btn label="카드 가져오기" ic="import" onClick={() => void L.editors.importDialog()} /><Btn label="API 연결" ic="plug" onClick={() => L.ui.go('conns')} /></div></div>
+      <div className="dream-actions"><Btn label="이식 센터" ic="folder" cls="primary" onClick={() => go('import')} /><Btn label="카드 가져오기" ic="import" onClick={() => void importDialog()} /><Btn label="API 연결" ic="plug" onClick={() => go('conns')} /></div></div>
     <div className="dream-window blank"><i className="ellipse" /><i className="star s1">✦</i>
       <div className="print main blank"><i className="crescent" /><i className="halftone" /><i className="star s2">✧</i></div></div>
   </div>;
-  const last = L.core.S.chats.filter(x => x.charIds.includes(c.id)).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  const last = S.chats.filter(x => x.charIds.includes(c.id)).sort((a, b) => b.updatedAt - a.updatedAt)[0];
   const line = firstLine(c);
   return <div className="dream" ref={el}>
     <div className="dream-text">{sky}
       <h2 className="dream-name"><InkName name={c.name} /></h2>{line && <p className="dream-line">{line}</p>}
       {c.tags.length ? <div className="dream-tags">{c.tags.slice(0, 4).map(t => <span key={t}>#{t}</span>)}</div> : null}
       <div className="dream-actions">
-        {last && <Btn label="이어서" ic="play" cls="primary" onClick={() => L.ui.go('chat', last.id)} />}
-        <Btn label="새 대화" ic="chat" onClick={e => L.chat.startMenu(e.currentTarget, [c.id])} />
-        <Btn label="프로필" ic="user" cls="ghost" onClick={() => L.editors.charSheet(c)} />
+        {last && <Btn label="이어서" ic="play" cls="primary" onClick={() => go('chat', last.id)} />}
+        <Btn label="새 대화" ic="chat" onClick={e => startMenu(e.currentTarget, [c.id])} />
+        <Btn label="프로필" ic="user" cls="ghost" onClick={() => charSheet(c)} />
       </div>
     </div>
     <div className="dream-window"><i className="bigmoon"><Moon size={190} date={now} /></i><i className="halftone" /><i className="ellipse" /><i className="star s1">✦</i><i className="star s2">✧</i><i className="rule" />
-      <button className="print main" style={artStyle(c)} title={c.name} onClick={() => L.editors.charSheet(c)}>{!c.avatar && <Emblem o={c} />}</button>
+      <button className="print main" style={artStyle(c)} title={c.name} onClick={() => charSheet(c)}>{!c.avatar && <Emblem o={c} />}</button>
       {c.avatar ? <i className="print detail" style={artStyle(c)} /> : null}
       {picks.length > 1 ? <div className="dots">{picks.map((p, i) => <button key={p.id} className={i === view.pick % picks.length ? 'on' : undefined} title={p.name} onClick={() => { view.pick = i; redraw(); }} />)}</div> : null}
     </div>
@@ -77,7 +81,7 @@ export const page = { name: 'home', Component: Home };
 function Home() {
   const redraw = useEvents('chars', 'chats');
   const [q, setQ] = useState(view.q);
-  const S = L.core.S, fs = folders();
+  const fs = folders();
   if (view.folder && view.folder !== '-' && !fs.some(f => f.id === view.folder)) view.folder = '';
 
   const lastUse = new Map<string, number>(); for (const c of S.chats) for (const id of c.charIds) lastUse.set(id, Math.max(lastUse.get(id) || 0, c.updatedAt));
@@ -130,27 +134,27 @@ function Home() {
   </div>;
 
   const folderTag = (c: Char) => { const o = !view.folder && fs.find(f => f.id === folderOf(c)); return o ? <i className="in-folder"><Icon name="folder" size={11} />{o.name}</i> : null; };
-  const addChar = async () => { const c = await S.save('chars', L.core.newChar({ folder: view.folder && view.folder !== '-' ? view.folder : '' }), true); L.editors.charEditor(c); };
+  const addChar = async () => { const c = await S.save('chars', newChar({ folder: view.folder && view.folder !== '-' ? view.folder : '' }), true); charEditor(c); };
 
   return <section className="home">
     <Stage picks={picks} redraw={redraw} />
     {recent.length ? <div><SecHead title="이어서" />
       <div className="threads">{recent.map(c => {
         const chars = c.charIds.map(id => S.get('chars', id)).filter((x): x is Char => !!x), first = chars[0];
-        return <button key={c.id} className="thread" ref={tintRef(first)} onClick={() => L.ui.go('chat', c.id)}>
+        return <button key={c.id} className="thread" ref={tintRef(first)} onClick={() => go('chat', c.id)}>
           <div className="arch sm" style={artStyle(first)}>{first ? !first.avatar && <Emblem o={first} mini /> : <span>?</span>}</div>
-          <div className="thread-text"><b>{chars.map(x => x.name).join(', ') || '삭제된 캐릭터'}</b><small>{c.preview || '새 대화'}</small><time>{L.core.fmtTime(c.updatedAt)}</time></div>
+          <div className="thread-text"><b>{chars.map(x => x.name).join(', ') || '삭제된 캐릭터'}</b><small>{c.preview || '새 대화'}</small><time>{fmtTime(c.updatedAt)}</time></div>
         </button>;
       })}</div></div> : null}
     <div>
       <SecHead title="캐릭터"><span className="count">{list.length}명</span>
         <button className="btn ghost size-btn" title={`카드 크기: ${SIZES[size][1]} (누르면 바뀝니다)`} onClick={() => { S.set({ homeCols: (size + 1) % SIZES.length }); redraw(); }}><Icon name="grip" size={15} /><span>{SIZES[size][1]}</span></button>
-        <Btn label="가져오기" ic="import" cls="ghost" onClick={() => void L.editors.importDialog()} />
+        <Btn label="가져오기" ic="import" cls="ghost" onClick={() => void importDialog()} />
       </SecHead>
       <div className="filter-row">
-        {([['recent', '최근'], ['new', '신규'], ['name', '이름']] as const).map(([k, l]) => <button key={k} className={'chip' + (view.sort === k && !view.fav ? ' on' : '')} onClick={() => set({ sort: k, fav: false })}>{l}</button>)}
-        <button className={'chip' + (view.fav ? ' on' : '')} onClick={() => set({ fav: !view.fav })}>즐겨찾기</button>
-        {tags.map(t => <button key={t} className={'chip' + (view.tag === t ? ' on' : '')} onClick={() => set({ tag: view.tag === t ? '' : t })}>#{t}</button>)}
+        {([['recent', '최근'], ['new', '신규'], ['name', '이름']] as const).map(([k, l]) => <button key={k} className={'chip' + (view.sort === k && !view.fav && !view.tag ? ' on' : '')} onClick={() => set({ sort: k, fav: false, tag: '' })}>{l}</button>)}
+        <button className={'chip' + (view.fav ? ' on' : '')} onClick={() => set({ fav: !view.fav, tag: '' })}>즐겨찾기</button>
+        {tags.map(t => <button key={t} className={'chip' + (view.tag === t ? ' on' : '')} onClick={() => set({ tag: view.tag === t ? '' : t, fav: false })}>#{t}</button>)}
         <div className="search-wrap"><Icon name="search" size={15} /><input className="inp search" placeholder="캐릭터 검색" value={q} onChange={e => { view.q = e.target.value; setQ(e.target.value); }} /></div>
       </div>
       <div className="folder-row">{shelf}</div>
@@ -158,7 +162,7 @@ function Home() {
       <div className={'arch-grid' + (SIZES[size][0] ? ' ' + SIZES[size][0] : '')} ref={el => { grid.current = el; pg.listRef(el); }}>
         {pg.rows.map(c => <button key={c.id} className="arch-card" ref={tintRef(c)} draggable={fs.length > 0}
           onDragStart={e => { e.dataTransfer.setData('text/dreamland-char', c.id); e.dataTransfer.effectAllowed = 'move'; }}
-          onClick={() => L.editors.charSheet(c)} onContextMenu={e => { e.preventDefault(); folderMenu(e.currentTarget, c, redraw); }}>
+          onClick={() => charSheet(c)} onContextMenu={e => { e.preventDefault(); folderMenu(e.currentTarget, c, redraw); }}>
           <div className="arch" style={artStyle(c)}>{!c.avatar && <Emblem o={c} />}{c.fav && <i className="fav"><Icon name="star" size={12} /></i>}{folderTag(c)}</div>
           <b>{c.name}</b><small>{firstLine(c) || c.tags.slice(0, 3).map(t => '#' + t).join(' ') || ' '}</small>
         </button>)}

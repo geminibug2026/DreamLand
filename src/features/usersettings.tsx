@@ -1,6 +1,7 @@
 // 사용자 설정의 동작: Enter 전송 방식 · 답변 알림음 · 넘기기 몸짓 · 메시지 표시 · 입력 되살리기 · 서식 단축키 · 알림 위치
 // 화면(src/pages/Settings.tsx)은 S.settings.ux 와 S.settings.enterSend 만 고치고, 실제 동작은 전부 여기서 알림(event)과 문서 이벤트로 붙인다
-import { L } from '../legacy';
+import { route } from '../lib/router';
+import { S, on } from '../lib/core';
 
 export interface Ux {
   sound: boolean; soundVolume: number; soundUnfocused: boolean;
@@ -16,7 +17,7 @@ export const UX_DEFAULT: Ux = {
   showIds: true, showAvatars: true, metaTime: true, metaModel: true, metaTimer: true, metaTokens: true,
 };
 type Bag = Record<string, unknown>;
-const settings = () => L.core.S.settings as Bag;
+const settings = () => S.settings as Bag;
 /** 지금의 사용자 설정 (없는 키는 기본값) */
 export const ux = (): Ux => ({ ...UX_DEFAULT, ...((settings().ux as Partial<Ux> | undefined) || {}) });
 
@@ -98,12 +99,11 @@ function lastAi(target: EventTarget | null): HTMLElement | null {
 export const feature = {
   name: 'usersettings',
   setup() {
-    const { core } = L, S = core.S;
     const st = settings();
     st.ux = ux();   // 없는 키를 채워 화면의 폼이 바로 고칠 수 있게 한다
     document.head.append(Object.assign(document.createElement('style'), { id: 'ux-style', textContent: CSS }));
     applyUx();
-    core.on('settings', applyUx);
+    on('settings', applyUx);
 
     // 시작할 때 마지막 대화를 열지 않기: 첫 화면을 고르기 전에 불리므로 여기서 홈으로 돌려 둔다
     if (!ux().autoLoadChat && S.settings.lastPage === 'chat') S.settings.lastPage = 'home';
@@ -111,17 +111,17 @@ export const feature = {
     // 소리는 사용자가 한 번 누른 뒤에야 낼 수 있다 — 첫 입력 때 미리 깨워 둔다
     const wake = () => { if (ux().sound) audio(); };
     addEventListener('pointerdown', wake, { capture: true, passive: true }); addEventListener('keydown', wake, { capture: true, passive: true });
-    core.on('message:received', () => {
+    on('message:received', () => {
       const u = ux(); if (!u.sound) return;
       if (u.soundUnfocused && !document.hidden && document.hasFocus()) return;
       playChime(u.soundVolume);
     });
 
-    core.on('prompt:ready', d => { if (ux().logPrompts) console.log('[프롬프트]', (d as { messages?: unknown } | undefined)?.messages); });
+    on('prompt:ready', d => { if (ux().logPrompts) console.log('[프롬프트]', (d as { messages?: unknown } | undefined)?.messages); });
 
     // 쓰던 글
-    core.on('chat:open', c => { openChat = String((c as { id?: string } | undefined)?.id || ''); if (openChat) restoreDraft(openChat); });
-    core.on('message:sent', dropDraft);
+    on('chat:open', c => { openChat = String((c as { id?: string } | undefined)?.id || ''); if (openChat) restoreDraft(openChat); });
+    on('message:sent', dropDraft);
     document.addEventListener('input', e => {
       const t = e.target; if (!(t instanceof HTMLTextAreaElement) || !t.classList.contains('composer-input') || !openChat) return;
       if (!ux().restoreInput || !t.value) return dropDraft();
@@ -130,7 +130,7 @@ export const feature = {
 
     // 넘기기를 껐으면 방향키로도 넘기지 않는다 (대화 화면의 단축키보다 먼저 받는다)
     addEventListener('keydown', e => {
-      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && document.activeElement === document.body && !ux().swipes && L.ui.route.page === 'chat') e.stopImmediatePropagation();
+      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && document.activeElement === document.body && !ux().swipes && route.page === 'chat') e.stopImmediatePropagation();
       const t = e.target, mark = MARKS[e.key.toLowerCase()];
       if (mark && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && ux().mdKeys && t instanceof HTMLTextAreaElement && t.matches('.composer-input, .edit-area')) { e.preventDefault(); wrap(t, mark); }
     }, true);

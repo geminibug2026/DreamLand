@@ -1,17 +1,15 @@
 // ── Dreamland ext: 확장 기능 (설치 · 불러오기 · API) ── (옛 js/ext.js 그대로. 관리 화면 'exts' 는 src/pages 에 있다)
 // 확장 API(makeApi)의 모양은 옛 것과 같다 — 확장은 DOM 을 돌려받고 DOM 을 건넨다. 창 · 폼은 src/ui 의 React 판 위에 DOM 을 얹는다
-import { createElement, useLayoutEffect, useRef, type ReactNode } from 'react';
-import { createRoot } from 'react-dom/client';
-import { S, DB, h, on, emit, uid, type HKid } from './core';
+import { S, DB, h, on, emit, uid } from './core';
 import { X, dropOwner } from './hooks';
 import { icon, btn, iconBtn } from './icons';
 import { go, registerPage, refresh } from './router';
-import { Emblems } from './emblems';
 import { applyTheme } from './theme';
 import { quickCall, tokens, macro } from './engine';
 import { render } from './format';
 import { chatApi } from '../chat/actions';
-import { toast, openModal, menu, Form, confirmBox, promptBox, type ModalAction, type FormDefs } from '../ui';
+import { toast, menu, confirmBox, promptBox } from '../ui';
+import { avatar, modal, form } from '../ui/dom';
 
 export const APP_VERSION = '1.1.0';
 export interface CatalogItem { id: string; name: string; version?: string; author?: string; description?: string; source: 'folder' | 'installed'; entry?: string; css?: string; code?: string }
@@ -19,37 +17,6 @@ export interface Loaded { cleanup: (() => unknown)[]; error: string; meta: Catal
 export const loaded = new Map<string, Loaded>();   // id → { cleanup[], error, meta }
 export let catalog: CatalogItem[] = [];            // [{ id, name, version, author, description, source: 'folder'|'installed', entry, css, code }]
 export const enabled = (id: string) => S.settings.exts?.[id] === true;
-
-// ── 확장에 건네는 DOM 부품 (옛 ui.js 의 avatar · modal · form 과 같은 모양) ──
-/** DOM 노드를 React 자리에 그대로 붙인다 */
-function DomSlot({ node }: { node: Node | null | undefined }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => { const el = ref.current; if (!el || !node) return; el.replaceChildren(node); return () => { el.replaceChildren(); }; }, [node]);
-  return createElement('div', { ref, style: { display: 'contents' } });
-}
-const emblem = (o: { tags?: unknown; name?: string } | null | undefined, mini = false) => {
-  const t = document.createElement('template');
-  t.innerHTML = Emblems.svg(Emblems.pick(Array.isArray(o?.tags) ? o.tags : [], o?.name || ''), mini ? 'mini' : '');
-  return t.content.firstChild as Node;
-};
-function avatar(o: { avatar?: string; tags?: unknown; name?: string } | null | undefined, cls = '') {
-  const el = h(`div.avatar${cls ? '.' + cls : ''}`);
-  if (o?.avatar) el.style.backgroundImage = `url("${o.avatar}")`;
-  else if (Array.isArray(o?.tags) && cls !== 'xs') { el.classList.add('blank'); el.append(emblem(o, true)); }   // 캐릭터
-  else { el.classList.add('blank'); el.textContent = (o?.name || '?').trim().slice(0, 1); }                       // 페르소나 · 이름만 있는 대상
-  return el;
-}
-interface ModalOpts { title?: string; body?: HKid; actions?: ModalAction[]; wide?: boolean; onClose?: () => void }
-/** 옛 modal(): body 는 DOM. src/ui 의 openModal 위에 얹는다 */
-export function modal({ title, body, actions = [], wide = false, onClose }: ModalOpts = {}) {
-  const node = body instanceof Node ? body : body == null || body === false ? null : h('div', body);
-  return openModal({ title: title || '', body: createElement(DomSlot, { node }) as ReactNode, actions, wide, onClose });
-}
-function form<T extends object>(obj: T, defs: FormDefs, onChange: (o: T) => void = () => { }) {
-  const box = h('div', { style: { display: 'contents' } });
-  createRoot(box).render(createElement(Form<T>, { obj, defs, onChange }));
-  return box;
-}
 
 function makeApi(id: string) {
   const rec = loaded.get(id) as Loaded;
