@@ -265,7 +265,8 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
     let rel = decodeURIComponent(url.pathname);
-    if (rel === '/') rel = '/index.html';
+    if (rel === '/') rel = (await exists(path.join(ROOT, 'dist', 'next.html'))) ? '/dist/next.html' : '/index.html';   // React 판을 빌드해 두었으면 그것을, 아니면 옛 판을 연다
+    if (rel.toLowerCase().startsWith('/node_modules')) return send(res, 403, 'forbidden', 'text/plain');
     if (rel.includes(':') || rel.includes('\0')) return send(res, 403, 'forbidden', 'text/plain');
     const file = path.resolve(ROOT, '.' + rel);
     if (!file.startsWith(ROOT + path.sep) || path.basename(file).toLowerCase() === 'server.js' || /^data([\\/]|$)/i.test(path.relative(ROOT, file)) || /(^|[\\/])\./.test(path.relative(ROOT, file)) || /\.(bat|cmd|sh|md)$/i.test(file)) return send(res, 403, 'forbidden', 'text/plain');

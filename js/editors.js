@@ -14,7 +14,7 @@ import { presetVarsEditor } from './f-presetvars.js';
 import { AF, KINDS, TEXT_PROVIDER_KINDS, tplList, tplCurrent, tplSave, tplDelete, tplApply, tplDirty, tplIsBuiltin, tplImport, masterExport, resolve, instructName } from './advanced.js';
 
 const charTokens = c => tokens([c.description, c.personality, c.scenario, c.mesExample, c.systemPrompt, c.postHistory].join('\n'));
-async function importDialog(accept = '.png,.json,.jsonl,.webp') {
+export async function importDialog(accept = '.png,.json,.jsonl,.webp') {
   const files = await pickFiles({ accept, multiple: true }); if (!files.length) return;
   const T = await importFiles(files);
   toast(summarize(T), T.errors.length ? 'err' : 'ok');
@@ -131,7 +131,7 @@ registerPage('home', root => {
   drawShelf(); draw();
 });
 
-function charSheet(c) {
+export function charSheet(c) {
   const chats = S.chats.filter(x => x.charIds.includes(c.id)).sort((a, b) => b.updatedAt - a.updatedAt);
   let m, tab = '대화';
   const pane = h('div.sheet-pane');
