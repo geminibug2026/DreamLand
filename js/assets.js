@@ -59,6 +59,8 @@ export const Assets = {
   async load(owners) {
     for (const o of [...owners, ...owners.map(o => this.source(o))]) if (o && !cache.has(o)) cache.set(o, (await DB.byOwner(o)).filter(a => a.kind !== 'illust').sort(byName));
   },
+  /** 이 보관함들을 이미 읽어 두었는지 */
+  ready(owners) { return [...owners, ...owners.map(o => this.source(o))].every(o => !o || cache.has(o)); },
   /** 보관함을 DB 에서 다시 읽는다 */
   async reload(owners) { for (const o of owners) cache.delete(o); await this.load(owners); },
   list: owner => cache.get(owner) || [],

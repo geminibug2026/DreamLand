@@ -97,10 +97,11 @@ export function quietLeft(from, to, d = new Date()) {
 // ════════ 지시문 (모두 설정 창에서 고칠 수 있고, 비우면 여기 기본값을 쓴다) ════════
 export const SCENE_OFFER = `[scene: title="short title", place="where", time="when"] — use this ONLY at the moment you and {{user}} actually meet face to face, or something starts happening that cannot be texted (arriving at the door, a call turning into a visit, an accident). From then on the story is told as a written scene instead of messages. Never use it for ordinary chatting.`;
 export const SCENE_RULES = `<scene>
-The messenger chat has moved into a live scene: "{{title}}"{{place}}. You and {{user}} are now in the same place, so this is no longer texting.
-- Write it as roleplay prose: narration, actions and spoken lines of {{char}}, in the same language as the chat. Do not write {{user}}'s actions or lines.
-- Keep the continuity of everything said in the messages above.
-- When the scene has naturally ended (you part ways, someone leaves or falls asleep), finish your reply and add one last line: [scene_end: summary="one sentence about what happened"]. After that you two go back to texting.
+The messenger chat has moved into a live scene: "{{title}}"{{place}}. You and {{user}} are now in the same place, so this is no longer texting and the one-line message format is set aside until the scene ends.
+- Write roleplay prose in the same language as the chat: narration, {{char}}'s actions, and {{char}}'s spoken lines in "double quotes". Never write {{user}}'s actions, lines or thoughts; stop where {{user}} would respond.
+- Keep continuity with the messages above: what was said and promised, the mood you were both in, the time of day.
+- Each reply moves the scene one step — something is done, said or noticed. A few short paragraphs, not a chapter.
+- When the scene has naturally ended (you part ways, someone leaves or falls asleep), finish your reply and add one last line: [scene_end: summary="one sentence about what happened"]. After that you two go back to texting. Do not end it early.
 </scene>`;
 export const LATER_OFFER = `[later: in="2h", about="what you will text about"] — when you promise to get back to {{user}} later ("I'll text you after class", "tell you tomorrow"), add this so that you really do. in= accepts m, h or d.`;
 export const STATE_RULES = `<state_rules>
@@ -134,8 +135,8 @@ Card fields:
 People already on the cards: {{names}}`;
 export const P_LATER = `Earlier you told {{user}} you would get back to them about: "{{about}}". Now is that time — text them about it first, naturally.`;
 export const P_AWAY = `{{user}} has not opened the chat for about {{hours}} hours. This message is one you sent during that time, on your own, about something from your day or something you kept thinking about. Do not ask why they were gone.`;
-export const P_UNREAD = `{{user}} has not even read your last message yet (it still shows as unread). React to that the way {{char}} would — or just add what you forgot to say.`;
-export const P_GHOSTED = `{{user}} read your last message a while ago and still has not answered. React to being left on read the way {{char}} would.`;
+export const P_UNREAD = `{{user}} has not opened your last message yet — it still shows as unread, so they have not seen it and are not ignoring you. React the way {{char}} would: shrug it off, add what you forgot to say, or nudge once. Do not send the same message again.`;
+export const P_GHOSTED = `{{user}} read your last message a while ago and still has not answered. React to being left on read the way {{char}} would — once, in character. Do not repeat the earlier message and do not answer it for them.`;
 export const P_MOTIVE = {
   morning: `Why you are texting now: you have just woken up and your day is starting. This is your first message to {{user}} today — let it sound like the morning you are actually having.`,
   night: `Why you are texting now: your day is ending and you will be asleep soon. You want to say something to {{user}} before you put the phone down.`,

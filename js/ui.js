@@ -1,5 +1,6 @@
 // ── Dreamland ui: 아이콘 · 토스트 · 모달 · 메뉴 · 폼 · 페이지 라우터 ──
 import { h, esc, S, on, emit, pickFiles, readDataURL, shrinkImage, debounce } from './core.js';
+import { Emblems } from './emblems.js';
 
 const I = {
   home: 'M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z', chat: 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z',
@@ -41,11 +42,23 @@ export function moonIcon(size = 22, date) {
 export const pageHead = (eyebrow, title, ...side) => h('header.phead', h('div.phead-text', h('span.eyebrow', eyebrow), h('h1', title)), h('div.phead-side', side));
 
 // ── 아바타 ──
-const hue = s => { let n = 0; for (const c of String(s)) n = (n * 31 + c.charCodeAt(0)) % 360; return n; };
+/** 그림이 없는 캐릭터 자리에 놓는 엠블럼 — 태그와 이름으로 고른다. mini 는 작은 칸용(굵은 형태만) */
+export function emblem(o, mini = false) {
+  const t = document.createElement('template');
+  t.innerHTML = Emblems.svg(Emblems.pick(Array.isArray(o?.tags) ? o.tags : [], o?.name || ''), mini ? 'mini' : '');
+  return t.content.firstChild;
+}
+/** 초상 칸에 들어갈 것: 그림이 있으면 없음(배경으로 깔린다), 없으면 엠블럼 */
+export const blankArt = (o, mini = false) => o?.avatar ? null : emblem(o, mini);
+const EMO = /(\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic}️?)*)/u;
+/** 색이 흐르는 이름: 그림 문자는 따로 감싸 제 색으로 둔다 */
+export const inkName = name => String(name ?? '').split(EMO).map((s, i) => i % 2 ? h('span.emo', s) : s);
+
 export function avatar(o, cls = '') {
   const el = h(`div.avatar${cls ? '.' + cls : ''}`);
   if (o?.avatar) el.style.backgroundImage = `url("${o.avatar}")`;
-  else { el.textContent = (o?.name || '?').trim().slice(0, 1); el.style.background = `linear-gradient(135deg, hsl(${hue(o?.name)} 70% 72%), hsl(${(hue(o?.name) + 60) % 360} 70% 62%))`; }
+  else if (Array.isArray(o?.tags) && cls !== 'xs') { el.classList.add('blank'); el.append(emblem(o, true)); }   // 캐릭터
+  else { el.classList.add('blank'); el.textContent = (o?.name || '?').trim().slice(0, 1); }                       // 페르소나 · 이름만 있는 대상
   return el;
 }
 

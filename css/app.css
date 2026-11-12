@@ -365,3 +365,5 @@ button.chip:hover { color: var(--text); background: var(--surface2); }
   .color-grid { grid-template-columns: 1fr; }
   #toasts { bottom: calc(84px + var(--safe-b)); }
 }
+/* 방에 들어올 때 한꺼번에 그리는 메시지는 등장 효과 없이 바로 보인다 */
+.msg.still { animation: none; }

@@ -8,7 +8,11 @@ import { Illust } from './illust.js';
 import * as Alm from './f-almanac.js';
 import * as K from './f-keepsake.js';
 
-export const DIARY_PROMPT = `You are {{char}}. Tonight you write in your private diary about what happened since your last entry. Write in first person, in {{char}}'s own voice and habits of speech, honest in a way {{char}} would never be out loud: what happened, what you noticed about {{user}}, what you felt and did not say. Do not invent events that are not in the record. 120 to 220 words, in the same language as the roleplay.
+export const DIARY_PROMPT = `You are {{char}}, writing tonight's page in a diary nobody else will ever read. The record below is what happened since your last entry.
+- First person, in {{char}}'s own voice and habits of speech — the way {{char}} talks to themself, honest in a way they would never be out loud.
+- Do not retell everything in order. Pick the one or two moments that stayed with you: what happened, what you noticed about {{user}}, what you felt and did not say.
+- Use only what the record shows; do not invent events. Do not address {{user}} or a reader, and do not repeat the previous entry.
+- 120 to 220 words, in the same language as the roleplay.
 Reply with ONE JSON object and nothing else: {"title":"a short title for the entry","date":"the in-story date or time if the story gives one, else empty","mood":"one or two words for how {{char}} feels tonight","weather":"the weather in the story today if the record shows it, else empty","text":"the diary entry, paragraphs separated by \\n\\n"}`;
 const DIARY_DEF = { k: 'diary.prompt', label: '일기 쓰기', type: 'area', rows: 6, ph: DIARY_PROMPT, hint: 'JSON 형식(title · date · mood · weather · text)은 바꾸지 마세요. 비워 두면 기본 문장을 씁니다 (칸에 흐리게 보이는 글).' };
 

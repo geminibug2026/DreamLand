@@ -49,6 +49,8 @@ const PAUSE_CODES = new Set(['NO_KEY', 'NAI_401', 'NAI_402', 'NAI_403', 'NAI_429
 const NAI_ERRORS = { 400: 'NovelAI 가 생성 설정을 거부했어요.', 401: 'NovelAI 키를 확인해 주세요.', 402: 'Anlas 또는 생성 한도가 부족해요.', 403: '계정의 모델 사용 권한을 확인해 주세요.', 429: 'NovelAI 요청 한도예요. 60초 뒤에 다시 시도해 주세요.' };
 
 const cache = new Map();   // 삽화 id → dataURL
+const loaded = new Set();   // 삽화를 이미 읽어 둔 대화
+on('chat:deleted', id => loaded.delete(id)); on('data:imported', () => loaded.clear());
 const Q = { items: [], paused: false, running: false };
 let sessionRequests = 0, cooldownUntil = 0, askedAt = 0, startedAt = 0, lastPlan = null;
 on('generate:start', () => { startedAt = now(); });
@@ -98,7 +100,9 @@ export const Illust = {
     if (!next.auto) this.cancelWaiting(x => x.automatic);
     return next;
   },
-  async load(chatId) { for (const a of await DB.byOwner('chat:' + chatId)) if (a.kind === 'illust') cache.set(a.id, a.data); },
+  /** 이 대화의 삽화를 읽어 둔다. 한 번 읽은 방은 다시 읽지 않는다 (새로 그린 것은 remember 로 들어온다) */
+  async load(chatId) { if (loaded.has(chatId)) return; for (const a of await DB.byOwner('chat:' + chatId)) if (a.kind === 'illust') cache.set(a.id, a.data); loaded.add(chatId); },
+  ready: chatId => loaded.has(chatId),
   data: id => cache.get(id) || '',
   remember(rec) { cache.set(rec.id, rec.data); },
   wantsPlan(chat, msgs, type = '') { const c = this.cfg(); return c.auto && c.mode === 'plan' && (msgs.filter(m => m.role === 'assistant').length + (type === 'regen' ? 0 : 1)) % Math.max(1, c.every || 1) === 0; },

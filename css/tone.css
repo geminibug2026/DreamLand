@@ -1,0 +1,83 @@
+/* ── Dreamland 결 ── detail.css 다음에 읽힌다
+   ① 엠블럼: 그림이 없는 캐릭터의 자리에 놓는 선 그림
+   ② 초상 색: 그림 가장자리에서 뽑은 색(--tk). 없으면 테마의 포인트 색을 쓴다
+   ③ 깊이: 종이가 색지 위에 한 장 얹힌 듯한 어긋난 판 + 아래로 떨어지는 옅은 그늘
+   색은 전부 테마 변수와 --tk 에서 온다. */
+:root { --tk: var(--accent); --sh: var(--text); }
+[data-tone="dark"] { --sh: #000; }
+.toned { --tk: var(--tone-d); }
+[data-tone="dark"] .toned { --tk: var(--tone-l); }
+:root, .toned {
+  --wash: color-mix(in srgb, var(--tk) 16%, var(--surface));
+  --plate: color-mix(in srgb, var(--tk) 36%, var(--bg));
+  --shade: color-mix(in srgb, var(--sh) 40%, transparent);
+}
+
+/* ════════ 엠블럼 ════════ */
+.emb { display: block; width: 100%; height: auto; --paper: var(--surface2); color: var(--ink); fill: none; stroke: currentColor; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; overflow: visible; pointer-events: none; }
+.emb .h { stroke-width: 1; } .emb .d { stroke-width: 1.8; stroke-dasharray: .1 6.4; } .emb .ds { stroke-width: 1; stroke-dasharray: 5 4.5; }
+.emb .k { fill: currentColor; stroke: none; } .emb .w { fill: var(--paper); } .emb .p { fill: var(--paper); stroke: none; }
+.emb .q { stroke: var(--paper); stroke-width: 1.2; } .emb .wh { fill: var(--paper); stroke-width: 1; } .emb .c { fill: var(--accent); stroke: none; }
+/* 작게 쓸 때: 잔선은 빼고 굵은 형태만 */
+.emb.mini { stroke-width: 4.2; } .emb.mini .h, .emb.mini .d, .emb.mini .ds, .emb.mini .q { display: none; } .emb.mini .wh { stroke-width: 2.4; }
+.print .emb, .arch .emb { width: 92%; } .print.main .emb { width: 90%; } .arch.sm .emb { width: 80%; }
+.arch-card .emb, .cast .emb { stroke-width: 3.1; } .arch-card .emb .h, .cast .emb .h { stroke-width: 1.5; } .arch-card .emb .d, .cast .emb .d { stroke-width: 2.3; }
+.avatar.blank { background: var(--surface2); color: var(--ink); font: 800 .95em var(--display); }
+.avatar .emb { width: 84%; stroke-width: 7; } .avatar .emb .wh { stroke-width: 4; }
+
+/* ════════ 이름: 잉크에서 초상 색으로 흐른다 ════════ */
+.sheet-title h3, .dream-card-name { background: linear-gradient(98deg, var(--ink) 24%, var(--tk) 108%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; padding-bottom: .08em; }
+.dream-name, .dream-card-name { align-self: flex-start; }
+.emo { -webkit-text-fill-color: initial; }
+
+/* ════════ 홈 ════════ */
+.dream { background: linear-gradient(106deg, var(--surface) 40%, var(--wash)); box-shadow: 0 1px 0 var(--ink-line), 0 26px 40px -30px var(--shade); }
+/* 틀의 모서리 장식은 두지 않는다 */
+.dream::before { display: none; }
+.dream-line { border-left-color: var(--tk); } .dream .ellipse { border-color: var(--tk); } .dream-window .star.s1 { color: var(--tk); }
+.dream .dots button.on { background: var(--tk); border-color: var(--tk); }
+.dream .moon-row .on, .dream .bigmoon { color: var(--tk); }
+/* 큰 달은 틀 밖으로 나가지 않는다 */
+.dream .bigmoon { top: -36px; }
+.dream .print { box-shadow: 0 1px 0 1px var(--ink-line), 0 22px 30px -16px color-mix(in srgb, var(--tk) 44%, transparent), 0 30px 46px -24px var(--shade); }
+.dream .print.detail::after { border-color: var(--tk); background: linear-gradient(var(--tk), var(--tk)) 0 0 / 7px 7px no-repeat, linear-gradient(var(--tk), var(--tk)) 100% 0 / 7px 7px no-repeat, linear-gradient(var(--tk), var(--tk)) 0 100% / 7px 7px no-repeat, linear-gradient(var(--tk), var(--tk)) 100% 100% / 7px 7px no-repeat; }
+.threads { padding-bottom: 16px; margin-bottom: -10px; }
+.thread { box-shadow: 0 12px 18px -16px var(--shade); } .thread .arch.sm { box-shadow: 3px 3px 0 var(--plate); }
+.arch-card .arch { box-shadow: 5px 5px 0 var(--plate); transition: transform .35s var(--ease), box-shadow .35s var(--ease); }
+.arch-card:hover .arch { transform: translate(-2px, -4px); box-shadow: 8px 9px 0 var(--plate); }
+.arch-card.add .arch { box-shadow: none; } .arch-card b::before { background: var(--tk); }
+.arch-grid.cols-4 .arch-card .arch { box-shadow: 3px 3px 0 var(--plate); }
+
+/* 캐릭터 시트 */
+.sheet .arch.lg { box-shadow: 7px 7px 0 var(--plate); } .sheet-notes { border-left-color: var(--tk); }
+
+/* ════════ 대화 ════════ */
+/* 옆 프로필: 초상과 정보가 한 장. 턴 수는 초상 색 책갈피에, 맨 밑 띠에는 시작한 날의 달·날짜·며칠째 */
+.dream-card.leaf { gap: 0; background: var(--surface); border: 1px solid var(--ink); box-shadow: 7px 7px 0 var(--plate), 0 34px 30px -26px var(--shade); }
+.dream-card.leaf .sheet-window { margin-bottom: 0; }
+.leaf .sheet-window .arch { aspect-ratio: 4 / 5; border: 0; border-bottom: 1px solid var(--ink); } .leaf .sheet-window .arch::before { display: none; }
+.leaf-mark { position: absolute; right: 18px; top: -7px; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 38px; padding: 15px 7px 24px; background: var(--tk); color: var(--surface); clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 13px), 0 100%); pointer-events: none; }
+.leaf-mark b { font: 800 17px/1 var(--display); letter-spacing: -.02em; } .leaf-mark span { font-size: 11px; line-height: 1.3; opacity: .86; }
+.dream-card.leaf > .exs-cap { margin: 10px 18px 0; }
+.leaf-head { display: flex; flex-direction: column; gap: 1px; min-width: 0; padding: 15px 18px 13px; } .leaf-head .dream-card-name { font-size: 1.7em; }
+.leaf .dream-rows { display: grid; grid-template-columns: 1fr 1fr; column-gap: 16px; width: auto; margin: 0 18px; padding-top: 4px; background: none; border-top: 1px solid var(--line); }
+.leaf .dream-rows div { flex-direction: column; justify-content: flex-start; gap: 1px; min-width: 0; padding: 6px 0 4px; border-bottom: 0; }
+.leaf .dream-rows span { font-size: .86em; } .leaf .dream-rows b { text-align: left; overflow-wrap: anywhere; }
+.leaf-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding: 7px 18px 8px; background: var(--ink); color: var(--surface); font: 500 11px var(--display); letter-spacing: .14em; font-variant-numeric: tabular-nums; }
+.leaf-foot span { display: flex; align-items: center; gap: 6px; }
+@media (min-width: 1181px) { .chat-layout, .chat-layout.with-drawer { grid-template-columns: 264px minmax(0, 840px); } }
+.dream-rows { border-top: 0; padding-top: 2px; background: linear-gradient(90deg, var(--ink), var(--tk)) 0 0 / 100% 2px no-repeat; }
+.cast .arch { box-shadow: 4px 4px 0 var(--plate); }
+.chat-main { box-shadow: 7px 0 0 var(--plate); }
+.msg.ai .msg-head b::before, .daysep span::before { color: var(--tk); }
+.msg.ai > .avatar { box-shadow: 2px 2px 0 var(--plate); }
+.say > span { box-shadow: 2px 3px 0 color-mix(in srgb, var(--sh) 13%, transparent); }
+.msg.ai .say > span { box-shadow: 2px 3px 0 var(--plate); }
+.composer-box { box-shadow: 0 14px 22px -18px var(--shade); }
+.composer-box:focus-within { border-color: var(--ink); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tk) 24%, transparent), 0 14px 22px -18px var(--shade); }
+
+@media (max-width: 1180px) { .chat-main { box-shadow: none; } }
+@media (max-width: 820px) {
+  .dream { background: linear-gradient(180deg, var(--wash), var(--surface) 62%); } .dream .bigmoon { top: -22px; }
+  .arch-card .arch { box-shadow: 4px 4px 0 var(--plate); } .arch-grid.cols-3 .arch-card .arch, .arch-grid.cols-4 .arch-card .arch { box-shadow: 3px 3px 0 var(--plate); }
+}

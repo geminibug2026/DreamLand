@@ -1,7 +1,8 @@
 // ── Dreamland editors: 홈(캐릭터) · 로어북 · 프리셋 · 페르소나 · 정규식 · API · 설정 ──
 import { Vault, S, DB, h, uid, now, on, emit, download, pickFiles, debounce, fmtTime, newChar, newPersona, newLore, newEntry, newRegex, newConn, defaultPreset, defaultSettings, MARKERS, msgText, Secrets } from './core.js';
 import { TALK_DEFAULT, tokens, PROVIDERS, listModels, streamChat, applyRegex, compileRegex, CONTINUE_NUDGE, IMPERSONATE_NUDGE, GROUP_NUDGE, parseServiceAccount } from './engine.js';
-import { icon, btn, iconBtn, avatar, toast, modal, menu, confirmBox, promptBox, form, registerPage, go, refresh, libraryPage, route, pageHead, moonIcon, moonPhase, charPicker, dragSort } from './ui.js';
+import { icon, btn, iconBtn, avatar, toast, modal, menu, confirmBox, promptBox, form, registerPage, go, refresh, libraryPage, route, pageHead, moonIcon, moonPhase, charPicker, dragSort, blankArt, inkName } from './ui.js';
+import { tint } from './tone.js';
 import { importFiles, summarize, charToCard, exportCharPng, worldToLore, loreToWorld, stPresetToPreset, stRegexToRegex, regexToSt } from './cards.js';
 import { startChat, startMenu } from './chat.js';
 import { applyTheme } from './theme.js';
@@ -56,16 +57,17 @@ registerPage('home', root => {
   const stage = h('div.dream');
   const drawStage = () => {
     const c = picks[homeState.pick % Math.max(1, picks.length)];
+    tint(stage, c);
     const sky = h('div.dream-sky', h('div.moon-row', Array.from({ length: 8 }, (_, i) => h(`span${i === cur ? '.on' : ''}`, moonIcon(i === cur ? 22 : 15, phaseDate(i))))), h('small', `${now.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'long' })} · ${moon.name}`));
     if (!c) return stage.replaceChildren(h('div.dream-text', sky, h('h2.dream-name', '첫 꿈을 불러와요'), h('div.dream-actions', btn('이식 센터', { ic: 'folder', cls: 'primary', onclick: () => go('import') }), btn('카드 가져오기', { ic: 'import', onclick: () => importDialog() }), btn('API 연결', { ic: 'plug', onclick: () => go('conns') }))), h('div.dream-window', h('i.crescent'), h('i.halftone'), h('i.star.s1', '✦')));
     const last = S.chats.filter(x => x.charIds.includes(c.id)).sort((a, b) => b.updatedAt - a.updatedAt)[0];
     stage.replaceChildren(
       h('div.dream-text', sky,
-        h('h2.dream-name', c.name), firstLine(c) && h('p.dream-line', firstLine(c)),
+        h('h2.dream-name', inkName(c.name)), firstLine(c) && h('p.dream-line', firstLine(c)),
         c.tags.length ? h('div.dream-tags', c.tags.slice(0, 4).map(t => h('span', '#' + t))) : null,
         h('div.dream-actions', last && btn('이어서', { ic: 'play', cls: 'primary', onclick: () => go('chat', last.id) }), btn('새 대화', { ic: 'chat', onclick: e => startMenu(e.currentTarget, [c.id]) }), btn('프로필', { ic: 'user', cls: 'ghost', onclick: () => charSheet(c) }))),
       h('div.dream-window', h('i.bigmoon', moonIcon(190, now)), h('i.halftone'), h('i.ellipse'), h('i.star.s1', '✦'), h('i.star.s2', '✧'), h('i.rule'),
-        h('button.print.main', { style: artStyle(c), title: c.name, onclick: () => charSheet(c) }, !c.avatar && h('span', c.name.slice(0, 1))),
+        h('button.print.main', { style: artStyle(c), title: c.name, onclick: () => charSheet(c) }, blankArt(c)),
         c.avatar ? h('i.print.detail', { style: artStyle(c) }) : null,
         picks.length > 1 ? h('div.dots', picks.map((p, i) => h(`button${i === homeState.pick % picks.length ? '.on' : ''}`, { title: p.name, onclick: () => { homeState.pick = i; drawStage(); } }))) : null));
   };
@@ -107,10 +109,10 @@ registerPage('home', root => {
     list.sort((a, b) => homeState.sort === 'name' ? a.name.localeCompare(b.name, 'ko') : homeState.sort === 'new' ? b.createdAt - a.createdAt : (lastUse.get(b.id) || b.createdAt) - (lastUse.get(a.id) || a.createdAt));
     count.textContent = list.length + '명';
     const tagOf = c => { const fo = !homeState.folder && folders().find(f => f.id === folderOf(c)); return fo ? h('i.in-folder', icon('folder', 11), fo.name) : null; };
-    grid.replaceChildren(...list.map(c => h('button.arch-card', { draggable: folders().length > 0, ondragstart: e => { e.dataTransfer.setData('text/dreamland-char', c.id); e.dataTransfer.effectAllowed = 'move'; }, onclick: () => charSheet(c),
+    grid.replaceChildren(...list.map(c => tint(h('button.arch-card', { draggable: folders().length > 0, ondragstart: e => { e.dataTransfer.setData('text/dreamland-char', c.id); e.dataTransfer.effectAllowed = 'move'; }, onclick: () => charSheet(c),
       oncontextmenu: e => { e.preventDefault(); folderMenu(e.currentTarget, c, refresh); } },
-      h('div.arch', { style: artStyle(c) }, !c.avatar && h('span', c.name.slice(0, 1)), c.fav && h('i.fav', icon('star', 12)), tagOf(c)),
-      h('b', c.name), h('small', firstLine(c) || c.tags.slice(0, 3).map(t => '#' + t).join(' ') || ' '))),
+      h('div.arch', { style: artStyle(c) }, blankArt(c), c.fav && h('i.fav', icon('star', 12)), tagOf(c)),
+      h('b', c.name), h('small', firstLine(c) || c.tags.slice(0, 3).map(t => '#' + t).join(' ') || ' ')), c)),
       !list.length && homeState.folder && homeState.folder !== '-' ? h('p.dim.folder-empty', '이 폴더는 아직 비어 있어요. 위의 "캐릭터 담기"로 한 번에 넣거나, 전체 목록에서 카드를 폴더 탭으로 끌어다 놓으세요.') : null,
       h('button.arch-card.add', { onclick: async () => { const c = await S.save('chars', newChar({ folder: homeState.folder && homeState.folder !== '-' ? homeState.folder : '' }), true); charEditor(c); } }, h('div.arch', icon('plus', 26)), h('b', '새 캐릭터'), h('small', '직접 만들기')));
   };
@@ -120,7 +122,7 @@ registerPage('home', root => {
   const secHead = (title, ...side) => h('header.sec-head', moonIcon(16, now), h('h2', title), h('i'), side);
   root.append(h('section.home',
     stage,
-    recent.length ? h('div', secHead('이어서'), h('div.threads', recent.map(c => { const chars = c.charIds.map(id => S.get('chars', id)).filter(Boolean); return h('button.thread', { onclick: () => go('chat', c.id) }, h('div.arch.sm', { style: artStyle(chars[0]) }, !chars[0]?.avatar && h('span', (chars[0]?.name || '?').slice(0, 1))), h('div.thread-text', h('b', chars.map(x => x.name).join(', ') || '삭제된 캐릭터'), h('small', c.preview || '새 대화'), h('time', fmtTime(c.updatedAt)))); }))) : null,
+    recent.length ? h('div', secHead('이어서'), h('div.threads', recent.map(c => { const chars = c.charIds.map(id => S.get('chars', id)).filter(Boolean); return tint(h('button.thread', { onclick: () => go('chat', c.id) }, h('div.arch.sm', { style: artStyle(chars[0]) }, chars[0] ? blankArt(chars[0], true) : h('span', '?')), h('div.thread-text', h('b', chars.map(x => x.name).join(', ') || '삭제된 캐릭터'), h('small', c.preview || '새 대화'), h('time', fmtTime(c.updatedAt)))), chars[0]); }))) : null,
     h('div', secHead('캐릭터', count, sizeBtn, btn('가져오기', { ic: 'import', cls: 'ghost', onclick: () => importDialog() })),
       h('div.filter-row', sortBtn('recent', '최근'), sortBtn('new', '신규'), sortBtn('name', '이름'), h(`button.chip${homeState.fav ? '.on' : ''}`, { onclick: () => { homeState.fav = !homeState.fav; refresh(); } }, '즐겨찾기'),
         ...tags.map(t => h(`button.chip${homeState.tag === t ? '.on' : ''}`, { onclick: () => { homeState.tag = homeState.tag === t ? '' : t; refresh(); } }, '#' + t)),
@@ -134,7 +136,7 @@ function charSheet(c) {
   let m, tab = '대화';
   const pane = h('div.sheet-pane');
   const drawPane = () => pane.replaceChildren(
-    h('div.sheet-title', h('h3', c.name), h('button.ibtn.star', { class: c.fav ? 'on' : '', title: '즐겨찾기', onclick: async e => { const el = e.currentTarget; c.fav = !c.fav; el.classList.toggle('on', c.fav); await S.save('chars', c, true); } }, icon('star'))),
+    h('div.sheet-title', h('h3', inkName(c.name)), h('button.ibtn.star', { class: c.fav ? 'on' : '', title: '즐겨찾기', onclick: async e => { const el = e.currentTarget; c.fav = !c.fav; el.classList.toggle('on', c.fav); await S.save('chars', c, true); } }, icon('star'))),
     h('p.dim', [c.creator && `by ${c.creator}`, c.version && `v${c.version}`, `대화 ${chats.length}개`, `≈${charTokens(c).toLocaleString()} 토큰`].filter(Boolean).join(' · ')),
     c.tags.length ? h('div.tag-row', c.tags.map(t => h('span.chip.static', '#' + t))) : null,
     h('div.row.wrap', btn('RP 시작', { ic: 'book', cls: 'primary', onclick: () => { m.close(); startChat([c.id], { mode: 'rp' }); } }), btn('대화 시작', { ic: 'chat', onclick: () => { m.close(); startChat([c.id], { mode: 'talk' }); } }), chats[0] && btn('이어서', { ic: 'play', onclick: () => { m.close(); go('chat', chats[0].id); } }), btn('편집', { ic: 'edit', onclick: () => { m.close(); charEditor(c); } }),
@@ -152,7 +154,7 @@ function charSheet(c) {
       ? (chats.length ? h('div.sheet-chats', chats.slice(0, 8).map(x => h('button.mini-chat', { onclick: () => { m.close(); go('chat', x.id); } }, h('span', x.name || x.preview || '새 대화'), h('time', fmtTime(x.updatedAt))))) : h('p.dim', '아직 대화가 없어요.'))
       : h('div.sheet-notes', c.creatorNotes || c.description || '설명이 아직 없어요.'));
   drawPane();
-  m = modal({ title: '', wide: true, body: h('div.sheet', h('div.sheet-window', h('i.orbit'), h('div.arch.lg', { style: artStyle(c) }, !c.avatar && h('span', c.name.slice(0, 1)))), pane) });
+  m = modal({ title: '', wide: true, body: tint(h('div.sheet', h('div.sheet-window', h('i.orbit'), h('div.arch.lg', { style: artStyle(c) }, blankArt(c))), pane), c) });
 }
 
 export function charEditor(c) {

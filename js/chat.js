@@ -2,7 +2,8 @@
 import { S, DB, h, esc, uid, now, on, emit, newChat, newMsg, msgText, fmtTime, download, debounce, pickFiles, readDataURL, shrinkImage, clamp } from './core.js';
 import { buildPrompt, streamChat, applyRegex, macro, makeCtx, tokens, roll, quickCall, activeBooks, prefillOk, splitThink, parseTalk, postFormat } from './engine.js';
 import { render } from './format.js';
-import { icon, btn, iconBtn, avatar, toast, modal, menu, confirmBox, promptBox, go, route, registerPage, form, charPicker } from './ui.js';
+import { icon, btn, iconBtn, avatar, toast, modal, menu, confirmBox, promptBox, go, route, registerPage, form, charPicker, blankArt, inkName, moonIcon } from './ui.js';
+import { tint } from './tone.js';
 import { chatToStJsonl } from './cards.js';
 import { X, runFilters } from './hooks.js';
 import { Assets } from './assets.js';
@@ -60,15 +61,21 @@ registerPage('chat', async (root, arg) => {
     main.append(h('div.empty.big', icon('moon', 46), h('p', '아직 대화가 없어요. 캐릭터를 골라 첫 장면을 열어 보세요.'), btn('캐릭터 보러 가기', { ic: 'home', cls: 'primary', onclick: () => go('home') })));
     return;
   }
-  const list = cur.gen?.chat === chat ? cur.gen.msgs : await S.msgs(chat.id);
+  const list = cur.gen?.chat === chat ? cur.gen.msgs : await S.msgsFast(chat.id);
+  if (!main.isConnected) return;   // 읽는 사이 다른 화면으로 넘어갔다
   cur.chat = chat; cur.msgs = list; cur.shown = 60; cur.lastPrompt = null; cur.openedAt = now(); cur.chimeRun = 0;
   if (!S.get('personas', chat.personaId)) {   // 정해 둔 페르소나가 없으면 이 방에서 마지막으로 쓴 이름, 그것도 없으면 지금 기본 페르소나로
     const last = [...list].reverse().find(m => m.role === 'user' && m.name), p = (last && S.personas.find(x => x.name === last.name)) || S.persona(chat);
-    if (p) { chat.personaId = p.id; await S.save('chats', chat, true); }
+    if (p) { chat.personaId = p.id; S.save('chats', chat, true).catch(e => console.warn(e)); }
   }
-  await Promise.all([Assets.load(assetOwners()), Memory.load(chat.id), Illust.load(chat.id)]).catch(e => console.warn(e));
   route.arg = chat.id; S.set({ lastChat: chat.id });
-  drawMain(); drawSide(); if (cur.drawer) drawDrawer();
+  // 에셋 · 기억 · 삽화를 기다리지 않고 먼저 그린다. 처음 여는 방이라 아직 읽지 못한 것은 읽는 대로 채워 넣는다
+  const owners = assetOwners(), had = { assets: Assets.ready(owners), mem: !!Memory.get(chat.id), illust: Illust.ready(chat.id) };
+  const loading = Promise.all([Assets.load(owners), Memory.load(chat.id), Illust.load(chat.id)]).catch(e => console.warn(e));
+  drawMain({ lazy: true }); drawSide(); if (cur.drawer) drawDrawer();
+  await loading;
+  if (!main.isConnected || cur.chat !== chat) return;
+  if (!had.assets || !had.mem || !had.illust) fillLate(had, owners);
   emit('chat:open', chat); const awayFor = now() - (chat.seenAt || chat.updatedAt || now()); if (chat.unread) { chat.unread = 0; S.save('chats', chat, true); drawSide(); }
   if (!(await catchUp(chat, awayFor))) armAuto();
 });
@@ -80,7 +87,10 @@ const roomNo = c => { const key = S.chats.length + ':' + (S.chats[S.chats.length
 const roomName = c => { const t = titleOf(c), n = String(c.name || '').trim(); const cut = n.toLowerCase().startsWith(t.toLowerCase()) ? n.slice(t.length).replace(/^[\s\-–—·:@]+/, '') : n; return cut || `대화 ${roomNo(c)}`; };
 const daysOf = c => Math.max(1, Math.round(((c.updatedAt || c.createdAt) - c.createdAt) / 86400000) + 1);
 const ago = t => { const d = (now() - t) / 60000; return d < 1 ? '방금' : d < 60 ? `${Math.floor(d)}분 전` : d < 1440 ? `${Math.floor(d / 60)}시간 전` : d < 43200 ? `${Math.floor(d / 1440)}일 전` : new Date(t).toLocaleDateString('ko-KR', { year: '2-digit', month: 'numeric', day: 'numeric' }); };
-function drawSide() {
+function drawSide(force) {
+  if (!ui.side) return;
+  if (!force && !ui.layout?.classList.contains('show-side')) { ui.sideStale = true; return; }   // 닫혀 있으면 열 때 그린다
+  ui.sideStale = false;
   const q = h('input.inp.search', { placeholder: '캐릭터 · 대화방 · 내용 찾기', oninput: debounce(() => list(), 140) });
   const listEl = h('div.chat-list');
   const fold = cur.fold ||= new Set(), more = cur.more ||= new Map(), PAGE = 6;
@@ -160,7 +170,7 @@ function groupDialog() {
 }
 
 // ════════ 메인 영역 ════════
-function drawMain() {
+function drawMain({ lazy = false } = {}) {
   ui.top = h('header.chat-top'); ui.hud = h('div.hud-slot'); ui.scroll = h('div.chat-scroll'); ui.msgs = h('div.msgs'); ui.composer = h('footer.composer');
   ui.msgs.addEventListener('click', e => {   // 누른 메시지 하나만 고른다 (좁은 화면 · 터치에서 도구를 여는 방법)
     if (e.target.closest('button, a, input, textarea, select, summary, label, img, figure, .msg-tools') || String(getSelection())) return;
@@ -169,26 +179,48 @@ function drawMain() {
     if (el && !was) el.classList.add('picked');
   });
   ui.scroll.append(ui.msgs);
+  const sc = ui.scroll;
   ui.main.replaceChildren(ui.top, ui.hud, ui.scroll, ui.composer);
   ui.main.style.setProperty('--chat-bg', cur.chat.bg ? `url("${cur.chat.bg}")` : 'none');
   ui.main.classList.toggle('has-bg', !!cur.chat.bg);
   ui.main.classList.toggle('is-group', cur.chat.charIds.length > 1);
   ui.main.classList.toggle('mode-talk', modeOf(cur.chat) === 'talk'); ui.main.classList.toggle('mode-rp', modeOf(cur.chat) === 'rp');
   ui.main.classList.toggle('in-scene', modeOf(cur.chat) === 'talk' && !!cur.chat.scene?.on);
-  drawTop(); drawHud(); drawMsgs(); drawComposer(); drawDossier();
-  requestAnimationFrame(() => { ui.scroll.scrollTop = ui.scroll.scrollHeight; });
+  drawTop(); drawHud(); drawMsgs({ lazy }); drawComposer(); drawDossier();
+  requestAnimationFrame(() => { sc.scrollTop = sc.scrollHeight; });
+  pinBottom();
+}
+/** 방을 연 직후 잠깐은 그림이 늦게 떠서 밀려도 맨 아래에 머문다. 손을 대거나 다른 메시지로 건너뛰면 바로 푼다 */
+let unpin = () => { };
+function pinBottom(ms = 1400) {
+  unpin(); const sc = ui.scroll, box = ui.msgs; if (!sc || !window.ResizeObserver) return;
+  const ro = new ResizeObserver(() => { if (sc.isConnected) sc.scrollTop = sc.scrollHeight; }), evs = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
+  const off = () => { ro.disconnect(); clearTimeout(timer); evs.forEach(ev => sc.removeEventListener(ev, off)); if (unpin === off) unpin = () => { }; };
+  const timer = setTimeout(off, ms); evs.forEach(ev => sc.addEventListener(ev, off, { passive: true })); ro.observe(box); unpin = off;
+}
+/** 먼저 그려 둔 화면에, 뒤늦게 읽힌 에셋 · 삽화 · 기억을 채운다 */
+function fillLate(had, owners) {
+  const fillAssets = !had.assets && Assets.count(owners) > 0, from = Math.max(0, cur.msgs.length - cur.shown);
+  for (let i = from; i < cur.msgs.length; i++) {
+    const m = cur.msgs[i], s = m.swipes[m.sw]; if (!s || (m.role === 'system' && (m.dice || m.curtain))) continue;
+    if (!((!had.illust && s.illust?.length) || (fillAssets && bodyHtml(m).includes('asset-frame')))) continue;
+    const old = ui.msgs.querySelector(`[data-id="${m.id}"]`); if (!old) continue;   // 아직 안 그린 앞부분은 그릴 때 제대로 나온다
+    const el = msgEl(m, i); el.classList.add('still'); if (old.classList.contains('picked')) el.classList.add('picked'); old.replaceWith(el);
+  }
+  drawHud(); drawDossier(); if (cur.drawer) drawDrawer();
 }
 
 function drawTop() {
   const c = cur.chat, chars = charsOf(c);
   const conn = S.connFor(c);
+  tint(ui.layout, chars[0]);   // 대화 화면 전체가 주인공 초상의 색을 띤다
   ui.status = h('span.status');
   ui.gauge = h('button.gauge', { title: '프롬프트 살펴보기', onclick: inspector });
   const talk = modeOf(c) === 'talk', p0 = talk && chars[0] ? presenceOf(c, chars[0]) : null;
   const setMode = async k => { if (modeOf(c) === k) return; if (cur.busy) return toast('답변이 끝난 뒤에 바꿀 수 있어요'); c.mode = k; await S.save('chats', c, true); drawMain(); armAuto(); if (k === 'rp' && c.scene?.on) toast('열어 둔 장면은 대화 모드로 돌아오면 이어져요'); };
   const branchBtn = c.parent ? h('button.top-branch', { title: '원래 대화방으로', onclick: () => S.get('chats', c.parent.id) ? go('chat', c.parent.id) : toast('원래 대화방이 지워졌어요') }, icon('branch', 12)) : null;
   ui.top.replaceChildren(
-    h('button.ibtn', { title: '대화 목록', onclick: () => ui.layout.classList.toggle('show-side') }, icon('menu')),
+    h('button.ibtn', { title: '대화 목록', onclick: () => { if (ui.layout.classList.toggle('show-side') && ui.sideStale) drawSide(true); } }, icon('menu')),
     h('div.av-stack', chars.slice(0, 3).map(ch => avatar(ch, 'sm'))),
     h('div.top-title', { title: `${roomName(c)} · 메시지 ${cur.msgs.length}개 · ${conn ? `${conn.name}${conn.model ? ' · ' + conn.model : ''}` : '연결 없음'}` }, h('b', titleOf(c)),
       p0 ? h('div.top-sub', branchBtn,   // 대화 모드: 이름 아래 한 줄에 상태 · 시각 · 방 이름
@@ -234,15 +266,19 @@ function rewindState() { if (cur.chat && Live.rewind(cur.chat, cur.msgs)) { draw
 function drawDossier() {
   if (!ui.dossier || !cur.chat) return;
   const c = cur.chat, chars = charsOf(c), ch = chars[0]; if (!ch) return ui.dossier.replaceChildren();
-  if (chars.length > 1) return ui.dossier.replaceChildren(h('div.dream-card', h('div.cast-grid', chars.map(x => h(`button.cast${(c.muted || []).includes(x.id) ? '.muted' : ''}`, { title: `${x.name}의 차례로`, onclick: () => generate('normal', { speaker: x }) }, h('div.arch', { style: x.avatar ? { backgroundImage: `url("${x.avatar}")` } : {} }, !x.avatar && h('span', x.name.slice(0, 1))), h('b', x.name)))), h('div.dream-rows', h('div', h('span', '등장인물'), h('b', `${chars.length}명`)), h('div', h('span', '대화'), h('b', `${cur.msgs.filter(m => m.role === 'assistant').length}턴`)))));
+  if (chars.length > 1) return ui.dossier.replaceChildren(h('div.dream-card', h('div.cast-grid', chars.map(x => tint(h(`button.cast${(c.muted || []).includes(x.id) ? '.muted' : ''}`, { title: `${x.name}의 차례로`, onclick: () => generate('normal', { speaker: x }) }, h('div.arch', { style: x.avatar ? { backgroundImage: `url("${x.avatar}")` } : {} }, blankArt(x)), h('b', x.name)), x))), h('div.dream-rows', h('div', h('span', '등장인물'), h('b', `${chars.length}명`)), h('div', h('span', '대화'), h('b', `${cur.msgs.filter(m => m.role === 'assistant').length}턴`)))));
   const mem = Memory.get(c.id), tr = Object.entries(c.tracker || {});
   const scene = (mem?.status || []).filter(s => s.entity === 'scene').slice(0, 3).map(s => [s.slot, s.value]);
-  const rows = [...tr.slice(0, 4), ...(tr.length ? [] : scene), ['대화', `${cur.msgs.filter(m => m.role === 'assistant').length}턴`], ...(S.settings.memory.enabled ? [['기억', `${mem?.memories.length || 0}개`]] : [])];
+  const rows = [...tr.slice(0, 4), ...(tr.length ? [] : scene), ...(S.settings.memory.enabled ? [['기억', `${mem?.memories.length || 0}개`]] : [])];
+  const turns = cur.msgs.filter(m => m.role === 'assistant').length, born = new Date(c.createdAt || now()), p2 = n => String(n).padStart(2, '0');
+  // 초상과 정보가 한 장. 턴 수는 초상 색 책갈피에, 맨 밑 띠에는 대화를 시작한 날의 달·날짜와 며칠째인지
   ui.dossier.replaceChildren(
-    h('div.dream-card',
-      h('div.sheet-window', h('i.orbit'), h('button.arch.lg', { title: '초상 크게 보기', style: ch.avatar ? { backgroundImage: `url("${ch.avatar}")` } : {}, onclick: () => ch.avatar && modal({ title: ch.name, wide: true, body: h('img.full-img', { src: ch.avatar }) }) }, !ch.avatar && h('span', ch.name.slice(0, 1)))),
-      h('b.dream-card-name', titleOf(c)), ch.tags.length ? h('small', ch.tags.slice(0, 3).map(t => '#' + t).join(' ')) : null,
-      h('div.dream-rows', rows.map(([k, v]) => h('div', h('span', k), h('b', v))))));
+    h('div.dream-card.leaf',
+      h('div.sheet-window', h('i.orbit'), h('button.arch.lg', { title: '초상 크게 보기', style: ch.avatar ? { backgroundImage: `url("${ch.avatar}")` } : {}, onclick: () => ch.avatar && modal({ title: ch.name, wide: true, body: h('img.full-img', { src: ch.avatar }) }) }, blankArt(ch)),
+        h('span.leaf-mark', h('b', String(turns)), h('span', '턴'))),
+      h('div.leaf-head', h('b.dream-card-name', inkName(titleOf(c))), ch.tags.length ? h('small', ch.tags.slice(0, 3).map(t => '#' + t).join(' ')) : null),
+      rows.length ? h('div.dream-rows', rows.map(([k, v]) => h('div', h('span', k), h('b', v)))) : null,
+      h('div.leaf-foot', h('span', moonIcon(13, born), `${born.getFullYear()}.${p2(born.getMonth() + 1)}.${p2(born.getDate())}`), h('span', `${daysOf(c)}일째`))));
 }
 function setStatus(t) { cur.status = t; if (ui.status) { ui.status.textContent = t; ui.status.classList.toggle('on', !!t); } }
 function drawGauge() {
@@ -253,15 +289,30 @@ function drawGauge() {
   ui.gauge.title = n != null ? `프롬프트 살펴보기 · ≈${n.toLocaleString()} / ${max.toLocaleString()} 토큰` : '프롬프트 살펴보기';
 }
 
-function drawMsgs() {
-  const from = Math.max(0, cur.msgs.length - cur.shown);
-  const els = []; let day = '';
-  cur.msgs.slice(from).forEach((m, i) => {
-    const d = new Date(Clock.timeOf(cur.chat, m) || 0).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
-    if (d !== day && m.ts && Clock.mode(cur.chat) !== 'none') { day = d; els.push(h('div.daysep', h('span', d))); }
-    els.push(msgEl(m, from + i));
-  });
-  ui.msgs.replaceChildren(...[from > 0 ? btn(`이전 메시지 ${from}개 더 보기`, { cls: 'ghost more-btn', onclick: () => { const hgt = ui.scroll.scrollHeight; cur.shown += 80; drawMsgs(); ui.scroll.scrollTop = ui.scroll.scrollHeight - hgt; } }) : null, ...els].filter(Boolean));
+const dayFmt = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
+const dayOf = t => { const d = new Date(t || 0); return isNaN(d) ? '' : dayFmt.format(d); };
+const whenIdle = fn => window.requestIdleCallback ? requestIdleCallback(fn, { timeout: 160 }) : setTimeout(fn, 24);
+let drawJob = 0;
+/** 메시지 목록을 그린다. lazy(방에 막 들어왔을 때)면 화면에 보이는 끝부분만 먼저 그리고, 그 위쪽은 틈나는 대로 이어 붙인다 */
+function drawMsgs({ lazy = false } = {}) {
+  const job = ++drawJob, chat = cur.chat, list = cur.msgs, box = ui.msgs, sc = ui.scroll, total = list.length, from = Math.max(0, total - cur.shown);
+  const seps = new Map(), clockOn = Clock.mode(chat) !== 'none'; let day = '';   // 날짜가 바뀌는 자리
+  if (clockOn) for (let i = from; i < total; i++) { const m = list[i]; if (!m.ts) continue; const d = dayOf(Clock.timeOf(chat, m)); if (d !== day) { day = d; seps.set(i, d); } }
+  const build = (a, b) => { const out = []; for (let i = a; i < b; i++) { if (seps.has(i)) out.push(h('div.daysep', h('span', seps.get(i)))); const el = msgEl(list[i], i); el.classList.add('still'); out.push(el); } return out; };
+  const more = from > 0 ? btn(`이전 메시지 ${from}개 더 보기`, { cls: 'ghost more-btn', onclick: () => { const hgt = ui.scroll.scrollHeight; cur.shown += 80; drawMsgs(); ui.scroll.scrollTop = ui.scroll.scrollHeight - hgt; } }) : null;
+  const FIRST = 12; let per = 6;   // 한 번에 이어 붙이는 개수 — 걸린 시간을 보고 늘리거나 줄인다
+  let head = lazy && total - from > FIRST + 8 ? total - FIRST : from;
+  box.replaceChildren(...(more ? [more] : []), ...build(head, total));
+  if (head <= from) return;
+  const step = () => {
+    if (job !== drawJob || box !== ui.msgs || list !== cur.msgs || !box.isConnected) return;   // 그사이 다시 그렸거나 방을 나갔다
+    const t = performance.now(), a = Math.max(from, head - per), els = build(a, head), gap = sc.scrollHeight - sc.scrollTop;
+    if (more) more.after(...els); else box.prepend(...els);
+    head = a; sc.scrollTop = sc.scrollHeight - gap;   // 위에 붙인 만큼 밀리지 않게 보던 자리를 지킨다
+    per = Math.max(2, Math.min(24, Math.round(per * 12 / Math.max(1, performance.now() - t))));   // 한 묶음이 12ms 안팎이 되게
+    if (head > from) whenIdle(step);
+  };
+  requestAnimationFrame(() => whenIdle(step));
 }
 
 const bodyHtml = (m) => {
@@ -280,6 +331,7 @@ function msgEl(m, idx) {
   const el = h(`article.msg.${m.role === 'user' ? 'user' : m.role === 'assistant' ? 'ai' : 'sys'}${m.hidden ? '.hidden-msg' : ''}`, { dataset: { id: m.id } });
   const grouped = (cur.chat?.charIds.length || 0) > 1;
   const castNo = grouped && m.role === 'assistant' ? cur.chat.charIds.indexOf(m.charId) + 1 : 0;
+  if (grouped && m.role === 'assistant' && who?.avatar) tint(el, who);   // 여럿이 있는 방: 말하는 이마다 제 색
   if (grouped && m.role !== 'system') { el.classList.add('grouped'); const prev = cur.msgs[idx - 1]; if (prev && prev.role === m.role && (prev.charId || '') === (m.charId || '') && !prev.dice && new Date(prev.ts).toDateString() === new Date(m.ts).toDateString()) el.classList.add('cont'); }
   const body = h('div.msg-body', { html: bodyHtml(m) });
   if (m.scene) el.classList.add('in-scene');
@@ -981,7 +1033,7 @@ function findInChat() {
 /** 확장 기능에 열어 주는 채팅 조작 */
 export const chatApi = {
   /** 접혀 있는 앞부분까지 펼쳐 그 메시지로 간다 */
-  reveal(id) { const i = cur.msgs.findIndex(m => m.id === id); if (i < 0) return false; const need = cur.msgs.length - i + 4; if (need > cur.shown) { cur.shown = need; drawMsgs(); } const el = ui.msgs?.querySelector(`[data-id="${id}"]`); if (!el) return false; el.scrollIntoView({ block: 'center' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1600); return true; },
+  reveal(id) { unpin(); const i = cur.msgs.findIndex(m => m.id === id); if (i < 0) return false; const need = cur.msgs.length - i + 4; if (need > cur.shown) { cur.shown = need; drawMsgs(); } const el = ui.msgs?.querySelector(`[data-id="${id}"]`); if (!el) return false; el.scrollIntoView({ block: 'center' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1600); return true; },
   roomName: c => roomName(c), groupTitle: c => titleOf(c),
   current: () => ({ chat: cur.chat, msgs: cur.msgs, busy: cur.busy }),
   generate: (type = 'normal') => generate(type),
@@ -991,7 +1043,7 @@ export const chatApi = {
   save: () => cur.chat && save(),
   redraw: () => { if (cur.chat && ui.msgs) { drawMsgs(); if (cur.drawer) drawDrawer(); } },
   setStatus: t => setStatus(t),
-  scrollTo: id => ui.msgs?.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
+  scrollTo: id => (unpin(), ui.msgs)?.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
   openDrawer: () => { cur.drawer = true; ui.layout?.classList.add('with-drawer'); drawDrawer(); },
 };
 

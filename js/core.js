@@ -136,14 +136,21 @@ async function tx(store, mode, fn) {
     t.oncomplete = () => res(out?.result); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
   });
 }
+// 최근에 연 대화의 메시지 목록은 메모리에 들고 있는다 — 방에 다시 들어갈 때 통째로 읽어 오지 않게 (S.msgsFast)
+// 어디서든 msgs 저장소에 쓰면 그 방의 사본을 버린다. 다른 탭에서 쓴 것도 알려 받는다
+const msgCache = new Map(); let msgVer = 0, msgBus = null;
+const msgDrop = id => { msgVer++; if (id == null) msgCache.clear(); else msgCache.delete(id); };
+const msgKeep = (id, list) => { msgCache.delete(id); msgCache.set(id, list); while (msgCache.size > 4) msgCache.delete(msgCache.keys().next().value); };
+try { msgBus = new BroadcastChannel('dreamland-msgs'); msgBus.onmessage = e => msgDrop(e.data); } catch { }
+const wrote = (s, id) => { if (s !== 'msgs') return; msgDrop(id); try { msgBus?.postMessage(id ?? null); } catch { } };
 export const DB = {
   all: s => tx(s, 'readonly', o => o.getAll()),
   get: (s, id) => tx(s, 'readonly', o => o.get(id)),
-  put: (s, v) => tx(s, 'readwrite', o => o.put(v)),
-  del: (s, id) => tx(s, 'readwrite', o => o.delete(id)),
-  clear: s => tx(s, 'readwrite', o => o.clear()),
+  put: (s, v) => { wrote(s, v?.id); return tx(s, 'readwrite', o => o.put(v)); },
+  del: (s, id) => { wrote(s, id); return tx(s, 'readwrite', o => o.delete(id)); },
+  clear: s => { wrote(s); return tx(s, 'readwrite', o => o.clear()); },
   byOwner: owner => tx('assets', 'readonly', o => o.index('owner').getAll(owner)),
-  bulk: (s, list) => tx(s, 'readwrite', o => { list.forEach(v => o.put(v)); }),
+  bulk: (s, list) => { wrote(s); return tx(s, 'readwrite', o => { list.forEach(v => o.put(v)); }); },
 };
 
 // ── 기본값 ──
@@ -153,13 +160,20 @@ export const MARKERS = {
   summary: '장기기억 자리', chatHistory: '채팅 기록', jailbreak: '후속 지시',
 };
 
+// 기본 프리셋의 메인 지시문. 옛 문장을 그대로 쓰고 있는 프리셋만 불러올 때 새 문장으로 바꾼다 (직접 고친 것은 건드리지 않는다)
+const MAIN_PROMPT_OLD = "Write {{char}}'s next reply in a fictional roleplay between {{char}} and {{user}}. Stay in character, keep the story moving, and never write {{user}}'s actions or dialogue for them. Put spoken dialogue in double quotes and inner thoughts in single quotes.";
+export const MAIN_PROMPT = `You write {{char}}'s side of an ongoing roleplay with {{user}}. Write the next reply only.
+- Stay inside {{char}}: their voice, knowledge, mood and motives, as the character sheet and the story so far show them. The world and its other characters are yours to write too. {{user}} is not — never write {{user}}'s words, actions, thoughts or decisions, and stop where {{user}} would need to respond.
+- Every reply moves the scene: something is done, said, noticed or changed. Do not restate what just happened, and do not reuse phrasing or sentence patterns from your recent replies.
+- Be concrete: specific actions, sensory detail and dialogue, rather than summaries of what someone feels.
+- Spoken dialogue goes in "double quotes" and inner thoughts in 'single quotes'. Write in the language of the story so far.`;
 export function defaultPreset() {
   const b = (kind, extra = {}) => ({ id: uid(), kind, name: MARKERS[kind] || extra.name || '프롬프트', role: 'system', content: '', enabled: true, depth: null, ...extra });
   return {
     id: uid(), name: '드림랜드 기본', createdAt: now(),
     params: { temperature: 1, topP: null, topK: null, maxTokens: 4096, contextSize: 128000, freqPen: null, presPen: null, minP: null, topA: null, repPen: null, seed: null, stream: true, effort: '', squash: true, prefill: '', stop: [], cardOverrides: true, namesInGroup: true },
     blocks: [
-      b('main', { content: "Write {{char}}'s next reply in a fictional roleplay between {{char}} and {{user}}. Stay in character, keep the story moving, and never write {{user}}'s actions or dialogue for them. Put spoken dialogue in double quotes and inner thoughts in single quotes." }),
+      b('main', { content: MAIN_PROMPT }),
       b('worldInfoBefore'),
       b('personaDescription', { content: "[{{user}}'s persona]\n{{slot}}" }),
       b('charDescription'),
@@ -344,6 +358,7 @@ export const S = {
     if (s && !s.look4) Object.assign(this.settings, { theme: d.theme, fontSize: d.fontSize, chatWidth: d.chatWidth }); // 새 디자인으로 한 번 맞춘다
     this.settings.look4 = true;
     if (!this.presets.length) { const p = defaultPreset(); this.presets.push(p); await DB.put('presets', p); }
+    for (const p of this.presets) { const m = (p.blocks || []).filter(b => b.kind === 'main' && b.content === MAIN_PROMPT_OLD); if (m.length) { m.forEach(b => { b.content = MAIN_PROMPT; }); await DB.put('presets', p); } }
     if (!this.personas.length) { const p = newPersona({ name: '나' }); this.personas.push(p); await DB.put('personas', p); }
     if (!this.get('presets', this.settings.activePreset)) this.settings.activePreset = this.presets[0].id;
     if (!this.get('personas', this.settings.activePersona)) this.settings.activePersona = this.personas[0].id;
@@ -375,13 +390,21 @@ export const S = {
   saveSettings: debounce(async () => DB.put('kv', await Vault.packSettings()), 200),
   set(patch) { Object.assign(this.settings, patch); this.saveSettings(); emit('settings', patch); },
   async msgs(chatId) { return (await DB.get('msgs', chatId))?.list || []; },
+  /** 대화 화면용: 방금까지 열어 둔 방이면 메모리의 목록을 바로 돌려준다 (저장된 것과 같은 내용) */
+  async msgsFast(chatId) {
+    const hit = msgCache.get(chatId); if (hit) { msgKeep(chatId, hit); return hit; }
+    const v = msgVer, list = await this.msgs(chatId);
+    if (v === msgVer) msgKeep(chatId, list);   // 읽는 사이 누가 저장했으면 들고 있지 않는다
+    return list;
+  },
   async saveMsgs(chat, list) {
     chat.count = list.length;
     const last = [...list].reverse().find(m => m.role !== 'system') || list[list.length - 1];
     const tail = list[list.length - 1];
     chat.updatedAt = tail ? Math.max(tail.ts || 0, tail.swipes?.[tail.sw]?.ts || 0) || now() : now();
     chat.preview = last ? msgText(last).replace(/\s+/g, ' ').slice(0, 90) : '';
-    await DB.put('msgs', { id: chat.id, list });
+    const put = DB.put('msgs', { id: chat.id, list }), v = msgVer; await put;
+    if (v === msgVer) msgKeep(chat.id, list);   // 그사이 다른 저장이 끼어들었으면 다음에 다시 읽는다
     await this.save('chats', chat, true);
   },
   conn() { return this.get('conns', this.settings.activeConn); },
