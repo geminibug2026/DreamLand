@@ -292,3 +292,10 @@
 .pm-total b, .pm-total span { white-space: nowrap; }
 .pm-head > .badge { flex: none; }
 @media (max-width: 820px) { .pm-head > .badge { order: 3; } }
+
+/* 대화방 옆 목록의 쪽 이동: 좁은 PC 옆 칸에서도 한 줄로 */
+.chat-list > .pager { flex-wrap: nowrap; gap: 2px; padding: 6px 4px 8px; }
+.chat-list > .pager .pg-step { width: 30px; min-width: 30px; height: 32px; padding: 0; flex: none; }
+.chat-list > .pager .pg-info { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .8em; }
+.chat-list > .pager .pg-size { flex: none; width: auto; min-width: 0; height: 32px; padding: 0 22px 0 8px; font-size: .82em; }
+@media (max-width: 820px) { .chat-list > .pager .pg-step { width: 40px; min-width: 40px; height: 40px; } .chat-list > .pager .pg-size { height: 40px; } }
