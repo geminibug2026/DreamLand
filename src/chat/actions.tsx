@@ -60,10 +60,24 @@ export function drawMsgs({ lazy = false } = {}) {
 }
 /** 이전 메시지 더 보기: 보던 자리를 지킨다 */
 export function showMore() { const sc = ui.scroll, hgt = sc?.scrollHeight || 0; cur.shown += 80; drawMsgs(); if (sc) sc.scrollTop = sc.scrollHeight - hgt; }
-/** 메시지 하나를 새로 만든다 */
+/** 보던 자리를 적어 둔다. 돌려받은 함수를 다시 그린 뒤 부르면 그 자리로 되돌린다.
+ *  기준은 고친 메시지(id), 없으면 화면 맨 위에 걸친 메시지. 맨 아래를 보고 있었으면 맨 아래에 남는다 */
+export function holdView(id?: string): () => void {
+  const sc = ui.scroll, box = ui.msgs; if (!sc || !box) return () => { };
+  if (nearBottom() && !id) return () => { if (sc.isConnected) sc.scrollTop = sc.scrollHeight; };
+  const top = sc.getBoundingClientRect().top, all = () => [...box.querySelectorAll<HTMLElement>('article.msg[data-id]')];
+  let el = id ? all().find(a => a.dataset.id === id) : undefined;
+  if (!el) el = all().find(a => a.getBoundingClientRect().bottom > top);
+  if (!el) return () => { };
+  const key = el.dataset.id, off = el.getBoundingClientRect().top - top;
+  const fix = () => { const n = all().find(a => a.dataset.id === key); if (n && sc.isConnected) sc.scrollTop += n.getBoundingClientRect().top - top - off; };
+  return () => { fix(); requestAnimationFrame(fix); setTimeout(fix, 80); };
+}
+/** 메시지 하나를 새로 만든다 (그 메시지가 화면에서 제자리에 남는다) */
 export function redraw(m: Msg, quiet = false) {
+  const back = holdView(m.id);
   cur.paint.delete(m.id); cur.revs.set(m.id, (cur.revs.get(m.id) || 0) + 1); if (!quiet) cur.fresh.add(m.id);
-  flush('msgs');
+  flush('msgs'); back();
 }
 function appendMsg(m: Msg) { cur.fresh.add(m.id); flush('msgs'); }
 
@@ -618,9 +632,8 @@ export const chatApi: ChatApi = {
   // 삽화 · 번역처럼 뒤에서 끝난 일이 목록을 다시 그려도 보던 자리를 지킨다 (맨 아래를 보고 있었으면 맨 아래에 머문다)
   redraw: () => {
     if (!cur.chat || !ui.msgs) return;
-    const sc = ui.scroll, stick = nearBottom(), gap = sc ? sc.scrollHeight - sc.scrollTop : 0;
-    drawMsgs();
-    if (sc) { const keep = () => { if (sc.isConnected) sc.scrollTop = stick ? sc.scrollHeight : sc.scrollHeight - gap; }; keep(); requestAnimationFrame(keep); if (stick) pinBottom(1200); }
+    const stick = nearBottom(), back = holdView();
+    drawMsgs(); back(); if (stick) pinBottom(1200);
     if (cur.drawer) drawDrawer();
   },
   setStatus: t => setStatus(t),

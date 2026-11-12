@@ -1,12 +1,13 @@
 // 메시지 목록: 필요한 만큼만 그리고, 바뀐 메시지 하나만 다시 그린다
 import { memo, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 import { L } from '../legacy';
 import { Avatar, Btn, Icon, IconBtn } from '../kit';
 import { menu, openModal, toast } from '../ui';
 import { B } from './bridge';
 import { cur, ui, useCh } from './store';
 import { DiceCard } from './Dice';
-import { bodyHtml, branch, commitEdit, redraw, delFrom, delMsg, drawScene, editTranslation, generate, msgClock, removeIllust, showMore, speak, swipe, toggleHidden, translate } from './actions';
+import { bodyHtml, branch, commitEdit, holdView, redraw, delFrom, delMsg, drawScene, editTranslation, generate, msgClock, removeIllust, showMore, speak, swipe, toggleHidden, translate } from './actions';
 import { ux } from '../features/usersettings';
 import type { IllustItem, Msg, SceneSpec, Swipe } from './types';
 
@@ -43,7 +44,7 @@ function Illusts({ m, s }: { m: Msg; s: Swipe }) {
 function EditBox({ m, close }: { m: Msg; close: () => void }) {
   const ta = useRef<HTMLTextAreaElement>(null);
   const fit = () => { const el = ta.current; if (!el) return; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight + 4, innerHeight * 0.6) + 'px'; };
-  useEffect(() => { fit(); ta.current?.focus(); }, []);
+  useEffect(() => { fit(); ta.current?.focus({ preventScroll: true }); }, []);
   const ok = () => void commitEdit(m, ta.current?.value ?? '');
   return <div className="edit-box">
     <textarea className="inp edit-area" defaultValue={m.swipes[m.sw].text} spellCheck={false} ref={ta} onInput={fit}
@@ -55,7 +56,9 @@ function EditBox({ m, close }: { m: Msg; close: () => void }) {
 interface MsgProps { m: Msg; idx: number; last: boolean; cont: boolean; still: boolean; picked: boolean }
 const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: MsgProps) {
   useCh('m:' + m.id);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditingRaw] = useState(false);
+  // 편집 상자로 바뀌어 높이가 달라져도 이 메시지가 화면에서 제자리에 남게
+  const setEditing = (v: boolean) => { const back = holdView(m.id); flushSync(() => setEditingRaw(v)); back(); };
   const S = B.S, chat = cur.chat!;
   const s: Swipe = m.swipes[m.sw] || { text: '' };
   const who = m.role === 'user' ? S.persona(chat) : m.role === 'assistant' ? (S.get('chars', m.charId) || { name: m.name }) : null;

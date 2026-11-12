@@ -16,14 +16,14 @@ const slot = () => { const el = document.createElement('span'); el.className = '
 
 /** 번역문을 메시지 자리에서 바로 고친다. 비우고 저장하면 번역을 지운다 */
 function EditBox({ value, onClose, onDone }: { value: string; onClose: () => void; onDone: (v: string) => void }) {
-  const ta = useRef<HTMLTextAreaElement>(null);
+  const ta = useRef<HTMLTextAreaElement>(null), text = useRef(value);   // 마지막으로 적은 글 (상자가 먼저 내려가도 잃지 않게)
   const fit = () => { const t = ta.current; if (!t) return; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight + 4, innerHeight * 0.6) + 'px'; };
-  useEffect(() => { fit(); ta.current?.focus(); }, []);
+  useEffect(() => { fit(); ta.current?.focus({ preventScroll: true }); }, []);
   return <>
     <div className="trx-edit-head"><PathIcon d={SHEET} size={15} /><b>번역 고치기</b><span>원문은 그대로 두고 번역문만 바꿉니다. 비우고 저장하면 번역을 지웁니다.</span></div>
-    <textarea className="inp trx-edit-area" ref={ta} defaultValue={value} spellCheck={false} onInput={fit}
-      onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) onDone(ta.current?.value ?? ''); }} />
-    <div className="row end"><Btn label="취소" cls="ghost" onClick={onClose} /><Btn label="저장" cls="primary" ic="check" onClick={() => onDone(ta.current?.value ?? '')} /></div>
+    <textarea className="inp trx-edit-area" ref={ta} defaultValue={value} spellCheck={false} onInput={e => { text.current = e.currentTarget.value; fit(); }}
+      onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) onDone(text.current); }} />
+    <div className="row end"><Btn label="취소" cls="ghost" onClick={onClose} /><Btn label="저장" cls="primary" ic="check" onClick={() => onDone(text.current)} /></div>
   </>;
 }
 function editTranslation(m: Msg) {
@@ -33,8 +33,9 @@ function editTranslation(m: Msg) {
   if (!art || !body || art.querySelector('.trx-edit')) return;
   const box = document.createElement('div'); box.className = 'trx-edit';
   const root = createRoot(box);
-  const close = () => { root.unmount(); box.remove(); body.style.display = ''; art.classList.remove('trx-editing'); };
-  const done = async (v: string) => { if (v.trim()) { s.tr = v; s.showTr = true; } else { delete s.tr; s.showTr = false; } close(); await persist(chat, msgs); };
+  const close = () => { if (closed) return; closed = true; root.unmount(); box.remove(); body.style.display = ''; art.classList.remove('trx-editing'); };
+  let closed = false;
+  const done = async (v: string) => { if (closed) return; if (v.trim()) { s.tr = v; s.showTr = true; } else { delete s.tr; s.showTr = false; } close(); await persist(chat, msgs); };
   body.style.display = 'none'; body.after(box); art.classList.add('trx-editing');
   root.render(<EditBox value={s.tr} onClose={close} onDone={v => void done(v)} />);
 }
