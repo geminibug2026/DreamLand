@@ -3,8 +3,6 @@
 /* 메시지 도구 줄의 번역 단추 */
 .msg-tools .trx-btn { position: relative; }
 .msg-tools .trx-btn.on { color: var(--accent); }
-.msg-tools .trx-btn.on::after, .msg-tools .trx-btn.has::after { content: ""; position: absolute; right: 4px; top: 4px; width: 5px; height: 5px; background: var(--accent); transform: rotate(45deg); }
-.msg-tools .trx-btn.has::after { background: none; border: 1px solid var(--accent); width: 4px; height: 4px; }
 .msg-tools .trx-btn.idle { opacity: .4; }
 .msg-tools .trx-btn.busy { color: var(--accent); pointer-events: none; }
 .msg-tools .trx-btn.busy .ic, .trx-quick.busy .ic { animation: trx-spin 1.1s linear infinite; }
@@ -12,7 +10,6 @@
 @media (prefers-reduced-motion: reduce) { .msg-tools .trx-btn.busy .ic, .trx-quick.busy .ic { animation: none; opacity: .5; } }
 
 /* 번역을 보고 있는 메시지: 머리글 옆 작은 꼬리표 */
-.msg.trx-shown .msg-head::after { content: "번역"; font-size: .68em; font-weight: 700; letter-spacing: .08em; padding: 1px 6px; border: 1px solid var(--accent); color: var(--accent); border-radius: var(--r-xs); margin-left: 6px; }
 
 /* 보내기 옆 빠른 번역 */
 .trx-quick { width: 42px; height: 42px; flex: none; display: grid; place-items: center; color: var(--dim); border: 1px solid var(--ink-line); border-radius: var(--r-xs); background: var(--surface); transition: color .2s, border-color .2s, background .2s; }
