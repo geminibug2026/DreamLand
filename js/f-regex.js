@@ -1,5 +1,5 @@
 // ── Dreamland 정규식 화면 ── 범위 셋(전역 · 프리셋 · 캐릭터) · 일괄 조작 · 가져오기/내보내기 · 시험 창 · 파이프라인 디버거
-// 실행 규칙은 js/engine.js (applyRegex 와 그 이웃), 진단 문구는 js/regex-lint.js, 실리태번 형식 변환은 js/cards.js 가 맡는다.
+// 실행 규칙은 js/engine.js (applyRegex 와 그 이웃), 진단 문구는 js/regex-lint.js, 형식 변환은 js/cards.js 가 맡는다.
 import { S, h, uid, on, download, pickFiles, debounce, newRegex, arr, msgText } from './core.js';
 import { compileRegex, regexAllowed, regexScripts, regexSkip, regexFind, regexEnv, regexStep, runRegexScript } from './engine.js';
 import { icon, btn, iconBtn, toast, modal, menu, confirmBox, promptBox, registerPage, go, route, pageHead, avatar, dragSort } from './ui.js';

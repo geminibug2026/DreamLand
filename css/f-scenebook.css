@@ -189,3 +189,6 @@
   .sb-job { flex-wrap: wrap; } .sb-conn .btn span { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .sb-pending.running, .sb-shot-off.running, .illust.sb-busy::after { animation: none; } }
+
+/* React 판: 대화 화면이 그린 원래 그림 · 단추는 가려 두고 그 옆에 액자를 올린다 */
+.illust[data-sbr] > :is(img, figcaption) { display: none; }

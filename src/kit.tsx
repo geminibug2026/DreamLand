@@ -46,6 +46,11 @@ export function Avatar({ o, cls = '' }: { o?: { avatar?: string; name?: string; 
   return <div className={`avatar ${cls} blank`.replace(/\s+/g, ' ')}>{(o?.name || '?').trim().slice(0, 1)}</div>;
 }
 
+/** 아직 옮기지 않은 옛 코드가 만든 DOM 조각을 그대로 끼워 넣는다 (옮기는 동안만 쓴다) */
+export function Dom({ node }: { node: Node | null | undefined }) {
+  return <span style={{ display: 'contents' }} ref={el => { if (el) el.replaceChildren(...(node ? [node] : [])); }} />;
+}
+
 /** 이 이름의 알림이 오면 다시 그린다. 돌려주는 함수를 부르면 직접 다시 그린다 */
 export function useEvents(...evs: string[]): () => void {
   const [, bump] = useReducer((x: number) => x + 1, 0);

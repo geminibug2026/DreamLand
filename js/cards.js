@@ -144,10 +144,10 @@ export function loreToCardBook(book) {
   };
 }
 
-// ── 실리태번 정규식 스크립트 ↔ 드림랜드 ──
+// ── 정규식 스크립트 ↔ 드림랜드 ──
 // placement: 1 사용자 입력 · 2 AI 응답 · 3 슬래시 명령 · 5 월드 인포 · 6 생각 과정 (0 은 옛 'MD 표시', 4 는 옛 sendAs)
 const depthNum = v => (v == null || v === '' || isNaN(+v) ? null : +v);
-/** 실리태번은 /…/플래그 꼴이 아니면 플래그 없이(처음 한 곳만) 돌린다. 드림랜드의 맨 패턴은 전체 검색이라 슬래시로 감싸 뜻을 지킨다 */
+/** 은 /…/플래그 꼴이 아니면 플래그 없이(처음 한 곳만) 돌린다. 드림랜드의 맨 패턴은 전체 검색이라 슬래시로 감싸 뜻을 지킨다 */
 const stFind = s => { s = String(s ?? ''); return !s || /^\/[\s\S]+\/[a-z]*$/i.test(s) ? s : `/${s}/`; };
 export function stRegexToRegex(r, scope = 'global') {
   let pl = arr(r.placement), md = !!r.markdownOnly, pr = bool(r.promptOnly);
@@ -163,7 +163,7 @@ export function stRegexToRegex(r, scope = 'global') {
     minDepth: depthNum(r.minDepth), maxDepth: depthNum(r.maxDepth), scope,
   });
 }
-/** JSON 에서 정규식 스크립트들을 찾아낸다: 실리태번 낱개 · 묶음(배열), 드림랜드 형식, 그리고 프리셋(extensions.regex_scripts) · 캐릭터 카드에 실린 것 */
+/** JSON 에서 정규식 스크립트들을 찾아낸다: 낱개 · 묶음(배열), 드림랜드 형식, 그리고 프리셋(extensions.regex_scripts) · 캐릭터 카드에 실린 것 */
 export function regexFromJson(j, scope = 'global') {
   const list = Array.isArray(j) ? j : Array.isArray(j?.extensions?.regex_scripts) ? j.extensions.regex_scripts : Array.isArray(j?.data?.extensions?.regex_scripts) ? j.data.extensions.regex_scripts : Array.isArray(j?.regex) ? j.regex : [j];
   const out = [];
@@ -216,7 +216,7 @@ export function charToCard(ch, v3 = false) {
 }
 /** 캐릭터에 묶인 정규식을 순서대로 */
 export const scopedRegex = charId => S.regex.map((r, i) => [r, i]).filter(([r]) => r.scope === charId).sort((a, b) => (+a[0].order || 0) - (+b[0].order || 0) || a[1] - b[1]).map(x => x[0]);
-/** 드림랜드 → 실리태번 정규식 스크립트. 맨 패턴(전체 검색)은 /…/g 로 적어 뜻을 지킨다 */
+/** 드림랜드 → 정규식 스크립트. 맨 패턴(전체 검색)은 /…/g 로 적어 뜻을 지킨다 */
 export const regexToSt = r => {
   const find = String(r.find || ''), slashed = !find || /^\/[\s\S]+\/[a-z]*$/i.test(find);
   return {
@@ -226,7 +226,7 @@ export const regexToSt = r => {
     substituteRegex: Number(r.subst ?? (find.includes('{{') ? 1 : 0)) || 0, minDepth: depthNum(r.minDepth), maxDepth: depthNum(r.maxDepth),
   };
 };
-/** 캐릭터 · 프리셋에 실려 들어온 정규식은 처음 쓸 때 한 번 물어본다 (실리태번과 같은 절차). kind: 'chars' | 'presets' */
+/** 캐릭터 · 프리셋에 실려 들어온 정규식은 처음 쓸 때 한 번 물어본다. kind: 'chars' | 'presets' */
 function askRegexLater(kind, id) {
   const a = S.settings.regexAllow || {}, cur = a[kind] || {};
   if (cur[id] !== undefined) return;
@@ -274,7 +274,7 @@ export function stPresetToPreset(j, name) {
   p.regex = arr(j.extensions?.regex_scripts).filter(r => r && typeof r === 'object').map((r, i) => ({ ...stRegexToRegex(r, 'preset'), order: i }));   // 프리셋에 실린 정규식은 프리셋과 함께 다닌다
   return { preset: p, regex: [] };
 }
-/** 드림랜드 프리셋 → 실리태번 Chat Completion 프리셋 JSON. 프리셋에 실린 정규식은 extensions.regex_scripts 로 함께 나간다 */
+/** 드림랜드 프리셋 → Chat Completion 프리셋 JSON. 프리셋에 실린 정규식은 extensions.regex_scripts 로 함께 나간다 */
 export function presetToSt(p) {
   const P = p.params || {}, prompts = [], order = [], seen = new Set();
   const fmtOf = (kind, key) => { const c = (p.blocks || []).find(b => b.kind === kind)?.content || ''; return c.includes('{{slot}}') ? c.replace(/\{\{slot\}\}/g, () => key) : key; };
@@ -299,7 +299,7 @@ export function presetToSt(p) {
   if (['low', 'medium', 'high'].includes(P.effort)) out.reasoning_effort = P.effort;
   return out;
 }
-/** 이미 가진 실리태번 프리셋 JSON 에 정규식만 갈아 끼운다 (다른 설정은 그대로) */
+/** 이미 가진 프리셋 JSON 에 정규식만 갈아 끼운다 (다른 설정은 그대로) */
 export const stPresetWithRegex = (j, scripts) => ({ ...j, extensions: { ...(j.extensions && typeof j.extensions === 'object' && !Array.isArray(j.extensions) ? j.extensions : {}), regex_scripts: arr(scripts).map(regexToSt) } });
 
 /** .jsonl 채팅 → { chat, msgs }.  resolve(m) 은 그룹 채팅에서 화자 캐릭터를 찾는다 */

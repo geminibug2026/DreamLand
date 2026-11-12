@@ -14,7 +14,7 @@ import './savestate.js';
 import { initExtensions } from './ext.js';
 
 // 기능 모듈: 하나가 깨져도 나머지와 본체는 뜨도록 따로 불러온다. 새 기능 모듈은 이 목록에 이름만 더하면 된다
-export const FEATURES = ['diary', 'f-memoria', 'f-scenebook', 'f-translate', 'f-assets', 'f-expressions', 'f-vectors', 'f-modules', 'f-regex'];
+export const FEATURES = ['f-memoria', 'f-scenebook', 'f-translate', 'f-vectors', 'f-modules', 'f-regex'];
 const failed = [];
 async function loadFeatures() { await Promise.all(FEATURES.map(m => import(`./${m}.js`).catch(e => { console.error('[기능 모듈]', m, e); failed.push(m); }))); }
 

@@ -177,7 +177,7 @@ export const mo = k => S.settings.modes?.[k] ?? MODE_DEFAULTS[k];
 export const tk = k => S.settings.tracker?.[k] ?? TRACK_DEFAULTS[k];
 /** 선톡 종류별 쿨다운(시간) */
 export const cdHours = () => Object.fromEntries(Object.entries(MOTIVES).map(([k, v]) => [k, +(S.settings.modes?.cd?.[k] ?? v[1])]));
-function ensureDefaults() {
+export function ensureDefaults() {
   const M = S.settings.modes ||= {}, T = S.settings.tracker ||= {};
   for (const [k, v] of Object.entries(MODE_DEFAULTS)) M[k] ??= v;
   for (const [k, v] of Object.entries(TRACK_DEFAULTS)) T[k] ??= v;

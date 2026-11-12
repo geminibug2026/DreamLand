@@ -83,7 +83,7 @@ export const testCond = (expr, c) => evalCond(macro(String(expr || ''), c), cond
 
 // ── 정규식 스크립트 ──
 // 범위는 셋: 전역(S.regex 의 scope 'global') · 프리셋(preset.regex — 프리셋에 실려 다닌다) · 캐릭터(S.regex 의 scope = 캐릭터 id).
-// 적용 순서는 실리태번과 같다: 전역 → 프리셋 → 캐릭터, 한 범위 안에서는 order 순(같으면 만든 순).
+// 적용 순서는 과 같다: 전역 → 프리셋 → 캐릭터, 한 범위 안에서는 order 순(같으면 만든 순).
 const reCache = new Map();
 export function compileRegex(src) {
   if (reCache.has(src)) return reCache.get(src);
@@ -164,7 +164,7 @@ export function runRegexScript(r, text, ctx, trace) {
       if (cutting) for (const t of trims) v = v.split(t).join('');   // 다듬기 문자열은 가져온 부분($n · {{match}})에서만 지운다
       return v;
     });
-    const cut = fill(true), out = ctx ? macro(cut, ctx) : cut;         // 매크로는 맨 마지막에 (실리태번과 같은 순서)
+    const cut = fill(true), out = ctx ? macro(cut, ctx) : cut;         // 매크로는 맨 마지막에
     if (trace && trace.matches.length < 2000) trace.matches.push({ index, match: a[0], groups: caps, named, raw: trims.length ? fill(false) : cut, cut, out });
     return out;
   });

@@ -377,7 +377,7 @@ export async function installPack(plan, { replace = '' } = {}) {
 }
 
 // ════════ 대화 속 그림 · 안내문 ════════
-const MOD_ASSET_PROMPT = `[Module image assets]
+export const MOD_ASSET_PROMPT = `[Module image assets]
 These extra image keywords are available in this chat. To show one, write {{img::keyword}} on its own line between paragraphs. Use at most {{max}} image(s) per reply in total, only when it fits the scene, and never invent keywords.
 Extra keywords: {{keywords}}`;
 const chatOwners = chat => chat ? [...list(chat.charIds).map(Assets.ownerOfChar), Assets.ownerOfPersona(S.persona(chat)?.id)] : [];

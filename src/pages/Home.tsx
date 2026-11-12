@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'rea
 import { L } from '../legacy';
 import { Btn, Emblem, Icon, IconBtn, InkName, Moon, artStyle, tintRef, useEvents } from '../kit';
 import type { Char, Folder } from '../types';
+import { charPicker, confirmBox, menu, promptBox } from '../ui';
 
 // 화면을 떠났다 돌아와도 남는 보기 상태. folder: '' 전체 · '-' 폴더 없음 · 폴더 id
 const view = { q: '', sort: 'recent' as 'recent' | 'new' | 'name', tag: '', fav: false, pick: 0, folder: '' };
@@ -12,7 +13,7 @@ const folders = (): Folder[] => (L.core.S.settings.folders ||= []);
 const folderOf = (c: Char) => folders().some(f => f.id === c.folder) ? c.folder! : '';
 const saveFolders = () => L.core.S.set({ folders: folders() });
 async function newFolder(): Promise<Folder | null> {
-  const v = await L.ui.promptBox('폴더 이름', '', { placeholder: '예: 판타지, 현대물, 친구가 준 카드' }); if (!v?.trim()) return null;
+  const v = await promptBox('폴더 이름', '', { placeholder: '예: 판타지, 현대물, 친구가 준 카드' }); if (!v?.trim()) return null;
   const fo = { id: L.core.uid(), name: v.trim().slice(0, 40) }; folders().push(fo); saveFolders(); return fo;
 }
 async function moveToFolder(ids: string[], folderId: string) {
@@ -22,7 +23,7 @@ async function moveToFolder(ids: string[], folderId: string) {
 /** 캐릭터 한 명을 담을 폴더 고르기 */
 function folderMenu(anchor: Element, c: Char, after: () => void) {
   const cur = folderOf(c);
-  L.ui.menu(anchor, [
+  menu(anchor, [
     ...folders().map(fo => ({ label: fo.name, ic: cur === fo.id ? 'check' : 'folder', onclick: async () => { await moveToFolder([c.id], fo.id); after(); } })),
     cur ? { label: '폴더에서 꺼내기', ic: 'x', onclick: async () => { await moveToFolder([c.id], ''); after(); } } : null,
     folders().length ? '-' : null,
@@ -108,18 +109,18 @@ function Home() {
   const fo = fs.find(f => f.id === view.folder);
   const swap = (d: -1 | 1) => { if (!fo) return; const i = fs.indexOf(fo), j = i + d; if (j < 0 || j >= fs.length) return; [fs[i], fs[j]] = [fs[j], fs[i]]; saveFolders(); redraw(); };
   const folderBar = fo && <div className="folder-bar"><Icon name="folder" size={16} /><b>{fo.name}</b>
-    <Btn label="캐릭터 담기" ic="plus" cls="ghost" onClick={() => L.ui.charPicker({
+    <Btn label="캐릭터 담기" ic="plus" cls="ghost" onClick={() => charPicker({
       title: `"${fo.name}"에 담을 캐릭터`, selected: S.chars.filter(c => folderOf(c) === fo.id).map(c => c.id),
       note: c => { const o = fs.find(f => f.id === folderOf(c)); return o && o.id !== fo.id ? o.name : ''; },
       onDone: async ids => { const keep = new Set(ids); await moveToFolder(S.chars.filter(c => folderOf(c) === fo.id && !keep.has(c.id)).map(c => c.id), ''); await moveToFolder(ids, fo.id); redraw(); },
     })} />
-    <IconBtn ic="more" title="폴더 이름 · 삭제" onClick={e => L.ui.menu(e.currentTarget, [
-      { label: '이름 바꾸기', ic: 'edit', onclick: async () => { const v = await L.ui.promptBox('폴더 이름', fo.name); if (v?.trim()) { fo.name = v.trim().slice(0, 40); saveFolders(); redraw(); } } },
+    <IconBtn ic="more" title="폴더 이름 · 삭제" onClick={e => menu(e.currentTarget, [
+      { label: '이름 바꾸기', ic: 'edit', onclick: async () => { const v = await promptBox('폴더 이름', fo.name); if (v?.trim()) { fo.name = v.trim().slice(0, 40); saveFolders(); redraw(); } } },
       { label: '왼쪽으로', ic: 'play', onclick: () => swap(-1) },
       { label: '오른쪽으로', ic: 'play', onclick: () => swap(1) },
       '-',
       { label: '폴더 삭제', ic: 'trash', danger: true, hint: '캐릭터는 남아요', onclick: async () => {
-        if (!(await L.ui.confirmBox(`"${fo.name}" 폴더를 삭제할까요? 안에 있던 캐릭터는 지워지지 않고 폴더 없음으로 돌아갑니다.`, '삭제', true))) return;
+        if (!(await confirmBox(`"${fo.name}" 폴더를 삭제할까요? 안에 있던 캐릭터는 지워지지 않고 폴더 없음으로 돌아갑니다.`, '삭제', true))) return;
         await moveToFolder(S.chars.filter(c => c.folder === fo.id).map(c => c.id), ''); S.set({ folders: fs.filter(f => f !== fo) }); set({ folder: '' });
       } }])} />
   </div>;

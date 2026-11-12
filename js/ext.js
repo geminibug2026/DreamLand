@@ -8,9 +8,9 @@ import { render } from './format.js';
 import { applyTheme } from './theme.js';
 
 export const APP_VERSION = '1.1.0';
-const loaded = new Map();   // id → { cleanup[], error, meta }
-let catalog = [];           // [{ id, name, version, author, description, source: 'folder'|'installed', entry, css, code }]
-const enabled = id => S.settings.exts?.[id] === true;
+export const loaded = new Map();   // id → { cleanup[], error, meta }
+export let catalog = [];           // [{ id, name, version, author, description, source: 'folder'|'installed', entry, css, code }]
+export const enabled = id => S.settings.exts?.[id] === true;
 
 function makeApi(id) {
   const rec = loaded.get(id);
@@ -62,13 +62,13 @@ async function load(item) {
   } catch (e) { console.error(`[확장 ${item.id}]`, e); rec.error = e.message || String(e); }
   emit('ext:changed');
 }
-function unload(id) {
+export function unload(id) {
   const rec = loaded.get(id); if (!rec) return;
   for (const fn of rec.cleanup.reverse()) { try { fn(); } catch (e) { console.warn(e); } }
   dropOwner(id); loaded.delete(id); applyTheme(); emit('ext:changed');
 }
 
-async function readCatalog() {
+export async function readCatalog() {
   const folder = await fetch('/api/extensions').then(r => r.ok ? r.json() : []).catch(() => []);
   const installed = (await DB.all('kv')).filter(r => String(r.id).startsWith('ext:')).map(r => ({ ...r.meta, id: r.extId, code: r.code, source: 'installed' }));
   catalog = [...folder.map(f => ({ ...f, source: 'folder' })), ...installed.filter(i => !folder.some(f => f.id === i.id))];
@@ -79,7 +79,7 @@ export async function initExtensions() {
   for (const item of catalog) if (enabled(item.id)) await load(item);
   emit('ready');
 }
-async function setEnabled(item, on) {
+export async function setEnabled(item, on) {
   S.set({ exts: { ...(S.settings.exts || {}), [item.id]: on } });
   if (on) await load(item); else unload(item.id);
 }
@@ -90,7 +90,7 @@ async function inspect(code) {
   try { const mod = await import(/* @vite-ignore */ blob); const def = mod.default || {}; const m = mod.manifest || def.manifest || def; if (typeof (def.activate || mod.activate) !== 'function') throw new Error('activate(api) 함수가 없어요'); return { id: String(m.id || '').trim(), name: m.name || m.id || '이름 없는 확장', version: m.version || '', author: m.author || '', description: m.description || '' }; }
   finally { URL.revokeObjectURL(blob); }
 }
-async function install(code, hint = '') {
+export async function install(code, hint = '') {
   // 선언부를 읽으려면 코드를 한 번 돌려야 하므로, 돌리기 전에 먼저 묻는다
   if (!(await confirmBox(`${hint ? `"${hint}"` : '이 코드'}를 확장으로 설치할까요? 확장은 대화와 API 키를 포함한 드림랜드의 모든 데이터에 접근할 수 있습니다. 믿을 수 있는 것만 설치하세요.`, '설치'))) return;
   let meta;
@@ -102,7 +102,7 @@ async function install(code, hint = '') {
   await setEnabled(catalog.find(c => c.id === meta.id), true);
   toast(`${meta.name} 을(를) 설치했어요`, 'ok'); refresh();
 }
-async function installFromUrl(url) {
+export async function installFromUrl(url) {
   url = url.trim().replace(/^https:\/\/github\.com\/([^/]+\/[^/]+)\/blob\//, 'https://raw.githubusercontent.com/$1/');
   let text;
   try { const r = await fetch(url); if (!r.ok) throw new Error(String(r.status)); text = await r.text(); }
@@ -110,7 +110,7 @@ async function installFromUrl(url) {
   await install(text, url.split('/').pop());
 }
 
-const TEMPLATE = `// my-extension.js — 드림랜드 확장의 가장 작은 모양
+export const TEMPLATE = `// my-extension.js — 드림랜드 확장의 가장 작은 모양
 export const manifest = { id: 'my-extension', name: '내 확장', version: '1.0.0', author: '나', description: '설명' };
 
 export function activate(api) {

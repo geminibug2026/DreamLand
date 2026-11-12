@@ -3,16 +3,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { L } from './legacy';
 import { Avatar, Icon, Moon, mountInto, useEvents } from './kit';
 import type { Char, NavItem } from './types';
+import { menu, openModal } from './ui';
 
 function MoreGrid({ close }: { close: () => void }) {
   return <>{L.boot.navItems().filter(n => !n[3]).map(([page, label, ic]) =>
     <button key={page} onClick={() => { close(); L.ui.go(page); }}><Icon name={ic} size={24} />{label}</button>)}</>;
 }
 function moreSheet() {
-  const body = document.createElement('div'); body.className = 'more-grid';
-  let off = () => { };
-  const m = L.ui.modal({ title: '더보기', body, onClose: () => off() });
-  off = mountInto(body, <MoreGrid close={() => m.close()} />);
+  const m = openModal({ title: '더보기', body: <div className="more-grid"><MoreGrid close={() => m.close()} /></div> });
 }
 
 export function Rail() {
@@ -28,7 +26,7 @@ export function Rail() {
     <div className="rail-foot">
       <button title="빠른 이동 (Ctrl+K)" onClick={openPalette}><Icon name="search" size={19} /></button>
       <button title="꾸미기" onClick={() => L.ui.go('themes')}><Icon name="heart" size={19} /></button>
-      <button title="더 많은 메뉴" onClick={e => L.ui.menu(e.currentTarget, rest.map(([p, label, ic]) => ({ label, ic, onclick: () => L.ui.go(p) })))}><Icon name="menu" size={19} /></button>
+      <button title="더 많은 메뉴" onClick={e => menu(e.currentTarget, rest.map(([p, label, ic]) => ({ label, ic, onclick: () => L.ui.go(p) })))}><Icon name="menu" size={19} /></button>
     </div>
   </>;
 }
