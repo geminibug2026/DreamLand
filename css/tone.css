@@ -25,10 +25,8 @@
 .avatar.blank { background: var(--surface2); color: var(--ink); font: 800 .95em var(--display); }
 .avatar .emb { width: 84%; stroke-width: 7; } .avatar .emb .wh { stroke-width: 4; }
 
-/* ════════ 이름: 잉크에서 초상 색으로 흐른다 ════════ */
-.sheet-title h3, .dream-card-name { background: linear-gradient(98deg, var(--ink) 24%, var(--tk) 108%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; padding-bottom: .08em; }
+/* ════════ 이름: 잉크 한 가지 색 ════════ */
 .dream-name, .dream-card-name { align-self: flex-start; }
-.emo { -webkit-text-fill-color: initial; }
 
 /* ════════ 홈 ════════ */
 .dream { background: linear-gradient(106deg, var(--surface) 40%, var(--wash)); box-shadow: 0 1px 0 var(--ink-line), 0 26px 40px -30px var(--shade); }
