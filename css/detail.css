@@ -342,3 +342,13 @@
 @media (max-width: 820px) { .hud-cell { padding: 5px 11px 6px; min-width: 68px; } .curtain::before, .curtain::after { display: none; } .mode-talk .msg.in-scene .msg-body { padding: 12px 14px; } }
 .live-set { display: flex; flex-direction: column; gap: 12px; min-width: min(640px, 82vw); } .live-set textarea { font-size: .86em; }
 .msg.flash { animation: msg-flash 1.6s ease-out; } @keyframes msg-flash { 0%, 40% { background: color-mix(in srgb, var(--accent) 12%, transparent); } 100% { background: transparent; } }
+/* 홈 빈 창: 캐릭터 창과 같은 인화 사진 틀 안에 초승달 · 망점 · 별을 담는다 (테두리 밖으로 나가지 않게) */
+.dream-window.blank { padding: 16px 14px 14px; }
+.dream-window.blank .ellipse { inset: 12% 3% 10% 3%; transform: none; }
+.dream-window.blank > .star.s1 { top: 4px; left: 2px; font-size: 26px; }
+.print.main.blank { overflow: hidden; cursor: default; background: var(--surface2); }
+.print.main.blank:hover { transform: rotate(-3deg); }
+.print.main.blank .crescent { right: auto; left: 50%; top: 44%; width: 56%; transform: translate(-50%, -50%) rotate(-18deg); background: var(--ink); -webkit-mask-image: radial-gradient(circle at 70% 40%, transparent 41%, #000 42%); mask-image: radial-gradient(circle at 70% 40%, transparent 41%, #000 42%); }
+.print.main.blank .halftone { right: -14%; bottom: -14%; width: 62%; }
+.print.main.blank .star.s2 { position: absolute; top: 12%; right: 14%; bottom: auto; font-size: 18px; font-style: normal; line-height: 1; color: var(--ink); }
+@media (max-width: 820px) { .dream-window.blank { width: 190px; } .dream-window.blank .star.s2 { display: block; } }

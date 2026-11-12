@@ -2,7 +2,7 @@
 import { useLayoutEffect, useRef } from 'react';
 import { L } from '../legacy';
 import { Btn, Icon, IconBtn } from '../kit';
-import { Form, LibraryPage, confirmBox, toast, useDragSort, type FormDefs } from '../ui';
+import { Form, LibraryPage, Shelf, confirmBox, stripShelf, toast, useDragSort, type FormDefs } from '../ui';
 import { PresetVarsEditor } from '../editors/PresetVars';
 import { NEEDS, cards, core, engine, errMsg, store, type Block, type Preset } from '../editors/bridge';
 import { editorApi, useBump, useDebounced, type EditorApi } from '../editors/parts';
@@ -31,9 +31,9 @@ function PresetEditor({ p, api }: { p: Preset; api: EditorApi }) {
   return <div className="editor">
     <header className="editor-head"><h2>{p.name}</h2><div className="row">
       {active ? <em className="badge on">사용 중</em> : <Btn label="이 프리셋 사용" ic="check" cls="primary" onClick={() => { S.set({ activePreset: p.id }); api.refresh(); }} />}
-      <IconBtn ic="copy" title="복제" onClick={async () => { await S.save('presets', { ...structuredClone(p), id: uid(), name: p.name + ' (사본)', src: '' }, true); api.refresh(); }} />
+      <IconBtn ic="copy" title="복제" onClick={async () => { await S.save('presets', { ...stripShelf(structuredClone(p)), id: uid(), name: p.name + ' (사본)', src: '', folder: p.folder }, true); api.refresh(); }} />
       <IconBtn ic="code" title={`이 프리셋의 정규식 (${(p.regex || []).length})`} onClick={() => L.ui.go('regex', 'preset:' + p.id)} />
-      <IconBtn ic="import" title="내보내기" onClick={() => download(`${p.name}.dreamland-preset.json`, JSON.stringify(p, null, 2))} />
+      <IconBtn ic="import" title="내보내기" onClick={() => download(`${p.name}.dreamland-preset.json`, JSON.stringify(stripShelf(p), null, 2))} />
       <IconBtn ic="trash" title="삭제" onClick={async () => { if (S.presets.length < 2) return toast('마지막 프리셋은 지울 수 없어요'); if (await confirmBox(`"${p.name}" 프리셋을 삭제할까요?`, '삭제', true)) { await S.remove('presets', p.id); if (active) S.set({ activePreset: S.presets[0].id }); api.refresh(); } }} />
     </div></header>
     <Form obj={p} defs={[{ k: 'name', label: '이름' },
@@ -77,10 +77,11 @@ function PresetsPage({ arg }: { arg?: unknown }) {
       const [f] = await core().pickFiles({ accept: '.json' }); if (!f) return;
       try {
         const j = JSON.parse(await f.text()) as Partial<Preset>;
-        if (j.blocks && j.params) { await S.save('presets', { ...j, id: core().uid() } as Preset, true); toast('프리셋을 가져왔어요', 'ok'); }
+        if (j.blocks && j.params) { await S.save('presets', { ...stripShelf(j), id: core().uid() } as Preset, true); toast('프리셋을 가져왔어요', 'ok'); }
         else { const T = await cards().importFiles([f]); toast(cards().summarize(T), T.errors.length ? 'err' : 'ok'); }
       } catch (e) { toast(errMsg(e), 'err'); }
       draw();
     } }]}
+    list={ctx => <Shelf ctx={ctx} coll="presets" active={S.settings.activePreset} foldersKey="presetFolders" placeholder="프리셋 찾기" />}
     editor={(p, api) => <PresetEditor p={p} api={editorApi(api, 'presets')} />} />;
 }

@@ -1,7 +1,7 @@
 // 로어북 편집기 (항목이 수백 개여도 찾고 · 접고 · 한꺼번에 고칠 수 있게) + 로어북 스위치 · 연결 · 전체 설정
 import { useRef, useState, type ReactNode } from 'react';
 import { Btn, Icon, IconBtn, useEvents } from '../kit';
-import { Form, confirmBox, menu, openModal, toast, type FormDefs, type ModalHandle } from '../ui';
+import { Form, confirmBox, menu, openModal, toast, usePaged, type FormDefs, type ModalHandle } from '../ui';
 import { cards, core, engine, store, type Entry, type Lore, type LoreHit } from './bridge';
 import { useBump, useDebounced, type EditorApi } from './parts';
 
@@ -191,7 +191,7 @@ export function LoreEditor({ b, api }: { b: Lore; api: EditorApi }) {
     if (sorter) st.rows = [...st.rows].sort(sorter);
     st.at = st.gen;
   }
-  const rows = st.rows, vis = rows.slice(0, st.shown), on = b.entries.filter(e => e.enabled !== false);
+  const rows = st.rows, pg = usePaged(rows, { id: 'loreEntries', perPage: PAGE, sizes: [20, 40, 80, 160], resetKey: `${b.id}|${st.q}|${st.filter}|${st.sort}` }), vis = pg.rows, on = b.entries.filter(e => e.enabled !== false);
 
   const moveTo = (list: Entry[]) => {
     const others = S.lore.filter(x => x.id !== b.id);
@@ -203,6 +203,7 @@ export function LoreEditor({ b, api }: { b: Lore; api: EditorApi }) {
   const entryMenu = (anchor: Element, e: Entry) => menu(anchor, [
     { label: '복제', ic: 'copy', onclick: () => { const c = { ...copy(e), id: uid(), name: (e.name || titleOf(e)) + ' (사본)' }; b.entries.splice(b.entries.indexOf(e) + 1, 0, c); open.add(c.id); touch(); draw(); } },
     { label: '맨 위로', ic: 'up', onclick: () => { b.entries.splice(b.entries.indexOf(e), 1); b.entries.unshift(e); touch(); draw(); } },
+    { label: '맨 아래로', ic: 'down', onclick: () => { b.entries.splice(b.entries.indexOf(e), 1); b.entries.push(e); touch(); draw(); } },
     S.lore.length > 1 && { label: '다른 로어북으로 옮기기', ic: 'book', onclick: () => moveTo([e]) },
     '-',
     { label: '항목 삭제', ic: 'trash', danger: true, onclick: () => { b.entries.splice(b.entries.indexOf(e), 1); picked.delete(e.id); touch(); draw(); } },
@@ -216,7 +217,7 @@ export function LoreEditor({ b, api }: { b: Lore; api: EditorApi }) {
   const links = loreLinks(b), active = S.settings.activeLore.includes(b.id);
   return <div className="editor lore-editor">
     <header className="editor-head"><h2>{b.name}</h2><div className="row">
-      <Btn label="항목 추가" ic="plus" cls="primary" onClick={() => { const e = newEntry(); b.entries.unshift(e); open.add(e.id); st.q = ''; setQText(''); st.filter = 'all'; void api.save(); draw(); api.redraw(); }} />
+      <Btn label="항목 추가" ic="plus" cls="primary" onClick={() => { const e = newEntry(); b.entries.unshift(e); open.add(e.id); st.q = ''; setQText(''); st.filter = 'all'; pg.setPage(0); void api.save(); draw(); api.redraw(); }} />
       <IconBtn ic="play" title="발동 시험" onClick={() => openModal({ title: `발동 시험 · ${b.name}`, wide: true, body: <TestBody b={b} /> })} />
       <IconBtn ic="sliders" title="로어북 전체 설정" onClick={() => loreSettingsDialog()} />
       <IconBtn ic="import" title="실리태번 형식으로 내보내기" onClick={() => download(`${b.name}.json`, JSON.stringify(cards().loreToWorld(b), null, 2))} />
@@ -244,7 +245,7 @@ export function LoreEditor({ b, api }: { b: Lore; api: EditorApi }) {
         <button className="chip" onClick={() => { vis.forEach(e => allOpen ? open.delete(e.id) : open.add(e.id)); draw(); }}>{allOpen ? '모두 접기' : '모두 펼치기'}</button>
       </div>
     </div>
-    <div className="entries">
+    <div className="entries" ref={pg.listRef}>
       {vis.map(e => <div key={e.id} className={'entry' + (open.has(e.id) ? ' open' : '') + (e.enabled !== false ? '' : ' off')}>
         <div className="entry-head" onClick={ev => { if ((ev.target as Element).closest('button,label,input')) return; if (open.has(e.id)) open.delete(e.id); else open.add(e.id); draw(); }}>
           {st.pick ? <label className="check lore-pick"><input type="checkbox" checked={picked.has(e.id)} onChange={ev => { if (ev.target.checked) picked.add(e.id); else picked.delete(e.id); redraw(); }} /><i /></label> : null}
@@ -256,8 +257,8 @@ export function LoreEditor({ b, api }: { b: Lore; api: EditorApi }) {
         </div>
         {open.has(e.id) && <EntryBody e={e} sv={sv} changed={redraw} draw={draw} />}
       </div>)}
-      {rows.length > vis.length ? <button className="room-more lore-more" onClick={() => { st.shown += PAGE * 2; draw(); }}>{`항목 ${rows.length - vis.length}개 더 보기`}</button> : null}
       {!rows.length ? <p className="dim pad">{b.entries.length ? '조건에 맞는 항목이 없어요.' : '아직 항목이 없어요. "항목 추가"로 첫 설정을 적어 보세요.'}</p> : null}
     </div>
+    {pg.pager}
   </div>;
 }

@@ -6,6 +6,7 @@ import { Form, PageHead, confirmBox, promptBox, toast } from '../ui';
 import { NEEDS, adv, core, engine, errMsg, store, theme } from '../editors/bridge';
 import { useBump } from '../editors/parts';
 import { playChime, ux } from '../features/usersettings';
+import { DataFolderCard } from '../datafolder/Panel';
 
 export const page = { name: 'settings', Component: SettingsPage, needs: NEEDS };
 
@@ -74,5 +75,6 @@ function SettingsPage() {
         <Btn label="백업에서 복원" ic="upload" onClick={async () => { const [f] = await pickFiles({ accept: '.json' }); if (!f) return; try { await S.importAll(JSON.parse(await f.text()), false); toast('복원했어요. 화면을 새로 엽니다.', 'ok'); setTimeout(() => location.reload(), 700); } catch (e) { toast(errMsg(e), 'err'); } }} />
         <Btn label="모든 데이터 지우기" ic="trash" cls="danger" onClick={async () => { if (!(await confirmBox('캐릭터·대화·설정을 모두 지울까요? 되돌릴 수 없습니다.', '모두 지우기', true))) return; for (const c of S.conns) await Secrets.del(c.id).catch(() => { }); for (const s of STORES) await DB.clear(s); location.reload(); }} />
       </div></div>
+    <DataFolderCard />
   </section>;
 }

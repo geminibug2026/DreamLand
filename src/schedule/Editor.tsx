@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { mod } from '../legacy';
 import { Avatar, Btn, IconBtn, useEvents } from '../kit';
-import type { ModalHandle } from '../ui';
+import { usePaged, type ModalHandle } from '../ui';
 import { B, errMsg, isAbort, type CharX } from '../addons/legacy';
 import { openModal } from '../addons/parts';
 import { DAY, DAYS, FREE, STATUS, blockAt, dayIndex, fmtMin, hasBlocks, normDay, normWeek, toMin, type Block, type Sched, type Status } from './logic';
@@ -121,15 +121,16 @@ export function rowNode(ch: CharX, onDone?: () => void): HTMLElement {
 /** 기능 화면의 탭 (div.card.sched-studio 안): 캐릭터가 많아도 찾을 수 있게 검색 + 일정이 있는 캐릭터 먼저 */
 export function ScheduleStudio() {
   const draw = useEvents('chars'), S = B.S;
-  const [q, setQ] = useState(''), [lim, setLim] = useState(30);
+  const [q, setQ] = useState('');
   const t = q.trim().toLowerCase(), rows = S.chars.filter(c => !t || (c.name + ' ' + (c.tags || []).join(' ')).toLowerCase().includes(t)).sort((a, b) => +hasBlocks(rawSchedule(b)) - +hasBlocks(rawSchedule(a)) || a.name.localeCompare(b.name, 'ko'));
+  const pg = usePaged(rows, { id: 'schedule', perPage: 30, resetKey: t });
   return <>
     <p className="hint">캐릭터마다 일주일 일과를 정해 두면, 대화 모드에서 지금 시각의 일과가 그 캐릭터의 상태(온라인 · 자리 비움 · 방해 금지 · 오프라인)가 되고 먼저 오는 연락의 이유가 됩니다. 일정을 짜는 것은 버튼을 누를 때만 모델을 부릅니다.</p>
-    <input className="inp search" placeholder="캐릭터 찾기" value={q} onChange={e => { setQ(e.target.value); setLim(30); }} />
-    <div className="sched-items">
-      {rows.slice(0, lim).map(c => <div className="sched-item" key={c.id}><Row ch={c} onDone={draw} /></div>)}
-      {rows.length > lim ? <Btn label={`${rows.length - lim}명 더 보기`} cls="ghost wide" onClick={() => setLim(lim + 30)} /> : null}
+    <input className="inp search" placeholder="캐릭터 찾기" value={q} onChange={e => setQ(e.target.value)} />
+    <div className="sched-items" ref={pg.listRef}>
+      {pg.rows.map(c => <div className="sched-item" key={c.id}><Row ch={c} onDone={draw} /></div>)}
       {!rows.length ? <p className="dim">{S.chars.length ? '찾는 캐릭터가 없어요.' : '캐릭터를 먼저 만들어 주세요.'}</p> : null}
     </div>
+    {pg.pager}
   </>;
 }

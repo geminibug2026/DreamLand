@@ -2,6 +2,7 @@
 import { Fragment, useReducer, useState, type ReactNode } from 'react';
 import { L } from '../legacy';
 import { Btn, Icon, IconBtn } from '../kit';
+import { usePaged } from './Pager';
 
 export interface LibApi {
   /** 목록만 다시 그린다 (편집기는 그대로) */
@@ -28,11 +29,15 @@ export interface LibraryProps<T extends { id: string }> {
   /** + 왼쪽의 아이콘 단추들. draw 를 부르면 편집기까지 새로 만든다 */
   actions?: { ic: string; title: string; onclick: (draw: () => void) => void }[];
   empty?: ReactNode;
+  /** 목록 자리를 직접 그린다 (정렬 · 폴더 · 쪽 나누기 등). item(x) 는 기본 줄, pick(id) 는 그 항목 고르기 */
+  /** 기본 목록에 검색 + 쪽 나누기를 붙인다. id 는 한 쪽 개수를 기억할 이름, text 는 검색할 글 */
+  paged?: { id: string; perPage?: number; text?: (o: T) => string; placeholder?: string };
+  list?: (ctx: { all: T[]; current?: string; item: (x: T) => ReactNode; pick: (id: string) => void; redraw: () => void }) => ReactNode;
 }
 
 interface AnyStore { get(coll: string, id: string): unknown; save(coll: string, o: unknown, silent?: boolean): Promise<unknown> }
 
-export function LibraryPage<T extends { id: string }>({ arg, title, eyebrow, coll, ic, create, label, sub, thumb, trail, note, editor, actions = [], empty }: LibraryProps<T>) {
+export function LibraryPage<T extends { id: string }>({ arg, title, eyebrow, coll, ic, create, label, sub, thumb, trail, note, editor, actions = [], empty, list, paged }: LibraryProps<T>) {
   const S = L.core.S as unknown as AnyStore & Record<string, unknown>;
   const all = (S[coll] as T[] | undefined) || [];
   const [current, setCurrent] = useState<string | undefined>(() => (typeof arg === 'string' && arg) || all[0]?.id);
@@ -41,6 +46,12 @@ export function LibraryPage<T extends { id: string }>({ arg, title, eyebrow, col
   const [, redraw] = useReducer((x: number) => x + 1, 0);        // 목록만
   const pick = (id: string) => { setCurrent(id); L.ui.route.arg = id; setShow(true); draw(); };
   const o = current ? S.get(coll, current) as T | undefined : undefined;
+  const row = (x: T) => {
+    const item = <button key={x.id} className={'lib-item' + (x.id === current ? ' on' : '') + (thumb ? ' has-thumb' : '')} onClick={() => pick(x.id)}>
+      {thumb && thumb(x)}<div className="lib-text"><b>{label(x)}</b>{sub && <small>{sub(x)}</small>}</div>
+    </button>;
+    return trail ? <div key={x.id} className={'lib-row' + (x.id === current ? ' on' : '')}>{item}{trail(x, redraw)}</div> : item;
+  };
 
   return <section className={'lib' + (show ? ' show-editor' : '')}>
     <aside className="lib-side">
@@ -52,12 +63,9 @@ export function LibraryPage<T extends { id: string }>({ arg, title, eyebrow, col
         </div>
       </header>
       {note ? <div className="lib-note">{note()}</div> : null}
-      <div className="lib-list">{all.map(x => {
-        const item = <button key={x.id} className={'lib-item' + (x.id === current ? ' on' : '') + (thumb ? ' has-thumb' : '')} onClick={() => pick(x.id)}>
-          {thumb && thumb(x)}<div className="lib-text"><b>{label(x)}</b>{sub && <small>{sub(x)}</small>}</div>
-        </button>;
-        return trail ? <div key={x.id} className={'lib-row' + (x.id === current ? ' on' : '')}>{item}{trail(x, redraw)}</div> : item;
-      })}</div>
+      {list ? list({ all, current, item: x => row(x), pick, redraw })
+        : paged ? <PagedLib all={all} current={current} row={row} {...paged} label={label} />
+        : <div className="lib-list">{all.map(x => row(x))}</div>}
     </aside>
     <div className="lib-editor">
       <Btn label="목록으로" ic="left" cls="ghost lib-back" onClick={() => setShow(false)} />
@@ -66,4 +74,15 @@ export function LibraryPage<T extends { id: string }>({ arg, title, eyebrow, col
         : <div className="empty"><Icon name={ic} size={34} /><p>{empty || '왼쪽에서 항목을 고르거나 새로 만들어 보세요.'}</p></div>}</Fragment>
     </div>
   </section>;
+}
+
+function PagedLib<T extends { id: string }>({ all, current, row, id, perPage = 30, text, placeholder = '이름으로 찾기', label }: { all: T[]; current?: string; row: (x: T) => ReactNode; id: string; perPage?: number; text?: (o: T) => string; placeholder?: string; label: (o: T) => ReactNode }) {
+  const [q, setQ] = useState(''), t = q.trim().toLowerCase();
+  const rows = t ? all.filter(o => (text ? text(o) : String(label(o) ?? '')).toLowerCase().includes(t)) : all;
+  const pg = usePaged(rows, { id, perPage, resetKey: t, focusIndex: rows.findIndex(o => o.id === current) });
+  return <>
+    <div className="shelf-bar"><div className="search-wrap"><Icon name="search" size={15} /><input className="inp search" placeholder={placeholder} value={q} onChange={e => setQ(e.target.value)} /></div></div>
+    <div className="lib-list" ref={pg.listRef}>{pg.rows.map(x => row(x))}{!rows.length && <p className="dim shelf-none">찾는 항목이 없어요.</p>}</div>
+    {pg.pager}
+  </>;
 }

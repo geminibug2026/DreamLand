@@ -1,6 +1,7 @@
 // 에셋 관리판 (캐릭터 · 페르소나 공용)
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Btn, Icon } from '../kit';
+import { usePaged } from '../ui';
 import { B, type AssetRec } from '../addons/legacy';
 import { Check, PathIcon, useRedraw } from '../addons/parts';
 import { A, PATHS, cfg, copy, safeDecode, save, upload, uploadFromUrl } from './logic';
@@ -39,6 +40,7 @@ export function Manager({ owner, ver = '', src = owner, locked = false, lockMsg 
   const all = As.inVer(src, ver), shown = all.filter(a => !q || a.name.includes(q));
   for (const id of [...picked]) if (!all.some(a => a.id === id)) picked.delete(id);
   const groups = new Map<string, AssetRec[]>(); for (const a of shown) { const b = As.baseOf(a.name); (groups.get(b) || groups.set(b, []).get(b)!).push(a); }
+  const pg = usePaged([...groups], { id: 'assetGroups', perPage: 24, sizes: [12, 24, 48, 96], resetKey: `${src}|${ver}|${q}` });
 
   const fileRow = (a: AssetRec) => <div key={a.id} className={'ast-file' + (a.disabled ? ' off' : '')}>
     <span className="ast-fname" title={a.name}>{a.name}</span>
@@ -89,8 +91,9 @@ export function Manager({ owner, ver = '', src = owner, locked = false, lockMsg 
         <Btn label="선택 삭제" cls="danger" ic="trash" onClick={() => void bulk('삭제했어요', a => As.remove(a), true)} />
       </div>
     </div>
-    <div className="ast-grid">
-      {groups.size ? [...groups].map(([b, fs]) => groupCard(b, fs)) : <p className="dim ast-empty">{q ? '찾는 에셋이 없어요.' : locked ? '빌려 온 보관함에 에셋이 없어요.' : '아직 에셋이 없어요. 이미지나 ZIP 을 올려 주세요.'}</p>}
+    <div className="ast-grid" ref={pg.listRef}>
+      {groups.size ? pg.rows.map(([b, fs]) => groupCard(b, fs)) : <p className="dim ast-empty">{q ? '찾는 에셋이 없어요.' : locked ? '빌려 온 보관함에 에셋이 없어요.' : '아직 에셋이 없어요. 이미지나 ZIP 을 올려 주세요.'}</p>}
     </div>
+    {pg.pager}
   </div>;
 }

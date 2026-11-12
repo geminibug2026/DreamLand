@@ -5,6 +5,7 @@ import { Avatar, Btn, Icon, IconBtn } from '../kit';
 import type { Char } from '../types';
 import { PageHead, S, Switch, arr, confirmBox, core, errMsg, menu, plain, toast, useDragSort, type Preset, type Regex } from '../studio/bridge';
 import { Cards, G, RX, allowState, chatApi, clip, exportMany, exportOne, isAllowed, isGlobal, modeShort, needs, redrawChat, safeName, scKey, scName, setAllow, whoShort, worst, type Entry, type Sc } from '../regex/lib';
+import { crossPageItems, usePaged } from '../ui';
 import { openDebugger } from '../regex/Debugger';
 import { openEditor } from '../regex/Editor';
 import { importFlow, setsDialog } from '../regex/dialogs';
@@ -47,7 +48,7 @@ function RegexPage({ arg }: { arg?: unknown }) {
   const showScope = (to: Sc) => { view.tab = to.kind; if (to.kind === 'preset') view.presetId = to.id || ''; if (to.kind === 'char') view.charId = to.id || ''; view.picked.clear(); after(); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (openAfter) openEditor(openAfter.r, openAfter.sc, { onClose: after }); }, []);
-  useEffect(() => { if (focusAt.current >= 0) { listEl.current?.children[focusAt.current]?.querySelector<HTMLElement>('.grip')?.focus(); focusAt.current = -1; } });
+  useEffect(() => { if (focusAt.current >= 0) { listEl.current?.children[focusAt.current - base.current.start]?.querySelector<HTMLElement>('.grip')?.focus(); focusAt.current = -1; } });
 
   const newScript = async () => {
     const sc = curScope() || G;
@@ -58,7 +59,8 @@ function RegexPage({ arg }: { arg?: unknown }) {
     drawAll(); openEditor(r, sc, { onClose: after });
   };
   const move = async (sc: Sc, from: number, to: number) => { const list = Scope.list(sc); if (to < 0 || to >= list.length || to === from) return; const [x] = list.splice(from, 1); list.splice(to, 0, x); await Scope.reorder(sc, list); drawAll(); redrawChat(); };
-  const drag = useDragSort((from, to) => { const sc = curScope(); if (sc && canSort()) void move(sc, from, to); });
+  const base = useRef({ start: 0, per: 60 });   // 지금 쪽의 첫 자리 · 한 쪽 개수 (끌기 · 메뉴가 쪽 안 자리를 전체 자리로 바꾼다)
+  const drag = useDragSort((from, to) => { const sc = curScope(); if (sc && canSort()) void move(sc, base.current.start + from, base.current.start + to); });
   const copy = async (e: Entry) => {
     const rest: Regex = structuredClone(e.r); delete rest.src; delete rest.mod;
     const c = await Scope.add(e.sc, { ...rest, id: L.core.uid(), name: `${e.r.name} (사본)` });
@@ -73,6 +75,7 @@ function RegexPage({ arg }: { arg?: unknown }) {
     canSort() && i < n - 1 && { label: '아래로', ic: 'down', onclick: () => move(e.sc, i, i + 1) },
     canSort() && i > 0 && { label: '맨 위로', ic: 'up', onclick: () => move(e.sc, i, 0) },
     canSort() && i < n - 1 && { label: '맨 아래로', ic: 'down', onclick: () => move(e.sc, i, n - 1) },
+    ...(canSort() && n > base.current.per ? crossPageItems(i, n, base.current.per, (a, b) => void move(e.sc, a, b)).filter(x => x && x.label.includes('쪽')) : []),
     '-',
     { label: '복제', ic: 'copy', onclick: () => copy(e) },
     { label: '다른 범위로 옮기기', ic: 'right', onclick: async () => { const to = await pickTarget(anchor, e.sc); if (!to) return; await RX().moveScripts([e], to); toast(`${scName(to)}(으)로 옮겼어요`, 'ok'); after(); } },
@@ -137,7 +140,9 @@ function RegexPage({ arg }: { arg?: unknown }) {
     after();
   };
 
-  const all = entries(), rows = shownEntries(), narrowed = rows.length !== all.length, allOn = rows.length > 0 && rows.every(e => view.picked.has(keyOf(e)));
+  const all = entries(), rows = shownEntries(), pg = usePaged(rows, { id: 'regex', perPage: 60, sizes: [30, 60, 120, 240], resetKey: [view.tab, view.presetId, view.charId, view.q, view.filter].join('|') });
+  base.current = { start: pg.start, per: pg.perPage };
+  const narrowed = rows.length !== all.length, allOn = rows.length > 0 && rows.every(e => view.picked.has(keyOf(e)));
   const count = { global: Scope.list(G).length, preset: view.presetId ? Scope.list({ kind: 'preset', id: view.presetId }).length : 0, char: view.charId ? Scope.list({ kind: 'char', id: view.charId }).length : 0 };
   const tabs: [Tab, string, number | null][] = [['global', '전역', count.global], ['preset', '프리셋', count.preset], ['char', '캐릭터', count.char], ['all', '전체', null]];
   const bring = () => void importFlow(curScope() || G, showScope);
@@ -160,12 +165,12 @@ function RegexPage({ arg }: { arg?: unknown }) {
       {all.length && view.tab !== 'all' ? <span className="dim">{canSort() ? '위에서부터 차례로 적용됩니다' : view.pick ? '' : '순서를 바꾸려면 검색과 거르기를 지우세요'}</span> : ''}
       {view.tab === 'all' && all.length ? <span className="dim">적용 순서: 전역 → 프리셋 → 캐릭터</span> : ''}
     </div>
-    <div className={'rx-list' + (view.pick ? ' picking' : '')} ref={el => { listEl.current = el; return drag(el); }}>
-      {rows.slice(0, view.shown).map((e, i) => row(e, i, rows.length))}
+    <div className={'rx-list' + (view.pick ? ' picking' : '')} ref={el => { listEl.current = el; pg.listRef(el); return drag(el); }}>
+      {pg.rows.map((e, k) => row(e, pg.start + k, rows.length))}
       {!rows.length && <div className="empty rx-empty"><Icon name="code" size={30} /><p>{emptyText}</p>
         {!all.length && sc ? <div className="row wrap"><Btn label="새 정규식" ic="plus" cls="primary" onClick={() => void newScript()} /><Btn label="가져오기" ic="import" onClick={bring} /></div> : null}</div>}
     </div>
-    <div className="rx-morebox">{rows.length > view.shown ? <Btn label={`${Math.min(120, rows.length - view.shown)}개 더 보기 (남은 ${rows.length - view.shown}개)`} cls="ghost" onClick={() => { view.shown += 120; drawAll(); }} /> : ''}</div>
+    <div className="rx-morebox">{pg.pager}</div>
     <div className="rx-bulk" hidden={!view.pick}>{view.pick ? <>
       <b className="rx-bulk-n">{`${view.picked.size}개 고름`}</b>
       <Btn label={allOn ? '모두 풀기' : '보이는 것 모두'} cls="ghost" onClick={() => { for (const e of rows) { if (allOn) view.picked.delete(keyOf(e)); else view.picked.add(keyOf(e)); } drawAll(); }} />

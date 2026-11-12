@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Icon, IconBtn } from '../kit';
+import { usePaged } from '../ui';
 import { B } from '../addons/legacy';
 import { PathIcon, Select, openModal, useRedraw } from '../addons/parts';
 import { A, PATHS, TIDY, cfg, copy, save, tidyPlan, type TidyOpt } from './logic';
@@ -64,6 +65,7 @@ function Gallery({ owner, ver, locked = false, onChange = () => { } }: GalleryOp
   const [q, setQ] = useState(''), [size, setSize] = useState(c.ui.grid || 'medium'), [selecting, setSelecting] = useState(false);
   const { toast, confirmBox } = B.ui;
   const shown = A().inVer(owner, ver).filter(a => !q || a.name.includes(q));
+  const pg = usePaged(shown, { id: 'assetGallery', perPage: 60, sizes: [30, 60, 120, 240], resetKey: `${owner}|${ver}|${q}` });
   const del = async () => {
     const hit = A().inVer(owner, ver).filter(a => picked.has(a.id)); if (!hit.length) return toast('삭제할 에셋을 먼저 골라 주세요');
     if (!(await confirmBox(`고른 에셋 ${hit.length}개를 삭제할까요? 되돌릴 수 없어요.`, '삭제', true))) return;
@@ -77,12 +79,13 @@ function Gallery({ owner, ver, locked = false, onChange = () => { } }: GalleryOp
       <button type="button" className={'ibtn ast-gal-sel' + (selecting ? ' on' : '')} title="선택 모드" onClick={() => { if (locked) return toast('에셋 링크를 쓰는 동안에는 삭제할 수 없어요'); picked.clear(); setSelecting(!selecting); }}><PathIcon d={PATHS.checks} /></button>
       <button type="button" className="btn danger ast-gal-del" title="선택 삭제" style={selecting ? undefined : { display: 'none' }} onClick={() => void del()}><Icon name="trash" /><b>{String(picked.size)}</b></button>
     </div>
-    <div className={'ast-gal ' + size + (selecting ? ' selecting' : '')}>
-      {shown.length ? shown.map((a, i) => <button key={a.id} type="button" className={'ast-gal-item' + (picked.has(a.id) ? ' picked' : '') + (a.disabled ? ' off' : '')} title={a.name}
-        onClick={() => { if (selecting) { if (picked.has(a.id)) picked.delete(a.id); else picked.add(a.id); redraw(); } else lightbox(shown, i); }}>
+    <div className={'ast-gal ' + size + (selecting ? ' selecting' : '')} ref={pg.listRef}>
+      {shown.length ? pg.rows.map((a, i) => <button key={a.id} type="button" className={'ast-gal-item' + (picked.has(a.id) ? ' picked' : '') + (a.disabled ? ' off' : '')} title={a.name}
+        onClick={() => { if (selecting) { if (picked.has(a.id)) picked.delete(a.id); else picked.add(a.id); redraw(); } else lightbox(shown, pg.start + i); }}>
         <span className="ast-gal-img"><img src={a.data} alt={a.name} loading="lazy" /></span><span className="ast-gal-cap">{a.name}</span><i className="ast-gal-mark" /></button>)
         : <p className="dim ast-empty">{q ? '찾는 에셋이 없어요.' : '에셋이 없어요.'}</p>}
     </div>
+    {pg.pager}
   </>;
 }
 export function openGallery(owner: string, ver: string, title: string, o: GalleryOpt = {}) {

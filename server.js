@@ -34,7 +34,9 @@ const SEC_HEADERS = {
 
 // ── 비밀 값 보관함: API 키는 이 파일에만 두고, 브라우저에는 "@@dl:연결:칸@@" 꼬리표만 돌려준다 ──
 // 값은 다시 내주지 않고, 프록시가 요청을 내보낼 때에만 끼워 넣는다. 끼워 넣을 수 있는 곳은 키를 넣을 때 정한 주소로 제한한다.
-const SECRET_FILE = path.join(ROOT, 'data', 'secrets.json');
+// 자료 폴더: 기본은 이 폴더의 data/. 시험할 때는 DL_DATA_DIR 로 다른 폴더를 쓴다
+const DATA_DIR = process.env.DL_DATA_DIR ? path.resolve(process.env.DL_DATA_DIR) : path.join(ROOT, 'data');
+const SECRET_FILE = path.join(DATA_DIR, 'secrets.json');
 const SECRET_RE = /@@dl:([\w-]+):(\w+)@@/g;
 let secretCache = null;
 const loadSecrets = () => { if (!secretCache) { try { secretCache = JSON.parse(fs.readFileSync(SECRET_FILE, 'utf8')); } catch { secretCache = {}; } } return secretCache; };
@@ -123,6 +125,320 @@ async function detect() {
   return found;
 }
 
+// ── 자료 폴더: 브라우저 저장소(IndexedDB)의 거울. 저장소마다 폴더, 레코드마다 파일 하나 ──
+// 파일 꼴: 1줄 = 머리 {v,store,id,hash,at,dev,size}, 2줄 = 값(JSON). 긴 base64 · dataURL 은 _bin/ 의 파일로 빼고 {"$dlbin":sha,"h":앞머리} 로 남긴다.
+// 지우기 · 덮어쓰기는 조용히 버리지 않는다: 지운 것은 _trash/ 로, 다른 기기의 것과 부딪친 것은 _conflicts/ 로 옮긴다.
+const STORE_DIR = path.join(DATA_DIR, 'store');
+const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+const BIN_MIN = 8192;
+const DAY = 86400000;
+let clockShift = Number(process.env.DL_CLOCK_SHIFT || 0);   // 시험용: 시계를 앞뒤로 돌린다
+const clock = () => Date.now() + clockShift;
+const Store = {};
+
+/** 브라우저(src/datafolder/codec.ts)와 똑같은 해시. 값의 JSON 글자열로 계산한다 */
+function dlHash(str) {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57, h3 = 0x9e3779b9 ^ str.length, h4 = 0x85ebca6b;
+  for (let i = 0; i < str.length; i++) {
+    const c = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677);
+    h3 = Math.imul(h3 ^ c, 2246822507); h4 = Math.imul(h4 ^ c, 3266489909);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  h3 = Math.imul(h3 ^ (h3 >>> 16), 2246822507) ^ Math.imul(h4 ^ (h4 >>> 13), 3266489909);
+  h4 = Math.imul(h4 ^ (h4 >>> 16), 2246822507) ^ Math.imul(h3 ^ (h3 >>> 13), 3266489909);
+  const x = n => (n >>> 0).toString(16).padStart(8, '0');
+  return x(h1) + x(h2) + x(h3) + x(h4) + str.length.toString(36);
+}
+
+const storeOk = s => typeof s === 'string' && /^[a-z][a-z0-9_]{0,31}$/.test(s);
+const idOk = id => (typeof id === 'string' && id.length > 0 && id.length <= 1000) || (typeof id === 'number' && Number.isFinite(id));
+/** 레코드 id → 파일 이름. Windows 는 대소문자를 가리지 않으므로 소문자 · 숫자 · _ · - 만 그대로 두고 나머지는 ~hh 로 */
+function fileOf(id) {
+  let s = typeof id === 'number' ? 'n~' + String(id).replace(/[^0-9a-z]/g, c => '~' + c.charCodeAt(0).toString(16).padStart(2, '0')) : '';
+  if (!s) for (const b of Buffer.from(id, 'utf8')) { const c = String.fromCharCode(b); s += /[a-z0-9_-]/.test(c) ? c : '~' + b.toString(16).padStart(2, '0'); }
+  if (s.length > 150) s = 'h~' + require('crypto').createHash('sha1').update(typeof id + ':' + id).digest('hex');
+  return s + '.json';
+}
+const recPath = (store, id) => path.join(STORE_DIR, store, fileOf(id));
+
+async function fsyncFile(p) { let fh; try { fh = await fsp.open(p, 'r+'); await fh.sync(); } catch { } finally { await fh?.close().catch(() => { }); } }
+async function renameRetry(a, b) {
+  for (let i = 0; ; i++) { try { return await fsp.rename(a, b); } catch (e) { if (i >= 8 || !['EPERM', 'EBUSY', 'EACCES'].includes(e.code)) throw e; await new Promise(r => setTimeout(r, 30 * (i + 1))); } }
+}
+/** 원자적 쓰기: 같은 폴더의 임시 파일에 쓰고 fsync → rename. 반쯤 쓴 파일은 남지 않는다 */
+async function atomicWrite(file, data) {
+  await fsp.mkdir(path.dirname(file), { recursive: true });
+  const tmp = path.join(path.dirname(file), '.tmp-' + process.pid + '-' + Math.random().toString(36).slice(2) + '-' + path.basename(file));
+  const fh = await fsp.open(tmp, 'w');
+  try { await fh.writeFile(data); await fh.sync(); } finally { await fh.close(); }
+  try { await renameRetry(tmp, file); } catch (e) { await fsp.unlink(tmp).catch(() => { }); throw e; }
+}
+
+// 모든 쓰기 · 백업 · 복원은 한 줄로 차례차례 (같은 레코드를 동시에 써도 들어온 순서대로)
+let chain = Promise.resolve();
+const serial = fn => { const p = chain.then(fn); chain = p.catch(() => { }); return p; };
+
+// 비밀 값(secrets.json)이 자료에 섞여 들어오면 지운다 — 자료 폴더 · 백업에는 꼬리표만
+let scrubbed = 0;
+function scrubSecrets(str) {
+  const all = loadSecrets();
+  for (const fields of Object.values(all)) for (const rec of Object.values(fields || {})) {
+    const v = rec && rec.value; if (typeof v !== 'string' || v.length < 6) continue;
+    for (const form of [JSON.stringify(v).slice(1, -1), JSON.stringify(JSON.stringify(v).slice(1, -1)).slice(1, -1)]) if (str.includes(form)) { str = str.split(form).join(''); scrubbed++; }
+  }
+  return str;
+}
+
+const canonB64 = s => /^[A-Za-z0-9+/]*={0,2}$/.test(s) && s.length % 4 === 0 && Buffer.from(s, 'base64').toString('base64') === s;
+const binPath = sha => path.join(STORE_DIR, '_bin', sha.slice(0, 2), sha + '.bin');
+/** 값 안의 긴 base64 를 파일로 뺀다. esc(이스케이프된 객체)의 자기 키는 건드리지 않는다 */
+async function extractBins(v, out) {
+  if (typeof v === 'string') {
+    if (v.length < BIN_MIN) return v;
+    const m = /^(data:[^,]{0,200};base64,)/.exec(v); const head = m ? m[1] : '', body = v.slice(head.length);
+    if ((m || !v.startsWith('data:')) && canonB64(body)) {
+      const buf = Buffer.from(body, 'base64'); const sha = require('crypto').createHash('sha256').update(buf).digest('hex');
+      out.set(sha, buf); return { $dlbin: sha, h: head };
+    }
+    return v;
+  }
+  if (Array.isArray(v)) { const a = []; for (const x of v) a.push(await extractBins(x, out)); return a; }
+  if (v && typeof v === 'object') { const o = {}; for (const k of Object.keys(v)) o[k] = await extractBins(v[k], out); return o; }
+  return v;
+}
+const isBinRef = v => v && typeof v === 'object' && !Array.isArray(v) && typeof v.$dlbin === 'string' && Object.keys(v).length === 2 && 'h' in v;
+async function resolveBins(v, get) {
+  if (Array.isArray(v)) { const a = []; for (const x of v) a.push(await resolveBins(x, get)); return a; }
+  if (v && typeof v === 'object') {
+    if (isBinRef(v)) return v.h + (await get(v.$dlbin)).toString('base64');
+    const o = {}; for (const k of Object.keys(v)) o[k] = await resolveBins(v[k], get); return o;
+  }
+  return v;
+}
+const readBin = sha => { if (!/^[0-9a-f]{64}$/.test(sha)) throw new Error('bad bin'); return fsp.readFile(binPath(sha)); };
+async function writeBins(map) { for (const [sha, buf] of map) { const p = binPath(sha); if (!(await exists(p))) await atomicWrite(p, buf); } }
+
+/** 레코드 파일 읽기: { meta, raw(2줄 글자) } */
+async function readRec(file) {
+  let txt; try { txt = await fsp.readFile(file, 'utf8'); } catch (e) { if (e.code === 'ENOENT') return null; throw e; }
+  const nl = txt.indexOf('\n'); if (nl < 0) return null;
+  return { meta: JSON.parse(txt.slice(0, nl)), raw: txt.slice(nl + 1) };
+}
+async function readMeta(file) {
+  let fh; try { fh = await fsp.open(file, 'r'); } catch (e) { if (e.code === 'ENOENT') return null; throw e; }
+  try {
+    let size = 4096, pos = 0, acc = Buffer.alloc(0);
+    for (; ;) { const b = Buffer.alloc(size); const { bytesRead } = await fh.read(b, 0, size, pos); acc = Buffer.concat([acc, b.subarray(0, bytesRead)]); const i = acc.indexOf(10); if (i >= 0) return JSON.parse(acc.subarray(0, i).toString('utf8')); if (!bytesRead) return null; pos += bytesRead; size *= 2; }
+  } finally { await fh.close(); }
+}
+async function storeNames() { try { return (await fsp.readdir(STORE_DIR, { withFileTypes: true })).filter(d => d.isDirectory() && storeOk(d.name)).map(d => d.name); } catch { return []; } }
+async function listMetas(only) {
+  const out = [];
+  for (const s of await storeNames()) {
+    if (only && s !== only) continue;
+    for (const f of await fsp.readdir(path.join(STORE_DIR, s))) { if (!f.endsWith('.json') || f.startsWith('.')) continue; try { const m = await readMeta(path.join(STORE_DIR, s, f)); if (m) out.push(m); } catch { } }
+  }
+  return out;
+}
+async function moveAside(kind, store, id, note) {   // _trash 또는 _conflicts 로 옮긴다 (지우지 않는다)
+  const src = recPath(store, id); const rec = await readRec(src); if (!rec) return false;
+  const dst = path.join(STORE_DIR, kind, store, clock() + '-' + Math.random().toString(36).slice(2, 6) + '-' + fileOf(id));
+  await atomicWrite(dst, JSON.stringify({ ...rec.meta, [kind === '_trash' ? 'deletedAt' : 'asideAt']: clock(), note: note || '' }) + '\n' + rec.raw);
+  if (kind === '_trash') await fsp.unlink(src);
+  return true;
+}
+let lastWrite = 0;
+/** 레코드 하나 쓰기 (serial 안에서 부른다). value 는 브라우저가 보낸 JSON 값 */
+async function putRec(store, id, value, { dev = '', base, at, keep } = {}) {
+  let str = JSON.stringify(value === undefined ? null : value); str = scrubSecrets(str); value = JSON.parse(str);
+  const hash = dlHash(str), file = recPath(store, id); const cur = await readMeta(file);
+  if (cur && cur.hash === hash) return { ok: true, hash, same: true };
+  if (cur && keep) await moveAside('_conflicts', store, id, '양쪽이 다 바뀌어 서버 판을 남겨 둠');
+  else if (cur && base === undefined) await moveAside('_conflicts', store, id, '이전 판을 모르는 채로 덮어씀');
+  else if (cur && base !== undefined && cur.hash !== base && cur.dev && cur.dev !== dev) await moveAside('_conflicts', store, id, '다른 기기의 저장과 부딪침');
+  const bins = new Map(); const packed = await extractBins(value, bins); await writeBins(bins);
+  const meta = { v: 1, store, id, hash, at: at || clock(), dev, size: str.length };
+  await atomicWrite(file, JSON.stringify(meta) + '\n' + JSON.stringify(packed)); lastWrite = clock();
+  return { ok: true, hash };
+}
+async function delRec(store, id, { dev = '', base } = {}) {
+  const file = recPath(store, id); const cur = await readMeta(file); if (!cur) return { ok: true, gone: true };
+  await moveAside('_trash', store, id, base !== undefined && cur.hash !== base && cur.dev !== dev ? '다른 기기에서 고친 뒤 지워짐' : ''); lastWrite = clock();
+  return { ok: true };
+}
+async function getRec(store, id) {
+  const rec = await readRec(recPath(store, id)); if (!rec) return null;
+  return { store, id: rec.meta.id, hash: rec.meta.hash, at: rec.meta.at, value: await resolveBins(JSON.parse(rec.raw), readBin) };
+}
+
+// ── 백업: 전체를 한 파일(줄 단위 JSON + gzip)로. 이름 = YYYYMMDD-HHMMSS-종류.dlbak.gz ──
+const zlib = require('zlib');
+const pad = n => String(n).padStart(2, '0');
+const stamp = t => { const d = new Date(t); return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`; };
+const dayKey = t => { const d = new Date(t); return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`; };
+const BK_RE = /^(\d{8})-(\d{6})-([a-z-]+)(?:-\d+)?\.dlbak\.gz$/;
+const parseBk = name => { const m = BK_RE.exec(name); if (!m) return null; const [y, mo, d] = [m[1].slice(0, 4), m[1].slice(4, 6), m[1].slice(6)], [hh, mi, ss] = [m[2].slice(0, 2), m[2].slice(2, 4), m[2].slice(4)]; return { name, at: new Date(+y, +mo - 1, +d, +hh, +mi, +ss).getTime(), kind: m[3] }; };
+async function listBackups() {
+  let names = []; try { names = await fsp.readdir(BACKUP_DIR); } catch { }
+  const out = [];
+  for (const n of names) { const b = parseBk(n); if (!b) continue; try { b.size = (await fsp.stat(path.join(BACKUP_DIR, n))).size; } catch { continue; } out.push(b); }
+  return out.sort((a, b) => b.at - a.at);
+}
+/** 보관 규칙: 최근 3일은 모두, 최근 14일은 하루에 하나, 최근 8주는 주마다 하나, 최근 6개월은 달마다 하나 (각 칸의 가장 새 것). 나머지만 지운다 */
+function planPrune(list, now) {
+  const keep = new Set(), sorted = [...list].sort((a, b) => b.at - a.at);
+  const firstIn = (keyOf, from) => { const seen = new Set(); for (const b of sorted) { if (b.at < from || b.at > now + DAY) continue; const k = keyOf(b.at); if (!seen.has(k)) { seen.add(k); keep.add(b.name); } } };
+  for (const b of sorted) if (b.at >= now - 3 * DAY) keep.add(b.name);
+  const startOfDay = t => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+  firstIn(dayKey, startOfDay(now) - 13 * DAY);
+  const weekKey = t => { const d = new Date(startOfDay(t)); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return dayKey(d.getTime()); };
+  firstIn(weekKey, startOfDay(now) - 8 * 7 * DAY);
+  const n = new Date(now); const m6 = new Date(n.getFullYear(), n.getMonth() - 5, 1).getTime();
+  firstIn(t => { const d = new Date(t); return d.getFullYear() * 100 + d.getMonth(); }, m6);
+  return { keep: sorted.filter(b => keep.has(b.name)), drop: sorted.filter(b => !keep.has(b.name)) };
+}
+async function pruneBackups() {
+  const { drop } = planPrune(await listBackups(), clock());
+  for (const b of drop) await fsp.unlink(path.join(BACKUP_DIR, b.name)).catch(() => { });
+  // 지운 자료(_trash)는 30일 뒤에 정리한다 (그 사이의 하루 백업에 들어 있다)
+  const tdir = path.join(STORE_DIR, '_trash');
+  for (const s of await fsp.readdir(tdir).catch(() => [])) for (const f of await fsp.readdir(path.join(tdir, s)).catch(() => [])) { const t = Number(f.split('-')[0]); if (t && t < clock() - 30 * DAY) await fsp.unlink(path.join(tdir, s, f)).catch(() => { }); }
+  return drop.length;
+}
+async function countRecords() { let n = 0; for (const s of await storeNames()) n += (await fsp.readdir(path.join(STORE_DIR, s))).filter(f => f.endsWith('.json') && !f.startsWith('.')).length; return n; }
+/** 전체 스냅숏을 만든다 (serial 안에서 부른다). 자료가 없으면 만들지 않는다 */
+async function makeBackup(reason) {
+  if (!(await countRecords())) return null;
+  await fsp.mkdir(BACKUP_DIR, { recursive: true });
+  let name = `${stamp(clock())}-${reason}.dlbak.gz`; for (let i = 2; await exists(path.join(BACKUP_DIR, name)); i++) name = `${stamp(clock())}-${reason}-${i}.dlbak.gz`;
+  const file = path.join(BACKUP_DIR, name), tmp = path.join(BACKUP_DIR, '.tmp-' + name);
+  const gz = zlib.createGzip({ level: 6 }); const ws = fs.createWriteStream(tmp);
+  const done = new Promise((res, rej) => { ws.on('finish', res); ws.on('error', rej); gz.on('error', rej); });
+  gz.pipe(ws);
+  const write = s => new Promise(r => { if (gz.write(s)) r(); else gz.once('drain', r); });
+  let records = 0; const seenBins = new Set(); const recs = [];
+  for (const s of await storeNames()) for (const f of await fsp.readdir(path.join(STORE_DIR, s))) if (f.endsWith('.json') && !f.startsWith('.')) recs.push(path.join(STORE_DIR, s, f));
+  await write(JSON.stringify({ t: 'head', app: 'dreamland-backup', v: 1, at: clock(), reason, records: recs.length }) + '\n');
+  for (const f of recs) {
+    const rec = await readRec(f); if (!rec) continue;
+    const refs = []; JSON.parse(rec.raw, (k, v) => { if (isBinRef(v)) refs.push(v.$dlbin); return v; });
+    for (const sha of refs) if (!seenBins.has(sha)) { seenBins.add(sha); await write(JSON.stringify({ t: 'bin', sha, b64: (await readBin(sha)).toString('base64') }) + '\n'); }
+    await write('{"t":"rec","meta":' + JSON.stringify(rec.meta) + ',"value":' + rec.raw + '}\n'); records++;
+  }
+  await write(JSON.stringify({ t: 'end', records }) + '\n');
+  gz.end(); await done; await fsyncFile(tmp); await renameRetry(tmp, file);
+  await pruneBackups();
+  return { name, records };
+}
+async function readBackup(name, onLine) {
+  if (!parseBk(name)) throw new Error('백업 이름이 올바르지 않습니다');
+  const rl = require('readline').createInterface({ input: fs.createReadStream(path.join(BACKUP_DIR, name)).pipe(zlib.createGunzip()), crlfDelay: Infinity });
+  let head = null, end = null;
+  for await (const line of rl) { if (!line) continue; const o = JSON.parse(line); if (o.t === 'head') head = o; else if (o.t === 'end') end = o; else await onLine(o); }
+  if (!head || head.app !== 'dreamland-backup' || !end) throw new Error('백업 파일이 온전하지 않습니다');
+  return { head, end };
+}
+/** 복원: 고른 백업으로 되돌린다. 바로 전에 지금 상태를 백업하고, 백업에 없는 레코드는 _trash 로 옮긴다 */
+async function restoreBackup(name) {
+  // 먼저 끝까지 읽어 온전한지 확인한다 (깨진 백업으로 지금 자료를 덮지 않게)
+  let n = 0; await readBackup(name, async o => { if (o.t === 'rec') n++; });
+  const pre = await makeBackup('pre-restore');
+  const keepKeys = new Set(); let written = 0;
+  await readBackup(name, async o => {
+    if (o.t === 'bin') { const p = binPath(o.sha); if (!(await exists(p))) await atomicWrite(p, Buffer.from(o.b64, 'base64')); return; }
+    if (o.t !== 'rec' || !storeOk(o.meta.store) || !idOk(o.meta.id)) return;
+    const file = recPath(o.meta.store, o.meta.id); keepKeys.add(file.toLowerCase());
+    const cur = await readMeta(file); if (cur && cur.hash === o.meta.hash) return;
+    await atomicWrite(file, JSON.stringify({ ...o.meta, at: clock(), restoredFrom: name }) + '\n' + JSON.stringify(o.value)); written++;
+  });
+  let trashed = 0;
+  for (const m of await listMetas()) if (!keepKeys.has(recPath(m.store, m.id).toLowerCase())) { await moveAside('_trash', m.store, m.id, '복원: ' + name); trashed++; }
+  lastWrite = clock();
+  return { records: n, written, trashed, pre: pre?.name || '' };
+}
+let lastDaily = '', lastBig = 0;
+async function dailyCheck() {   // 오늘 백업이 없으면 하나 만든다 (serial 안에서)
+  const today = dayKey(clock()); if (lastDaily === today) return null;
+  const has = (await listBackups()).some(b => dayKey(b.at) === today);
+  if (has) { lastDaily = today; await pruneBackups(); return null; }
+  const r = await makeBackup('daily'); if (r) lastDaily = today;   // 자료가 아직 없으면 다음 저장 때 다시 본다
+  return r;
+}
+async function bigBackup(reason) { if (clock() - lastBig < 120000) return null; lastBig = clock(); return makeBackup(reason); }   // 큰 작업 직전 (2분에 한 번까지)
+async function dirSize(dir) { let n = 0; for (const d of await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])) { const p = path.join(dir, d.name); n += d.isDirectory() ? await dirSize(p) : (await fsp.stat(p).catch(() => ({ size: 0 }))).size; } return n; }
+async function cleanTmp(dir) { for (const d of await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])) { const p = path.join(dir, d.name); if (d.isDirectory()) await cleanTmp(p); else if (d.name.startsWith('.tmp-')) await fsp.unlink(p).catch(() => { }); } }
+
+async function storeOps(body) {
+  const ops = Array.isArray(body.ops) ? body.ops : []; const dev = String(body.dev || '').slice(0, 64);
+  return serial(async () => {
+    await dailyCheck().catch(e => console.error('하루 백업 실패', e));
+    if (ops.filter(o => o && o.op === 'del').length >= 20) await bigBackup('pre-delete').catch(e => console.error('백업 실패', e));
+    const results = [];
+    for (const o of ops) {
+      try {
+        if (!o || !storeOk(o.store) || !idOk(o.id)) { results.push({ ok: false, error: '잘못된 레코드' }); continue; }
+        results.push(o.op === 'del' ? await delRec(o.store, o.id, { dev, base: o.base }) : await putRec(o.store, o.id, o.value, { dev, base: o.base, keep: o.keep === true }));
+      } catch (e) { results.push({ ok: false, error: e.message }); }
+    }
+    return { results };
+  });
+}
+
+async function storeApi(req, res, url) {
+  const p = url.pathname.slice('/api/store/'.length);
+  if (req.method === 'GET') {
+    if (p === 'status') {
+      const backups = await listBackups();
+      return send(res, 200, { on: true, dir: STORE_DIR, backupDir: BACKUP_DIR, records: await countRecords(), bytes: await dirSize(STORE_DIR), lastWrite, scrubbed, backups: { count: backups.length, bytes: backups.reduce((n, b) => n + b.size, 0), last: backups[0]?.at || 0 }, now: clock() });
+    }
+    if (p === 'list') { const s = url.searchParams.get('store'); return send(res, 200, await listMetas(s && storeOk(s) ? s : '')); }
+    if (p === 'dump') {   // 한꺼번에 받기: 줄 단위 JSON 으로 흘려 보낸다
+      const only = url.searchParams.get('store');
+      res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store', ...SEC_HEADERS });
+      for (const s of await storeNames()) {
+        if (only && s !== only) continue;
+        for (const f of await fsp.readdir(path.join(STORE_DIR, s))) {
+          if (!f.endsWith('.json') || f.startsWith('.')) continue;
+          const rec = await readRec(path.join(STORE_DIR, s, f)).catch(() => null); if (!rec) continue;
+          const line = JSON.stringify({ store: s, id: rec.meta.id, hash: rec.meta.hash, at: rec.meta.at, value: await resolveBins(JSON.parse(rec.raw), readBin) }) + '\n';
+          if (!res.write(line)) await new Promise(r => res.once('drain', r));
+        }
+      }
+      return res.end();
+    }
+    if (p === 'backups') return send(res, 200, await listBackups());
+    if (p === 'backup-file') {
+      const name = url.searchParams.get('name') || ''; if (!parseBk(name) || !(await exists(path.join(BACKUP_DIR, name)))) return send(res, 404, { error: 'not found' });
+      const st = await fsp.stat(path.join(BACKUP_DIR, name));
+      res.writeHead(200, { 'Content-Type': 'application/gzip', 'Content-Length': st.size, 'Content-Disposition': `attachment; filename="dreamland-${name}"`, 'Cache-Control': 'no-store', ...SEC_HEADERS });
+      return fs.createReadStream(path.join(BACKUP_DIR, name)).pipe(res);
+    }
+    return send(res, 404, { error: 'unknown api' });
+  }
+  if (req.method !== 'POST') return send(res, 405, { error: 'method' });
+  // 창을 닫을 때의 sendBeacon 은 머리글을 달 수 없다: 같은 출처(Origin)일 때만 받는다
+  if (p === 'beacon') { if (req.headers.origin !== `http://${req.headers.host}`) return send(res, 403, { error: 'forbidden' }); }
+  else if (req.headers['x-dreamland'] !== '1') return send(res, 403, { error: 'forbidden' });
+  const body = await readBody(req, 512 * 1024 * 1024);
+  if (p === 'put' || p === 'beacon') return send(res, 200, await storeOps(body));
+  if (p === 'get') {
+    const out = []; for (const k of Array.isArray(body.keys) ? body.keys : []) if (k && storeOk(k.store) && idOk(k.id)) out.push(await getRec(k.store, k.id));
+    return send(res, 200, out);
+  }
+  if (p === 'conflict') {   // 브라우저 쪽에서 밀려난 판을 남겨 둔다
+    if (!storeOk(body.store) || !idOk(body.id)) return send(res, 400, { error: '잘못된 레코드' });
+    await serial(async () => { const str = scrubSecrets(JSON.stringify(body.value ?? null)); const bins = new Map(); const packed = await extractBins(JSON.parse(str), bins); await writeBins(bins);
+      await atomicWrite(path.join(STORE_DIR, '_conflicts', body.store, clock() + '-' + Math.random().toString(36).slice(2, 6) + '-' + fileOf(body.id)), JSON.stringify({ v: 1, store: body.store, id: body.id, hash: dlHash(str), at: clock(), dev: String(body.dev || ''), note: String(body.note || '').slice(0, 200) }) + '\n' + JSON.stringify(packed)); });
+    return send(res, 200, { ok: true });
+  }
+  if (p === 'backup') { const r = await serial(() => body.reason && body.reason !== 'manual' ? bigBackup(String(body.reason).replace(/[^a-z-]/g, '').slice(0, 20) || 'manual') : makeBackup('manual')); return send(res, 200, { ok: true, backup: r }); }
+  if (p === 'restore') { try { return send(res, 200, { ok: true, ...(await serial(() => restoreBackup(String(body.name || '')))) }); } catch (e) { return send(res, 400, { error: e.message }); } }
+  return send(res, 404, { error: 'unknown api' });
+}
+Object.assign(Store, { dlHash, planPrune, makeBackup, restoreBackup, listBackups, pruneBackups, fileOf, setClockShift: n => { clockShift = n; lastDaily = ''; }, serial, storeOps, STORE_DIR, BACKUP_DIR });
+
 const UNSAFE_KEY = /^(__proto__|constructor|prototype)$/;
 async function api(req, res, url) {
   // 다른 웹사이트가 이 로컬 서버를 호출하지 못하게 한다
@@ -131,9 +447,10 @@ async function api(req, res, url) {
   // 폴더 읽기는 서버를 실행한 PC 에서 접속했을 때만 허용한다
   const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
   if (!local && /^\/api\/(fs|detect|resolve)/.test(url.pathname)) return send(res, 403, { error: '이 기능은 서버를 실행한 PC 에서만 쓸 수 있습니다' });
+  if (url.pathname.startsWith('/api/store/')) return storeApi(req, res, url);
   if (req.method === 'POST' && req.headers['x-dreamland'] !== '1') return send(res, 403, { error: 'forbidden' });
 
-  if (url.pathname === '/api/ping') return send(res, 200, { ok: true, bridge: true, secrets: true });
+  if (url.pathname === '/api/ping') return send(res, 200, { ok: true, bridge: true, secrets: true, store: true });
   if (url.pathname === '/api/secrets' && req.method === 'GET') {   // 무엇이 보관돼 있는지만 알려 준다 (값은 주지 않음)
     const out = {}; for (const [id, fields] of Object.entries(loadSecrets())) out[id] = Object.fromEntries(Object.entries(fields).map(([f, r]) => [f, { tail: r.tail || '', hosts: r.hosts || [], note: r.note || '', at: r.at || 0 }]));
     return send(res, 200, out);
@@ -269,7 +586,8 @@ const server = http.createServer(async (req, res) => {
     if (rel.toLowerCase().startsWith('/node_modules')) return send(res, 403, 'forbidden', 'text/plain');
     if (rel.includes(':') || rel.includes('\0')) return send(res, 403, 'forbidden', 'text/plain');
     const file = path.resolve(ROOT, '.' + rel);
-    if (!file.startsWith(ROOT + path.sep) || path.basename(file).toLowerCase() === 'server.js' || /^data([\\/]|$)/i.test(path.relative(ROOT, file)) || /(^|[\\/])\./.test(path.relative(ROOT, file)) || /\.(bat|cmd|sh|md)$/i.test(file)) return send(res, 403, 'forbidden', 'text/plain');
+    const inData = (() => { const r = path.relative(DATA_DIR, file); return !r.startsWith('..') && !path.isAbsolute(r); })();
+    if (!file.startsWith(ROOT + path.sep) || inData || path.basename(file).toLowerCase() === 'server.js' || /^data([\\/]|$)/i.test(path.relative(ROOT, file)) || /(^|[\\/])\./.test(path.relative(ROOT, file)) || /\.(bat|cmd|sh|md)$/i.test(file)) return send(res, 403, 'forbidden', 'text/plain');
     if (!(await exists(file)) || (await isDir(file))) return send(res, 404, 'not found', 'text/plain');
     send(res, 200, await fsp.readFile(file), MIME[path.extname(file).toLowerCase()] || 'application/octet-stream');
   } catch (e) {
@@ -278,6 +596,9 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+module.exports = { Store, server };
+if (require.main !== module) return;
+cleanTmp(STORE_DIR).then(() => cleanTmp(BACKUP_DIR)).then(() => serial(dailyCheck)).catch(e => console.error('자료 폴더 확인 실패', e));
 server.on('error', e => {
   if (e.code === 'EADDRINUSE') console.error(`\n  ${PORT}번 포트를 이미 쓰고 있어요. 드림랜드가 이미 켜져 있다면 브라우저에서 http://localhost:${PORT} 를 열어 주세요.\n  다른 포트로 열려면 PORT 환경 변수를 정해 주세요. (예: PORT=4180)\n`);
   else console.error(e);

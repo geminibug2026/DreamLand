@@ -21,6 +21,10 @@
 // 그 밖에
 //   <PageHead eyebrow="Settings" title="설정">오른쪽 도구…</PageHead>     <TokBadge n={1234} />
 //   const ref = useDragSort((from, to) => …);  <div ref={ref}>{rows.map(r => <div key=…><i className="grip" />…</div>)}</div>   // 줄은 바로 아래 자식이어야 한다
+//   <LibraryPage … list={ctx => <Shelf ctx={ctx} coll="presets" active={id} foldersKey="presetFolders" pageSize={30} />} />   // 정렬 · 즐겨찾기 · 폴더 · 검색 · 쪽
+//   const pg = usePaged(rows, { id: '기억할 이름', perPage, sizes, resetKey: q + sort, focusIndex, unit: 칸 수, reserve }); pg.rows 를 그리고 {pg.pager}, 목록에 ref={pg.listRef}
+//     · 끌어서 순서가 있는 목록은 메뉴에 crossPageItems(전체 자리, 전체 수, pg.perPage, move) 를 붙인다
+//   markUsed(coll, id, explicit) 쓰인 시각 · 횟수 / stripShelf(o) 내보낼 때 정리 필드 빼기
 //   charPicker({ title, selected, multi, note: c => '꼬리표', onDone: ids => … });
 export { Modal, openModal, confirmBox, promptBox, type ModalAction, type ModalHandle, type ModalProps } from './Modal';
 export { toast } from './toast';
@@ -29,4 +33,6 @@ export { Form, TipBtn, installTipify, type FieldDef, type FormDefs } from './For
 export { LibraryPage, type LibApi, type LibraryProps } from './LibraryPage';
 export { PageHead, TokBadge } from './bits';
 export { dragSort, useDragSort } from './dragSort';
+export { usePaged, pageList, crossPageItems, type Paged, type PagedOpts } from './Pager';
+export { Shelf, markUsed, stripShelf, SHELF_KEYS, type ShelfProps, type ShelfFields, type ShelfSort, type ShelfFolder } from './Shelf';
 export { charPicker, type CharPickerOptions } from './CharPicker';

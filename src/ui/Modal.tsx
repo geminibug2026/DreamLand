@@ -77,7 +77,8 @@ export function openModal({ body, onClose, ...o }: Omit<ModalProps, 'children' |
 /** 예/아니오. 확인을 누르면 true, 그 밖에는 false */
 export const confirmBox = (msg: string, okLabel = '확인', danger = false) => new Promise<boolean>(res => {
   let done = false;
-  openModal({ title: msg, body: <div />, onClose: () => { if (!done) res(false); }, actions: [{ label: '취소' }, { label: okLabel, cls: danger ? 'danger' : 'primary', onclick: () => { done = true; res(true); } }] });
+  const m = openModal({ title: msg, body: <div />, onClose: () => { if (!done) res(false); }, actions: [{ label: '취소' }, { label: okLabel, cls: danger ? 'danger' : 'primary', onclick: () => { done = true; res(true); } }] });
+  m.el.classList.add('dialog');   // 휴대폰에서도 아래에 붙지 않고 가운데에 뜬다
 });
 
 /** 글 한 줄(area 면 여러 줄) 받기. 취소하면 null */
@@ -90,4 +91,5 @@ export const promptBox = (title: string, value = '', { area = false, placeholder
       ? <textarea className="inp" defaultValue={value} placeholder={placeholder} rows={6} ref={x => { el = x; }} />
       : <input className="inp" defaultValue={value} placeholder={placeholder} ref={x => { el = x; }} onKeyDown={e => { if (e.key === 'Enter') { ok(); m.close(); } }} />,
   });
+  m.el.classList.add('dialog');
 });

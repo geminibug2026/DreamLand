@@ -1,7 +1,7 @@
 // 페르소나: 이름 · 초상 · 설명 + 연결(기본 · 캐릭터 · 대화) · 로어북 · 에셋
 import { useMemo } from 'react';
 import { Avatar, Btn, IconBtn } from '../kit';
-import { Form, LibraryPage, charPicker, confirmBox, toast } from '../ui';
+import { Form, LibraryPage, Shelf, charPicker, confirmBox, toast } from '../ui';
 import { chatPicker, roomLabel } from '../editors/ChatPicker';
 import { LorePicker } from '../editors/lore';
 import { NEEDS, assets, core, engine, store, studio, type Persona, type XChat } from '../editors/bridge';
@@ -58,5 +58,6 @@ function PersonasPage({ arg }: { arg?: unknown }) {
   const S = store();
   return <LibraryPage<Persona> arg={arg} title="페르소나" eyebrow="persona" coll="personas" ic="user" thumb={p => <Avatar o={p} cls="sm" />} create={() => core().newPersona({ name: '새 페르소나' })} label={p => p.name}
     sub={p => p.id === S.settings.activePersona ? '기본 페르소나' : (p.description.slice(0, 40) || ' ')}
+    list={ctx => <Shelf ctx={ctx} coll="personas" active={S.settings.activePersona} text={p => p.name + ' ' + (p.description || '')} pageSize={20} placeholder="페르소나 찾기" />}
     editor={(p, api) => <PersonaEditor p={p} api={editorApi(api, 'personas')} />} />;
 }

@@ -6,6 +6,7 @@ import type { Char } from '../types';
 import { toast, promptBox, menu, charPicker, LForm, PageHead, S, Switch, core, errMsg, imageModal, openModal, type ChatX, type Lore } from '../studio/bridge';
 import { Assets, M, MODE_LABEL, MOD_ASSET_PROMPT, SCOPES, booksOf, cfg, counts, debounce, list, needs, ownItems, regexOf, roomNote, roomTitle, scopeLabel, text, verLabel, type Asset, type ItemState, type Kind, type Module, type Plan, type Quick, type Scope } from '../modules/lib';
 import { pickItems } from '../modules/PickItems';
+import { usePaged } from '../ui';
 
 export const page = { name: 'modules', Component: Modules, needs };
 
@@ -86,7 +87,7 @@ const listState = { q: '', filter: 'all' };
 const FILTERS: [string, string, (m: Module) => boolean][] = [['all', '전체', () => true], ['on', '켜짐', m => m.on], ['off', '꺼짐', m => !m.on], ['global', '전역', m => m.scope === 'global'], ['char', '캐릭터', m => m.scope === 'char'], ['chat', '대화방', m => m.scope === 'chat']];
 function ListView() {
   const st = listState, all = M().list;
-  const [q, setQ] = useState(st.q), [shown, setShown] = useState(60), [drawn, setDrawn] = useState(0), [, bump] = useState(0);
+  const [q, setQ] = useState(st.q), [drawn, setDrawn] = useState(0), [, bump] = useState(0);
   const draw = () => setDrawn(n => n + 1);
   // 스위치를 눌러도 카드가 자리를 옮기지 않게, 목록의 순서와 안내 글은 다시 그릴 때만 새로 잡는다
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -96,6 +97,7 @@ function ListView() {
       .sort((a, b) => +b.on - +a.on || a.name.localeCompare(b.name, 'ko'));
     return { rows, info: all.length ? `${rows.length === all.length ? `모두 ${rows.length}개` : `${rows.length}개 / 전체 ${all.length}개`} · 켜진 것 ${all.filter(m => m.on).length}개` : '' };
   }, [drawn, q, st.filter, all.length]);
+  const pg = usePaged(rows, { id: 'modules', perPage: 24, sizes: [12, 24, 48, 96], resetKey: `${q}|${st.filter}` });
   const make = async () => { const m = await M().create(); go(m.id); };
   const setPrompt = useMemo(() => debounce((v: string) => { cfg().assetPrompt = v; S().set({ modules: cfg() }); }, 300), []);
   const card = (m: Module) => <article className={'mod-card' + (m.on ? ' on' : '')} key={m.id}>
@@ -118,12 +120,12 @@ function ListView() {
   </article>;
   return <section className="mods">
     <PageHead eyebrow="modules" title="모듈"><Btn label="가져오기" ic="import" title="모듈 파일(JSON) 가져오기" onClick={() => void importDialog()} /><Btn label="새 모듈" ic="plus" cls="primary" onClick={() => void make()} /></PageHead>
-    <div className="mod-bar"><div className="search-wrap"><Icon name="search" size={16} /><input className="inp" placeholder="모듈 이름 · 만든이 · 담긴 로어북 이름으로 찾기" value={q} onChange={e => { st.q = e.target.value; setQ(e.target.value); setShown(60); }} /></div><span className="mod-info">{info}</span></div>
-    <div className="mod-filters">{FILTERS.map(([id, label, fn]) => <button key={id} type="button" className={'chip' + (st.filter === id ? ' on' : '')} onClick={() => { st.filter = id; setShown(60); draw(); }}>{label}<small>{String(all.filter(fn).length)}</small></button>)}</div>
-    <div className="mod-grid">{!all.length
+    <div className="mod-bar"><div className="search-wrap"><Icon name="search" size={16} /><input className="inp" placeholder="모듈 이름 · 만든이 · 담긴 로어북 이름으로 찾기" value={q} onChange={e => { st.q = e.target.value; setQ(e.target.value); }} /></div><span className="mod-info">{info}</span></div>
+    <div className="mod-filters">{FILTERS.map(([id, label, fn]) => <button key={id} type="button" className={'chip' + (st.filter === id ? ' on' : '')} onClick={() => { st.filter = id; draw(); }}>{label}<small>{String(all.filter(fn).length)}</small></button>)}</div>
+    <div className="mod-grid" ref={pg.listRef}>{!all.length
       ? <div className="empty mod-empty"><Icon name="panel" size={34} /><p>로어북 · 정규식 · 에셋을 한 묶음으로 만들어 두면 스위치 하나로 켜고 끌 수 있어요.</p><div className="row wrap"><Btn label="새 모듈" ic="plus" cls="primary" onClick={() => void make()} /><Btn label="파일에서 가져오기" ic="import" onClick={() => void importDialog()} /></div></div>
-      : !rows.length ? <p className="dim mod-none">찾는 모듈이 없어요.</p> : rows.slice(0, shown).map(card)}</div>
-    <div className="mod-more">{rows.length > shown ? <Btn label={`더 보기 · ${rows.length - shown}개 남음`} cls="ghost wide" ic="down" onClick={() => setShown(n => n + 60)} /> : null}</div>
+      : !rows.length ? <p className="dim mod-none">찾는 모듈이 없어요.</p> : pg.rows.map(card)}</div>
+    <div className="mod-more">{pg.pager}</div>
     <details className="mod-opts"><summary><Icon name="sliders" size={15} />모듈 에셋 안내문</summary>
       <div className="mod-opts-body"><small className="hint">{'켜진 모듈에 그림이 들어 있을 때만 프롬프트에 덧붙습니다(추가 호출 없음). 비워 두면 아래 회색 글이 쓰여요. {{keywords}} 는 그림 이름 목록, {{max}} 는 답변당 최대 개수로 바뀝니다.'}</small>
         <textarea className="inp" rows={5} spellCheck={false} placeholder={MOD_ASSET_PROMPT()} defaultValue={text(cfg().assetPrompt)} onChange={e => setPrompt(e.target.value)} /></div></details>
@@ -133,7 +135,8 @@ function ListView() {
 // ── 편집: 에셋 탭 ──
 function AssetsTab({ m, redraw }: { m: Module; redraw: () => void }) {
   const A = Assets(), owner = M().ownerOf(m), alive = useRef(true);
-  const [all, setAll] = useState<Asset[] | null>(null), [shown, setShown] = useState(120);
+  const [all, setAll] = useState<Asset[] | null>(null);
+  const pg = usePaged(all || [], { id: 'moduleAssets', perPage: 60, sizes: [30, 60, 120, 240], resetKey: m.id });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     alive.current = true;
@@ -162,11 +165,11 @@ function AssetsTab({ m, redraw }: { m: Module; redraw: () => void }) {
   return <div className="col">
     <div className="row wrap"><Btn label="그림 올리기" ic="upload" title="이미지 여러 장 또는 ZIP" onClick={() => void upload()} /><Btn label="캐릭터 에셋에서 담기" ic="copy" onClick={fromChar} />{all.length > 0 && <span className="mod-info">{`${all.length}장`}</span>}</div>
     <small className="hint">{'모듈이 켜진 대화에서 {{img::이름}} 으로 불러옵니다. 같은 이름이 캐릭터나 페르소나 에셋에 있으면 그쪽이 먼저예요. 그림은 원본을 복사해 모듈 안에 따로 보관합니다.'}</small>
-    <div className="mod-assets">{all.slice(0, shown).map(a => <figure className="mod-asset" key={a.id}>
+    <div className="mod-assets" ref={pg.listRef}>{pg.rows.map(a => <figure className="mod-asset" key={a.id}>
       <button type="button" className="mod-asset-pic" title="크게 보기" onClick={() => imageModal(a.name, a.data)}><img src={a.data} alt={a.name} loading="lazy" /></button>
       <figcaption><button type="button" className="mod-asset-name" title="이름 바꾸기" onClick={() => void rename(a)}>{a.name}</button><IconBtn ic="x" title="그림 빼기" cls="tiny" onClick={async () => { await A.remove(a); void after(); }} /></figcaption>
     </figure>)}{!all.length && <p className="dim mod-none">아직 담긴 그림이 없어요.</p>}</div>
-    <div>{all.length > shown ? <Btn label={`더 보기 · ${all.length - shown}장 남음`} cls="ghost wide" ic="down" onClick={() => setShown(n => n + 120)} /> : null}</div>
+    <div>{pg.pager}</div>
   </div>;
 }
 

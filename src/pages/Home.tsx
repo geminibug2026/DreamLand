@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'rea
 import { L } from '../legacy';
 import { Btn, Emblem, Icon, IconBtn, InkName, Moon, artStyle, tintRef, useEvents } from '../kit';
 import type { Char, Folder } from '../types';
-import { charPicker, confirmBox, menu, promptBox } from '../ui';
+import { charPicker, confirmBox, menu, promptBox, usePaged } from '../ui';
 
 // 화면을 떠났다 돌아와도 남는 보기 상태. folder: '' 전체 · '-' 폴더 없음 · 폴더 id
 const view = { q: '', sort: 'recent' as 'recent' | 'new' | 'name', tag: '', fav: false, pick: 0, folder: '' };
@@ -47,7 +47,8 @@ function Stage({ picks, redraw }: { picks: Char[]; redraw: () => void }) {
   if (!c) return <div className="dream" ref={el}>
     <div className="dream-text">{sky}<h2 className="dream-name">첫 꿈을 불러와요</h2>
       <div className="dream-actions"><Btn label="이식 센터" ic="folder" cls="primary" onClick={() => L.ui.go('import')} /><Btn label="카드 가져오기" ic="import" onClick={() => void L.editors.importDialog()} /><Btn label="API 연결" ic="plug" onClick={() => L.ui.go('conns')} /></div></div>
-    <div className="dream-window"><i className="crescent" /><i className="halftone" /><i className="star s1">✦</i></div>
+    <div className="dream-window blank"><i className="ellipse" /><i className="star s1">✦</i>
+      <div className="print main blank"><i className="crescent" /><i className="halftone" /><i className="star s2">✧</i></div></div>
   </div>;
   const last = L.core.S.chats.filter(x => x.charIds.includes(c.id)).sort((a, b) => b.updatedAt - a.updatedAt)[0];
   const line = firstLine(c);
@@ -91,6 +92,9 @@ function Home() {
     .sort((a, b) => view.sort === 'name' ? a.name.localeCompare(b.name, 'ko') : view.sort === 'new' ? b.createdAt - a.createdAt : used(b) - used(a));
 
   const size = Math.min(SIZES.length - 1, S.settings.homeCols || 0);
+  // 캐릭터 격자 쪽 나누기: 한 쪽 개수는 사용자가 고른다 (실리태번처럼 10 ~ 1000, 기본 50)
+  const grid = useRef<HTMLDivElement | null>(null);
+  const pg = usePaged(list, { id: 'home-v2', perPage: 50, sizes: [10, 25, 50, 100, 250, 500, 1000], resetKey: [q, view.sort, view.tag, view.fav, view.folder].join('|') });
   const set = (patch: Partial<typeof view>) => { Object.assign(view, patch); redraw(); };
   const addFolder = async () => { const fo = await newFolder(); if (fo) set({ folder: fo.id }); };
 
@@ -151,8 +155,8 @@ function Home() {
       </div>
       <div className="folder-row">{shelf}</div>
       {folderBar}
-      <div className={'arch-grid' + (SIZES[size][0] ? ' ' + SIZES[size][0] : '')}>
-        {list.map(c => <button key={c.id} className="arch-card" ref={tintRef(c)} draggable={fs.length > 0}
+      <div className={'arch-grid' + (SIZES[size][0] ? ' ' + SIZES[size][0] : '')} ref={el => { grid.current = el; pg.listRef(el); }}>
+        {pg.rows.map(c => <button key={c.id} className="arch-card" ref={tintRef(c)} draggable={fs.length > 0}
           onDragStart={e => { e.dataTransfer.setData('text/dreamland-char', c.id); e.dataTransfer.effectAllowed = 'move'; }}
           onClick={() => L.editors.charSheet(c)} onContextMenu={e => { e.preventDefault(); folderMenu(e.currentTarget, c, redraw); }}>
           <div className="arch" style={artStyle(c)}>{!c.avatar && <Emblem o={c} />}{c.fav && <i className="fav"><Icon name="star" size={12} /></i>}{folderTag(c)}</div>
@@ -161,6 +165,7 @@ function Home() {
         {!list.length && view.folder && view.folder !== '-' ? <p className="dim folder-empty">이 폴더는 아직 비어 있어요. 위의 "캐릭터 담기"로 한 번에 넣거나, 전체 목록에서 카드를 폴더 탭으로 끌어다 놓으세요.</p> : null}
         <button className="arch-card add" onClick={() => void addChar()}><div className="arch"><Icon name="plus" size={26} /></div><b>새 캐릭터</b><small>직접 만들기</small></button>
       </div>
+      {pg.pager}
     </div>
   </section>;
 }

@@ -136,7 +136,13 @@ function syncScene(chat: Room, list: Msg[]) {
   const k = [...list].reverse().find(m => m.curtain)?.curtain, on = k?.kind === 'open'; if (!!chat.scene?.on === on) return false;
   chat.scene = on ? { on: true, title: k?.title || '만남', place: k?.place || '', at: list.length } : { ...(chat.scene || {}), on: false }; return true;
 }
-async function afterDelete() { const sc = syncScene(cur.chat!, cur.msgs); rewindState(); await save(); B.core.emit('message:deleted', { chat: cur.chat, msgs: cur.msgs }); if (sc) drawMain(); else drawMsgs(); drawSide(); }
+// 지운 뒤: 화면부터 바로 고치고(남은 메시지는 그대로 두고 지운 것만 빠진다) 저장은 그 뒤에. 전체를 새로 만들지 않아 끊김이 없다
+async function afterDelete() {
+  const sc = syncScene(cur.chat!, cur.msgs); rewindState();
+  if (sc) drawMain();
+  else { const back = holdView(); cur.from = Math.max(0, cur.msgs.length - cur.shown); cur.head = Math.max(cur.from, Math.min(cur.head, cur.msgs.length)); flush('msgs'); back(); }
+  drawSide(); await save(); B.core.emit('message:deleted', { chat: cur.chat, msgs: cur.msgs });
+}
 export async function delMsg(m: Msg) {
   if (cur.msgs.indexOf(m) < 0 || (ux().confirmDelete && !(await confirmBox('이 메시지를 삭제할까요?', '삭제', true)))) return;
   const i = cur.msgs.indexOf(m); if (i < 0) return; cur.msgs.splice(i, 1); await afterDelete();

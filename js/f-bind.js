@@ -25,7 +25,7 @@ const photo = (p, cls = '') => { const src = safeSrc(p?.src); return src ? `<fig
 const CSS = `
 :root{--ink:#14161b;--paper:#fff;--dim:#6b6f7a;--faint:#a9adb8;--line:rgba(20,22,27,.18);--accent:ACCENT;--sans:"Pretendard Variable",Pretendard,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR","Segoe UI",system-ui,sans-serif;--display:"Outfit","Pretendard Variable",Pretendard,"Apple SD Gothic Neo","Malgun Gothic","Segoe UI",system-ui,sans-serif;
 --grid:linear-gradient(var(--line) 1px,transparent 1px) 0 0/100% 7mm,linear-gradient(90deg,var(--line) 1px,transparent 1px) 0 0/7mm 100%;
---handles:linear-gradient(var(--ink),var(--ink)) 0 0/2mm 2mm no-repeat,linear-gradient(var(--ink),var(--ink)) 100% 0/2mm 2mm no-repeat,linear-gradient(var(--ink),var(--ink)) 0 100%/2mm 2mm no-repeat,linear-gradient(var(--ink),var(--ink)) 100% 100%/2mm 2mm no-repeat}
+--handles:linear-gradient(transparent,transparent)}
 *{box-sizing:border-box}html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 body{margin:0;background:#e9eaee;color:var(--ink);font:400 10.5pt/1.85 var(--sans);word-break:keep-all;overflow-wrap:anywhere}
 h1,h2,h3,p,figure{margin:0}a{color:inherit;text-decoration:none}
