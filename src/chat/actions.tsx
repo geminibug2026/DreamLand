@@ -17,7 +17,9 @@ import { Memory } from '../lib/memory';
 import { Illust, translateText } from '../lib/illust';
 import { Clock } from '../lib/clock';
 import { render } from '../lib/format';
-import { t, getLang, fmtDate } from '../i18n';
+import { t, getLang, fmtDate, has as hasKey } from '../i18n';
+import { COMMANDS as ST_COMMANDS } from '../stscript/run';
+import '../stscript/commands';
 
 // ── 방 · 이름 ──
 export const charsOf = (chat: Room): Cast[] => chat.charIds.map(id => S.get('chars', id)).filter((c): c is Cast => !!c);
@@ -246,7 +248,12 @@ export function speak(text: string) {
 export async function send() {
   const inp = ui.input; if (cur.busy || !inp || !cur.chat) return;
   const raw = inp.value.trim();
-  if (raw.startsWith('/')) { inp.value = ''; inp.style.height = 'auto'; return command(raw); }
+  if (raw.startsWith('/')) {   // 명령은 STscript 로 돈다 (| 로 잇기 · 변수 · /if 따위). 틀리면 입력창에 되돌려 고칠 수 있게
+    inp.value = ''; inp.style.height = 'auto';
+    const { runQrScript } = await import('../stscript/host');
+    await runQrScript(raw, { onError: () => { if (ui.input && !ui.input.value) { ui.input.value = raw; ui.input.dispatchEvent(new Event('input')); } } });
+    return;
+  }
   if (raw || cur.attach.length) {
     const chat = cur.chat, chars = charsOf(chat), persona = S.persona(chat);
     const ctx = makeCtx({ chat, char: chars[0], chars, persona, msgs: cur.msgs, input: raw });
@@ -274,8 +281,16 @@ const ALIAS: Record<string, string[]> = { '/roll': ['/r', '/dice'], '/sys': ['/n
 export function commandList(): CmdItem[] {
   const base: CmdItem[] = [...HELP(), ['/help', t('chat.cmd.help.help')] as [string, string]].map(([c, d]) => { const [cmd, ...a] = c.split(' '); return { cmd, args: a.join(' '), help: d, alias: ALIAS[cmd] }; });
   const seen = new Set(base.flatMap(b => [b.cmd, ...(b.alias || [])]));
-  const ext = [...X.commands].filter(([k]) => !seen.has(k)).map(([k, v]) => ({ cmd: k, args: v.args || '', help: v.help || t('chat.cmd.extension') })).sort((x, y) => x.cmd.localeCompare(y.cmd));
-  return [...base, ...ext];
+  const ext = [...X.commands].filter(([k]) => !seen.has(k)).map(([k, v]) => ({ cmd: k, args: v.args || '', help: v.help || t('chat.cmd.extension') }));
+  for (const x of ext) seen.add(x.cmd);
+  // STscript 명령 (실리태번과 같은 이름). 같은 정의를 가리키는 별칭은 한 줄로
+  const byDef = new Map<object, string[]>();
+  for (const [k, d] of ST_COMMANDS) if (!seen.has('/' + k)) { const l = byDef.get(d) || []; l.push('/' + k); byDef.set(d, l); }
+  const st = [...byDef].map(([d, names]) => {
+    const D = d as { help?: string; args?: string }, k = names[0].slice(1);
+    return { cmd: names[0], alias: names.slice(1), args: hasKey('st.args.' + k) ? t('st.args.' + k) : D.args || '', help: (hasKey('st.cmd.' + k) ? t('st.cmd.' + k) : D.help || '') + ' · STscript' };
+  });
+  return [...base, ...[...ext, ...st].sort((x, y) => x.cmd.localeCompare(y.cmd))];
 }
 export async function command(line: string): Promise<unknown> {
   const chat = cur.chat; if (!chat) return;
@@ -660,6 +675,10 @@ export const chatApi: ChatApi = {
   setStatus: t => setStatus(t),
   scrollTo: id => { unpin(); ui.msgs?.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }); },
   openDrawer: () => setDrawer(true),
+  push: async m => { if (!cur.chat) return; cur.msgs.push(m); appendMsg(m); toBottom(); await save(); },
+  stop: () => cur.abort?.abort(),
+  getInput: () => ui.input?.value || '',
+  setInput: text => { const inp = ui.input; if (inp) { inp.value = text; inp.dispatchEvent(new Event('input')); } },
 };
 
 /** 방향키로 마지막 답변 넘기기 · Esc 로 생성 중단 */

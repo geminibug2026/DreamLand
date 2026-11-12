@@ -11,6 +11,12 @@ export interface CmdApi {
   generate(type?: string): unknown; send(text: string): unknown; insert(text: string): void;
   addSystemMessage(text: string): unknown; save(): unknown; redraw(): void; setStatus(t: string): void;
   scrollTo(id: string): void; openDrawer(): void;
+  /** 메시지를 덧붙인다 (답을 받지 않는다) */
+  push?(m: Msg): Promise<void>;
+  /** 생성을 멈춘다 */
+  stop?(): void;
+  /** 입력창 글 */
+  getInput?(): string; setInput?(text: string): void;
 }
 export interface Command extends Owned { help?: string; args?: string; run(arg: string, api: CmdApi): unknown; [k: string]: unknown }
 export interface Macro extends Owned { fn(args: unknown, ctx?: unknown): unknown }

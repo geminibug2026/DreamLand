@@ -1,5 +1,5 @@
 // 새 대화방 열기 (옛 js/chat.js 의 startChat · startMenu). 2단계에서 L.chat · B.oldChat 대신 이것을 부른다
-import { S, newChat, newMsg, now } from '../lib/core';
+import { S, emit, newChat, newMsg, now } from '../lib/core';
 import { makeCtx, macro } from '../lib/engine';
 import { menu } from '../ui';
 import { go } from '../lib/router';
@@ -27,5 +27,6 @@ export async function startChat(charIds: string[], { open = true, mode }: { open
   }
   await S.saveMsgs(chat, msgs);
   if (open) go('chat', chat.id);
+  emit('chat:new', chat);
   return chat;
 }

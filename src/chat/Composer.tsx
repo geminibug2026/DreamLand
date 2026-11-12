@@ -9,6 +9,7 @@ import { enterSends } from '../features/usersettings';
 import { S, pickFiles, readDataURL, shrinkImage } from '../lib/core';
 import { X } from '../lib/hooks';
 import { t } from '../i18n';
+import { QrBar } from '../stscript/QrBar';
 
 /**
  * 입력창에 / 를 치면 뜨는 명령어 목록. attach 는 반드시 보내기 단축키보다 먼저 붙여야 한다 —
@@ -96,13 +97,12 @@ export function Composer() {
     '-',
     { label: t('chat.composer.cmdHelp'), ic: 'code', onclick: () => void command('/help') },
   ]);
-  const quick = (text: string) => { const el = input.current; if (text.startsWith('/')) void command(text); else if (el) { el.value = (el.value ? el.value + ' ' : '') + text; fit(); el.focus(); } };
   const muted = new Set(chat.muted || []), lastAi = [...cur.msgs].reverse().find(m => m.role === 'assistant')?.charId;
   return <footer className="composer">
     {chars.length > 1 ? <div className="speakers"><span className="speakers-label">{t('chat.composer.whoSpeaks')}</span>{chars.map((c, i) =>
       <button key={c.id} className={['speaker', muted.has(c.id) && 'muted', lastAi === c.id && 'last'].filter(Boolean).join(' ')} title={muted.has(c.id) ? t('chat.composer.speakerMuted', { name: c.name }) : t('chat.composer.speakerTurn', { name: c.name })} onClick={() => void generate('normal', { speaker: c })}>
         <Avatar o={c} cls="sm" /><small>{String(i + 1).padStart(2, '0')}</small><span>{c.name}</span></button>)}</div> : null}
-    <div className="quick">{S.settings.quick.map((q, i) => <button className="chip" key={i} onClick={() => quick(q.text)}>{q.label}</button>)}
+    <div className="quick"><QrBar chat={chat} />
       {talk ? (chat.scene?.on
         ? <button className="chip scene-chip on" title={t('chat.composer.closeSceneHint')} onClick={() => void closeScene()}>{t('chat.composer.closeScene')}</button>
         : <button className="chip scene-chip" title={t('chat.composer.openSceneHint')} onClick={async () => { const v = await promptBox(t('chat.composer.openScenePrompt'), '', { placeholder: t('chat.composer.openScenePlaceholder') }); if (v !== null) void openScene({ title: v.trim() }); }}>{t('chat.composer.openScene')}</button>) : null}</div>

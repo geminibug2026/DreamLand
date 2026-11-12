@@ -2,7 +2,7 @@
 // S.settings.qr = { v, sets: [세트], bar, migrated }
 // 세트 = { id, name, scope: 'global'|'char'|'chat', on, charIds, chatIds, items: [버튼] }
 // 버튼 = { id, label, icon, title, text, kind: 'insert'(입력창에 넣기)|'send'(바로 보내기)|'script'(명령 실행), hidden, auto: { start, open, newChat, user, ai, gen }, automationId }
-import { S, uid, arr } from './core';
+import { S, uid, arr, emit } from './core';
 import { t } from '../i18n';
 
 export interface QrAuto { start?: boolean; open?: boolean; newChat?: boolean; user?: boolean; ai?: boolean; gen?: boolean }
@@ -43,7 +43,7 @@ export function qrStore(): QrStore {
   }
   return q;
 }
-export const qrSave = () => St.set({ qr: St.settings.qr });
+export const qrSave = () => { St.set({ qr: St.settings.qr }); emit('qr:changed'); };
 /** 이 대화에서 켜져 있는 세트 */
 export function qrActive(chat?: QChat | null): QrSet[] {
   const off = new Set(chat?.qrOff || []);
