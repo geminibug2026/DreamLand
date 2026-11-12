@@ -5,6 +5,7 @@ export interface SizeBase{width:number;height:number;budgetGuard?:boolean}
 export interface PlanCharacter{name:string;x?:number;y?:number;action?:string;outfit?:string;appearance?:string;profileId?:string}
 export interface PlanScene{characters:PlanCharacter[];camera?:string;prompt?:string;negative?:string;evidence?:string;title?:string;size?:string}
 type Slot=Record<string,string|undefined>;
+import { t } from '../i18n';
 export function orientation(value:unknown):Orientation{
     const v=String(value??'').toLowerCase();
     return /land|wide|horizontal|가로/.test(v)?'landscape':/port|tall|vertical|세로/.test(v)?'portrait':/square|정사각/.test(v)?'square':'';
@@ -21,11 +22,13 @@ export function sizeFor(config:SizeBase,size:string):{width:number;height:number
     }
     return{width:config.width,height:config.height};
 }
-export const ORIENTATIONS:[string,string][]=[['','설정값'],['portrait','세로'],['landscape','가로'],['square','정사각']];
+export const ORIENTATIONS:[string,string][]=[['','scenebook.orient.default'],['portrait','scenebook.orient.portrait'],['landscape','scenebook.orient.landscape'],['square','scenebook.orient.square']];
+/** 화면에 그릴 화면 비율 선택지 (ORIENTATIONS 의 둘째 값은 번역 키) */
+export const orientations=():[string,string][]=>ORIENTATIONS.map(([id,k])=>[id,t(k)]);
 // [tag, label, group]. One viewpoint and one shot size apply at a time.
 export const CAMERA_TAGS:[tag:string,label:string,group:'view'|'shot'][]=[
-    ['from side','옆에서','view'],['from above','위에서','view'],['from below','아래에서','view'],['from behind','뒤에서','view'],['straight-on','정면','view'],['pov','1인칭','view'],
-    ['close-up','클로즈업','shot'],['upper body','상반신','shot'],['cowboy shot','무릎 위','shot'],['full body','전신','shot'],['wide shot','멀리서','shot'],
+    ['from side','scenebook.cam.fromSide','view'],['from above','scenebook.cam.fromAbove','view'],['from below','scenebook.cam.fromBelow','view'],['from behind','scenebook.cam.fromBehind','view'],['straight-on','scenebook.cam.straightOn','view'],['pov','scenebook.cam.pov','view'],
+    ['close-up','scenebook.cam.closeUp','shot'],['upper body','scenebook.cam.upperBody','shot'],['cowboy shot','scenebook.cam.cowboy','shot'],['full body','scenebook.cam.fullBody','shot'],['wide shot','scenebook.cam.wide','shot'],
 ];
 const tags=(text:unknown)=>String(text??'').split(',').map(x=>x.trim()).filter(Boolean);
 export const hasCameraTag=(camera:unknown,tag:string)=>tags(camera).some(x=>x.toLowerCase()===tag);
@@ -37,25 +40,25 @@ export function toggleCameraTag(camera:unknown,tag:string):string{
 // Built-in looks. Tags are generic medium and rendering terms, added in front
 // of the user's own main prompt.
 export const LOOKS:[id:string,label:string,style:string,negative:string][]=[
-    ['','사용 안 함','',''],
-    ['semi','반실사','semi-realistic, detailed skin, soft shading, depth of field','flat color, chibi'],
-    ['cinema','시네마틱','cinematic lighting, dramatic shadows, depth of field, film grain, wide aspect composition','flat color, simple background'],
-    ['watercolor','수채화','watercolor (medium), traditional media, soft edges, paper texture, pastel colors','3d, photorealistic'],
-    ['manga','흑백 만화','monochrome, greyscale, manga, screentone, ink lines, high contrast','color, 3d'],
-    ['webtoon','웹툰','flat color, clean lineart, thick outlines, cel shading, vivid colors','sketch, painterly'],
-    ['retro','레트로 애니','retro artstyle, 1990s (style), anime screenshot, cel shading, film grain','3d, photorealistic'],
-    ['sketch','연필 스케치','sketch, graphite (medium), traditional media, rough lines, unfinished, monochrome','3d, color'],
-    ['pixel','도트','pixel art, limited palette, dithering, low resolution look','blurry, 3d, photorealistic'],
-    ['chibi','치비','chibi, super deformed, big head, small body, cute, simple shading','realistic, tall'],
-    ['oil','유화','oil painting (medium), impasto, visible brushstrokes, rich colors, classical lighting','flat color, lineart'],
-    ['pastel','파스텔 동화','soft pastel colors, storybook illustration, gentle lighting, rounded shapes, dreamy','dark, high contrast'],
+    ['','scenebook.look.none','',''],
+    ['semi','scenebook.look.semi','semi-realistic, detailed skin, soft shading, depth of field','flat color, chibi'],
+    ['cinema','scenebook.look.cinema','cinematic lighting, dramatic shadows, depth of field, film grain, wide aspect composition','flat color, simple background'],
+    ['watercolor','scenebook.look.watercolor','watercolor (medium), traditional media, soft edges, paper texture, pastel colors','3d, photorealistic'],
+    ['manga','scenebook.look.manga','monochrome, greyscale, manga, screentone, ink lines, high contrast','color, 3d'],
+    ['webtoon','scenebook.look.webtoon','flat color, clean lineart, thick outlines, cel shading, vivid colors','sketch, painterly'],
+    ['retro','scenebook.look.retro','retro artstyle, 1990s (style), anime screenshot, cel shading, film grain','3d, photorealistic'],
+    ['sketch','scenebook.look.sketch','sketch, graphite (medium), traditional media, rough lines, unfinished, monochrome','3d, color'],
+    ['pixel','scenebook.look.pixel','pixel art, limited palette, dithering, low resolution look','blurry, 3d, photorealistic'],
+    ['chibi','scenebook.look.chibi','chibi, super deformed, big head, small body, cute, simple shading','realistic, tall'],
+    ['oil','scenebook.look.oil','oil painting (medium), impasto, visible brushstrokes, rich colors, classical lighting','flat color, lineart'],
+    ['pastel','scenebook.look.pastel','soft pastel colors, storybook illustration, gentle lighting, rounded shapes, dreamy','dark, high contrast'],
 ];
 export function withLook<T extends{style?:string;negative?:string}>(config:T,id:string):T{
     const look=LOOKS.find(x=>x[0]===id);if(!look||!look[0])return config;
     const join=(a:unknown,b:unknown)=>[a,b].map(x=>String(x??'').trim()).filter(Boolean).join(', ');
     return{...config,style:join(look[2],config.style),negative:join(config.negative,look[3])};
 }
-export const FRAMES:[string,string][]=[['soft','기본'],['none','없음'],['line','라인']];
+export const FRAMES:[string,string][]=[['soft','scenebook.frame.soft'],['none','scenebook.frame.none'],['line','scenebook.frame.line']];
 
 // Line-based illustration plan: one "key: value" field per line, each scene
 // opened by a line reading "scene". It costs fewer reply tokens than JSON and
@@ -65,7 +68,7 @@ const CHARACTER_KEYS:Record<string,string>={action:'action',outfit:'outfit',appe
 const header=/^[\s#\[\-=*]*scene\s*\d*[\s\]:\-=*]*$/i,field=/^\s*(?:[-*]\s*)?([A-Za-z]+)\s*[:=]\s*(.*)$/;
 const clean=(value:string)=>{const v=value.trim();return v.length>1&&v.startsWith('"')&&v.endsWith('"')?v.slice(1,-1).trim():v;};
 export function parsePlanText(input:unknown):{value:{scenes:PlanScene[]};repairs:string[]}{
-    if(typeof input!=='string'||input.length>60000)throw new Error('삽화 지시의 길이가 너무 큽니다.');
+    if(typeof input!=='string'||input.length>60000)throw new Error(t('scenebook.plan.tooLong'));
     const scenes:PlanScene[]=[],repairs:string[]=[];let scene=null as PlanScene|null,character=null as PlanCharacter|null,last=null as [Slot,string]|null;
     const open=():PlanScene=>{const s:PlanScene={characters:[]};scene=s;character=null;last=null;scenes.push(s);return s;};
     for(const line of input.replace(/\r\n?/g,'\n').split('\n')){
@@ -86,13 +89,13 @@ export function parsePlanText(input:unknown):{value:{scenes:PlanScene[]};repairs
             const name=SCENE_KEYS[key];
             // A repeated shared field means the model forgot the "scene" line.
             let sc:PlanScene|null=scene;
-            if(!sc||(['camera','prompt'].includes(name)&&((sc as unknown as Slot)[name]!==undefined&&sc.characters.length))){if(sc)repairs.push('장면 구분 복구');sc=open();}
+            if(!sc||(['camera','prompt'].includes(name)&&((sc as unknown as Slot)[name]!==undefined&&sc.characters.length))){if(sc)repairs.push(t('scenebook.plan.repairSplit'));sc=open();}
             character=null;last=[sc as unknown as Slot,name];last[0][name]=clean(match[2]);continue;
         }
         // An unlabelled line continues the previous value.
         if(last)last[0][last[1]]=`${last[0][last[1]]} ${line.trim()}`.trim();
     }
     const usable=scenes.filter(s=>s.prompt||s.camera||s.characters.length);
-    if(!usable.length)throw new Error('삽화 지시에서 장면을 찾지 못했습니다.');
+    if(!usable.length)throw new Error(t('scenebook.plan.noScene'));
     return{value:{scenes:usable},repairs:[...new Set(repairs)]};
 }

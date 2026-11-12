@@ -5,6 +5,7 @@ import { S, now, uid, on } from './core';
 import { X } from './hooks';
 import { Clock } from './clock';
 import { scheduleOf, blockAt, todayLine, STATUS, STATUS_EN, DAY_EN, dayIndex, fmtMin, MOTIVES, MOTIVE_ORDER, motiveLabel, SCHEDULE_PROMPT, Schedule, type SchedChar } from './f-schedule';
+import { t, getLang } from '../i18n';
 import type { AutoPlan, Chat, Motive, TrackState } from './types';
 
 export interface Field { key: string; desc: string; min?: number; max?: number }
@@ -165,18 +166,19 @@ Right now: {{now}}
 Your status and schedule shape how you text. While you are busy, your replies are short and may trail off; you would not chat at length in the middle of it. Bring up what you are doing only when it comes up naturally, and never recite the schedule.
 </today>`;
 export const USER_STATUS = `{{user}}'s status: {{status}}.`;
-const USER_ST: Record<string, string> = { online: '온라인', idle: '자리 비움', dnd: '방해 금지', hidden: '숨김' };
+/** 내 상태 이름 (키가 식별자, 값은 화면 글 — 부를 때마다 지금 언어로) */
+const USER_ST: Record<string, string> = { get online() { return t('live.userStatus.online'); }, get idle() { return t('live.userStatus.idle'); }, get dnd() { return t('live.userStatus.dnd'); }, get hidden() { return t('live.userStatus.hidden'); } };
 const USER_ST_EN: Record<string, string> = { online: 'online', idle: 'idle / away from their phone', dnd: 'do not disturb — they asked not to be bothered right now', hidden: 'appears offline (you cannot tell whether they are around)' };
 
 /** 고칠 수 있는 프롬프트: [설정 키, 이름, 기본값, 설명] */
 export const PROMPTS: Record<string, [string, string, string, string][]> = {
-  tracker: [['tracker.inlinePrompt', '답변에 함께 적게 할 때의 규칙', STATE_RULES, '{{lines}} 는 항목 목록, {{current}} 는 지금 값, {{cast}} 는 인물 카드 안내가 들어갈 자리입니다. <state> … </state> 형식은 바꾸지 마세요.'], ['tracker.castInline', '인물 카드 안내 (답변에 함께 적기)', CAST_INLINE, '{{fields}} · {{cards}} · {{first}} 가 채워집니다. "이름 / 항목: 값" 형식은 바꾸지 마세요.'],
-    ['tracker.callPrompt', '상태를 따로 물을 때의 지시문', TRACK_CALL, '{{fields}} 자리에 항목 목록, {{cast}} 자리에 인물 카드 안내가 들어갑니다.'], ['tracker.castCall', '인물 카드 안내 (따로 묻기)', CAST_CALL, '{{fields}} · {{names}} 가 채워집니다.']],
-  scene: [['modes.sceneOffer', '장면을 열 수 있다는 안내 (대화 모드)', SCENE_OFFER, '[scene: …] 형식은 바꾸지 마세요.'], ['modes.sceneRules', '장면 안에서의 규칙', SCENE_RULES, '{{title}} · {{place}} 가 들어갑니다. [scene_end: …] 형식은 바꾸지 마세요.']],
-  auto: [['modes.laterOffer', '나중에 연락하겠다는 약속 안내', LATER_OFFER, '[later: …] 형식은 바꾸지 마세요.'], ['modes.pLater', '약속한 시간이 되었을 때', P_LATER, '{{about}} 에 약속 내용이 들어갑니다.'], ['modes.pAway', '오래 자리를 비운 사이의 연락', P_AWAY, '{{hours}} 에 비운 시간이 들어갑니다.'], ['modes.pUnread', '내가 아직 읽지 않았을 때', P_UNREAD, ''], ['modes.pGhosted', '읽고도 답이 없을 때', P_GHOSTED, ''],
-    ...Object.entries(P_MOTIVE).map(([k, v]): [string, string, string, string] => [`modes.pm.${k}`, `말 거는 이유 — ${motiveLabel(k)}`, v, '{{activity}} 는 지금 하는 일, {{before}} 는 방금까지 하던 일, {{hours}} 는 연락이 없던 시간입니다.'])],
-  sched: [['modes.pToday', '오늘 일정 안내', SCHED_CTX, '{{day}} · {{schedule}} · {{now}} 가 채워집니다. 일정이 있는 캐릭터에게만 들어갑니다.'], ['modes.pUserStatus', '내 상태를 알리는 한 줄', USER_STATUS, '{{status}} 에 내 상태가 들어갑니다.'], ['modes.schedPrompt', '일정을 짤 때의 지시문', SCHEDULE_PROMPT, '{{char}} · {{description}} · {{guide}} · {{scope}} · {{shape}} 가 채워집니다. JSON 형식은 바꾸지 마세요.']],
-  group: [['modes.pChime', '그룹에서 끼어들 때', P_CHIME, '{{from}} 에 방금 말한 캐릭터의 이름이 들어갑니다.']],
+  get tracker(): [string, string, string, string][] { return [['tracker.inlinePrompt', t('live.prompt.inline.name'), STATE_RULES, t('live.prompt.inline.hint')], ['tracker.castInline', t('live.prompt.castInline.name'), CAST_INLINE, t('live.prompt.castInline.hint')],
+    ['tracker.callPrompt', t('live.prompt.call.name'), TRACK_CALL, t('live.prompt.call.hint')], ['tracker.castCall', t('live.prompt.castCall.name'), CAST_CALL, t('live.prompt.castCall.hint')]]; },
+  get scene(): [string, string, string, string][] { return [['modes.sceneOffer', t('live.prompt.sceneOffer.name'), SCENE_OFFER, t('live.prompt.sceneOffer.hint')], ['modes.sceneRules', t('live.prompt.sceneRules.name'), SCENE_RULES, t('live.prompt.sceneRules.hint')]]; },
+  get auto(): [string, string, string, string][] { return [['modes.laterOffer', t('live.prompt.laterOffer.name'), LATER_OFFER, t('live.prompt.laterOffer.hint')], ['modes.pLater', t('live.prompt.pLater.name'), P_LATER, t('live.prompt.pLater.hint')], ['modes.pAway', t('live.prompt.pAway.name'), P_AWAY, t('live.prompt.pAway.hint')], ['modes.pUnread', t('live.prompt.pUnread.name'), P_UNREAD, ''], ['modes.pGhosted', t('live.prompt.pGhosted.name'), P_GHOSTED, ''],
+    ...Object.entries(P_MOTIVE).map(([k, v]): [string, string, string, string] => [`modes.pm.${k}`, t('live.prompt.motive.name', { motive: motiveLabel(k) }), v, t('live.prompt.motive.hint')])]; },
+  get sched(): [string, string, string, string][] { return [['modes.pToday', t('live.prompt.pToday.name'), SCHED_CTX, t('live.prompt.pToday.hint')], ['modes.pUserStatus', t('live.prompt.pUserStatus.name'), USER_STATUS, t('live.prompt.pUserStatus.hint')], ['modes.schedPrompt', t('live.prompt.schedPrompt.name'), SCHEDULE_PROMPT, t('live.prompt.schedPrompt.hint')]]; },
+  get group(): [string, string, string, string][] { return [['modes.pChime', t('live.prompt.pChime.name'), P_CHIME, t('live.prompt.pChime.hint')]]; },
 };
 const get = (path: string, dflt: string): string => { const v = path.split('.').reduce<unknown>((o, k) => (o as Bag | undefined)?.[k], SS().settings); return String(v || '').trim() ? v as string : dflt; };
 
@@ -197,8 +199,10 @@ export function ensureDefaults() {
 }
 /** 지금 시각이 "연락하지 않는 시간대" 안인가 */
 export const inQuietHours = (d = new Date()) => quietLeft(SS().settings.modes?.quietFrom, SS().settings.modes?.quietTo, d) > 0;
-const clock = (t: number) => { const d = new Date(t), n = new Date(), days = Math.round((+new Date(d.getFullYear(), d.getMonth(), d.getDate()) - +new Date(n.getFullYear(), n.getMonth(), n.getDate())) / 86400000); return `${days === 0 ? '오늘' : days === 1 ? '내일' : days === -1 ? '어제' : `${d.getMonth() + 1}/${d.getDate()}`} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
-const span = (ms: number) => { const m = Math.max(1, Math.round(ms / 60000)); return m < 60 ? `${m}분` : m < 1440 ? `${Math.floor(m / 60)}시간${m % 60 ? ` ${m % 60}분` : ''}` : `${Math.floor(m / 1440)}일${Math.floor(m % 1440 / 60) ? ` ${Math.floor(m % 1440 / 60)}시간` : ''}`; };
+const clock = (at: number) => { const d = new Date(at), n = new Date(), days = Math.round((+new Date(d.getFullYear(), d.getMonth(), d.getDate()) - +new Date(n.getFullYear(), n.getMonth(), n.getDate())) / 86400000); return t('live.clock', { day: days === 0 ? t('live.today') : days === 1 ? t('live.tomorrow') : days === -1 ? t('live.yesterday') : `${d.getMonth() + 1}/${d.getDate()}`, time: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}` }); };
+const span = (ms: number) => { const m = Math.max(1, Math.round(ms / 60000)); if (getLang() === 'ko') return m < 60 ? `${m}분` : m < 1440 ? `${Math.floor(m / 60)}시간${m % 60 ? ` ${m % 60}분` : ''}` : `${Math.floor(m / 1440)}일${Math.floor(m % 1440 / 60) ? ` ${Math.floor(m % 1440 / 60)}시간` : ''}`;
+  const mm = (n: number) => t('live.span.min', { n }), hh = (n: number) => t('live.span.hour', { n }), dd = (n: number) => t('live.span.day', { n });
+  return m < 60 ? mm(m) : m < 1440 ? `${hh(Math.floor(m / 60))}${m % 60 ? ` ${mm(m % 60)}` : ''}` : `${dd(Math.floor(m / 1440))}${Math.floor(m % 1440 / 60) ? ` ${hh(Math.floor(m % 1440 / 60))}` : ''}`; };
 
 export type Pending = Motive;
 export interface Extracted { text: string; scene: Record<string, string> | null; sceneEnd: Record<string, string> | null; later: Record<string, string>[]; stats: Record<string, string> | null; patch: Patch | null }

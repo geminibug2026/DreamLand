@@ -9,6 +9,7 @@ import { chatApi } from '../chat/actions';
 import { route } from '../lib/router';
 import type { Chat, Lore, Regex } from '../lib/types';
 import type { ItemState, Kind, Module, Plan, Quick, Scope } from './lib';
+import { t, tn } from '../i18n';
 
 type Obj = Record<string, unknown>;
 type Book = Lore & { mod?: string };
@@ -30,7 +31,7 @@ const text = (v: unknown, max = 400000) => (typeof v === 'string' ? v : v == nul
 const ids = (v: unknown) => [...new Set(list(v).filter((x): x is string => typeof x === 'string' && !!x))];
 
 export const newModule = (o: Partial<Module> = {}): Module => ({
-  id: uid(), name: '새 모듈', description: '', author: '', version: '1.0', on: false,
+  id: uid(), name: t('modules.defaultName'), description: '', author: '', version: '1.0', on: false,
   scope: 'global', charIds: [], chatIds: [], rooms: {},          // rooms: 장면 패널에서 방마다 따로 켜고 끈 기록 { 대화 id: true|false }
   lore: [], regex: [], quick: [], css: '', cssOn: false, assetCount: 0, imported: false, createdAt: now(), updatedAt: now(), ...o,
 });
@@ -208,7 +209,7 @@ function setRoom(m: Module, chat: Chat, want: boolean) {
 
 // ════════ 만들기 · 지우기 · 복제 ════════
 const uniqueName = (name: string, skip?: Module) => { const taken = new Set(store.list.filter(m => m !== skip).map(m => m.name)); if (!taken.has(name)) return name; let n = 2; while (taken.has(`${name} (${n})`)) n++; return `${name} (${n})`; };
-async function create(o: Partial<Module> = {}) { await load(); const m = newModule({ ...o, name: uniqueName(o.name || '새 모듈') }); store.list.push(m); await persist(); return m; }
+async function create(o: Partial<Module> = {}) { await load(); const m = newModule({ ...o, name: uniqueName(o.name || t('modules.defaultName')) }); store.list.push(m); await persist(); return m; }
 /** 이 모듈과 함께 들어왔고 다른 모듈이 쓰지 않는 항목 */
 function ownItems(m: Module) {
   const used = (key: Kind, id: string) => store.list.some(o => o !== m && o[key].includes(id));
@@ -274,13 +275,13 @@ function cleanEntry(e: unknown) {
     outlet: text(x.outlet, 120), group: text(x.group, 120), sticky: numOr(x.sticky, null), cooldown: numOr(x.cooldown, null), delay: numOr(x.delay, null), scanDepth: numOr(x.scanDepth, null),
   });
 }
-function cleanBook(b: unknown, fallback = '로어북') {
+function cleanBook(b: unknown, fallback = t('modules.fallback.lore')) {
   const x = plainFields(b);
   return { ...x, name: text(x.name, 120).trim() || fallback, description: text(x.description, 4000), scanDepth: Math.max(0, numOr(x.scanDepth, 4)), tokenBudget: Math.max(0, numOr(x.tokenBudget, 2048)), recursive: x.recursive === true, entries: list((b as Obj | null)?.entries).filter(plain).slice(0, 5000).map(cleanEntry) };
 }
 function cleanRegex(r: unknown) {
   const x = plainFields(r);
-  return { ...x, name: text(x.name, 120).trim() || '정규식', find: text(x.find, 20000), replace: text(x.replace, 200000), trim: strList((r as Obj | null)?.trim), onUser: x.onUser === true, onAI: x.onAI !== false, mode: MODES.includes(x.mode as string) ? x.mode as string : 'display', minDepth: numOr(x.minDepth, null), maxDepth: numOr(x.maxDepth, null), scope: 'global', enabled: false };
+  return { ...x, name: text(x.name, 120).trim() || t('modules.fallback.regex'), find: text(x.find, 20000), replace: text(x.replace, 200000), trim: strList((r as Obj | null)?.trim), onUser: x.onUser === true, onAI: x.onAI !== false, mode: MODES.includes(x.mode as string) ? x.mode as string : 'display', minDepth: numOr(x.minDepth, null), maxDepth: numOr(x.maxDepth, null), scope: 'global', enabled: false };
 }
 function cleanAssets(v: unknown, notes: string[]) {
   const out: { name: string; data: string }[] = [], seen = new Set<string>(); let bad = 0;
@@ -289,7 +290,7 @@ function cleanAssets(v: unknown, notes: string[]) {
     if (!name || seen.has(name) || data.length > 12e6 || !IMG_DATA.test(data)) { bad++; continue; }
     seen.add(name); out.push({ name, data });
   }
-  if (bad) notes.push(`그림 ${bad}장은 이름이 없거나 겹치거나, 그림 데이터가 아니어서 뺐어요.`);
+  if (bad) notes.push(tn('modules.note.badAssets', bad));
   return out;
 }
 
@@ -309,8 +310,8 @@ function foreignLore(entries: unknown, name: string, notes: string[]) {
       caseSensitive: Object.entries(ext).some(([k, v]) => /case_sensitive$/i.test(k) && v === true),
     }));
   }
-  if (folders) notes.push(`로어북 폴더 ${folders}개는 풀어서 한 권에 담았어요.`);
-  if (out.some(e => /^@@|\{\{#|\{\{\/|<\?/m.test(String(e.content)))) notes.push('로어북 내용에 든 그 프런트엔드 고유 문법(@@ 지시자 · 조건 블록)은 풀지 않고 글자 그대로 남겼어요.');
+  if (folders) notes.push(tn('modules.note.folders', folders));
+  if (out.some(e => /^@@|\{\{#|\{\{\/|<\?/m.test(String(e.content)))) notes.push(t('modules.note.foreignSyntax'));
   return out.length ? [{ name, description: '', scanDepth: 4, tokenBudget: 2048, recursive: false, entries: out }] : [];
 }
 function foreignRegex(scripts: unknown, notes: string[]) {
@@ -323,42 +324,42 @@ function foreignRegex(scripts: unknown, notes: string[]) {
     flags = [...new Set(flags.replace(/[^dgimsuvy]/g, ''))].join('') || 'u';
     const type = text(s.type, 40);
     const where = type === 'editinput' ? { onUser: true, onAI: false, mode: 'store' } : type === 'editoutput' ? { onUser: false, onAI: true, mode: 'store' } : type === 'editprocess' ? { onUser: true, onAI: true, mode: 'prompt' } : { onUser: true, onAI: true, mode: 'display' };
-    out.push({ name: text(s.comment, 120).trim() || '정규식', find: `/${find}/${flags}`, replace: rep, trim: [], minDepth: null, maxDepth: null, scope: 'global', enabled: false, ...where });
+    out.push({ name: text(s.comment, 120).trim() || t('modules.fallback.regex'), find: `/${find}/${flags}`, replace: rep, trim: [], minDepth: null, maxDepth: null, scope: 'global', enabled: false, ...where });
   }
-  if (special) notes.push(`화면을 조작하는 특수 정규식(@@ 로 시작하는 바꾸기) ${special}개는 가져오지 않았어요.`);
-  if (flagged) notes.push(`정규식 ${flagged}개의 특수 표시(순서 · 조건 등)는 떼고 일반 플래그만 남겼어요.`);
+  if (special) notes.push(tn('modules.note.specialRegex', special));
+  if (flagged) notes.push(tn('modules.note.flaggedRegex', flagged));
   return out;
 }
 
 /** 파일 내용 → 가져오기 계획 { source, module, lore, regex, assets, notes }. 모듈로 읽을 수 없으면 오류를 던진다 */
 export function readPack(j: unknown, base = ''): Plan {
   const notes: string[] = [], title = text(base, 120).replace(/\.[^.]+$/, '').replace(/\.dreamland-module$/i, '').trim();
-  const meta = (o: Obj | null | undefined, fallback?: string) => ({ name: text(o?.name, 120).trim() || fallback || title || '가져온 모듈', description: text(o?.description, 4000), author: text(o?.author ?? o?.creator, 120), version: text(o?.version, 40), quick: [] as Quick[], css: '' });
+  const meta = (o: Obj | null | undefined, fallback?: string) => ({ name: text(o?.name, 120).trim() || fallback || title || t('modules.fallback.imported'), description: text(o?.description, 4000), author: text(o?.author ?? o?.creator, 120), version: text(o?.version, 40), quick: [] as Quick[], css: '' });
   const done = (p: { source: string; module: Plan['module']; lore: unknown[]; regex: unknown[]; assets: Plan['assets']; notes: string[] }) => p as unknown as Plan;
   if (plain(j) && j.app === FILE_APP) {
-    if (+(j.version as number) > FILE_VERSION) notes.push('더 새로운 드림랜드에서 만든 파일이에요. 모르는 내용은 건너뜁니다.');
+    if (+(j.version as number) > FILE_VERSION) notes.push(t('modules.note.newer'));
     const jm = (j.module || null) as Obj | null;
     const m = meta(jm); m.quick = cleanQuick(jm?.quick); m.css = text(jm?.css, 200000);
-    return done({ source: '드림랜드 모듈 파일', module: m, lore: list(j.lore).filter(plain).slice(0, 200).map((b, i) => cleanBook(b, `${m.name} 로어북 ${i + 1}`)), regex: list(j.regex).filter(plain).slice(0, 2000).map(cleanRegex), assets: cleanAssets(j.assets, notes), notes });
+    return done({ source: t('modules.source.own'), module: m, lore: list(j.lore).filter(plain).slice(0, 200).map((b, i) => cleanBook(b, t('modules.fallback.loreN', { name: m.name, n: i + 1 }))), regex: list(j.regex).filter(plain).slice(0, 2000).map(cleanRegex), assets: cleanAssets(j.assets, notes), notes });
   }
   if (foreignModule(j)) {
     const src = (plain(j.module) ? j.module : j) as Obj, m = meta(src);
     const lore = foreignLore(src.lorebook, m.name, notes), regex = foreignRegex(src.regex, notes);
-    const skipped = ([[list(src.trigger).length, (n: number) => `트리거 스크립트 ${n}개`], [text(src.cjs).trim() ? 1 : 0, () => '자바스크립트 코드'], [text(src.backgroundEmbedding).trim() ? 1 : 0, () => '배경에 끼워 넣는 HTML'], [text(src.customModuleToggle).trim() ? 1 : 0, () => '사용자 토글 정의'], [plain(src.mcp) ? 1 : 0, () => '외부 도구 서버 연결'], [src.lowLevelAccess ? 1 : 0, () => '저수준 접근 권한']] as [number, (n: number) => string][]).filter(([n]) => n).map(([n, f]) => f(n));
-    if (skipped.length) notes.push(`실행되는 코드와 권한은 가져오지 않았어요: ${skipped.join(' · ')}.`);
+    const skipped = ([[list(src.trigger).length, (n: number) => tn('modules.skip.trigger', n)], [text(src.cjs).trim() ? 1 : 0, () => t('modules.skip.js')], [text(src.backgroundEmbedding).trim() ? 1 : 0, () => t('modules.skip.bgHtml')], [text(src.customModuleToggle).trim() ? 1 : 0, () => t('modules.skip.toggle')], [plain(src.mcp) ? 1 : 0, () => t('modules.skip.mcp')], [src.lowLevelAccess ? 1 : 0, () => t('modules.skip.lowLevel')]] as [number, (n: number) => string][]).filter(([n]) => n).map(([n, f]) => f(n));
+    if (skipped.length) notes.push(t('modules.note.skipped', { list: skipped.join(' · ') }));
     const pics = list(src.assets).filter(Array.isArray) as unknown[][], assets = cleanAssets(pics.map(a => ({ name: a[0], data: a[1] })), []);
-    if (pics.length > assets.length) notes.push(`에셋 ${pics.length - assets.length}개는 이 파일에 그림 데이터가 들어 있지 않아 가져오지 못했어요.`);
-    return done({ source: '다른 프런트엔드의 모듈 파일 · 로어북과 정규식만 옮깁니다', module: m, lore, regex, assets, notes });
+    if (pics.length > assets.length) notes.push(tn('modules.note.noAssetData', pics.length - assets.length));
+    return done({ source: t('modules.source.foreign'), module: m, lore, regex, assets, notes });
   }
-  if (plain(j) && foreignLoreList(j.data)) { const m = meta(j, title || '가져온 로어북'); return done({ source: '로어북 파일 · 모듈 하나로 감쌉니다', module: m, lore: foreignLore(j.data, m.name, notes), regex: [], assets: [], notes }); }
-  if (plain(j) && j.type === 'regex' && Array.isArray(j.data)) { const m = meta(j, title || '가져온 정규식'); return done({ source: '정규식 파일 · 모듈 하나로 감쌉니다', module: m, lore: [], regex: foreignRegex(j.data, notes), assets: [], notes }); }
+  if (plain(j) && foreignLoreList(j.data)) { const m = meta(j, title || t('modules.fallback.importedLore')); return done({ source: t('modules.source.lore'), module: m, lore: foreignLore(j.data, m.name, notes), regex: [], assets: [], notes }); }
+  if (plain(j) && j.type === 'regex' && Array.isArray(j.data)) { const m = meta(j, title || t('modules.fallback.importedRegex')); return done({ source: t('modules.source.regex'), module: m, lore: [], regex: foreignRegex(j.data, notes), assets: [], notes }); }
   if (plain(j) && plain(j.entries) || (plain(j) && Array.isArray(j.entries) && j.entries.length)) {
-    const b = worldToLore(j, title || '로어북') as Obj, m = meta({ name: b.name, description: b.description });
-    return done({ source: '실리태번 로어북 파일 · 모듈 하나로 감쌉니다', module: m, lore: [cleanBook(b, m.name)], regex: [], assets: [], notes });
+    const b = worldToLore(j, title || t('modules.fallback.lore')) as Obj, m = meta({ name: b.name, description: b.description });
+    return done({ source: t('modules.source.stLore'), module: m, lore: [cleanBook(b, m.name)], regex: [], assets: [], notes });
   }
   const scripts = (Array.isArray(j) ? j : [j]).filter(r => plain(r) && typeof r.findRegex === 'string');
-  if (scripts.length) return done({ source: '실리태번 정규식 파일 · 모듈 하나로 감쌉니다', module: meta({}, title || '가져온 정규식'), lore: [], regex: scripts.slice(0, 2000).map(r => cleanRegex(stRegexToRegex(r))), assets: [], notes });
-  throw new Error('모듈로 읽을 수 있는 파일이 아니에요.');
+  if (scripts.length) return done({ source: t('modules.source.stRegex'), module: meta({}, title || t('modules.fallback.importedRegex')), lore: [], regex: scripts.slice(0, 2000).map(r => cleanRegex(stRegexToRegex(r))), assets: [], notes });
+  throw new Error(t('modules.err.notModule'));
 }
 
 /** 계획대로 들여놓는다. replace 에 기존 모듈 id 를 주면 그 모듈의 내용을 바꾼다(스위치 · 범위는 유지) */

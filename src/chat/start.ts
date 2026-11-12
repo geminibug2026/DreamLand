@@ -4,10 +4,11 @@ import { makeCtx, macro } from '../lib/engine';
 import { menu } from '../ui';
 import { go } from '../lib/router';
 import type { Chat } from '../lib/types';
+import { t } from '../i18n';
 
 /** 새 대화: 어떤 모드로 시작할지 고르기 */
 export function startMenu(anchor: Element, charIds: string[]) {
-  menu(anchor, [{ label: 'RP 모드', ic: 'book', hint: '소설처럼', onclick: () => { void startChat(charIds, { mode: 'rp' }); } }, { label: '대화 모드', ic: 'chat', hint: '메신저처럼', onclick: () => { void startChat(charIds, { mode: 'talk' }); } }]);
+  menu(anchor, [{ label: t('chat.start.rp'), ic: 'book', hint: t('chat.menu.likeNovel'), onclick: () => { void startChat(charIds, { mode: 'rp' }); } }, { label: t('chat.start.talk'), ic: 'chat', hint: t('chat.menu.likeMessenger'), onclick: () => { void startChat(charIds, { mode: 'talk' }); } }]);
 }
 
 /** 캐릭터들로 새 대화방을 만든다. 첫 인사말(대체 인사말은 넘겨 보기)을 넣어 저장하고, open 이면 그 방으로 간다 */

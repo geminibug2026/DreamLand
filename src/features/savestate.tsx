@@ -2,6 +2,7 @@
 import { useSyncExternalStore } from 'react';
 import { mountInto } from '../kit';
 import * as libCore from '../lib/core';
+import { t } from '../i18n';
 
 type DbFn = (...a: unknown[]) => unknown;
 
@@ -15,7 +16,7 @@ function show(state: string, text: string) {
   clearTimeout(fade); if (state === 'saved') fade = window.setTimeout(() => { view.on = false; push(); }, 2200);
 }
 const hide = () => { view.on = false; push(); };
-const saved = () => { dirtyAt = 0; if (mine) show('saved', '저장됨'); mine = false; };
+const saved = () => { dirtyAt = 0; if (mine) show('saved', t('savestate.saved')); mine = false; };
 
 function Pill() {
   const v = useSyncExternalStore(cb => { subs.add(cb); return () => { subs.delete(cb); }; }, () => snap);
@@ -25,9 +26,9 @@ function Pill() {
 // 저장되지 않는 칸(검색 · 메시지 입력창)은 잠시 뒤 조용히 원래대로
 const skip = (t: Element) => !!t.closest('.composer, .palette, .side-head, [data-nosave]') || (t as HTMLInputElement).type === 'search' || t.classList.contains('search');
 function touched(e: Event) {
-  const t = e.target; if (!(t instanceof HTMLElement) || skip(t) || (!/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !t.isContentEditable)) return;
-  if (!t.closest('#page, #modals, .drawer')) return;
-  dirtyAt = Date.now(); if (!pending) show('dirty', '고치는 중…');
+  const el = e.target; if (!(el instanceof HTMLElement) || skip(el) || (!/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) && !el.isContentEditable)) return;
+  if (!el.closest('#page, #modals, .drawer')) return;
+  dirtyAt = Date.now(); if (!pending) show('dirty', t('savestate.dirty'));
   clearTimeout(quiet); quiet = window.setTimeout(() => { if (pending || !dirtyAt) return; dirtyAt = 0; hide(); }, 3000);
 }
 
@@ -40,9 +41,9 @@ export const feature = {
     for (const fn of ['put', 'del'] as const) {
       const raw = DB[fn];
       DB[fn] = (...a: unknown[]) => {
-        pending++; if (dirtyAt && Date.now() - dirtyAt < 6000) { mine = true; clearTimeout(quiet); show('saving', '저장 중…'); }
+        pending++; if (dirtyAt && Date.now() - dirtyAt < 6000) { mine = true; clearTimeout(quiet); show('saving', t('savestate.saving')); }
         let p: Promise<unknown>; try { p = Promise.resolve(raw(...a)); } catch (e) { p = Promise.reject(e); }
-        p.then(() => { if (--pending <= 0) { pending = 0; saved(); } }, e => { pending = Math.max(0, pending - 1); show('error', '저장하지 못했어요'); console.error('저장 실패', e); });
+        p.then(() => { if (--pending <= 0) { pending = 0; saved(); } }, e => { pending = Math.max(0, pending - 1); show('error', t('savestate.error')); console.error('저장 실패', e); });
         return p;
       };
     }

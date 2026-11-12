@@ -2,6 +2,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { pickFiles, readDataURL, shrinkImage } from '../lib/core';
 import { Btn, Dom, Icon } from '../kit';
+import { t } from '../i18n';
 
 type Opt = string | number | readonly [value: string | number, label: string];
 export interface FieldDef {
@@ -40,7 +41,7 @@ const HEX = /^#[0-9a-f]{6}$/i;
 /** 설명 보기 단추: 누르면 그 항목(.check / .field)의 설명(.tip-text)이 펼쳐진다 */
 export function TipBtn() {
   const click = (e: MouseEvent<HTMLButtonElement>) => { e.preventDefault(); e.stopPropagation(); e.currentTarget.closest('.check, .field')?.classList.toggle('tip-open'); };
-  return <button type="button" className="tip" title="설명 보기" aria-label="설명 보기" onClick={click}>?</button>;
+  return <button type="button" className="tip" title={t('ui.form.tip')} aria-label={t('ui.form.tip')} onClick={click}>?</button>;
 }
 
 /**
@@ -52,7 +53,7 @@ export function installTipify(): () => void {
     for (const s of el.querySelectorAll<HTMLElement>('label.check > small:not(.tip-text)')) {
       if (s.closest('.checks, .lore-picklist') || (s.textContent || '').trim().length < 16 || s.parentElement?.querySelector(':scope > .tip')) continue;
       s.classList.add('tip-text');
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'tip'; b.title = '설명 보기'; b.setAttribute('aria-label', '설명 보기'); b.textContent = '?';
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'tip'; b.title = t('ui.form.tip'); b.setAttribute('aria-label', t('ui.form.tip')); b.textContent = '?';
       b.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); b.closest('.check, .field')?.classList.toggle('tip-open'); });
       s.before(b);
     }
@@ -85,7 +86,7 @@ function ImageCtl({ d, v, set }: { d: FieldDef; v: unknown; set: Setter }) {
   };
   return <div className="img-row">
     <div className="img-pick" style={url ? { backgroundImage: `url("${url}")` } : undefined}>{url ? null : <Icon name="image" size={26} />}</div>
-    <div className="col"><Btn label="이미지 선택" ic="upload" onClick={() => void pick()} /><Btn label="지우기" cls="ghost" onClick={() => { setUrl(''); set(''); }} /></div>
+    <div className="col"><Btn label={t('ui.form.pickImage')} ic="upload" onClick={() => void pick()} /><Btn label={t('ui.form.clear')} cls="ghost" onClick={() => { setUrl(''); set(''); }} /></div>
   </div>;
 }
 
@@ -99,8 +100,8 @@ function Row({ d, obj, set }: { d: FieldDef; obj: object; set: Setter }) {
     case 'num': ctl = <input className="inp" type="number" defaultValue={str(v)} min={d.min} max={d.max} step={d.step ?? 'any'} placeholder={d.ph || ''} onChange={e => set(e.target.value === '' ? (d.nullable ? null : 0) : +e.target.value)} />; break;
     case 'check': return <label className="check"><input type="checkbox" defaultChecked={!!v} onChange={e => set(e.target.checked)} /><i /><span>{d.label}</span>{d.hint && <TipBtn />}{d.hint && <small className="tip-text">{d.hint}</small>}</label>;
     case 'select': ctl = <select className="inp" defaultValue={str(v)} onChange={e => set(e.target.value)}>{(d.opts || []).map(o => { const [val, lab] = typeof o === 'object' ? o : [o, o]; return <option key={String(val)} value={String(val)}>{lab}</option>; })}</select>; break;
-    case 'tags': ctl = <input className="inp" defaultValue={list(v).join(', ')} placeholder={d.ph || '쉼표로 구분'} onChange={e => set(e.target.value.split(',').map(s => s.trim()).filter(Boolean))} />; break;
-    case 'lines': ctl = <textarea className="inp" defaultValue={list(v).join('\n')} rows={d.rows || 3} placeholder={d.ph || '한 줄에 하나씩'} onChange={e => set(e.target.value.split('\n').map(s => s.trim()).filter(Boolean))} />; break;
+    case 'tags': ctl = <input className="inp" defaultValue={list(v).join(', ')} placeholder={d.ph || t('ui.form.tagsPh')} onChange={e => set(e.target.value.split(',').map(s => s.trim()).filter(Boolean))} />; break;
+    case 'lines': ctl = <textarea className="inp" defaultValue={list(v).join('\n')} rows={d.rows || 3} placeholder={d.ph || t('ui.form.linesPh')} onChange={e => set(e.target.value.split('\n').map(s => s.trim()).filter(Boolean))} />; break;
     case 'range': ctl = <RangeCtl d={d} v={v} set={set} />; break;
     case 'color': ctl = <ColorCtl v={v} set={set} />; break;
     case 'image': ctl = <ImageCtl d={d} v={v} set={set} />; break;

@@ -15,9 +15,11 @@ import { Memory } from '../../lib/memory';
 import { S } from '../../lib/core';
 import { chatApi } from '../../chat/actions';
 import { toast } from '../../ui';
+import { t, getLang, fmtDate } from '../../i18n';
 import * as core from '../../lib/core';
 
-export const TABS: [string, string, string][] = [['overview', '개요', 'panel'], ['memories', '기억', 'sparkle'], ['world', '세계', 'globe'], ['summaries', '이야기', 'note'], ['config', '설정', 'sliders'], ['tools', '도구', 'gear'], ['library', '서고 목록', 'folder']];
+/** [id, 이름 키, 아이콘] — 이름은 그릴 때 t() */
+export const TABS: [string, string, string][] = [['overview', 'memoria.archive.tab.overview', 'panel'], ['memories', 'memoria.archive.tab.memories', 'sparkle'], ['world', 'memoria.archive.tab.world', 'globe'], ['summaries', 'memoria.archive.tab.summaries', 'note'], ['config', 'memoria.archive.tab.config', 'sliders'], ['tools', 'memoria.archive.tab.tools', 'gear'], ['library', 'memoria.archive.tab.library', 'folder']];
 
 // ════════ 모듈 상태 ════════
 const mounted = new Set<St>();
@@ -40,29 +42,29 @@ function wire() {
 // ════════ 머리: 상태 · 대화방 고르기 · 기록 · 갱신 ════════
 /** 볼 대화방 고르기: 캐릭터별로 묶고, 방마다 분량·날짜를 붙여 구분한다. 지금 열어 둔 방이 기본 */
 function RoomPick({ chats, st }: { chats: ChatM[]; st: St }) {
-  const api = chatApi, hereId = cur()?.chat?.id || S.settings.lastChat, day = (t?: number) => new Date(t || 0).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+  const api = chatApi, hereId = cur()?.chat?.id || S.settings.lastChat, day = (at?: number) => getLang() === 'ko' ? new Date(at || 0).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }) : fmtDate(at || 0, { month: 'numeric', day: 'numeric' });
   const groups = new Map<string, ChatM[]>(); for (const c of chats) { const g = api.groupTitle(c); if (!groups.has(g)) groups.set(g, []); groups.get(g)!.push(c); }
-  const label = (c: ChatM) => `${c.id === hereId ? '● 지금 대화방 · ' : ''}${api.roomName(c).slice(0, 28)} · ${c.count || 0}개 · ${day(c.updatedAt)}${c.parent ? ' · 분기' : ''}`;
+  const label = (c: ChatM) => `${c.id === hereId ? t('memoria.archive.room.herePrefix') : ''}${t('memoria.archive.room.label', { name: api.roomName(c).slice(0, 28), count: c.count || 0, date: day(c.updatedAt) })}${c.parent ? t('memoria.archive.room.branch') : ''}`;
   const away = hereId && st.chat?.id !== hereId && S.get('chats', hereId);
-  return <div className="mm-pickbox"><small>{st.chat?.id === hereId ? '지금 대화방' : '다른 대화방'}</small>
-    <select className="inp auto mm-pick" title="어느 대화방의 서고를 볼지 고릅니다" value={st.chat?.id || ''} onChange={e => void st.load(e.target.value)}>
+  return <div className="mm-pickbox"><small>{st.chat?.id === hereId ? t('memoria.archive.room.here') : t('memoria.archive.room.other')}</small>
+    <select className="inp auto mm-pick" title={t('memoria.archive.room.pickTitle')} value={st.chat?.id || ''} onChange={e => void st.load(e.target.value)}>
       {[...groups.entries()].map(([g, list]) => <optgroup key={g} label={`${g} (${list.length})`}>{list.map(c => <option key={c.id} value={c.id}>{label(c)}</option>)}</optgroup>)}
     </select>
-    {away ? <button className="btn ghost mm-here" title="지금 열어 둔 대화방의 서고로" onClick={() => void st.load(hereId)}>지금 방으로</button> : null}</div>;
+    {away ? <button className="btn ghost mm-here" title={t('memoria.archive.room.goHereTitle')} onClick={() => void st.load(hereId)}>{t('memoria.archive.room.goHere')}</button> : null}</div>;
 }
 function Head({ st }: { st: St }) {
   const M = Memory, cfg = M.cfg(), m = st.mem, failed = m?.turns.filter(t => t.failed).length || 0, busy = M.busy();
-  const state = !cfg.enabled ? '꺼짐' : !st.chat ? '대화 없음' : activity || (busy ? '기록 중…' : '대기 중');
+  const state = !cfg.enabled ? t('memoria.archive.state.off') : !st.chat ? t('memoria.archive.state.noChat') : activity || (busy ? t('memoria.archive.state.busy') : t('memoria.archive.state.idle'));
   const chats = [...S.chats].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 80); if (st.chat && !chats.includes(st.chat)) chats.unshift(st.chat);
   const refresh = () => {
     const chat = st.chat!; st.draft = null; M.override(chat.id, null); M.reinjectNow?.(chat); st.tab = 'overview'; st.draw();   // 갱신은 수정본 · 초안 폐기를 겸한다
-    toast(st.mem?.packetPin?.text ? '장부가 고정돼 있어 고정한 내용을 그대로 주입합니다. (핀으로 해제)' : '주입 내용을 다시 생성했습니다.', st.mem?.packetPin?.text ? '' : 'ok');
+    toast(st.mem?.packetPin?.text ? t('memoria.archive.refresh.pinned') : t('memoria.archive.refresh.done'), st.mem?.packetPin?.text ? '' : 'ok');
   };
-  return <div className="mm-head"><div className="mm-status"><i className={`mm-lamp${!cfg.enabled ? ' off' : busy ? ' busy' : ''}`} /><div><b>상태: <em>{state}</em></b>
-    <span>{m ? `${m.turns.length}턴 · 기억 ${m.memories.length} · 인물 ${m.cast.length} · 캐논 ${m.canon.length} · 상태 ${m.status.length} · 서약 ${m.pledges.filter(p => p.status === 'active').length} · 요약 ${m.chunks.length + m.arcs.length}` : '대화를 열면 이 대화의 기억이 표시됩니다.'}{failed ? <em className="mm-fail">{` · ⚠ 기록 실패 ${failed} (도구→색인으로 재시도)`}</em> : null}</span></div></div>
+  return <div className="mm-head"><div className="mm-status"><i className={`mm-lamp${!cfg.enabled ? ' off' : busy ? ' busy' : ''}`} /><div><b>{t('memoria.archive.state.label')}<em>{state}</em></b>
+    <span>{m ? t('memoria.archive.head.counts', { turns: m.turns.length, memories: m.memories.length, cast: m.cast.length, canon: m.canon.length, status: m.status.length, pledges: m.pledges.filter(p => p.status === 'active').length, summaries: m.chunks.length + m.arcs.length }) : t('memoria.archive.openChat')}{failed ? <em className="mm-fail">{t('memoria.archive.head.failed', { count: failed })}</em> : null}</span></div></div>
     <div className="mm-head-tools">{chats.length ? <RoomPick chats={chats} st={st} /> : null}
-      {st.chat ? <Btn label="기록" ic="feather" title="마지막 답변 턴을 지금 바로 기억으로 기록합니다." onClick={async () => { await recordNow(st.chat!); void st.reload(); }} /> : null}
-      {st.chat ? <Btn label="갱신" ic="refresh" cls="ghost" title="현재 맥락 기준으로 주입 내용을 다시 생성합니다." onClick={refresh} /> : null}</div></div>;
+      {st.chat ? <Btn label={t('memoria.archive.record.label')} ic="feather" title={t('memoria.archive.record.title')} onClick={async () => { await recordNow(st.chat!); void st.reload(); }} /> : null}
+      {st.chat ? <Btn label={t('memoria.archive.refresh.label')} ic="refresh" cls="ghost" title={t('memoria.archive.refresh.title')} onClick={refresh} /> : null}</div></div>;
 }
 
 // ════════ 몸통: 탭에 따라 ════════
@@ -70,13 +72,13 @@ class Guard extends Component<{ children: ReactNode }, { err: Error | null }> {
   state = { err: null as Error | null };
   static getDerivedStateFromError(err: Error) { return { err }; }
   componentDidCatch(e: Error) { console.error(e); }
-  render() { return this.state.err ? <div className="mm-view"><None text={'화면을 그리지 못했어요: ' + this.state.err.message} /></div> : this.props.children; }
+  render() { return this.state.err ? <div className="mm-view"><None text={t('memoria.archive.drawFail', { error: this.state.err.message })} /></div> : this.props.children; }
 }
 function View({ st }: { st: St }) {
   const open = st.chat && st.mem ? st as StOpen : null;
   if (st.tab === 'config') return <Config st={st} />;
   if (st.tab === 'library') return <Library st={st} />;
-  if (!open) return <div className="mm-view"><None text="대화를 열면 이 대화의 기억이 표시됩니다. 「서고 목록」에서 기록이 있는 대화를 찾을 수 있어요." /></div>;
+  if (!open) return <div className="mm-view"><None text={t('memoria.archive.openChatLong')} /></div>;
   switch (st.tab) {
     case 'memories': return <Memories st={open} />;
     case 'world': return <World st={open} />;
@@ -97,7 +99,7 @@ function Archive({ st, chatId }: { st: St; chatId?: string | null }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { wire(); mounted.add(st); void st.load(chatId || focus); return () => { mounted.delete(st); }; }, []);
   return <><Head st={st} />
-    <div className="tabs mm-tabs" role="tablist" aria-label="장기기억 서고">{TABS.map(([id, label, ic]) => <button key={id} className={`tab${st.tab === id ? ' on' : ''}`} type="button" role="tab" aria-selected={String(st.tab === id) as 'true' | 'false'} onClick={() => { st.tab = id; st.draw(); }}><Ico name={ic} size={15} /><span>{label}</span></button>)}</div>
+    <div className="tabs mm-tabs" role="tablist" aria-label={t('memoria.archive.title')}>{TABS.map(([id, label, ic]) => <button key={id} className={`tab${st.tab === id ? ' on' : ''}`} type="button" role="tab" aria-selected={String(st.tab === id) as 'true' | 'false'} onClick={() => { st.tab = id; st.draw(); }}><Ico name={ic} size={15} /><span>{t(label)}</span></button>)}</div>
     <Body st={st} n={n} /></>;
 }
 
@@ -137,8 +139,8 @@ export function openArchive(chat?: ChatM | null, tab?: string) {
   ensureCfg();
   const host = document.createElement('div'); host.className = 'mm';
   const st = newSt(host, tab || 'overview', close);
-  const offFrame = mountInto(wrap, <div className="mm-frame" role="dialog" aria-modal="true" aria-label="장기기억 서고">
-    <header className="mm-bar"><div className="phead-text"><span className="eyebrow">memoria</span><h2>장기기억 서고</h2></div><IconBtn ic="x" title="닫기" onClick={close} /></header>
+  const offFrame = mountInto(wrap, <div className="mm-frame" role="dialog" aria-modal="true" aria-label={t('memoria.archive.title')}>
+    <header className="mm-bar"><div className="phead-text"><span className="eyebrow">memoria</span><h2>{t('memoria.archive.title')}</h2></div><IconBtn ic="x" title={t('common.close')} onClick={close} /></header>
     <div className="mm-scroll" /></div>);
   wrap.querySelector('.mm-scroll')!.append(host);   // 서고는 따로 올린다 (틀은 다시 그리지 않으므로 React 가 이 자식을 건드리지 않는다)
   const offBody = mountInto(host, <Archive st={st} chatId={chat?.id} />);

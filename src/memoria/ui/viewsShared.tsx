@@ -8,6 +8,7 @@ import { go, route } from '../../lib/router';
 import { Memory } from '../../lib/memory';
 import { chatApi } from '../../chat/actions';
 import { toast } from '../../ui';
+import { t, tn } from '../../i18n';
 
 /** 이 세 화면만 쓰는 엔진 메서드 */
 export type MemoryViews = MemoryUi & {
@@ -34,7 +35,7 @@ export const HAND = 0;   // 직접 적은 달라진 점 · 남긴 말의 턴
 export const bondNow = (b?: Bond | null): BondStep | null => b?.log?.[b.log.length - 1] || null;
 export const bondViewRows = (mem: Mem) => (mem.bonds || []).filter(b => !b.disabled && bondNow(b)).map(b => ({ id: b.id, from: b.from, to: b.to, stage: bondNow(b)!.stage, log: b.log }));
 /** 이야기 속 시간 — 끊는 자리 (시간 · 일 · 주 · 개월 · 년) */
-export const koDuration = (d: number) => d < 1 ? `${Math.max(1, Math.round(d * 24))}시간` : d < 14 ? `${Math.round(d)}일` : d < 60 ? `${Math.round(d / 7)}주` : d < 365 * 2 ? `${Math.round(d / 30)}개월` : `${Math.round(d / 365)}년`;
+export const koDuration = (d: number) => d < 1 ? tn('memoria.parts.dur.hours', Math.max(1, Math.round(d * 24))) : d < 14 ? tn('memoria.parts.dur.days', Math.round(d)) : d < 60 ? tn('memoria.parts.dur.weeks', Math.round(d / 7)) : d < 365 * 2 ? tn('memoria.parts.dur.months', Math.round(d / 30)) : tn('memoria.parts.dur.years', Math.round(d / 365));
 export const sceneSlot = (mem: Mem, slot: string) => { for (let i = mem.status.length - 1; i >= 0; i--) { const s = mem.status[i]; if (String(s.entity || '').toLowerCase() === 'scene' && String(s.slot || '').toLowerCase() === slot) return s.value; } return ''; };
 /** 메시지 id → 화면에 보이는 번호(#1부터) */
 export const noMap = (st: StOpen) => new Map(st.msgs.map((m, i) => [m.id, i + 1]));
@@ -58,7 +59,7 @@ export const storyState = (st: StOpen): StoryState => (st.story ||= { tab: 'flow
 /** 그 번호의 메시지로 간다 (열려 있는 대화일 때) */
 export function jumpTo(st: StOpen, n: number) {
   const msg = st.msgs[n - 1];
-  if (!msg || chatApi.current().chat?.id !== st.chat?.id) return toast(`#${n} 메시지는 지금 화면에 불러와져 있지 않아요.`);
+  if (!msg || chatApi.current().chat?.id !== st.chat?.id) return toast(t('memoria.parts.notLoaded', { n }));
   st.close?.(); if (route.page !== 'chat') go('chat', st.chat.id);
   setTimeout(() => { chatApi.scrollTo(msg.id); const el = document.querySelector(`article.msg[data-id="${msg.id}"]`); if (el) { el.classList.add('mm-flash'); setTimeout(() => el.classList.remove('mm-flash'), 1600); } }, 300);
 }

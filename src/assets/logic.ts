@@ -7,6 +7,7 @@ import { confirmBox, toast } from '../ui';
 import { bytesToDataURL, mimeOf, readDataURL, S, dataURLToBytes, download, pickFiles } from '../lib/core';
 import { X } from '../lib/hooks';
 import { chatApi } from '../chat/actions';
+import { t } from '../i18n';
 
 export interface AssetsApi {
   IMG: RegExp; keyOf(s: string): string; baseOf(s: string): string;
@@ -88,8 +89,10 @@ Use internal image tags as scene, location, item, UI, or event illustrations for
 - Format: {{img::keyword}}
 - If no image is relevant, skip image insertion.` },
 ];
-export const MACROS: [string, string][] = [['{{img_keywords}}', '쓸 수 있는 이름 목록 (묶음 모드면 번호를 뗀 이름)'], ['{{img_keywords_grouped}}', '묶어서 적은 목록 · angry_[1, 2, 3], happy'], ['{{img_count}}', '켜져 있는 에셋 수'], ['{{max}}', '답변당 최대 개수'], ['{{img_rand::머리말}}', '그 말로 시작하는 에셋 이름 하나를 무작위로'], ['{{img_resolve::이름}}', '실제로 쓰일 에셋 이름 (없으면 빈칸)'], ['{{charkey}}', '에셋을 가져오는 캐릭터 이름 (링크 · 버전 반영)'], ['{{img_inprompt}}', '이 안내문 전체 · 프리셋이나 캐릭터 설명에 직접 넣을 때']];
-export const STYLES: [string, string, string][] = [['plain', '그대로', '꾸밈 없이'], ['ink', '가는 선', '여백과 선 한 줄'], ['print', '인화 사진', '흰 인화지 테두리'], ['polaroid', '폴라로이드', '아래 여백 · 살짝 기울임'], ['tape', '마스킹테이프', '테이프로 붙인 사진'], ['corner', '사진 모서리', '앨범에 끼운 모습'], ['stamp', '우표', '톱니 가장자리'], ['film', '필름', '구멍 뚫린 필름 띠'], ['shadow', '떠 있는', '부드러운 그림자'], ['float-left', '글 왼쪽', '글이 감싸고 흐름'], ['float-right', '글 오른쪽', '글이 감싸고 흐름']];
+/** [매크로, 설명 키] — 설명은 쓰는 자리에서 t() */
+export const MACROS: [string, string][] = [['{{img_keywords}}', 'assets.macro.keywords'], ['{{img_keywords_grouped}}', 'assets.macro.grouped'], ['{{img_count}}', 'assets.macro.count'], ['{{max}}', 'assets.maxPerReply'], ['{{img_rand::머리말}}', 'assets.macro.rand'], ['{{img_resolve::이름}}', 'assets.macro.resolve'], ['{{charkey}}', 'assets.macro.charkey'], ['{{img_inprompt}}', 'assets.macro.inprompt']];
+/** [id, 이름 키, 설명 키] */
+export const STYLES: [string, string, string][] = [['plain', 'assets.style.plain', 'assets.style.plainDesc'], ['ink', 'assets.style.ink', 'assets.style.inkDesc'], ['print', 'assets.style.print', 'assets.style.printDesc'], ['polaroid', 'assets.style.polaroid', 'assets.style.polaroidDesc'], ['tape', 'assets.style.tape', 'assets.style.tapeDesc'], ['corner', 'assets.style.corner', 'assets.style.cornerDesc'], ['stamp', 'assets.style.stamp', 'assets.style.stampDesc'], ['film', 'assets.style.film', 'assets.style.filmDesc'], ['shadow', 'assets.style.shadow', 'assets.style.shadowDesc'], ['float-left', 'assets.style.floatLeft', 'assets.style.floatDesc'], ['float-right', 'assets.style.floatRight', 'assets.style.floatDesc']];
 const DEFAULTS = { depth: 2, style: 'ink', maxSize: 400, lazy: true, zoom: true, webp: false, confirmOverwrite: true };
 
 export function cfg(): AssetsCfg {
@@ -106,6 +109,9 @@ export function cfg(): AssetsCfg {
   return c;
 }
 export const save = () => S.set({ assets: cfg() as unknown as Settings['assets'] });
+/** 화면에 적을 프리셋 이름: 기본으로 만들어진 이름 그대로면 번역해서 */
+const PRESET_KEYS: Record<string, [string, string]> = { d0: ['기본 프리셋', 'assets.preset.d0'], d1: ['1:1 감정/표정형', 'assets.preset.d1'], d2: ['시뮬레이션/장소·아이템형', 'assets.preset.d2'], custom: ['내 안내문', 'assets.preset.custom'] };
+export const presetName = (p: AstPreset) => { const k = PRESET_KEYS[p.id]; return k && k[0] === p.name ? t(k[1]) : p.name; };
 export const presetOf = (): AstPreset => { const c = cfg(); return c.presets.find(p => p.id === c.preset) || c.presets[0]; };
 export const charCfg = (id: string): CharCfg => { const c = cfg(), cc = (c.chars[id] ||= { link: '', ver: '', vers: [] }); if (!Array.isArray(cc.vers)) cc.vers = []; return cc; };
 export const ownersOf = (chat?: ChatX | null, persona?: Persona): string[] => chat ? [...chat.charIds.map(A().ownerOfChar), A().ownerOfPersona((persona || S.persona(chat))?.id)] : [];
@@ -180,31 +186,31 @@ function toWebp(dataUrl: string, mime: string): Promise<string> {
 export async function upload(owner: string, ver: string, files: File[], onProgress: (n: number, total: number) => void = () => { }): Promise<number> {
   const As = A();
   let items: UpItem[];
-  try { items = await gather(files); } catch (e) { toast('파일을 읽지 못했어요: ' + errMsg(e), 'err'); return 0; }
-  if (!items.length) { toast('넣을 이미지가 없어요 (PNG · JPEG · WebP · GIF · ZIP)'); return 0; }
+  try { items = await gather(files); } catch (e) { toast(t('assets.up.readFail', { error: errMsg(e) }), 'err'); return 0; }
+  if (!items.length) { toast(t('assets.up.noImages')); return 0; }
   await As.load([owner]);
   if (cfg().confirmOverwrite) {
     const have = new Set(As.inVer(owner, ver).map(a => a.name)), dup = [...new Set(items.map(i => As.cleanName(i.fileName)).filter(n => have.has(n)))];
-    if (dup.length && !(await confirmBox(`이미 있는 이름 ${dup.length}개를 덮어씁니다: ${dup.slice(0, 5).join(', ')}${dup.length > 5 ? ` 외 ${dup.length - 5}개` : ''}`, '덮어쓰기', true))) return 0;
+    if (dup.length && !(await confirmBox(t('assets.up.overwriteAsk', { count: dup.length, names: dup.slice(0, 5).join(', '), more: dup.length > 5 ? t('assets.up.more', { count: dup.length - 5 }) : '' }), t('assets.up.overwrite'), true))) return 0;
   }
   let n = 0, fail = 0;
   for (const it of items) {
-    try { const data = await toWebp(await it.load(), it.mime); if (!data) throw new Error('빈 파일'); await As.add(owner, it.fileName, data, { ver }); n++; }
+    try { const data = await toWebp(await it.load(), it.mime); if (!data) throw new Error(t('assets.up.emptyFile')); await As.add(owner, it.fileName, data, { ver }); n++; }
     catch (e) { console.warn('[에셋 올리기]', it.fileName, e); fail++; }
     onProgress(n + fail, items.length);
   }
-  toast(`에셋 ${n}개를 넣었어요${fail ? ` · ${fail}개 실패` : ''}`, n ? 'ok' : 'err');
+  toast(t('assets.up.done', { count: n }) + (fail ? t('assets.up.doneFail', { count: fail }) : ''), n ? 'ok' : 'err');
   return n;
 }
 export async function uploadFromUrl(owner: string, ver: string, rawUrl: string, label?: string): Promise<number> {
   const url = String(rawUrl || '').trim();
-  if (!/^https?:\/\//i.test(url)) { toast('http(s) 로 시작하는 이미지 주소를 적어 주세요', 'err'); return 0; }
+  if (!/^https?:\/\//i.test(url)) { toast(t('assets.up.needHttp'), 'err'); return 0; }
   let blob: Blob;
   try { const r = await fetch(url); if (!r.ok) throw new Error('HTTP ' + r.status); blob = await r.blob(); }
-  catch (e) { toast('이미지를 받아 오지 못했어요 (그 사이트가 다른 곳에서의 요청을 막았을 수 있어요): ' + errMsg(e), 'err'); return 0; }
+  catch (e) { toast(t('assets.up.fetchFail', { error: errMsg(e) }), 'err'); return 0; }
   const fromUrl = safeDecode(url.split(/[?#]/)[0].split('/').pop() || '');
   const mime = blob.type?.startsWith('image/') ? blob.type : A().IMG.test(fromUrl) ? mimeOf(fromUrl) : '';
-  if (!mime) { toast('이미지 파일이 아니에요', 'err'); return 0; }
+  if (!mime) { toast(t('assets.up.notImage'), 'err'); return 0; }
   const name = (label || A().keyOf(fromUrl) || 'image') + '.' + (mime.split('/')[1] || 'png').replace('jpeg', 'jpg');
   return upload(owner, ver, [new File([blob], name, { type: mime })]);
 }
@@ -212,7 +218,8 @@ export async function uploadFromUrl(owner: string, ver: string, rawUrl: string, 
 // ════════ 이름 정돈 ════════
 export type TidyKey = 'space' | 'special' | 'clean' | 'lower' | 'dot' | 'bare';
 export type TidyOpt = Record<TidyKey, boolean>;
-export const TIDY: [TidyKey, string, string, boolean][] = [['space', '공백 → 언더바(_)', '이름 속 공백을 언더바로', true], ['special', '특수문자 제거', '영문 · 숫자 · 한글 · 언더바 · 하이픈만 남김', true], ['clean', '언더바 정리', '겹친 언더바와 앞뒤 언더바 제거', true], ['lower', '소문자로', '영문을 모두 소문자로', true], ['dot', '점(.) → 언더바(_)', 'name.1 → name_1 로 통일', true], ['bare', '이름숫자 → 이름_숫자', 'angry1 → angry_1 (한 묶음으로 인식됩니다)', false]];
+/** [키, 이름 키, 설명 키, 기본값] */
+export const TIDY: [TidyKey, string, string, boolean][] = [['space', 'assets.tidy.space', 'assets.tidy.spaceHint', true], ['special', 'assets.tidy.special', 'assets.tidy.specialHint', true], ['clean', 'assets.tidy.clean', 'assets.tidy.cleanHint', true], ['lower', 'assets.tidy.lower', 'assets.tidy.lowerHint', true], ['dot', 'assets.tidy.dot', 'assets.tidy.dotHint', true], ['bare', 'assets.tidy.bare', 'assets.tidy.bareHint', false]];
 export function tidyName(name: string, o: TidyOpt): string {
   let b = name;
   if (o.space) b = b.replace(/\s+/g, '_');
@@ -233,42 +240,42 @@ export function tidyPlan(list: AssetRec[], o: TidyOpt): TidyStep[] {
 // ════════ 내보내기 · 백업 ════════
 export async function exportZip(char: CharX) {
   const As = A(), owner = As.ownerOfChar(char.id); await As.load([owner]);
-  const list = As.list(owner); if (!list.length) return toast('내보낼 에셋이 없어요');
+  const list = As.list(owner); if (!list.length) return toast(t('assets.export.none'));
   const seen = new Set<string>(), files: ZipFile[] = [];
   for (const a of list) { let name = `${a.ver ? safeFile(a.ver) + '/' : ''}${safeFile(a.name)}.${extOf(a.data)}`; while (seen.has(name)) name = name.replace(/(\.\w+)$/, '_$1'); seen.add(name); files.push({ name, data: dataURLToBytes(a.data) }); }
   download(`${safeFile(char.name)}_assets.zip`, libAssets.zip(files), 'application/zip');
-  toast(`에셋 ${files.length}개를 ZIP 으로 내보냈어요`, 'ok');
+  toast(t('assets.export.zipDone', { count: files.length }), 'ok');
 }
 export function exportSettings() {
   download(`dreamland-assets-settings_${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify({ type: 'dreamland-assets-settings', version: 1, exportedAt: new Date().toISOString(), settings: cfg() }, null, 2));
-  toast('설정을 내보냈어요', 'ok');
+  toast(t('assets.export.settingsDone'), 'ok');
 }
 export async function importSettings(done: () => void) {
   const [f] = await pickFiles({ accept: '.json' }); if (!f) return;
-  let data: { type?: string; settings?: Partial<AssetsCfg> } | null; try { data = JSON.parse(await f.text()); } catch { return toast('JSON 파일을 읽지 못했어요', 'err'); }
+  let data: { type?: string; settings?: Partial<AssetsCfg> } | null; try { data = JSON.parse(await f.text()); } catch { return toast(t('assets.import.badJson'), 'err'); }
   const s = data?.type === 'dreamland-assets-settings' ? data.settings : null;
-  if (!s || typeof s !== 'object' || !Array.isArray(s.presets)) return toast('드림랜드 에셋 설정 백업 파일이 아니에요', 'err');
-  if (!(await confirmBox('지금 설정(프리셋 · 캐릭터별 링크와 버전 · 표시 옵션)을 백업 내용으로 바꿀까요?', '복원'))) return;
+  if (!s || typeof s !== 'object' || !Array.isArray(s.presets)) return toast(t('assets.import.notBackup'), 'err');
+  if (!(await confirmBox(t('assets.import.restoreAsk'), t('assets.import.restore')))) return;
   S.set({ assets: { ...S.settings.assets, ...s } }); cfg();
-  toast('설정을 복원했어요', 'ok'); done();
+  toast(t('assets.import.restored'), 'ok'); done();
 }
 export function exportPreset() {
   const p = presetOf();
   download(`asset-preset_${safeFile(p.name)}.json`, JSON.stringify([{ name: p.name, prompt: p.prompt }], null, 2));
-  toast(`"${p.name}" 프리셋을 내보냈어요`, 'ok');
+  toast(t('assets.export.presetDone', { name: presetName(p) }), 'ok');
 }
 export async function importPresets(done: () => void) {
   const [f] = await pickFiles({ accept: '.json' }); if (!f) return;
-  let data: unknown; try { data = JSON.parse(await f.text()); } catch { return toast('JSON 파일을 읽지 못했어요', 'err'); }
+  let data: unknown; try { data = JSON.parse(await f.text()); } catch { return toast(t('assets.import.badJson'), 'err'); }
   const wrap = data as { presets?: unknown } | null;
   const raw: unknown[] = Array.isArray(data) ? data : Array.isArray(wrap?.presets) ? wrap.presets : [data];
   const list = raw.filter((p): p is { name: string; prompt: string } => { const x = p as { name?: unknown; prompt?: unknown } | null; return !!x && typeof x.name === 'string' && typeof x.prompt === 'string' && !!x.prompt.trim(); });
-  if (!list.length) return toast('불러올 프리셋이 없어요', 'err');
+  if (!list.length) return toast(t('assets.import.noPresets'), 'err');
   const c = cfg(); let added = 0, updated = 0;
   for (const p of list) {
     const old = c.presets.find(x => x.name === p.name);
-    if (old) { if (await confirmBox(`"${p.name}" 프리셋이 이미 있어요. 덮어쓸까요?`, '덮어쓰기')) { old.prompt = p.prompt; updated++; } }
+    if (old) { if (await confirmBox(t('assets.import.presetExists', { name: p.name }), t('assets.up.overwrite'))) { old.prompt = p.prompt; updated++; } }
     else { const id = 'p' + Date.now().toString(36) + added; c.presets.push({ id, name: p.name, prompt: p.prompt }); c.preset = id; added++; }
   }
-  save(); toast(`프리셋 ${added}개 추가${updated ? ` · ${updated}개 덮어씀` : ''}`, 'ok'); done();
+  save(); toast(t('assets.import.presetsDone', { count: added }) + (updated ? t('assets.import.presetsUpdated', { count: updated }) : ''), 'ok'); done();
 }

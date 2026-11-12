@@ -5,6 +5,7 @@ import { Icon, IconBtn } from '../kit';
 import { usePaged, confirmBox, toast } from '../ui';
 import { PathIcon, Select, openModal, useRedraw } from '../addons/parts';
 import { A, PATHS, TIDY, cfg, copy, save, tidyPlan, type TidyOpt } from './logic';
+import { t } from '../i18n';
 
 export function SBtn({ label, d, onClick, cls = '', title = '' }: { label?: string; d: string; onClick: () => void; cls?: string; title?: string }) {
   return <button type="button" className={`btn ${cls}`.trim()} title={title || undefined} onClick={onClick}><PathIcon d={d} />{label && <span>{label}</span>}</button>;
@@ -33,11 +34,11 @@ function Lb({ items, index, tag, wrap, close }: { items: LbItem[]; index: number
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return <>
-    <IconBtn ic="x" title="닫기 (Esc)" cls="ast-lb-x" onClick={close} />
-    {many && <IconBtn ic="left" title="이전 (←)" cls="ast-lb-nav prev" onClick={() => step(-1)} />}
+    <IconBtn ic="x" title={t('assets.lb.close')} cls="ast-lb-x" onClick={close} />
+    {many && <IconBtn ic="left" title={t('assets.lb.prev')} cls="ast-lb-nav prev" onClick={() => step(-1)} />}
     <figure><img src={a.data} alt={a.name} /><figcaption><b>{a.name}</b><span>{`${i + 1} / ${items.length}`}</span>
-      {tag && <Tiny title="{{img::이름}} 태그 복사" onClick={e => { e.stopPropagation(); void copy(`{{img::${a.name}}}`, '태그를 복사했어요'); }}><PathIcon d={PATHS.tag} size={14} /></Tiny>}</figcaption></figure>
-    {many && <IconBtn ic="right" title="다음 (→)" cls="ast-lb-nav next" onClick={() => step(1)} />}
+      {tag && <Tiny title={t('assets.copyTag')} onClick={e => { e.stopPropagation(); void copy(`{{img::${a.name}}}`, t('assets.tagCopied')); }}><PathIcon d={PATHS.tag} size={14} /></Tiny>}</figcaption></figure>
+    {many && <IconBtn ic="right" title={t('assets.lb.next')} cls="ast-lb-nav next" onClick={() => step(1)} />}
   </>;
 }
 export function lightbox(items: LbItem[], index = 0, { tag = true }: { tag?: boolean } = {}) {
@@ -65,23 +66,23 @@ function Gallery({ owner, ver, locked = false, onChange = () => { } }: GalleryOp
   const shown = A().inVer(owner, ver).filter(a => !q || a.name.includes(q));
   const pg = usePaged(shown, { id: 'assetGallery', perPage: 60, sizes: [30, 60, 120, 240], resetKey: `${owner}|${ver}|${q}` });
   const del = async () => {
-    const hit = A().inVer(owner, ver).filter(a => picked.has(a.id)); if (!hit.length) return toast('삭제할 에셋을 먼저 골라 주세요');
-    if (!(await confirmBox(`고른 에셋 ${hit.length}개를 삭제할까요? 되돌릴 수 없어요.`, '삭제', true))) return;
+    const hit = A().inVer(owner, ver).filter(a => picked.has(a.id)); if (!hit.length) return toast(t('assets.gal.pickFirst'));
+    if (!(await confirmBox(t('assets.deletePickedAsk', { count: hit.length }), t('common.delete'), true))) return;
     for (const a of hit) await A().remove(a);
-    picked.clear(); toast(`에셋 ${hit.length}개를 삭제했어요`, 'ok'); redraw(); onChange();
+    picked.clear(); toast(t('assets.gal.deleted', { count: hit.length }), 'ok'); redraw(); onChange();
   };
   return <>
     <div className="ast-gal-filter">
-      <div className="search-wrap"><Icon name="search" size={16} /><input className="inp" placeholder="이름으로 찾기…" onChange={e => setQ(e.target.value.trim().toLowerCase())} /></div>
+      <div className="search-wrap"><Icon name="search" size={16} /><input className="inp" placeholder={t('assets.gal.searchPh')} onChange={e => setQ(e.target.value.trim().toLowerCase())} /></div>
       <Select value={size} opts={[['small', 'S'], ['medium', 'M'], ['large', 'L']]} cls="auto" onChange={v => { setSize(v); c.ui.grid = v; save(); }} />
-      <button type="button" className={'ibtn ast-gal-sel' + (selecting ? ' on' : '')} title="선택 모드" onClick={() => { if (locked) return toast('에셋 링크를 쓰는 동안에는 삭제할 수 없어요'); picked.clear(); setSelecting(!selecting); }}><PathIcon d={PATHS.checks} /></button>
-      <button type="button" className="btn danger ast-gal-del" title="선택 삭제" style={selecting ? undefined : { display: 'none' }} onClick={() => void del()}><Icon name="trash" /><b>{String(picked.size)}</b></button>
+      <button type="button" className={'ibtn ast-gal-sel' + (selecting ? ' on' : '')} title={t('assets.gal.selectMode')} onClick={() => { if (locked) return toast(t('assets.gal.locked')); picked.clear(); setSelecting(!selecting); }}><PathIcon d={PATHS.checks} /></button>
+      <button type="button" className="btn danger ast-gal-del" title={t('assets.deletePicked')} style={selecting ? undefined : { display: 'none' }} onClick={() => void del()}><Icon name="trash" /><b>{String(picked.size)}</b></button>
     </div>
     <div className={'ast-gal ' + size + (selecting ? ' selecting' : '')} ref={pg.listRef}>
       {shown.length ? pg.rows.map((a, i) => <button key={a.id} type="button" className={'ast-gal-item' + (picked.has(a.id) ? ' picked' : '') + (a.disabled ? ' off' : '')} title={a.name}
         onClick={() => { if (selecting) { if (picked.has(a.id)) picked.delete(a.id); else picked.add(a.id); redraw(); } else lightbox(shown, pg.start + i); }}>
         <span className="ast-gal-img"><img src={a.data} alt={a.name} loading="lazy" /></span><span className="ast-gal-cap">{a.name}</span><i className="ast-gal-mark" /></button>)
-        : <p className="dim ast-empty">{q ? '찾는 에셋이 없어요.' : '에셋이 없어요.'}</p>}
+        : <p className="dim ast-empty">{q ? t('assets.noMatch') : t('assets.gal.empty')}</p>}
     </div>
     {pg.pager}
   </>;
@@ -94,22 +95,22 @@ export function openGallery(owner: string, ver: string, title: string, o: Galler
 function Tidy({ owner, ver, o }: { owner: string; ver: string; o: TidyOpt }) {
   const redraw = useRedraw(), p = tidyPlan(A().inVer(owner, ver), o), ok = p.filter(x => !x.clash).length;
   return <>
-    <p className="hint">고른 규칙으로 이 버전의 에셋 이름을 한꺼번에 다듬습니다.</p>
-    {TIDY.map(([k, label, hint]) => <label key={k} className={'check ast-tidy-opt' + (k === 'dot' || k === 'bare' ? ' key' : '')}><input type="checkbox" checked={o[k]} onChange={e => { o[k] = e.target.checked; redraw(); }} /><i /><span><strong>{label}</strong><small>{hint}</small></span></label>)}
-    <div className="ast-tidy-sum"><b>{p.length ? `${ok}개 바뀜${p.length - ok ? ` · ${p.length - ok}개는 같은 이름이 있어 건너뜀` : ''}` : '바뀔 이름이 없어요'}</b></div>
+    <p className="hint">{t('assets.tidy.desc')}</p>
+    {TIDY.map(([k, label, hint]) => <label key={k} className={'check ast-tidy-opt' + (k === 'dot' || k === 'bare' ? ' key' : '')}><input type="checkbox" checked={o[k]} onChange={e => { o[k] = e.target.checked; redraw(); }} /><i /><span><strong>{t(label)}</strong><small>{t(hint)}</small></span></label>)}
+    <div className="ast-tidy-sum"><b>{p.length ? t('assets.tidy.changed', { count: ok }) + (p.length - ok ? t('assets.tidy.skipped', { count: p.length - ok }) : '') : t('assets.tidy.nothing')}</b></div>
     <div className="ast-tidy-list">
       {p.slice(0, 40).map(x => <div key={x.a.id} className={'ast-tidy-row' + (x.clash ? ' clash' : '')}><span>{x.a.name}</span><i>→</i><span>{x.n}</span></div>)}
-      {p.length > 40 ? <div className="ast-tidy-row more">{`… 외 ${p.length - 40}개`}</div> : null}
+      {p.length > 40 ? <div className="ast-tidy-row more">{t('assets.tidy.more', { count: p.length - 40 })}</div> : null}
     </div>
   </>;
 }
 export function smartRename(owner: string, ver: string, onDone: () => void) {
   const list = A().inVer(owner, ver);
-  if (!list.length) return toast('정돈할 에셋이 없어요');
+  if (!list.length) return toast(t('assets.tidy.none'));
   const o = Object.fromEntries(TIDY.map(([k, , , d]) => [k, d])) as TidyOpt;
-  openModal({ title: '이름 정돈', spec: 'div.ast-tidy', actions: [{ label: '취소' }, { label: '적용', cls: 'primary', onclick: async () => {
+  openModal({ title: t('assets.tidy.title'), spec: 'div.ast-tidy', actions: [{ label: t('common.cancel') }, { label: t('common.apply'), cls: 'primary', onclick: async () => {
     const p = tidyPlan(list, o).filter(x => !x.clash); let n = 0;
     for (const x of p) { try { await A().update({ ...x.a, name: x.n }); n++; } catch (e) { console.warn('[이름 정돈]', e); } }
-    toast(n ? `정돈 완료: ${n}개 변환` : '바뀐 이름이 없어요', n ? 'ok' : ''); onDone();
+    toast(n ? t('assets.tidy.done', { count: n }) : t('assets.tidy.noneChanged'), n ? 'ok' : ''); onDone();
   } }] }, () => <Tidy owner={owner} ver={ver} o={o} />);
 }

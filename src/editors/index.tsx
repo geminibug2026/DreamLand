@@ -3,6 +3,7 @@ import { openModal, toast } from '../ui';
 import { pageRefresh } from './refresh';
 import * as core from '../lib/core';
 import * as cards from '../lib/cards';
+import { t } from '../i18n';
 
 export { charSheet } from './CharSheet';
 export { charEditor } from './CharEditor';
@@ -15,6 +16,6 @@ export async function importDialog(accept = '.png,.json,.jsonl,.webp', after: ()
   const files = await core.pickFiles({ accept, multiple: true }); if (!files.length) return;
   const T = await cards.importFiles(files);
   toast(cards.summarize(T), T.errors.length ? 'err' : 'ok');
-  if (T.errors.length) openModal({ title: '가져오지 못한 파일', body: <ul className="errs">{T.errors.map((e, i) => <li key={i}>{e}</li>)}</ul> });
+  if (T.errors.length) openModal({ title: t('editors.importFailed'), body: <ul className="errs">{T.errors.map((e, i) => <li key={i}>{e}</li>)}</ul> });
   after();
 }

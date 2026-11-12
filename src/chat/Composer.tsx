@@ -8,6 +8,7 @@ import type { CmdItem } from './types';
 import { enterSends } from '../features/usersettings';
 import { S, pickFiles, readDataURL, shrinkImage } from '../lib/core';
 import { X } from '../lib/hooks';
+import { t } from '../i18n';
 
 /**
  * 입력창에 / 를 치면 뜨는 명령어 목록. attach 는 반드시 보내기 단축키보다 먼저 붙여야 한다 —
@@ -55,11 +56,11 @@ function useSlash(list: () => CmdItem[]) {
 function SendBtn() {
   useCh('busy');
   const b = cur.busy;
-  return <button className={'send' + (b ? ' busy' : '')} title={b ? '멈추기' : '보내기'} onClick={() => { if (cur.busy) cur.abort?.abort(); else void send(); }}><Icon name={b ? 'stop' : 'send'} size={20} /></button>;
+  return <button className={'send' + (b ? ' busy' : '')} title={b ? t('chat.composer.stop') : t('chat.composer.send')} onClick={() => { if (cur.busy) cur.abort?.abort(); else void send(); }}><Icon name={b ? 'stop' : 'send'} size={20} /></button>;
 }
 function Attach() {
   useCh('attach');
-  return <div className="attach">{cur.attach.map((u, i) => <div className="attach-item" key={i}><img src={u} /><IconBtn ic="x" title="빼기" cls="tiny" onClick={() => { cur.attach.splice(i, 1); bump('attach'); }} /></div>)}</div>;
+  return <div className="attach">{cur.attach.map((u, i) => <div className="attach-item" key={i}><img src={u} /><IconBtn ic="x" title={t('chat.composer.removeImage')} cls="tiny" onClick={() => { cur.attach.splice(i, 1); bump('attach'); }} /></div>)}</div>;
 }
 async function addImages(files: File[]) {
   for (const f of files) { if (!f.type.startsWith('image/')) continue; cur.attach.push(await shrinkImage(await readDataURL(f), 1568, 'image/jpeg', 0.88)); }
@@ -86,30 +87,30 @@ export function Composer() {
   }, []);
 
   const plus = (e: MouseEvent<HTMLButtonElement>) => menu(e.currentTarget, [
-    { label: '대신 써 주기', ic: 'feather', hint: '내 차례를 AI 가', onclick: () => void generate('impersonate') },
-    { label: '이어 쓰기', ic: 'play', onclick: () => void generate('continue') },
-    { label: '나레이션 넣기', ic: 'note', onclick: async () => { const t = await promptBox('나레이션', '', { area: true }); if (t) void command('/sys ' + t); } },
-    { label: '주사위 굴리기', ic: 'dice', onclick: async () => { const t = await promptBox('주사위 식', '1d20'); if (t) void command('/roll ' + t); } },
-    { label: '입력한 글 번역하기', ic: 'lang', hint: S.settings.translate.inputLang, onclick: () => void translateInput() },
+    { label: t('chat.composer.impersonate'), ic: 'feather', hint: t('chat.composer.impersonateHint'), onclick: () => void generate('impersonate') },
+    { label: t('chat.composer.continue'), ic: 'play', onclick: () => void generate('continue') },
+    { label: t('chat.composer.narrate'), ic: 'note', onclick: async () => { const v = await promptBox(t('chat.composer.narrateTitle'), '', { area: true }); if (v) void command('/sys ' + v); } },
+    { label: t('chat.composer.roll'), ic: 'dice', onclick: async () => { const v = await promptBox(t('chat.composer.rollTitle'), '1d20'); if (v) void command('/roll ' + v); } },
+    { label: t('chat.composer.translateInput'), ic: 'lang', hint: S.settings.translate.inputLang, onclick: () => void translateInput() },
     ...X.composer.map(a => ({ label: a.label, ic: a.icon || 'sparkle', onclick: () => { if (input.current) void a.run(input.current); } })),
     '-',
-    { label: '명령어 도움말', ic: 'code', onclick: () => void command('/help') },
+    { label: t('chat.composer.cmdHelp'), ic: 'code', onclick: () => void command('/help') },
   ]);
   const quick = (text: string) => { const el = input.current; if (text.startsWith('/')) void command(text); else if (el) { el.value = (el.value ? el.value + ' ' : '') + text; fit(); el.focus(); } };
   const muted = new Set(chat.muted || []), lastAi = [...cur.msgs].reverse().find(m => m.role === 'assistant')?.charId;
   return <footer className="composer">
-    {chars.length > 1 ? <div className="speakers"><span className="speakers-label">누가 말할까요</span>{chars.map((c, i) =>
-      <button key={c.id} className={['speaker', muted.has(c.id) && 'muted', lastAi === c.id && 'last'].filter(Boolean).join(' ')} title={muted.has(c.id) ? `${c.name} — 쉬는 중 (눌러서 말하게 하기)` : `${c.name}의 차례로`} onClick={() => void generate('normal', { speaker: c })}>
+    {chars.length > 1 ? <div className="speakers"><span className="speakers-label">{t('chat.composer.whoSpeaks')}</span>{chars.map((c, i) =>
+      <button key={c.id} className={['speaker', muted.has(c.id) && 'muted', lastAi === c.id && 'last'].filter(Boolean).join(' ')} title={muted.has(c.id) ? t('chat.composer.speakerMuted', { name: c.name }) : t('chat.composer.speakerTurn', { name: c.name })} onClick={() => void generate('normal', { speaker: c })}>
         <Avatar o={c} cls="sm" /><small>{String(i + 1).padStart(2, '0')}</small><span>{c.name}</span></button>)}</div> : null}
     <div className="quick">{S.settings.quick.map((q, i) => <button className="chip" key={i} onClick={() => quick(q.text)}>{q.label}</button>)}
       {talk ? (chat.scene?.on
-        ? <button className="chip scene-chip on" title="장면을 끝내고 메시지로 돌아갑니다" onClick={() => void closeScene()}>장면 닫기</button>
-        : <button className="chip scene-chip" title="지금부터 만나서 벌어지는 일을 장면으로 씁니다" onClick={async () => { const t = await promptBox('어떤 장면을 열까요?', '', { placeholder: '예: 역 앞에서 만남' }); if (t !== null) void openScene({ title: t.trim() }); }}>장면 열기</button>) : null}</div>
+        ? <button className="chip scene-chip on" title={t('chat.composer.closeSceneHint')} onClick={() => void closeScene()}>{t('chat.composer.closeScene')}</button>
+        : <button className="chip scene-chip" title={t('chat.composer.openSceneHint')} onClick={async () => { const v = await promptBox(t('chat.composer.openScenePrompt'), '', { placeholder: t('chat.composer.openScenePlaceholder') }); if (v !== null) void openScene({ title: v.trim() }); }}>{t('chat.composer.openScene')}</button>) : null}</div>
     <Attach />
     <div className="composer-box">
-      <IconBtn ic="plus" title="더 많은 동작" onClick={plus} />
-      <IconBtn ic="image" title="이미지 첨부 (붙여넣기도 됩니다)" onClick={async () => addImages(await pickFiles({ accept: 'image/*', multiple: true }))} />
-      <textarea className="composer-input" ref={input} rows={1} spellCheck={false} placeholder={talk ? '메시지 보내기…' : '이야기를 이어 가세요… (비워 두고 보내면 AI 가 이어 씁니다)'} />
+      <IconBtn ic="plus" title={t('chat.composer.more')} onClick={plus} />
+      <IconBtn ic="image" title={t('chat.composer.attach')} onClick={async () => addImages(await pickFiles({ accept: 'image/*', multiple: true }))} />
+      <textarea className="composer-input" ref={input} rows={1} spellCheck={false} placeholder={talk ? t('chat.composer.placeholderTalk') : t('chat.composer.placeholderRp')} />
       <SendBtn />
     </div>
     {slash.node}

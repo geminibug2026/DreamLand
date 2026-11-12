@@ -1,6 +1,7 @@
 // ── Dreamland keepsake: 날짜 · 달 · 월간 집계 · 약속 태그 · 장면 기념품 · 장(章) 나누기 ── (옛 js/f-keepsake.js, 동작 그대로)
 // 화면도 저장소도 건드리지 않는 계산만 모아 둔 파일.
 
+import { t, getLang, fmtDate } from '../i18n';
 import type { Chat, Curtain, DayRec, Keepsake, Msg, Photo, PromiseRec, Swipe } from './types';
 export type { Curtain, Keepsake, Photo };
 export type KSwipe = Swipe;
@@ -26,6 +27,10 @@ export const shiftMonth = (mk: string, n: number) => { const [y, m] = mk.split('
 export const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 export const MONTHS_EN = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER'];
 export const koDate = (k: string, { year = true, week = true }: { year?: boolean; week?: boolean } = {}) => { const d = keyDate(k); return `${year ? d.getFullYear() + '년 ' : ''}${d.getMonth() + 1}월 ${d.getDate()}일${week ? ' ' + WEEK[d.getDay()] + '요일' : ''}`; };
+/** 화면에 보이는 날짜: 한국어면 koDate 그대로, 아니면 그 언어 꼴 (koDate 는 프롬프트·저장 글에도 쓰여 한국어로 둔다) */
+export const showDate = (k: string, o: { year?: boolean; week?: boolean } = {}) => getLang() === 'ko' ? koDate(k, o) : fmtDate(keyDate(k), { year: (o.year ?? true) ? 'numeric' : undefined, month: 'long', day: 'numeric', weekday: (o.week ?? true) ? 'long' : undefined });
+/** 화면에 보이는 요일 짧은 이름 (WEEK 는 날짜 읽기에도 쓰여 한국어로 둔다) */
+export const weekLabel = (i: number) => getLang() === 'ko' ? WEEK[i] : fmtDate(new Date(2024, 0, 7 + i, 12), { weekday: 'short' });
 export const normTime = (s: unknown) => { const m = String(s || '').match(/^\s*(\d{1,2})\s*(?::|시)\s*(\d{1,2})?/); if (!m) return ''; const hh = +m[1], mm = +(m[2] || 0); return hh < 24 && mm < 60 ? `${pad(hh)}:${pad(mm)}` : ''; };
 
 export interface Cell { key: string; d: number; dow: number; inMonth: boolean }
@@ -48,6 +53,10 @@ export const PHASES = ['삭', '초승달', '상현달', '차오르는 달', '보
 export const phaseAt = (date: Date | number = new Date()) => (((+date - Date.UTC(2000, 0, 6, 18, 14)) / 864e5 / SYNODIC) % 1 + 1) % 1;
 export const phaseIndex = (p: number) => Math.round(p * 8) % 8;
 export const phaseName = (p: number) => PHASES[phaseIndex(p)];
+/** 화면에 보이는 달 이름 (PHASES 는 저장값이라 한국어로 둔다) */
+export const phaseLabel = (p: number) => t('keepsake.phase.' + phaseIndex(p));
+/** 저장된 한국어 달 이름 → 화면 글 (모르는 이름은 그대로) */
+export const phaseNameLabel = (name: string) => { const i = PHASES.indexOf(name); return i < 0 ? name : t('keepsake.phase.' + i); };
 /** 밝은 부분의 넓이(0~1) → 차오르는 쪽의 위상(0~.5) */
 export const fillToPhase = (f: unknown) => Math.acos(1 - 2 * clamp01(f)) / (2 * Math.PI);
 /** 위상 p 일 때 밝은 부분의 넓이 */
@@ -81,7 +90,7 @@ export function collectDays(chat: KChat = {} as KChat, msgs: KMsg[] = []) {
   for (const e of chat.dreams || []) if (e?.ts) at(dayKey(e.ts)).dreams.push(e);
   for (const k of chat.keepsakes || []) if (k?.ts && !k.gone) at(dayKey(k.ts)).keepsakes.push(k);
   for (const p of chat.promises || []) if (validKey(p?.date)) at(p.date).promises.push(p);
-  for (const l of chat.later || []) if (l?.at) at(dayKey(l.at)).promises.push({ id: l.id, date: dayKey(l.at), time: `${pad(new Date(l.at).getHours())}:${pad(new Date(l.at).getMinutes())}`, what: l.about || '연락하기로 한 약속', by: 'later', later: true, made: l.made || 0 });
+  for (const l of chat.later || []) if (l?.at) at(dayKey(l.at)).promises.push({ id: l.id, date: dayKey(l.at), time: `${pad(new Date(l.at).getHours())}:${pad(new Date(l.at).getMinutes())}`, what: l.about || t('keepsake.laterPromise'), by: 'later', later: true, made: l.made || 0 });
   return days;
 }
 
@@ -214,24 +223,24 @@ export interface Chapter { title: string; sub: string; from: number; to: number;
 /** mode: day(날짜별) · diary(일기별) · scene(장면별) · count(N개씩) → [{ title, sub, from, to }] (to 는 포함하지 않음) */
 export function chaptersOf(msgs: KMsg[] = [], { mode = 'day', size = 40, diary = [] }: { mode?: string; size?: unknown; diary?: { id: string; to: number; title?: string }[] } = {}): Chapter[] {
   const n = msgs.length, out: Chapter[] = []; if (!n) return out;
-  const span = (a: number, b: number) => { const x = msgs.slice(a, b).map(msgTs).filter(Boolean); if (!x.length) return ''; const s = dayKey(x[0]), e = dayKey(x[x.length - 1]); return s === e ? koDate(s) : `${koDate(s, { week: false })} – ${koDate(e, { week: false, year: s.slice(0, 4) !== e.slice(0, 4) })}`; };
+  const span = (a: number, b: number) => { const x = msgs.slice(a, b).map(msgTs).filter(Boolean); if (!x.length) return ''; const s = dayKey(x[0]), e = dayKey(x[x.length - 1]); return s === e ? showDate(s) : `${showDate(s, { week: false })} – ${showDate(e, { week: false, year: s.slice(0, 4) !== e.slice(0, 4) })}`; };
   if (mode === 'diary') {
     const ends = [...diary].filter(e => e && e.to > 0).sort((a, b) => a.to - b.to); let at = 0;
-    for (const e of ends) { const to = Math.min(n, e.to); if (to <= at) { if (out.length) (out[out.length - 1].diary ||= []).push(e.id); continue; } out.push({ title: e.title || '제목 없는 밤', sub: span(at, to), from: at, to, diary: [e.id] }); at = to; }
-    if (out.length) { if (at < n) out.push({ title: '그 뒤의 이야기', sub: span(at, n), from: at, to: n }); return out; }
+    for (const e of ends) { const to = Math.min(n, e.to); if (to <= at) { if (out.length) (out[out.length - 1].diary ||= []).push(e.id); continue; } out.push({ title: e.title || t('keepsake.untitledNight'), sub: span(at, to), from: at, to, diary: [e.id] }); at = to; }
+    if (out.length) { if (at < n) out.push({ title: t('keepsake.afterwards'), sub: span(at, n), from: at, to: n }); return out; }
     mode = 'day';
   }
   if (mode === 'scene') {
     let at = 0, open = -1, title = '';
     const push = (a: number, b: number, t: string) => { if (b > a) out.push({ title: t, sub: span(a, b), from: a, to: b, scene: !!t }); };
-    msgs.forEach((m, i) => { const k = m?.curtain; if (!k) return; if (k.kind === 'open') { push(at, i, ''); at = i; open = i; title = k.title || '이름 없는 장면'; } else if (k.kind === 'close') { push(at, i + 1, open >= 0 ? title : '이름 없는 장면'); at = i + 1; open = -1; } });
+    msgs.forEach((m, i) => { const k = m?.curtain; if (!k) return; if (k.kind === 'open') { push(at, i, ''); at = i; open = i; title = k.title || t('keepsake.untitledScene'); } else if (k.kind === 'close') { push(at, i + 1, open >= 0 ? title : t('keepsake.untitledScene')); at = i + 1; open = -1; } });
     push(at, n, open >= 0 ? title : '');
-    if (out.some(c => c.scene)) { let gap = 0; for (const c of out) if (!c.title) c.title = gap++ ? '다시, 메시지' : '메시지'; return out; }
+    if (out.some(c => c.scene)) { let gap = 0; for (const c of out) if (!c.title) c.title = gap++ ? t('keepsake.messagesAgain') : t('keepsake.messages'); return out; }
     out.length = 0; mode = 'day';
   }
   if (mode === 'count') { const step = Math.max(5, Math.round(+(size as number)) || 40); for (let a = 0; a < n; a += step) out.push({ title: '', sub: span(a, Math.min(n, a + step)), from: a, to: Math.min(n, a + step) }); return out; }
   let from = 0, key = '';
-  msgs.forEach((m, i) => { const k = dayKey(msgTs(m) || 0); if (i === 0) { key = k; return; } if (msgTs(m) && k !== key) { out.push({ title: koDate(key), sub: '', from, to: i, day: key }); from = i; key = k; } });
-  out.push({ title: koDate(key), sub: '', from, to: n, day: key });
+  msgs.forEach((m, i) => { const k = dayKey(msgTs(m) || 0); if (i === 0) { key = k; return; } if (msgTs(m) && k !== key) { out.push({ title: showDate(key), sub: '', from, to: i, day: key }); from = i; key = k; } });
+  out.push({ title: showDate(key), sub: '', from, to: n, day: key });
   return out;
 }

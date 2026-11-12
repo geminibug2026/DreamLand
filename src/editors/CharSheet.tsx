@@ -14,6 +14,7 @@ import { pageRefresh } from './refresh';
 import * as engine from '../lib/engine';
 import * as core from '../lib/core';
 import * as cards from '../lib/cards';
+import { t, tn } from '../i18n';
 
 export const charTokens = (c: XChar) => engine.tokens([c.description, c.personality, c.scenario, c.mesExample, c.systemPrompt, c.postHistory].join('\n'));
 
@@ -25,10 +26,10 @@ function folderMenu(anchor: Element, c: XChar, after: () => void) {
   const cur = folderOf(c);
   menu(anchor, [
     ...folders().map(fo => ({ label: fo.name, ic: cur === fo.id ? 'check' : 'folder', onclick: async () => { await moveToFolder(c, fo.id); after(); } })),
-    cur ? { label: '폴더에서 꺼내기', ic: 'x', onclick: async () => { await moveToFolder(c, ''); after(); } } : null,
+    cur ? { label: t('editors.sheet.folderOut'), ic: 'x', onclick: async () => { await moveToFolder(c, ''); after(); } } : null,
     folders().length ? '-' : null,
-    { label: '새 폴더에 담기', ic: 'plus', onclick: async () => {
-      const v = await promptBox('폴더 이름', '', { placeholder: '예: 판타지, 현대물, 친구가 준 카드' }); if (!v?.trim()) return;
+    { label: t('editors.sheet.folderNew'), ic: 'plus', onclick: async () => {
+      const v = await promptBox(t('editors.sheet.folderName'), '', { placeholder: t('editors.sheet.folderPh') }); if (!v?.trim()) return;
       const fo = { id: uid(), name: v.trim().slice(0, 40) }; folders().push(fo); S.set({ folders: folders() });
       await moveToFolder(c, fo.id); after();
     } }]);
@@ -39,14 +40,14 @@ function Sheet({ c, close }: { c: XChar; close: () => void }) {
   const redraw = useBump(), [tab, setTab] = useState('대화'), title = useRef<HTMLDivElement>(null);
   const [chats] = useState(() => S.chats.filter(x => x.charIds.includes(c.id)).sort((a, b) => b.updatedAt - a.updatedAt));
   const more = (anchor: Element) => menu(anchor, [
-    { label: 'PNG 카드로 내보내기', ic: 'image', onclick: async () => download(`${c.name}.png`, new Blob([await cards.exportCharPng(c) as BlobPart], { type: 'image/png' })) },
-    { label: 'JSON 으로 내보내기', ic: 'import', hint: 'V2', onclick: () => download(`${c.name}.json`, JSON.stringify(cards.charToCard(c), null, 2)) },
-    { label: 'JSON 으로 내보내기', ic: 'import', hint: 'V3', onclick: () => download(`${c.name}.v3.json`, JSON.stringify(cards.charToCard(c, true), null, 2)) },
-    { label: '폴더에 담기', ic: 'folder', hint: folders().find(f => f.id === folderOf(c))?.name || '', onclick: () => folderMenu(title.current || document.body, c, () => { redraw(); pageRefresh(); }) },
-    { label: '복제', ic: 'copy', onclick: async () => { await S.save('chars', { ...structuredClone(c), id: uid(), name: c.name + ' (사본)', src: '', createdAt: now() }, true); close(); pageRefresh(); } },
+    { label: t('editors.sheet.exportPng'), ic: 'image', onclick: async () => download(`${c.name}.png`, new Blob([await cards.exportCharPng(c) as BlobPart], { type: 'image/png' })) },
+    { label: t('editors.sheet.exportJson'), ic: 'import', hint: 'V2', onclick: () => download(`${c.name}.json`, JSON.stringify(cards.charToCard(c), null, 2)) },
+    { label: t('editors.sheet.exportJson'), ic: 'import', hint: 'V3', onclick: () => download(`${c.name}.v3.json`, JSON.stringify(cards.charToCard(c, true), null, 2)) },
+    { label: t('editors.sheet.folder'), ic: 'folder', hint: folders().find(f => f.id === folderOf(c))?.name || '', onclick: () => folderMenu(title.current || document.body, c, () => { redraw(); pageRefresh(); }) },
+    { label: t('common.duplicate'), ic: 'copy', onclick: async () => { await S.save('chars', { ...structuredClone(c), id: uid(), name: c.name + ' (사본)', src: '', createdAt: now() }, true); close(); pageRefresh(); } },
     '-',
-    { label: '캐릭터 삭제', ic: 'trash', danger: true, onclick: async () => {
-      if (!(await confirmBox(`${c.name} 을(를) 삭제할까요? 대화 ${chats.length}개는 남겨 둡니다.`, '삭제', true))) return;
+    { label: t('editors.sheet.delete'), ic: 'trash', danger: true, onclick: async () => {
+      if (!(await confirmBox(tn('editors.sheet.confirmDelete', chats.length, { name: c.name }), t('common.delete'), true))) return;
       await Assets.removeOwner(Assets.ownerOfChar(c.id)).catch(() => { });
       if (S.settings.assets?.chars) delete S.settings.assets.chars[c.id];
       for (const r of S.regex) if (r.scope === c.id) { r.scope = 'global'; r.enabled = false; await S.save('regex', r, true); }
@@ -55,20 +56,20 @@ function Sheet({ c, close }: { c: XChar; close: () => void }) {
   ]);
   return <div className="sheet-pane">
     <div className="sheet-title" ref={title}><h3><InkName name={c.name} /></h3>
-      <button className={'ibtn star' + (c.fav ? ' on' : '')} title="즐겨찾기" onClick={async () => { c.fav = !c.fav; redraw(); await S.save('chars', c, true); }}><Icon name="star" /></button></div>
-    <p className="dim">{[c.creator && `by ${c.creator}`, c.version && `v${c.version}`, `대화 ${chats.length}개`, `≈${charTokens(c).toLocaleString()} 토큰`].filter(Boolean).join(' · ')}</p>
+      <button className={'ibtn star' + (c.fav ? ' on' : '')} title={t('editors.sheet.fav')} onClick={async () => { c.fav = !c.fav; redraw(); await S.save('chars', c, true); }}><Icon name="star" /></button></div>
+    <p className="dim">{[c.creator && `by ${c.creator}`, c.version && `v${c.version}`, tn('editors.sheet.chats', chats.length), t('editors.tokens', { n: charTokens(c).toLocaleString() })].filter(Boolean).join(' · ')}</p>
     {c.tags.length ? <div className="tag-row">{c.tags.map((t, i) => <span className="chip static" key={i}>#{t}</span>)}</div> : null}
     <div className="row wrap">
-      <Btn label="RP 시작" ic="book" cls="primary" onClick={() => { close(); void startChat([c.id], { mode: 'rp' }); }} />
-      <Btn label="대화 시작" ic="chat" onClick={() => { close(); void startChat([c.id], { mode: 'talk' }); }} />
-      {chats[0] && <Btn label="이어서" ic="play" onClick={() => { close(); go('chat', chats[0].id); }} />}
-      <Btn label="편집" ic="edit" onClick={() => { close(); charEditor(c); }} />
-      <IconBtn ic="more" title="내보내기 · 복제 · 삭제" onClick={e => more(e.currentTarget)} />
+      <Btn label={t('editors.sheet.startRp')} ic="book" cls="primary" onClick={() => { close(); void startChat([c.id], { mode: 'rp' }); }} />
+      <Btn label={t('editors.sheet.startTalk')} ic="chat" onClick={() => { close(); void startChat([c.id], { mode: 'talk' }); }} />
+      {chats[0] && <Btn label={t('editors.sheet.resume')} ic="play" onClick={() => { close(); go('chat', chats[0].id); }} />}
+      <Btn label={t('common.edit')} ic="edit" onClick={() => { close(); charEditor(c); }} />
+      <IconBtn ic="more" title={t('editors.sheet.more')} onClick={e => more(e.currentTarget)} />
     </div>
-    <div className="tabs">{['대화', '소개'].map(t => <button key={t} className={'tab' + (t === tab ? ' on' : '')} onClick={() => setTab(t)}>{t}</button>)}</div>
+    <div className="tabs">{['대화', '소개'].map(x => <button key={x} className={'tab' + (x === tab ? ' on' : '')} onClick={() => setTab(x)}>{t(x === '대화' ? 'editors.sheet.tabChats' : 'editors.sheet.tabAbout')}</button>)}</div>
     {tab === '대화'
-      ? (chats.length ? <div className="sheet-chats">{chats.slice(0, 8).map(x => <button key={x.id} className="mini-chat" onClick={() => { close(); go('chat', x.id); }}><span>{x.name || x.preview || '새 대화'}</span><time>{fmtTime(x.updatedAt)}</time></button>)}</div> : <p className="dim">아직 대화가 없어요.</p>)
-      : <div className="sheet-notes">{c.creatorNotes || c.description || '설명이 아직 없어요.'}</div>}
+      ? (chats.length ? <div className="sheet-chats">{chats.slice(0, 8).map(x => <button key={x.id} className="mini-chat" onClick={() => { close(); go('chat', x.id); }}><span>{x.name || x.preview || t('editors.sheet.newChat')}</span><time>{fmtTime(x.updatedAt)}</time></button>)}</div> : <p className="dim">{t('editors.sheet.noChats')}</p>)
+      : <div className="sheet-notes">{c.creatorNotes || c.description || t('editors.sheet.noDesc')}</div>}
   </div>;
 }
 

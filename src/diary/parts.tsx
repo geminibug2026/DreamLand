@@ -5,6 +5,7 @@ import { tellErr } from './logic';
 import type { Keepsake } from './types';
 import * as core from '../lib/core';
 import * as K from '../lib/f-keepsake';
+import { t as tr } from '../i18n';
 
 const star4 = (x: number, y: number, s: number) => `M${x} ${y - s}L${x + s * .22} ${y - s * .22}L${x + s} ${y}L${x + s * .22} ${y + s * .22}L${x} ${y + s}L${x - s * .22} ${y + s * .22}L${x - s} ${y}L${x - s * .22} ${y - s * .22}Z`;
 const GLYPH: Record<string, string> = {
@@ -41,7 +42,7 @@ export const MoonMini = ({ fill, size = 22 }: { fill: number; size?: number }) =
 export function Ticket({ k, onClick, small }: { k: Keepsake; onClick?: () => void; small?: boolean }) {
   const kk = K, d = new Date(k.ts || core.now()), cls = `alm-ticket${small ? ' small' : ''}`;
   const kids = <>
-    <div className="t-main"><small>{`SCENE No. ${kk.pad(k.no || 1)}`}</small><b>{k.title || '이름 없는 장면'}</b>{(k.place || k.time) ? <span>{[k.place, k.time].filter(Boolean).join(' · ')}</span> : null}{!small && k.summary ? <p>{k.summary}</p> : null}</div>
+    <div className="t-main"><small>{`SCENE No. ${kk.pad(k.no || 1)}`}</small><b>{k.title || tr('diary.untitledScene')}</b>{(k.place || k.time) ? <span>{[k.place, k.time].filter(Boolean).join(' · ')}</span> : null}{!small && k.summary ? <p>{k.summary}</p> : null}</div>
     <div className="t-stub"><small>ADMIT ONE</small><b>{`${kk.pad(d.getMonth() + 1)}.${kk.pad(d.getDate())}`}</b><span>{kk.seatOf(k.id)}</span></div>
   </>;
   return onClick ? <button type="button" className={cls} onClick={onClick}>{kids}</button> : <div className={cls}>{kids}</div>;
@@ -56,7 +57,7 @@ export function Polaroid({ src, title, onClick, cls = '' }: { src: string; title
 export const Paras = ({ text }: { text?: string }) => <>{String(text || '').split(/\n{2,}/).map(p => p.trim()).filter(Boolean).map((p, i) => <p key={i}>{p}</p>)}</>;
 
 /** 모델을 부르는 버튼: 도는 동안 잠기고 글이 바뀐다. 실패는 알림으로 */
-export function BusyBtn({ label, ic, cls = '', busy = '쓰는 중…', title, run }: { label: string; ic?: string; cls?: string; busy?: string; title?: string; run: () => Promise<unknown> }) {
+export function BusyBtn({ label, ic, cls = '', busy = tr('diary.busy.writing'), title, run }: { label: string; ic?: string; cls?: string; busy?: string; title?: string; run: () => Promise<unknown> }) {
   const [on, setOn] = useState(false), alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const click = async () => { if (on) return; setOn(true); try { await run(); } catch (e) { tellErr(e); } finally { if (alive.current) setOn(false); } };

@@ -11,6 +11,7 @@ import { S } from '../lib/core';
 import { AssetsPane } from '../studio/AssetsPane';
 import * as engine from '../lib/engine';
 import * as core from '../lib/core';
+import { t } from '../i18n';
 
 export const page = { name: 'personas', Component: PersonasPage };
 
@@ -19,22 +20,22 @@ function PersonaLinks({ p, api }: { p: Persona; api: EditorApi }) {
   const draw = useBump();
   const chars = S.chars, mine = chars.filter(c => c.bind?.personaId === p.id), chats = S.chats.filter(c => c.personaId === p.id && c.personaAuto === false).sort((a, b) => b.updatedAt - a.updatedAt);
   const cur = S.get('chats', S.settings.lastChat);
-  const nameOf = (c: XChat) => c.charIds.map(i => S.get('chars', i)?.name).filter(Boolean).join(', ') || '삭제된 캐릭터';
-  const other = (id?: string) => { const o = id && id !== p.id ? S.get('personas', id)?.name : ''; return o ? `지금은 "${o}"` : ''; };
+  const nameOf = (c: XChat) => c.charIds.map(i => S.get('chars', i)?.name).filter(Boolean).join(', ') || t('editors.picker.deletedChar');
+  const other = (id?: string) => { const o = id && id !== p.id ? S.get('personas', id)?.name : ''; return o ? t('personas.links.current', { name: o }) : ''; };
   return <div className="card links">
-    <h3 className="form-sec">연결</h3><p className="hint">어떤 대화에서 이 페르소나로 말할지 정합니다. 대화에 연결한 것이 가장 먼저, 그다음 캐릭터에 연결한 것, 마지막이 기본 페르소나입니다.</p>
-    <div className="link-row"><span className="field-label">기본</span>{p.id === S.settings.activePersona ? <em className="badge on">기본 페르소나</em> : <Btn label="기본으로 쓰기" ic="check" cls="ghost" onClick={() => { S.set({ activePersona: p.id }); api.refresh(); }} />}</div>
-    <div className="link-row"><span className="field-label">캐릭터</span><div className="link-chips">
-      {mine.map(c => <button key={c.id} className="chip with-av on" title="눌러서 연결 풀기" onClick={async () => { c.bind = { ...(c.bind || {}), personaId: '' }; await S.save('chars', c, true); draw(); }}><Avatar o={c} cls="xs" />{c.name}{' ✕'}</button>)}
-      <Btn label="캐릭터 고르기" ic="search" cls="ghost" onClick={() => charPicker({ title: `${p.name}(으)로 말할 캐릭터`, selected: mine.map(c => c.id), note: c => other(S.get('chars', c.id)?.bind?.personaId),
+    <h3 className="form-sec">{t('personas.links.title')}</h3><p className="hint">{t('personas.links.hint')}</p>
+    <div className="link-row"><span className="field-label">{t('personas.links.default')}</span>{p.id === S.settings.activePersona ? <em className="badge on">{t('personas.defaultPersona')}</em> : <Btn label={t('personas.links.useDefault')} ic="check" cls="ghost" onClick={() => { S.set({ activePersona: p.id }); api.refresh(); }} />}</div>
+    <div className="link-row"><span className="field-label">{t('personas.links.chars')}</span><div className="link-chips">
+      {mine.map(c => <button key={c.id} className="chip with-av on" title={t('personas.links.unlink')} onClick={async () => { c.bind = { ...(c.bind || {}), personaId: '' }; await S.save('chars', c, true); draw(); }}><Avatar o={c} cls="xs" />{c.name}{' ✕'}</button>)}
+      <Btn label={t('personas.links.pickChars')} ic="search" cls="ghost" onClick={() => charPicker({ title: t('personas.links.pickCharsTitle', { name: p.name }), selected: mine.map(c => c.id), note: c => other(S.get('chars', c.id)?.bind?.personaId),
         onDone: async ids => { for (const c of S.chars) { const want = ids.includes(c.id), has = c.bind?.personaId === p.id; if (want !== has) { c.bind = c.bind ? { ...c.bind, personaId: want ? p.id : '' } : { connId: '', presetId: '', personaId: want ? p.id : '' }; await S.save('chars', c, true); } } draw(); } })} />
     </div></div>
-    <div className="link-row"><span className="field-label">대화</span><div className="link-chips">
-      {chats.slice(0, 8).map(c => <button key={c.id} className="chip on" title="눌러서 연결 풀기" onClick={async () => { c.personaId = ''; c.personaAuto = undefined; await S.save('chats', c, true); draw(); }}>{nameOf(c)}{' · '}{roomLabel(c).slice(0, 18)}{' ✕'}</button>)}
-      {chats.length > 8 ? <small className="hint">{`외 ${chats.length - 8}개`}</small> : null}
-      <Btn label={chats.length ? `대화방 고르기 (${chats.length})` : '대화방 고르기'} ic="search" cls="ghost" onClick={() => chatPicker({ title: `${p.name}(으)로 말할 대화방`, selected: chats.map(c => c.id), note: c => other(c.personaId),
+    <div className="link-row"><span className="field-label">{t('personas.links.chats')}</span><div className="link-chips">
+      {chats.slice(0, 8).map(c => <button key={c.id} className="chip on" title={t('personas.links.unlink')} onClick={async () => { c.personaId = ''; c.personaAuto = undefined; await S.save('chats', c, true); draw(); }}>{nameOf(c)}{' · '}{roomLabel(c).slice(0, 18)}{' ✕'}</button>)}
+      {chats.length > 8 ? <small className="hint">{t('personas.links.more', { n: chats.length - 8 })}</small> : null}
+      <Btn label={chats.length ? t('personas.links.pickChatsN', { n: chats.length }) : t('editors.picker.title')} ic="search" cls="ghost" onClick={() => chatPicker({ title: t('personas.links.pickChatsTitle', { name: p.name }), selected: chats.map(c => c.id), note: c => other(c.personaId),
         onDone: async ids => { for (const c of S.chats) { const want = ids.includes(c.id), has = c.personaId === p.id && c.personaAuto === false; if (want !== has) { c.personaId = want ? p.id : ''; c.personaAuto = want ? false : undefined; await S.save('chats', c, true); } } draw(); } })} />
-      {cur && !(cur.personaId === p.id && cur.personaAuto === false) ? <Btn label={`지금 대화(${nameOf(cur)})에 연결`} ic="plus" cls="ghost" onClick={async () => { cur.personaId = p.id; cur.personaAuto = false; await S.save('chats', cur, true); draw(); }} /> : null}
+      {cur && !(cur.personaId === p.id && cur.personaAuto === false) ? <Btn label={t('personas.links.linkCurrent', { name: nameOf(cur) })} ic="plus" cls="ghost" onClick={async () => { cur.personaId = p.id; cur.personaAuto = false; await S.save('chats', cur, true); draw(); }} /> : null}
     </div></div>
   </div>;
 }
@@ -42,25 +43,25 @@ function PersonaLinks({ p, api }: { p: Persona; api: EditorApi }) {
 function PersonaEditor({ p, api }: { p: Persona; api: EditorApi }) {
   const A = Assets;
   const changed = useDebounced(() => { void api.save(); api.redraw(); }, 400), save = useDebounced(() => api.save(), 300);
-  const hint = useMemo(() => `≈${engine.tokens(p.description)} 토큰`, [p]);   // 열 때의 값 (옛 것과 같게)
+  const hint = useMemo(() => t('editors.tokens', { n: engine.tokens(p.description) }), [p]);   // 열 때의 값 (옛 것과 같게)
   return <div className="editor">
     <header className="editor-head"><h2>{p.name}</h2><div className="row">
-      {p.id === S.settings.activePersona ? <em className="badge on">기본</em> : <Btn label="기본으로" ic="check" cls="primary" onClick={() => { S.set({ activePersona: p.id }); api.refresh(); }} />}
-      <IconBtn ic="trash" title="삭제" onClick={async () => {
-        if (S.personas.length < 2) return toast('마지막 페르소나는 지울 수 없어요');
-        if (await confirmBox(`"${p.name}" 페르소나를 삭제할까요?`, '삭제', true)) { await A.removeOwner(A.ownerOfPersona(p.id)).catch(() => { }); await S.remove('personas', p.id); if (S.settings.activePersona === p.id) S.set({ activePersona: S.personas[0].id }); api.refresh(); }
+      {p.id === S.settings.activePersona ? <em className="badge on">{t('personas.links.default')}</em> : <Btn label={t('personas.makeDefault')} ic="check" cls="primary" onClick={() => { S.set({ activePersona: p.id }); api.refresh(); }} />}
+      <IconBtn ic="trash" title={t('common.delete')} onClick={async () => {
+        if (S.personas.length < 2) return toast(t('personas.lastOne'));
+        if (await confirmBox(t('personas.confirmDelete', { name: p.name }), t('common.delete'), true)) { await A.removeOwner(A.ownerOfPersona(p.id)).catch(() => { }); await S.remove('personas', p.id); if (S.settings.activePersona === p.id) S.set({ activePersona: S.personas[0].id }); api.refresh(); }
       }} />
     </div></header>
-    <Form obj={p} defs={[{ k: 'name', label: '이름', hint: '{{user}} 로 쓰입니다.' }, { k: 'avatar', label: '초상', type: 'image' }, { k: 'description', label: '설명', type: 'area', rows: 10, hint }]} onChange={changed} />
+    <Form obj={p} defs={[{ k: 'name', label: t('common.name'), hint: t('personas.f.nameHint') }, { k: 'avatar', label: t('editors.char.f.avatar'), type: 'image' }, { k: 'description', label: t('editors.char.f.description'), type: 'area', rows: 10, hint }]} onChange={changed} />
     <PersonaLinks p={p} api={api} />
-    <LorePicker holder={p} save={save} hint="이 페르소나로 말하는 대화에서 함께 쓰는 로어북입니다." />
+    <LorePicker holder={p} save={save} hint={t('personas.loreHint')} />
     <span style={{ display: 'contents' }}><AssetsPane owner={A.ownerOfPersona(p.id)} holder={p} save={save} /></span>
   </div>;
 }
 
 function PersonasPage({ arg }: { arg?: unknown }) {
-  return <LibraryPage<Persona> arg={arg} title="페르소나" eyebrow="persona" coll="personas" ic="user" thumb={p => <Avatar o={p} cls="sm" />} create={() => core.newPersona({ name: '새 페르소나' })} label={p => p.name}
-    sub={p => p.id === S.settings.activePersona ? '기본 페르소나' : (p.description.slice(0, 40) || ' ')}
-    list={ctx => <Shelf ctx={ctx} coll="personas" active={S.settings.activePersona} text={p => p.name + ' ' + (p.description || '')} pageSize={20} placeholder="페르소나 찾기" />}
+  return <LibraryPage<Persona> arg={arg} title={t('personas.title')} eyebrow="persona" coll="personas" ic="user" thumb={p => <Avatar o={p} cls="sm" />} create={() => core.newPersona({ name: '새 페르소나' })} label={p => p.name}
+    sub={p => p.id === S.settings.activePersona ? t('personas.defaultPersona') : (p.description.slice(0, 40) || ' ')}
+    list={ctx => <Shelf ctx={ctx} coll="personas" active={S.settings.activePersona} text={p => p.name + ' ' + (p.description || '')} pageSize={20} placeholder={t('personas.search')} />}
     editor={(p, api) => <PersonaEditor p={p} api={editorApi(api, 'personas')} />} />;
 }

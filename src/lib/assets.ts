@@ -1,5 +1,6 @@
 // ── Dreamland assets: 이미지 보관함 (캐릭터 에셋 · 삽화) + ZIP 읽기 ── (옛 js/assets.js, 동작 그대로)
 import { S, DB, uid, now, esc, shrinkImage, readDataURL, bytesToDataURL, mimeOf } from './core';
+import { t } from '../i18n';
 
 export interface ZipFile { name: string; data: Uint8Array }
 export interface AssetRec { id: string; owner: string; name: string; data: string; disabled?: boolean; kind?: string; ts?: number; ver?: string; [k: string]: unknown }
@@ -19,7 +20,7 @@ const escape = esc as unknown as (s: unknown) => string;
 export async function unzip(buf: ArrayBuffer | Uint8Array): Promise<ZipFile[]> {
   const u = buf instanceof Uint8Array ? buf : new Uint8Array(buf), dv = new DataView(u.buffer, u.byteOffset, u.byteLength);
   let e = u.length - 22; while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
-  if (e < 0) throw new Error('ZIP 파일이 아닙니다');
+  if (e < 0) throw new Error(t('assets.zip.notZip'));
   const count = dv.getUint16(e + 10, true); let p = dv.getUint32(e + 16, true); const out: ZipFile[] = [];
   for (let i = 0; i < count && dv.getUint32(p, true) === 0x02014b50; i++) {
     const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), n = dv.getUint16(p + 28, true), x = dv.getUint16(p + 30, true), c = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);

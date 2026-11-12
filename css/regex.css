@@ -141,3 +141,6 @@ textarea.rx-mono { font-size: .9em; line-height: 1.55; resize: vertical; }
   .rx-step-body { padding-left: 4px; }
   .rx-text { max-height: 52dvh; }
 }
+
+:root:lang(en) .rx-set.on .rx-set-text b::after { content: " · Active"; }
+:root:lang(zh-CN) .rx-set.on .rx-set-text b::after { content: " · 当前"; }

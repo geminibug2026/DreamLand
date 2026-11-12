@@ -1,4 +1,5 @@
 // 번역: 언어 표 · 기본 지시문 · 지시문 빈칸 안내 (옛 js/f-translate.js 에서 글자 그대로)
+import { getLang, locale, t } from '../i18n';
 // ════════ 언어 ════════  코드 | 모델에게 쓰는 이름 | 화면에 보이는 이름
 export const LANGS = `ko|Korean|한국어
 en|English|영어
@@ -108,7 +109,9 @@ zu|Zulu|줄루어`.split('\n').map(l => l.split('|'));
 export const findLang = (v: unknown) => { const k = String(v || '').trim().toLowerCase(); return LANGS.find(l => l.some(x => x.toLowerCase() === k)); };
 /** 코드·한국어 이름·영어 이름 무엇이든 → 모델에게 쓸 영어 이름 (목록에 없으면 적힌 그대로) */
 export const langName = (v: unknown) => findLang(v)?.[1] || String(v || '').trim() || 'Korean';
-export const langLabel = (v: unknown) => findLang(v)?.[2] || String(v || '').trim();
+/** 화면에 보이는 언어 이름: 한국어 화면은 표의 한국어 이름, 그 밖은 Intl 의 그 언어 이름 (없으면 영어 이름) */
+export const langDisplay = (l: string[]) => { if (getLang() === 'ko') return l[2]; if (getLang() === 'en') return l[1]; try { const n = new Intl.DisplayNames([locale()], { type: 'language' }).of(l[0] === 'iw' ? 'he' : l[0] === 'jw' ? 'jv' : l[0]); if (n && n !== l[0]) return n; } catch { } return l[1]; };
+export const langLabel = (v: unknown) => { const l = findLang(v); return l ? langDisplay(l) : String(v || '').trim(); };
 
 // ════════ 지시문 ════════
 export const DEFAULT_PROMPT = `# Task: Translate Text
@@ -138,4 +141,5 @@ You are an expert multilingual translator. Your task is to translate the user's 
 
 Important: Your response must follow this exact format with the translation enclosed in code blocks (\`\`\`).`;
 export const SYSTEM = 'You are a professional translator. Follow the instructions in the user message exactly and output nothing else.';
-export const VARS: [string, string][] = [['{{language}}', '옮길 언어'], ['{{prompt}}', '번역할 글'], ['{{name}}', '그 글을 쓴 사람'], ['{{#each chat}}…{{/each}}', '앞 메시지 반복 · 안에서 {{this.name}} {{this.mes}} {{add @index 1}}'], ['{{#each (slice chat -3)}}…{{/each}}', '앞 메시지 중 마지막 3개만'], ['{{context}}', '앞 메시지를 "이름: 내용" 줄로'], ['{{chat_1}}', '바로 앞 메시지 (chat_2, chat_3 …)'], ['{{#if chat}}…{{else}}…{{/if}}', '앞 메시지가 있을 때만'], ['{{user}} {{char}}', '내 이름 · 캐릭터 이름']];
+/** [빈칸, 설명] — 설명은 부를 때의 언어로 */
+export const VARS = (): [string, string][] => ([['{{language}}', 'language'], ['{{prompt}}', 'prompt'], ['{{name}}', 'name'], ['{{#each chat}}…{{/each}}', 'each'], ['{{#each (slice chat -3)}}…{{/each}}', 'slice'], ['{{context}}', 'context'], ['{{chat_1}}', 'chat1'], ['{{#if chat}}…{{else}}…{{/if}}', 'if'], ['{{user}} {{char}}', 'userChar']] as [string, string][]).map(([v, k]): [string, string] => [v, t('translate.vars.' + k)]);

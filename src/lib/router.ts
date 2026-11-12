@@ -23,6 +23,7 @@ export const refresh = () => go(route.page, route.arg);
 
 addEventListener('popstate', e => {
   const st = e.state as { dl?: number; page: string; arg?: unknown } | null; if (st?.dl !== 1) return;
-  for (const m of document.querySelectorAll('.modal-wrap')) { const x = m.querySelector<HTMLElement>('button[title="닫기"]'); if (x) x.click(); else m.remove(); }
+  // 창의 닫기(X) 단추: src/ui/Modal.tsx 의 .modal-x (언어와 상관없이). title="닫기" 는 옛 창을 위한 예비
+  for (const m of document.querySelectorAll('.modal-wrap')) { const x = m.querySelector<HTMLElement>('.modal-head .modal-x, button[title="닫기"]'); if (x) x.click(); else m.remove(); }
   go(st.page, st.arg ?? undefined, true);
 });

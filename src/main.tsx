@@ -9,6 +9,7 @@ import { installMirror, type MirrorDb } from './datafolder/mirror';
 import { setMirror } from './datafolder/instance';
 import { toast } from './ui';
 import { Rail, openPalette } from './Shell';
+import { t } from './i18n';
 
 /** 화면 파일(src/pages/*.tsx)은 이것을 page 라는 이름으로 내보낸다. 파일을 두기만 하면 등록된다 */
 export interface PageDef { name: string; Component: ComponentType<{ arg?: unknown }> }
@@ -33,7 +34,7 @@ await start({
   rail: () => { if (!railUp) { railUp = true; flushSync(() => railRoot.render(<Rail />)); } else emit('rail'); },
   palette: openPalette,
   pages: async () => {
-    for (const f of feats) try { await f.setup(); } catch (e) { console.error('[기능]', f.name, e); toast(`기능 ${f.name} 을(를) 불러오지 못했어요`, 'err'); }
+    for (const f of feats) try { await f.setup(); } catch (e) { console.error('[기능]', f.name, e); toast(t('shell.featureFail', { name: f.name }), 'err'); }
     for (const { name, Component } of defs) registerPage(name, (root, arg) => {
       drop();
       const box = document.createElement('div'); box.style.display = 'contents'; root.append(box);

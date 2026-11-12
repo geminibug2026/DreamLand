@@ -8,6 +8,10 @@ import { G, PROMPTS, NARRATOR, PUBLIC_ONLY, LANG_DIRECTIVES, MEMORY_DEFAULTS, SH
 import * as MP from '../prompts';
 import { findStatusBars, statusOneLine, isPauseDirective, isPauseMessage, verifyIssues } from '../scene';
 import { withDeadline, parsePhraseList, BUNDLE_EXCLUDED, resolveBundleName, switchBundle } from '../craft';
+import { t } from '../../i18n';
+
+/** waitForChatIdle 이 받는 일 이름(한국어 id) → 화면 글 키 */
+const WAIT_WHAT: Record<string, string> = { '기록': 'record', '연속성 검사': 'check', '턴 기록': 'turn', '장면 연출': 'direct', '요약·서고 정리': 'tidy' };
 
 /** 저장된 설정 (S.settings.memory) — 빠진 칸이 있을 수 있고, 화석화는 예전에 숫자 하나였다 */
 export type RawCfg = Partial<Omit<KnownKeys<Cfg>, 'fossil' | 'embed' | 'prompts'>> & { fossil?: Cfg['fossil'] | number; embed?: Partial<Cfg['embed']>; prompts?: Record<string, string>; [k: string]: unknown };
@@ -198,8 +202,8 @@ export const part1: Part1 & ThisType<MemoryApi> = {
   },
   /** 기억 · 서술 방식을 고른다. local: 이 대화만 따로(인물 시점도 고를 수 있다) · 아니면 공통 기본값(자동 · 공개 기억만 · 소설·풀사칭). 고쳐 둔 1회용 장부는 버린다 */
   async setPerspectivePreference(mem, value, local) {
-    if (typeof value !== 'string' || (!local && !this.isSharedPerspective(value))) throw new Error('기억·서술 방식의 선택을 확인해 주세요.');
-    if (local && !mem) throw new Error('대화를 먼저 열어 주세요.');
+    if (typeof value !== 'string' || (!local && !this.isSharedPerspective(value))) throw new Error(t('memoria.engine.err.perspective'));
+    if (local && !mem) throw new Error(t('memoria.engine.err.noChat'));
     this.effectivePerspective(mem);
     if (!local) { const s = S.settings.memory || (S.settings.memory = {} as Cfg); s.perspective = value; S.set({ memory: s }); }
     if (mem) { mem.perspective = value; mem.perspectiveScope = local ? 'chat' : 'default'; overrides.delete(mem.id); await this.save(mem); }
@@ -209,7 +213,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
   /** 세트에 담을 수 있는 설정의 기본값. 모든 대화 공통이어야 하는 것(켜기/끄기 · 임베딩 · 프롬프트와 개정 번호 · 공통 서술 방식 · 세트 자체)은 뺀다 */
   bundleDefaults() { return Object.fromEntries(Object.entries(MEMORY_DEFAULTS).filter(([k]) => !BUNDLE_SKIP.includes(k) && !BUNDLE_EXCLUDED.includes(k))); },
   /** 세트를 붙일 대상 — 이 대화의 (첫) 캐릭터 */
-  bundleOwner(chat) { const c = S.get('chars', chat?.charIds?.[0]); return c ? { key: `char:${c.id}`, label: `이 캐릭터 (${c.name || ''})` } : { key: '', label: '이 캐릭터' }; },
+  bundleOwner(chat) { const c = S.get('chars', chat?.charIds?.[0]); return c ? { key: `char:${c.id}`, label: t('memoria.engine.bundle.ownerNamed', { name: c.name || '' }) } : { key: '', label: t('memoria.engine.bundle.owner') }; },
   /** 지금 대화에 맞는 세트로 설정을 갈아 끼운다 — 먼저 보는 순서: 이 대화에 붙인 것 → 캐릭터에 붙인 것 → 기본 설정. 바뀌었으면 true */
   applyBundleForChat(chat) {
     const s = S.settings.memory || (S.settings.memory = {} as Cfg), defaults = this.bundleDefaults();
@@ -220,7 +224,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     if (!switchBundle(s, name, defaults)) return false;
     S.set({ memory: s });
     this.reinjectNow(chat);   // 얼려 둔 장부 · 삼갈 표현 목록은 새 설정으로 다시 짓는다
-    this.logActivity('bundle', name ? `설정 세트 "${name}"을(를) 적용했어요` : '기본 설정으로 돌아왔어요');
+    this.logActivity('bundle', name ? t('memoria.engine.log.bundleOn', { name }) : t('memoria.engine.log.bundleOff'));
     return true;
   },
 
@@ -431,7 +435,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     if (side === null) return false;
     msg.memSide = side;
     if (chat) Promise.resolve(this.saveMsgMarks(chat, marked)).catch(e => console.warn('[장기기억] 막간 표시 저장', e));
-    if (side) this.logActivity('side', `#${id + 1}은 롤플을 멈추고 만든 막간이라 기억에 넣지 않아요`);
+    if (side) this.logActivity('side', t('memoria.engine.log.side', { n: id + 1 }));
     return side;
   },
   /** 메시지에 붙인 표시(memSide · memCheck)만 저장된 대화에 옮겨 적는다 — 그사이 대화 화면이 고친 메시지 목록을 통째로 덮어쓰지 않게. 반환: 옮겨 적은 칸 수 */
@@ -475,8 +479,8 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     let result = null;
     try {
       const { value, timedOut } = await withDeadline(this.call(chat, MP.REPLY_CHECK_PROMPT, userPrompt, 1500, signal), 120000, null);
-      if (timedOut) this.logActivity('error', `#${no} 연속성 검사가 2분 안에 끝나지 않아 건너뛰었어요`); else result = parseLoose(value);
-    } catch (e: any) { if (e?.name === 'AbortError' || signal?.aborted) throw e; this.logActivity('error', `#${no} 연속성 검사 실패: ${e?.message || e}`); }
+      if (timedOut) this.logActivity('error', t('memoria.engine.log.checkTimeout', { n: no })); else result = parseLoose(value);
+    } catch (e: any) { if (e?.name === 'AbortError' || signal?.aborted) throw e; this.logActivity('error', t('memoria.engine.log.checkFailed', { n: no, why: e?.message || e })); }
     // 점검하는 사이 다른 답변으로 넘겼거나 고쳤으면 결과를 붙이지 않는다
     if (!result || (this.get(chat.id) || mem) !== mem || !msgs.includes(msg) || mesHashOf(msg) !== h) return null;
     const found = Array.isArray(result) ? result : result.issues, { kept, filtered } = verifyIssues(found, reply, context);
@@ -484,7 +488,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     await this.saveMsgMarks(chat, [msg]).catch(e => console.warn('[장기기억] 점검 결과 저장', e));
     emit('memory:check', { chatId: chat.id, msgId: msg.id, check: msg.memCheck || null });
     const total = Array.isArray(found) ? found.length : 0;
-    this.logActivity('check', total ? `#${no} 점검: 찾은 경고 ${total}개 → 근거 확인 안 됨 ${filtered.length}개 → 남은 경고 ${kept.length}개` : `#${no} 점검: 어긋난 곳 없음`);
+    this.logActivity('check', total ? t('memoria.engine.log.checkFound', { n: no, total, filtered: filtered.length, kept: kept.length }) : t('memoria.engine.log.checkClean', { n: no }));
     return msg.memCheck || null;
   },
   /** 서고에 묻기 · 말로 고치기 · 연속성 검사가 장부 재료를 모을 때의 옵션 — 질의는 직접 주고, 장면(지금 자리에 있는 인물 · 상태창)은 대화에서 읽는다. 연출은 싣지 않는다 */
@@ -507,10 +511,10 @@ export const part1: Part1 & ThisType<MemoryApi> = {
         const i = (msgs || []).indexOf(msg); if (i < 0 || msg.role !== 'assistant' || msg.hidden) return;
         const mem = await this.load(chat.id), turn = mem.turns.find(t => t.msgId === msg.id);
         if (!turn || turn.failed || turnMatches(turn, msg)) return;   // 아직 기록 전이면 기록될 때 새 본문을 읽는다
-        this.logActivity('update', `#${i + 1} 메시지의 본문이 바뀌어 그 턴을 다시 기록해요`);
+        this.logActivity('update', t('memoria.engine.log.updated', { n: i + 1 }));
         this.dropTurn(mem, msg.id); await this.save(mem);
         if (this.isSettledForRecord(msgs!, i)) await this.queueCommit(chat, msgs!, msg);
-      } catch (e: any) { console.warn('[장기기억]', e); this.logActivity('error', `이벤트 처리 중 오류: ${e?.message || e}`); }
+      } catch (e: any) { console.warn('[장기기억]', e); this.logActivity('error', t('memoria.engine.log.eventError', { why: e?.message || e })); }
     }, 1500));
   },
   /** 메시지를 직접 고쳤을 때: 답변이면 그 턴을 걷어내고, 이미 확정된 응답이면 새 내용으로 다시 기록한다 — 아직 확정 전인 응답(기록 지연 · 첫 인사)은 확정되면 그때 기록된다. 답변이 아니면 맞추기만 */
@@ -525,7 +529,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
   /** 답변을 생성하는 중이면 끝날 때까지 기다린다 (설정 yieldToChat). 끝 신호를 놓쳐도 영영 멈추지 않게 3분 상한 */
   async waitForChatIdle(what = '기록') {
     if (!G.chatGenerating || !this.cfg().yieldToChat) return;
-    const began = Date.now(); this.logActivity('defer', `답변 생성 중이라 ${what}을(를) 잠시 미뤘어요`);
+    const began = Date.now(); this.logActivity('defer', t('memoria.engine.log.defer', { what: WAIT_WHAT[what] ? t('memoria.engine.task.' + WAIT_WHAT[what]) : what }));
     while (G.chatGenerating && this.cfg().yieldToChat) {
       if (Date.now() - G.chatGeneratingSince > CHAT_IDLE_MAX_WAIT_MS) { G.chatGenerating = false; G.chatGeneratingSince = 0; break; }
       if (Date.now() - began > CHAT_IDLE_MAX_WAIT_MS) break;

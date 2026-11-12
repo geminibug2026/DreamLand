@@ -2,10 +2,11 @@
 // 장기기억의 임베딩 회상과 벡터 검색(지난 대화 · 로어북)이 함께 쓴다. 키는 연결에 저장된 것을 빌리고, 서버 보관 키는 core 의 fetch 가 알아서 프록시로 돌린다.
 import { S } from './core';
 import { PROVIDERS, type Conn, type ProviderDef } from './engine';
+import { t } from '../i18n';
 
 /** 임베딩 방식. auto 는 연결의 종류를 보고 고른다 */
 export const EMBED_KINDS = {
-  auto: '자동 (연결을 보고 고름)',
+  get auto() { return t('embed.kind.auto'); },
   openai: 'OpenAI 호환 — /embeddings (OpenAI · OpenRouter · Mistral · Together · Voyage · llama.cpp · vLLM · LM Studio …)',
   google: 'Google Gemini — batchEmbedContents',
   ollama: 'Ollama — /api/embed',
@@ -39,13 +40,13 @@ interface EmbedJson {
  */
 export async function embedTexts(texts: unknown[], opt: EmbedOpts = {}): Promise<Float32Array[]> {
   const conn = opt.conn || (S.get as (coll: string, id?: string) => unknown)('conns', opt.connId) as Conn | undefined;
-  if (!conn) throw new Error('임베딩에 쓸 연결을 골라 주세요.');
+  if (!conn) throw new Error(t('embed.err.noConn'));
   const kind = embedKind(conn, opt.kind), model = embedModel(conn, kind, opt.model), def = defFor(conn);
   let base = trim(conn.baseUrl || def.base);
   if (kind === 'google') base = (base.includes('googleapis.com') ? base.replace(/\/v1(beta)?$/, '') : 'https://generativelanguage.googleapis.com') + '/v1beta';
   if (kind === 'cohere') { try { base = base.includes('cohere') ? new URL(base).origin : 'https://api.cohere.com'; } catch { base = 'https://api.cohere.com'; } }
   if (kind === 'ollama') base = base.replace(/\/v1$/, '') || 'http://127.0.0.1:11434';
-  if (!base) throw new Error('임베딩에 쓸 연결의 주소가 비어 있어요.');
+  if (!base) throw new Error(t('embed.err.noBase'));
   const key = conn.apiKey || '', json = { 'Content-Type': 'application/json' }, bearer: Record<string, string> = key ? { Authorization: 'Bearer ' + key } : {};
   const ac = (opt.timeoutMs as number) > 0 ? new AbortController() : null, timer = ac ? setTimeout(() => ac.abort(), opt.timeoutMs) : 0;
   if (ac && opt.signal) opt.signal.addEventListener('abort', () => ac.abort(), { once: true });
@@ -53,7 +54,7 @@ export async function embedTexts(texts: unknown[], opt: EmbedOpts = {}): Promise
   const call = async (url: string, headers: Record<string, string>, body: unknown): Promise<EmbedJson> => {
     const res = conn.proxy ? await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dreamland': '1' }, body: JSON.stringify({ url, method: 'POST', headers, body }), signal })
       : await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
-    if (!res.ok) throw new Error(`임베딩 API 오류 ${res.status}: ${(await res.text().catch(() => '')).slice(0, 200)}`);
+    if (!res.ok) throw new Error(t('embed.err.api', { status: res.status, body: (await res.text().catch(() => '')).slice(0, 200) }));
     return res.json();
   };
   const out: Float32Array[] = [], size = kind === 'google' ? 100 : kind === 'cohere' ? 96 : 64;
@@ -75,7 +76,7 @@ export async function embedTexts(texts: unknown[], opt: EmbedOpts = {}): Promise
         const j = await call(`${base}/embeddings`, { ...json, ...bearer }, { model, input: part });
         vecs = [...(j.data || [])].sort((a, b) => (a.index ?? 0) - (b.index ?? 0)).map(d => d.embedding);
       }
-      if (vecs.length !== part.length) throw new Error('임베딩 응답의 개수가 맞지 않아요.');
+      if (vecs.length !== part.length) throw new Error(t('embed.err.count'));
       for (const v of vecs) out.push(unit(v));
       opt.onProgress?.(Math.min(i + size, texts.length), texts.length);
     }

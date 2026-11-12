@@ -1,4 +1,5 @@
 // 표정: 화면 · 저장과 무관한 로직 (옛 f-expressions.js 의 <pure> 구간 그대로)
+import { t } from '../i18n';
 
 /** 기본 감정 28가지 (neutral 포함, 이름 그대로 호환) */
 export const DEFAULT_LABELS = ['admiration', 'amusement', 'anger', 'annoyance', 'approval', 'caring', 'confusion', 'curiosity', 'desire', 'disappointment', 'disapproval', 'disgust', 'embarrassment', 'excitement', 'fear', 'gratitude', 'grief', 'joy', 'love', 'nervousness', 'optimism', 'pride', 'realization', 'relief', 'remorse', 'sadness', 'surprise', 'neutral'];
@@ -187,7 +188,7 @@ function zipName(bytes: Uint8Array, utf8: number): string {
   try { return new TextDecoder('euc-kr').decode(bytes); } catch { return new TextDecoder().decode(bytes); }   // 윈도우 탐색기로 묶은 한글 이름
 }
 async function inflateRaw(raw: Uint8Array): Promise<Uint8Array> {
-  if (typeof DecompressionStream !== 'function') throw new Error('이 브라우저는 압축된 ZIP 을 풀 수 없어요');
+  if (typeof DecompressionStream !== 'function') throw new Error(t('expressions.zip.noInflate'));
   return new Uint8Array(await new Response(new Blob([raw as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
 }
 export interface ZipEntry { name: string; size: number; read(): Promise<Uint8Array> }
@@ -199,9 +200,9 @@ export function unzipEntries(buf: ArrayBuffer | Uint8Array): { entries: ZipEntry
   const u = buf instanceof Uint8Array ? buf : new Uint8Array(buf), dv = new DataView(u.buffer, u.byteOffset, u.byteLength);
   let e = -1;
   for (let i = u.length - 22, stop = Math.max(0, u.length - 22 - 65535); i >= stop; i--) if (dv.getUint32(i, true) === 0x06054b50) { e = i; break; }
-  if (e < 0) throw new Error('ZIP 파일이 아니에요');
+  if (e < 0) throw new Error(t('expressions.zip.notZip'));
   const count = dv.getUint16(e + 10, true); let p = dv.getUint32(e + 16, true);
-  if (count === 0xffff || p === 0xffffffff) throw new Error('너무 큰 ZIP(ZIP64)은 풀 수 없어요. 나눠서 올려 주세요');
+  if (count === 0xffff || p === 0xffffffff) throw new Error(t('expressions.zip.tooBig'));
   const entries: ZipEntry[] = [], skipped: string[] = [];
   for (let i = 0; i < count; i++) {
     if (p + 46 > u.length || dv.getUint32(p, true) !== 0x02014b50) break;

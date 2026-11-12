@@ -7,15 +7,16 @@ import * as libAdvanced from '../lib/advanced';
 import { S } from '../lib/core';
 import * as core from '../lib/core';
 import { LForm, PageHead, confirmBox, errMsg, promptBox, toast } from '../studio/parts';
+import { t as tr, tn } from '../i18n';
 
 type Kind = 'context' | 'instruct' | 'sysprompt' | 'reasoning';
 interface Tpl { name?: string; builtin?: boolean; edited?: boolean; [k: string]: unknown }
 
 // 화면을 떠났다 돌아와도 남는 탭
 let afTab = 'context';
-const TABS = [['context', '컨텍스트 템플릿'], ['instruct', '인스트럭트 템플릿'], ['sysprompt', '시스템 프롬프트'], ['reasoning', '추론'], ['misc', '그 밖의 설정']] as const;
-const NAMES_OPTS: Opt[] = [['none', '붙이지 않기'], ['force', '그룹 채팅에서만'], ['always', '항상']];
-const ROLE_OPTS: Opt[] = [[0, '시스템'], [1, '사용자'], [2, '어시스턴트']];
+const TABS = () => [['context', tr('advanced.kind.context')], ['instruct', tr('advanced.kind.instruct')], ['sysprompt', tr('advanced.kind.sysprompt')], ['reasoning', tr('advanced.tab.reasoning')], ['misc', tr('advanced.misc')]] as const;
+const NAMES_OPTS = (): Opt[] => [['none', tr('advanced.names.none')], ['force', tr('advanced.names.force')], ['always', tr('advanced.names.always')]];
+const ROLE_OPTS = (): Opt[] => [[0, tr('advanced.role.system')], [1, tr('advanced.role.user')], [2, tr('advanced.role.assistant')]];
 const seq = (k: string, label: string, hint?: string, o: Partial<FormDef> = {}): FormDef => ({ k, label, type: 'area', rows: 2, half: true, hint, ...o });
 
 export const page = { name: 'format', Component: Format };
@@ -24,39 +25,39 @@ export const page = { name: 'format', Component: Format };
 function TplBar({ kind, redraw }: { kind: Kind; redraw: () => void }) {
   const A = libAdvanced, C = core;
   const cur = A.AF()[kind], list = A.tplList(kind), known = list.some(t => t.name === cur.name), mine = list.filter(t => !t.builtin), stock = list.filter(t => t.builtin);
-  const opt = (t: Tpl) => <option key={t.name} value={t.name}>{t.name + (t.edited ? ' (고침)' : '')}</option>;
-  const saveAs = async () => { const name = (await promptBox('새 템플릿 이름', cur.name ? cur.name + ' (사본)' : ''))?.trim(); if (!name) return; A.tplSave(kind, { ...A.tplCurrent(kind), name }); cur.name = name; S.set({}); toast(`"${name}" 으로 저장했어요`, 'ok'); redraw(); };
-  const rename = async () => { const old = cur.name, name = (await promptBox('템플릿 이름', old))?.trim(); if (!name || name === old) return; A.tplSave(kind, { ...A.tplCurrent(kind), name }); if (old && !A.tplIsBuiltin(kind, old)) A.tplDelete(kind, old); cur.name = name; S.set({}); redraw(); };
+  const opt = (t: Tpl) => <option key={t.name} value={t.name}>{t.name + (t.edited ? tr('advanced.tpl.edited') : '')}</option>;
+  const saveAs = async () => { const name = (await promptBox(tr('advanced.tpl.newName'), cur.name ? tr('advanced.tpl.copySuffix', { name: cur.name }) : ''))?.trim(); if (!name) return; A.tplSave(kind, { ...A.tplCurrent(kind), name }); cur.name = name; S.set({}); toast(tr('advanced.tpl.savedAs', { name }), 'ok'); redraw(); };
+  const rename = async () => { const old = cur.name, name = (await promptBox(tr('advanced.tpl.name'), old))?.trim(); if (!name || name === old) return; A.tplSave(kind, { ...A.tplCurrent(kind), name }); if (old && !A.tplIsBuiltin(kind, old)) A.tplDelete(kind, old); cur.name = name; S.set({}); redraw(); };
   const bring = async () => {
     const files = await C.pickFiles({ accept: '.json', multiple: true }); let n = 0;
     for (const f of files) { try { const got = A.tplImport(JSON.parse(await f.text()), f.name); n += got.length; const hit = got.find(g => g.kind === kind); if (hit) A.tplApply(kind, hit.name); } catch (e) { toast(`${f.name}: ${errMsg(e)}`, 'err'); } }
-    if (n) { toast(`템플릿 ${n}개를 가져왔어요`, 'ok'); redraw(); }
+    if (n) { toast(tn('advanced.tpl.imported', n), 'ok'); redraw(); }
   };
   const revert = async () => {
-    if (!known) return toast('보관함에 없는 설정이에요');
+    if (!known) return toast(tr('advanced.tpl.notStored'));
     const stockOnly = A.tplIsBuiltin(kind, cur.name) && list.find(t => t.name === cur.name)?.edited;
-    if (stockOnly && await confirmBox(`"${cur.name}" 을(를) 기본값으로 되돌릴까요? 고쳐서 저장한 내용은 사라집니다.`, '기본값으로')) A.tplDelete(kind, cur.name);
+    if (stockOnly && await confirmBox(tr('advanced.tpl.revertAsk', { name: cur.name }), tr('advanced.tpl.revertOk'))) A.tplDelete(kind, cur.name);
     A.tplApply(kind, cur.name as string); redraw();
   };
   const del = async () => {
-    if (!known || A.tplIsBuiltin(kind, cur.name)) return toast('기본 제공 템플릿은 지울 수 없어요. 고친 내용은 되돌리기로 지웁니다.');
-    if (!(await confirmBox(`"${cur.name}" 템플릿을 삭제할까요?`, '삭제', true))) return;
+    if (!known || A.tplIsBuiltin(kind, cur.name)) return toast(tr('advanced.tpl.cantDelete'));
+    if (!(await confirmBox(tr('advanced.tpl.deleteAsk', { name: cur.name }), tr('common.delete'), true))) return;
     A.tplDelete(kind, cur.name as string); A.tplApply(kind, A.tplList(kind)[0].name as string); redraw();
   };
   return <div className="af-bar">
-    <select className="inp" title={`지금 쓰는 ${A.KINDS[kind]}`} value={known ? cur.name : ''} onChange={e => { A.tplApply(kind, e.target.value); redraw(); }}>
-      {!known && <option value="">{cur.name ? `${cur.name} (보관함에 없음)` : '(저장하지 않은 설정)'}</option>}
-      {mine.length ? <optgroup label="내 템플릿">{mine.map(opt)}</optgroup> : null}<optgroup label="기본 제공">{stock.map(opt)}</optgroup>
+    <select className="inp" title={tr('advanced.tpl.current', { kind: A.KINDS[kind] })} value={known ? cur.name : ''} onChange={e => { A.tplApply(kind, e.target.value); redraw(); }}>
+      {!known && <option value="">{cur.name ? tr('advanced.tpl.notInLib', { name: cur.name }) : tr('advanced.tpl.unsavedParen')}</option>}
+      {mine.length ? <optgroup label={tr('advanced.tpl.mine')}>{mine.map(opt)}</optgroup> : null}<optgroup label={tr('advanced.tpl.builtin')}>{stock.map(opt)}</optgroup>
     </select>
-    <em className="badge af-dirty" hidden={!A.tplDirty(kind)}>저장 안 됨</em>
+    <em className="badge af-dirty" hidden={!A.tplDirty(kind)}>{tr('advanced.tpl.dirty')}</em>
     <div className="af-tools">
-      <IconBtn ic="check" title="지금 내용을 이 템플릿에 저장" onClick={() => { if (!cur.name) return void saveAs(); A.tplSave(kind, A.tplCurrent(kind)); toast(`"${cur.name}" 템플릿을 저장했어요`, 'ok'); redraw(); }} />
-      <IconBtn ic="edit" title="이름 바꾸기" onClick={() => void rename()} />
-      <IconBtn ic="copy" title="다른 이름으로 저장" onClick={() => void saveAs()} />
-      <IconBtn ic="upload" title="템플릿 가져오기 (실리태번 JSON)" onClick={() => void bring()} />
-      <IconBtn ic="import" title="템플릿 내보내기 (실리태번 JSON)" onClick={() => C.download(`${cur.name || A.KINDS[kind]}.json`, JSON.stringify(A.tplCurrent(kind), null, 4))} />
-      <IconBtn ic="refresh" title="저장된 값으로 되돌리기" onClick={() => void revert()} />
-      <IconBtn ic="trash" title="템플릿 삭제" onClick={() => void del()} />
+      <IconBtn ic="check" title={tr('advanced.tpl.save')} onClick={() => { if (!cur.name) return void saveAs(); A.tplSave(kind, A.tplCurrent(kind)); toast(tr('advanced.tpl.saved', { name: cur.name }), 'ok'); redraw(); }} />
+      <IconBtn ic="edit" title={tr('common.rename')} onClick={() => void rename()} />
+      <IconBtn ic="copy" title={tr('advanced.tpl.saveAs')} onClick={() => void saveAs()} />
+      <IconBtn ic="upload" title={tr('advanced.tpl.import')} onClick={() => void bring()} />
+      <IconBtn ic="import" title={tr('advanced.tpl.export')} onClick={() => C.download(`${cur.name || A.KINDS[kind]}.json`, JSON.stringify(A.tplCurrent(kind), null, 4))} />
+      <IconBtn ic="refresh" title={tr('advanced.tpl.revert')} onClick={() => void revert()} />
+      <IconBtn ic="trash" title={tr('advanced.tpl.delete')} onClick={() => void del()} />
     </div>
   </div>;
 }
@@ -72,75 +73,75 @@ function Format() {
   const bar = (kind: Kind) => <TplBar kind={kind} redraw={redraw} />;
 
   let status: ReactNode;
-  if (!conn) status = '연결이 아직 없어요. 텍스트 완성형 연결(KoboldCpp · llama.cpp · 텍스트 완성 등)을 추가하면 아래 템플릿으로 프롬프트를 조립합니다.';
-  else if (!textConn) status = <><b>{conn.name}</b> 은(는) 채팅 완성형 연결이라 흐리게 표시된 항목은 쓰이지 않습니다. 프롬프트는 프리셋의 블록으로 조립돼요.</>;
-  else if (F.storyMode === false) status = <><b>{conn.name}</b> · 스토리 스트링 조립이 꺼져 있어 프리셋 블록을 인스트럭트 형식으로 이어 붙입니다.</>;
-  else { const r = A.resolve(conn); status = <><b>{conn.name}</b>{' · 인스트럭트 '}<em className={'badge' + (r.instruct ? ' on' : '')}>{r.instruct ? r.instruct.name || '저장하지 않은 설정' : '꺼짐'}</em>{' 컨텍스트 '}<em className="badge on">{r.context.name || '저장하지 않은 설정'}</em>{r.why ? ` — ${r.why}` : ''}</>; }
+  if (!conn) status = tr('advanced.status.noConn');
+  else if (!textConn) status = <><b>{conn.name}</b>{tr('advanced.status.chatConn')}</>;
+  else if (F.storyMode === false) status = <><b>{conn.name}</b>{tr('advanced.status.noStory')}</>;
+  else { const r = A.resolve(conn); status = <><b>{conn.name}</b>{tr('advanced.status.instruct')}<em className={'badge' + (r.instruct ? ' on' : '')}>{r.instruct ? r.instruct.name || tr('advanced.unsaved') : tr('advanced.off')}</em>{tr('advanced.status.context')}<em className="badge on">{r.context.name || tr('advanced.unsaved')}</em>{r.why ? ` — ${r.why}` : ''}</>; }
 
   let pane: ReactNode;
   if (afTab === 'context') pane = <>
     {card('af-tc', bar('context'), form(F.context, [
-      { k: 'story_string', label: '스토리 스트링', type: 'area', rows: 9, hint: '{{#if 이름}}…{{/if}} 로 내용이 있을 때만 넣습니다. 쓸 수 있는 이름: system · description · personality · scenario · persona · wiBefore(loreBefore) · wiAfter(loreAfter) · anchorBefore · anchorAfter · mesExamples · mesExamplesRaw · char · user. {{trim}} 은 앞뒤 줄바꿈을 지웁니다.' },
-      { k: 'story_string_position', label: '위치', type: 'select', opts: [[0, '기본 (컨텍스트 맨 위)'], [1, '대화 중간 @ 깊이']], third: true }, { k: 'story_string_depth', label: '깊이', type: 'num', min: 0, third: true }, { k: 'story_string_role', label: '역할', type: 'select', opts: ROLE_OPTS, third: true },
-      { k: 'example_separator', label: '예시 구분자', half: true, hint: '대화 예시 블록마다 앞에 들어갑니다.' }, { k: 'chat_start', label: '대화 시작 표시', half: true, hint: '예시와 실제 대화 사이에 들어갑니다.' },
-      { k: 'use_stop_strings', label: '구분자를 중단 문자열로 쓰기', type: 'check', hint: '대화 시작 표시와 예시 구분자' }, { k: 'names_as_stop_strings', label: '이름을 중단 문자열로 쓰기', type: 'check', hint: '모델이 내 대사를 대신 쓰지 않게' }]))}
-    {card('', form(F, [{ section: '컨텍스트 서식' },
-      { k: 'alwaysForceName2', label: '프롬프트 끝에 항상 캐릭터 이름 붙이기', type: 'check', hint: '인스트럭트를 끈 텍스트 완성형에서' }, { k: 'singleLine', label: '요청마다 한 줄만 생성', type: 'check' }, { k: 'collapseNewlines', label: '연속된 줄바꿈 합치기', type: 'check', hint: '텍스트 완성형은 보내는 프롬프트에도 적용' },
-      { k: 'trimSpaces', label: '앞뒤 공백 다듬기', type: 'check' }, { k: 'trimSentences', label: '끊긴 문장 잘라 내기', type: 'check' }, { k: 'fixMarkdown', label: '닫히지 않은 * 와 따옴표 자동으로 닫기', type: 'check' },
-      { k: 'storyMode', label: '텍스트 완성형 연결은 스토리 스트링으로 조립', type: 'check', hint: '끄면 프리셋 블록을 그대로 이어 붙입니다' }]))}
-    {card('', form(F, [{ section: '채팅 완성형에서 쓰는 표시' }, { k: 'ccExampleSep', label: '예시 대화 머리말', half: true, ph: '[Example dialogue]', hint: '캐릭터 카드의 <START> 자리에 들어갑니다.' }, { k: 'ccChatStart', label: '새 대화 표시', half: true, ph: '[Start a new chat]', hint: '기록의 맨 앞에 한 번 들어갑니다. 비우면 넣지 않아요.' }]))}
+      { k: 'story_string', label: tr('advanced.ctx.story'), type: 'area', rows: 9, hint: tr('advanced.ctx.storyHint') },
+      { k: 'story_string_position', label: tr('advanced.ctx.position'), type: 'select', opts: [[0, tr('advanced.ctx.posDefault')], [1, tr('advanced.ctx.posDepth')]], third: true }, { k: 'story_string_depth', label: tr('advanced.ctx.depth'), type: 'num', min: 0, third: true }, { k: 'story_string_role', label: tr('advanced.ctx.role'), type: 'select', opts: ROLE_OPTS(), third: true },
+      { k: 'example_separator', label: tr('advanced.ctx.exSep'), half: true, hint: tr('advanced.ctx.exSepHint') }, { k: 'chat_start', label: tr('advanced.ctx.chatStart'), half: true, hint: tr('advanced.ctx.chatStartHint') },
+      { k: 'use_stop_strings', label: tr('advanced.ctx.sepStop'), type: 'check', hint: tr('advanced.ctx.sepStopHint') }, { k: 'names_as_stop_strings', label: tr('advanced.ctx.namesStop'), type: 'check', hint: tr('advanced.ctx.namesStopHint') }]))}
+    {card('', form(F, [{ section: tr('advanced.ctx.formatting') },
+      { k: 'alwaysForceName2', label: tr('advanced.ctx.forceName'), type: 'check', hint: tr('advanced.ctx.forceNameHint') }, { k: 'singleLine', label: tr('advanced.ctx.singleLine'), type: 'check' }, { k: 'collapseNewlines', label: tr('advanced.ctx.collapse'), type: 'check', hint: tr('advanced.ctx.collapseHint') },
+      { k: 'trimSpaces', label: tr('advanced.ctx.trimSpaces'), type: 'check' }, { k: 'trimSentences', label: tr('advanced.ctx.trimSentences'), type: 'check' }, { k: 'fixMarkdown', label: tr('advanced.ctx.fixMd'), type: 'check' },
+      { k: 'storyMode', label: tr('advanced.ctx.storyMode'), type: 'check', hint: tr('advanced.ctx.storyModeHint') }]))}
+    {card('', form(F, [{ section: tr('advanced.ctx.ccSec') }, { k: 'ccExampleSep', label: tr('advanced.ctx.ccExSep'), half: true, ph: '[Example dialogue]', hint: tr('advanced.ctx.ccExSepHint') }, { k: 'ccChatStart', label: tr('advanced.ctx.ccChatStart'), half: true, ph: '[Start a new chat]', hint: tr('advanced.ctx.ccChatStartHint') }]))}
   </>;
   else if (afTab === 'instruct') pane = <>
-    {card('af-tc', form(F.instruct, [{ k: 'enabled', label: '인스트럭트 모드 사용', type: 'check', live: true, hint: '끄면 "이름: 대사" 형식으로 보냅니다' }, { k: 'bind_to_context', label: '컨텍스트 템플릿과 묶기', type: 'check', hint: '인스트럭트 템플릿을 고르면 같은 이름의 컨텍스트 템플릿도 함께 고릅니다' }]),
+    {card('af-tc', form(F.instruct, [{ k: 'enabled', label: tr('advanced.ins.enabled'), type: 'check', live: true, hint: tr('advanced.ins.enabledHint') }, { k: 'bind_to_context', label: tr('advanced.ins.bind'), type: 'check', hint: tr('advanced.ins.bindHint') }]),
       bar('instruct'), form(F.instruct, [
-        { k: 'activation_regex', label: '활성화 정규식', ph: '예: /llama(-)?[3|3.1]/i', hint: '연결의 모델 이름이 이 정규식에 맞으면 이 템플릿을 자동으로 씁니다 (인스트럭트 모드가 켜져 있을 때).' },
-        { k: 'wrap', label: '시퀀스를 줄바꿈으로 감싸기', type: 'check' }, { k: 'macro', label: '시퀀스 안의 매크로 바꾸기', type: 'check' }, { k: 'sequences_as_stop_strings', label: '시퀀스를 중단 문자열로 쓰기', type: 'check' }, { k: 'skip_examples', label: '대화 예시는 시퀀스로 감싸지 않기', type: 'check' },
-        { k: 'names_behavior', label: '이름 붙이기', type: 'select', opts: NAMES_OPTS, half: true }]))}
+        { k: 'activation_regex', label: tr('advanced.ins.activation'), ph: tr('advanced.ins.activationPh'), hint: tr('advanced.ins.activationHint') },
+        { k: 'wrap', label: tr('advanced.ins.wrap'), type: 'check' }, { k: 'macro', label: tr('advanced.ins.macro'), type: 'check' }, { k: 'sequences_as_stop_strings', label: tr('advanced.ins.seqStop'), type: 'check' }, { k: 'skip_examples', label: tr('advanced.ins.skipEx'), type: 'check' },
+        { k: 'names_behavior', label: tr('advanced.ins.names'), type: 'select', opts: NAMES_OPTS(), half: true }]))}
     {card('af-tc af-seq', form(F.instruct, [
-      { section: '스토리 스트링 시퀀스' }, seq('story_string_prefix', '스토리 스트링 접두', '스토리 스트링 앞에 (기본 위치일 때만)'), seq('story_string_suffix', '스토리 스트링 접미', '스토리 스트링 뒤에'),
-      { section: '사용자 메시지 시퀀스' }, seq('input_sequence', '사용자 메시지 접두', '사용자 메시지 앞 · 대필할 때의 마지막 줄'), seq('input_suffix', '사용자 메시지 접미'),
-      { section: '어시스턴트 메시지 시퀀스' }, seq('output_sequence', '어시스턴트 메시지 접두', '어시스턴트 메시지 앞 · 답변을 받을 마지막 줄'), seq('output_suffix', '어시스턴트 메시지 접미'),
-      { section: '시스템 메시지 시퀀스' }, seq('system_sequence', '시스템 메시지 접두', '작가 노트 · 로어북처럼 대화 중간에 끼우는 시스템 메시지 앞'), seq('system_suffix', '시스템 메시지 접미'),
-      { k: 'system_same_as_user', label: '시스템 메시지를 사용자 메시지와 같은 시퀀스로', type: 'check' },
-      { section: '기타 시퀀스' }, seq('first_output_sequence', '첫 어시스턴트 접두', '대화의 첫 메시지가 어시스턴트일 때'), seq('last_output_sequence', '마지막 어시스턴트 접두', '답변을 받을 마지막 줄. 비우면 어시스턴트 메시지 접두'),
-      seq('first_input_sequence', '첫 사용자 접두', '대화의 첫 메시지가 사용자일 때'), seq('last_input_sequence', '마지막 사용자 접두', '마지막 사용자 메시지 앞 · 대필할 때의 마지막 줄'),
-      seq('last_system_sequence', '시스템 지시 접두', '번역 · 요약 같은 보조 호출의 마지막 줄'), seq('stop_sequence', '중단 시퀀스', '이 문자열이 나오면 그 뒤는 잘라 냅니다'),
-      seq('user_alignment_message', '사용자 채움 메시지', '대화가 사용자 메시지로 시작하지 않으면 맨 앞에 끼웁니다', { half: false })]))}
+      { section: tr('advanced.ins.secStory') }, seq('story_string_prefix', tr('advanced.seq.ssPrefix'), tr('advanced.seq.ssPrefixHint')), seq('story_string_suffix', tr('advanced.seq.ssSuffix'), tr('advanced.seq.ssSuffixHint')),
+      { section: tr('advanced.ins.secUser') }, seq('input_sequence', tr('advanced.seq.inPrefix'), tr('advanced.seq.inPrefixHint')), seq('input_suffix', tr('advanced.seq.inSuffix')),
+      { section: tr('advanced.ins.secAsst') }, seq('output_sequence', tr('advanced.seq.outPrefix'), tr('advanced.seq.outPrefixHint')), seq('output_suffix', tr('advanced.seq.outSuffix')),
+      { section: tr('advanced.ins.secSys') }, seq('system_sequence', tr('advanced.seq.sysPrefix'), tr('advanced.seq.sysPrefixHint')), seq('system_suffix', tr('advanced.seq.sysSuffix')),
+      { k: 'system_same_as_user', label: tr('advanced.ins.sysSame'), type: 'check' },
+      { section: tr('advanced.ins.secMisc') }, seq('first_output_sequence', tr('advanced.seq.firstOut'), tr('advanced.seq.firstOutHint')), seq('last_output_sequence', tr('advanced.seq.lastOut'), tr('advanced.seq.lastOutHint')),
+      seq('first_input_sequence', tr('advanced.seq.firstIn'), tr('advanced.seq.firstInHint')), seq('last_input_sequence', tr('advanced.seq.lastIn'), tr('advanced.seq.lastInHint')),
+      seq('last_system_sequence', tr('advanced.seq.lastSys'), tr('advanced.seq.lastSysHint')), seq('stop_sequence', tr('advanced.seq.stop'), tr('advanced.seq.stopHint')),
+      seq('user_alignment_message', tr('advanced.seq.align'), tr('advanced.seq.alignHint'), { half: false })]))}
   </>;
-  else if (afTab === 'sysprompt') pane = card('af-tc', form(F.sysprompt, [{ k: 'enabled', label: '시스템 프롬프트 사용', type: 'check', hint: '스토리 스트링의 {{system}} 자리에 들어갑니다' }]), bar('sysprompt'),
-    form(F.sysprompt, [{ k: 'content', label: '프롬프트 내용', type: 'area', rows: 9, hint: '캐릭터 카드에 메인 프롬프트 덮어쓰기가 있으면 그것이 먼저입니다 ({{original}} 은 이 내용으로 바뀜).' }, { k: 'post_history', label: '후속 지시', type: 'area', rows: 4, hint: '대화 기록 맨 끝에 사용자 메시지로 들어갑니다.' }]),
-    <p className="hint">채팅 완성형 연결은 프리셋의 메인 프롬프트 · 후속 지시 블록을 씁니다.</p>);
+  else if (afTab === 'sysprompt') pane = card('af-tc', form(F.sysprompt, [{ k: 'enabled', label: tr('advanced.sys.enabled'), type: 'check', hint: tr('advanced.sys.enabledHint') }]), bar('sysprompt'),
+    form(F.sysprompt, [{ k: 'content', label: tr('advanced.sys.content'), type: 'area', rows: 9, hint: tr('advanced.sys.contentHint') }, { k: 'post_history', label: tr('advanced.sys.post'), type: 'area', rows: 4, hint: tr('advanced.sys.postHint') }]),
+    <p className="hint">{tr('advanced.sys.ccNote')}</p>);
   else if (afTab === 'reasoning') pane = <>
-    {card('', form(F.reasoning, [{ k: 'autoParse', label: '자동 분리', type: 'check', hint: '답변 앞의 접두 … 접미 사이를 생각 과정으로 떼어 냅니다. 접두와 접미가 모두 있어야 해요' }, { k: 'autoExpand', label: '자동으로 펼치기', type: 'check' }, { k: 'addToPrompts', label: '프롬프트에 다시 넣기', type: 'check', hint: '지난 답변의 생각 과정을 아래 서식으로 감싸 함께 보냅니다' }, { k: 'maxAdditions', label: '다시 넣을 최대 개수', type: 'num', min: 0, third: true, hint: '마지막 메시지부터 셉니다.' }]))}
-    {card('', <h3 className="form-sec">추론 서식</h3>, bar('reasoning'), form(F.reasoning, [{ k: 'prefix', label: '접두', type: 'area', rows: 2, third: true, hint: '생각 과정 앞' }, { k: 'suffix', label: '접미', type: 'area', rows: 2, third: true, hint: '생각 과정 뒤' }, { k: 'separator', label: '구분', type: 'area', rows: 2, third: true, hint: '생각 과정과 답변 사이' }]))}
+    {card('', form(F.reasoning, [{ k: 'autoParse', label: tr('advanced.rs.autoParse'), type: 'check', hint: tr('advanced.rs.autoParseHint') }, { k: 'autoExpand', label: tr('advanced.rs.autoExpand'), type: 'check' }, { k: 'addToPrompts', label: tr('advanced.rs.add'), type: 'check', hint: tr('advanced.rs.addHint') }, { k: 'maxAdditions', label: tr('advanced.rs.max'), type: 'num', min: 0, third: true, hint: tr('advanced.rs.maxHint') }]))}
+    {card('', <h3 className="form-sec">{tr('advanced.kind.reasoning')}</h3>, bar('reasoning'), form(F.reasoning, [{ k: 'prefix', label: tr('advanced.rs.prefix'), type: 'area', rows: 2, third: true, hint: tr('advanced.rs.prefixHint') }, { k: 'suffix', label: tr('advanced.rs.suffix'), type: 'area', rows: 2, third: true, hint: tr('advanced.rs.suffixHint') }, { k: 'separator', label: tr('advanced.rs.sep'), type: 'area', rows: 2, third: true, hint: tr('advanced.rs.sepHint') }]))}
   </>;
   else {
     const model = conn?.model || '', map = F.modelMap || {}, bound = !!map[model];
     const stops = (v: string) => { v = v.trim(); let list: string[] | null = null; if (v.startsWith('[')) { try { const j: unknown = JSON.parse(v); if (Array.isArray(j)) list = j.filter((x): x is string => typeof x === 'string' && !!x); } catch { /* JSON 이 아니면 줄 단위로 읽는다 */ } } F.stopStrings = list || v.split('\n').map(x => x.trim()).filter(Boolean); ch(); };
     const bind = (on: boolean) => { F.modelMap ||= {}; if (on) F.modelMap[model] = { instruct: F.instruct.enabled ? F.instruct.name as string : '', context: F.context.name as string }; else delete F.modelMap[model]; ch(); };
     pane = <>
-      {card('', <h3 className="form-sec">사용자 정의 중단 문자열</h3>, <label className="field"><textarea className="inp" rows={3} spellCheck={false} placeholder={'한 줄에 하나씩, 또는 ["Ford", "BMW"] 같은 JSON 배열'} defaultValue={(F.stopStrings || []).join('\n')} onChange={e => stops(e.target.value)} /><small className="hint">모든 프리셋과 연결에 함께 적용됩니다. 줄바꿈은 \n 으로 적습니다.</small></label>, form(F, [{ k: 'stopMacro', label: '중단 문자열 안의 매크로 바꾸기', type: 'check', hint: '{{user}} · {{char}}' }]))}
-      {card('', form(F, [{ section: '토큰' }, { k: 'tokenPadding', label: '토큰 여유분', type: 'num', half: true, hint: '토큰 수를 어림하므로 컨텍스트에서 이만큼 남겨 둡니다.' }]))}
-      {card('', form(F, [{ section: '응답 시작 문구' }, { k: 'startReplyWith', label: '답변을 이 글로 시작하게 하기', type: 'area', rows: 2, hint: '프리셋에 프리필이 있으면 그것이 먼저입니다. 프리필을 받지 않는 모델(최신 Claude 등)에서는 자동으로 빠집니다.' }, { k: 'showBias', label: '응답 시작 문구를 답변에 보이기', type: 'check' }]))}
-      {card('', form(F, [{ section: '마크다운으로 해석하지 않을 문자열' }, { k: 'mdEscape', label: '쉼표로 구분 (사이에 공백 없이)', ph: '***,---', hint: '한 줄이 통째로 이 문자열이면 구분선이나 강조로 바꾸지 않고 글자 그대로 보여 줍니다.' }]))}
-      {card('af-tc', <h3 className="form-sec">모델에 템플릿 묶기</h3>, <p className="hint">{model ? `지금 모델: ${model}` : '모델이 선택된 연결이 없어요.'}</p>,
-        model ? <label className="check" key={bound ? `on:${map[model].instruct}:${map[model].context}` : 'off'}><input type="checkbox" checked={bound} onChange={e => bind(e.target.checked)} /><i /><span>이 모델을 쓸 때는 지금 고른 인스트럭트 · 컨텍스트 템플릿을 자동으로 쓰기</span>{bound && <small>{`${map[model].instruct || '인스트럭트 꺼짐'} · ${map[model].context || '컨텍스트 그대로'}`}</small>}</label> : null,
-        Object.keys(map).length ? <div className="af-map">{Object.entries(map).map(([m, v]) => <button key={m} className="chip on" title="눌러서 풀기" onClick={() => { delete map[m]; ch(); }}>{`${m} → ${v.instruct || '꺼짐'} / ${v.context || '그대로'} ✕`}</button>)}</div> : null)}
+      {card('', <h3 className="form-sec">{tr('advanced.misc.stops')}</h3>, <label className="field"><textarea className="inp" rows={3} spellCheck={false} placeholder={tr('advanced.misc.stopsPh')} defaultValue={(F.stopStrings || []).join('\n')} onChange={e => stops(e.target.value)} /><small className="hint">{tr('advanced.misc.stopsHint')}</small></label>, form(F, [{ k: 'stopMacro', label: tr('advanced.misc.stopMacro'), type: 'check', hint: '{{user}} · {{char}}' }]))}
+      {card('', form(F, [{ section: tr('advanced.misc.tokens') }, { k: 'tokenPadding', label: tr('advanced.misc.padding'), type: 'num', half: true, hint: tr('advanced.misc.paddingHint') }]))}
+      {card('', form(F, [{ section: tr('advanced.srw') }, { k: 'startReplyWith', label: tr('advanced.misc.srw'), type: 'area', rows: 2, hint: tr('advanced.misc.srwHint') }, { k: 'showBias', label: tr('advanced.misc.showBias'), type: 'check' }]))}
+      {card('', form(F, [{ section: tr('advanced.misc.mdSec') }, { k: 'mdEscape', label: tr('advanced.misc.md'), ph: '***,---', hint: tr('advanced.misc.mdHint') }]))}
+      {card('af-tc', <h3 className="form-sec">{tr('advanced.misc.bindSec')}</h3>, <p className="hint">{model ? tr('advanced.misc.curModel', { model }) : tr('advanced.misc.noModel')}</p>,
+        model ? <label className="check" key={bound ? `on:${map[model].instruct}:${map[model].context}` : 'off'}><input type="checkbox" checked={bound} onChange={e => bind(e.target.checked)} /><i /><span>{tr('advanced.misc.bind')}</span>{bound && <small>{`${map[model].instruct || tr('advanced.misc.insOff')} · ${map[model].context || tr('advanced.misc.ctxKeep')}`}</small>}</label> : null,
+        Object.keys(map).length ? <div className="af-map">{Object.entries(map).map(([m, v]) => <button key={m} className="chip on" title={tr('advanced.misc.unbind')} onClick={() => { delete map[m]; ch(); }}>{`${m} → ${v.instruct || tr('advanced.off')} / ${v.context || tr('advanced.misc.keep')} ✕`}</button>)}</div> : null)}
     </>;
   }
 
   const bringAll = async () => {
     const files = await C.pickFiles({ accept: '.json', multiple: true }); let n = 0;
     for (const f of files) { try { n += A.tplImport(JSON.parse(await f.text()), f.name).length; } catch (e) { toast(`${f.name}: ${errMsg(e)}`, 'err'); } }
-    if (n) { toast(`${n}개 항목을 가져왔어요`, 'ok'); redraw(); }
+    if (n) { toast(tn('advanced.importedN', n), 'ok'); redraw(); }
   };
   return <section className="pagebox af">
-    <PageHead eyebrow="advanced formatting" title="고급 포맷팅">
-      <Btn label="전체 가져오기" ic="upload" cls="ghost" title="고급 포맷팅 전체 내보내기 파일 · 낱개 템플릿 파일 · settings.json" onClick={() => void bringAll()} />
-      <Btn label="전체 내보내기" ic="import" cls="ghost" title="지금 고른 템플릿 넷과 응답 시작 문구를 한 파일로" onClick={() => C.download('dreamland-advanced-formatting.json', JSON.stringify(A.masterExport(), null, 4))} />
+    <PageHead eyebrow="advanced formatting" title={tr('advanced.title')}>
+      <Btn label={tr('advanced.importAll')} ic="upload" cls="ghost" title={tr('advanced.importAllTitle')} onClick={() => void bringAll()} />
+      <Btn label={tr('advanced.exportAll')} ic="import" cls="ghost" title={tr('advanced.exportAllTitle')} onClick={() => C.download('dreamland-advanced-formatting.json', JSON.stringify(A.masterExport(), null, 4))} />
     </PageHead>
     <p className="hint af-status">{status}</p>
-    <div className="tabs">{TABS.map(([k, l]) => <button key={k} className={'tab' + (afTab === k ? ' on' : '')} onClick={() => { afTab = k; redraw(); }}>{l}</button>)}</div>
+    <div className="tabs">{TABS().map(([k, l]) => <button key={k} className={'tab' + (afTab === k ? ' on' : '')} onClick={() => { afTab = k; redraw(); }}>{l}</button>)}</div>
     <div className="af-pane" key={afTab + ':' + epoch}>{pane}</div>
   </section>;
 }

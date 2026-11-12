@@ -13,6 +13,7 @@ import { quickCall } from '../lib/engine';
 import { go, route } from '../lib/router';
 import * as core from '../lib/core';
 import * as K from '../lib/f-keepsake';
+import { t as tr, tn, getLang, fmtDate } from '../i18n';
 
 // ════════ 지시문 (모두 설정에서 고칠 수 있다. 비우면 아래 기본값) ════════
 export const DIARY_PROMPT = `You are {{char}}, writing tonight's page in a diary nobody else will ever read. The record below is what happened since your last entry.
@@ -21,13 +22,13 @@ export const DIARY_PROMPT = `You are {{char}}, writing tonight's page in a diary
 - Use only what the record shows; do not invent events. Do not address {{user}} or a reader, and do not repeat the previous entry.
 - 120 to 220 words, in the same language as the roleplay.
 Reply with ONE JSON object and nothing else: {"title":"a short title for the entry","date":"the in-story date or time if the story gives one, else empty","mood":"one or two words for how {{char}} feels tonight","weather":"the weather in the story today if the record shows it, else empty","text":"the diary entry, paragraphs separated by \\n\\n"}`;
-export const DIARY_DEF: FieldDef = { k: 'diary.prompt', label: '일기 쓰기', type: 'area', rows: 6, ph: DIARY_PROMPT, hint: 'JSON 형식(title · date · mood · weather · text)은 바꾸지 마세요. 비워 두면 기본 문장을 씁니다 (칸에 흐리게 보이는 글).' };
+export const DIARY_DEF: FieldDef = { k: 'diary.prompt', get label() { return tr('diary.def.diary.label'); }, get hint() { return tr('diary.def.diary.hint'); }, type: 'area', rows: 6, ph: DIARY_PROMPT };
 
 export const MEMO_PROMPT = `You turn a page of {{char}}'s private diary into long-term memory notes for an ongoing roleplay with {{user}}.
 From the page, keep only what will still matter many scenes later: concrete events, promises and plans, decisions, changes in the relationship, facts newly learned about {{user}} or {{char}}.
 Write 1 to 4 notes, one per line. Each note is one plain, self-contained sentence in third person that uses names instead of pronouns. No mood-only lines, no poetic wording, no line numbers or bullets, nothing that is not on the page.
 Write in the same language as the page. Output only the lines.`;
-export const MEMO_DEF: FieldDef = { k: 'diary.memoPrompt', label: '기억으로 간추리기', type: 'area', rows: 6, ph: MEMO_PROMPT, hint: '일기 · 꿈 · 편지를 장기기억에 올릴 때 몇 줄로 간추리는 지시문입니다. 비워 두면 기본 문장을 씁니다.' };
+export const MEMO_DEF: FieldDef = { k: 'diary.memoPrompt', get label() { return tr('diary.def.memo.label'); }, get hint() { return tr('diary.def.memo.hint'); }, type: 'area', rows: 6, ph: MEMO_PROMPT };
 
 const MOON_EN = ['new moon', 'waxing crescent', 'first quarter', 'waxing gibbous', 'full moon', 'waning gibbous', 'last quarter', 'waning crescent'];
 const WD_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -42,26 +43,26 @@ export const DREAM_MOODS = [
   'the thinnest light before the dark; hushed, like a goodbye, the dream ends before it is finished',
 ];
 export const PROMPTS: Record<string, { label: string; hint: string; text: string }> = {
-  letter: { label: '이달의 편지', hint: '{{month}} 달 이름, {{days}} 대화한 날 수가 들어갑니다. JSON 형식(title · text · ps)은 바꾸지 마세요.', text: `You are {{char}}. The month of {{month}} is coming to a close, and you write {{user}} one letter by hand. You two talked on {{days}} days this month; your diary and memories of the month are given below.
+  letter: { get label() { return tr('diary.prompt.letter.label'); }, get hint() { return tr('diary.prompt.letter.hint'); }, text: `You are {{char}}. The month of {{month}} is coming to a close, and you write {{user}} one letter by hand. You two talked on {{days}} days this month; your diary and memories of the month are given below.
 - Build the letter from that material only: two or three specific moments, one thing you never said out loud, and one thing you look forward to next month. Name the moments concretely instead of summing up the month, and do not invent events.
 - A real letter addressed to {{user}}, in {{char}}'s own voice and habits of speech: a greeting, the body, a closing line.
 - 180 to 320 words, in the same language as the material.
 Reply with ONE JSON object and nothing else: {"title":"a short title for the letter","text":"the letter, paragraphs separated by \\n\\n, without a signature","ps":"one line of postscript, or empty"}` },
-  dream: { label: '꿈 페이지', hint: '{{moon}} 그날 밤의 달, {{mood}} 달에 따른 분위기가 들어갑니다. JSON 형식(title · text)은 바꾸지 마세요.', text: `You are {{char}}, asleep. Write the dream {{char}} has tonight.
+  dream: { get label() { return tr('diary.prompt.dream.label'); }, get hint() { return tr('diary.prompt.dream.hint'); }, text: `You are {{char}}, asleep. Write the dream {{char}} has tonight.
 - Take two or three small fragments from the day's conversation below — an object, a phrase, a place, a gesture — and let dream logic bend them: places melt into each other, a detail comes back in the wrong shape, time skips.
 - It is not a retelling. Nothing in it really happened, and it must not state new facts about {{user}} or the story.
 - Tonight's moon is a {{moon}}. The mood this moon gives the dream: {{mood}}.
 - First person, present tense, in {{char}}'s voice. Stay inside the dream: no waking up, no explaining what it meant. 90 to 160 words, in the same language as the conversation.
 Reply with ONE JSON object and nothing else: {"title":"a short, strange title","text":"the dream, paragraphs separated by \\n\\n"}` },
-  exchange: { label: '교환 일기의 답글', hint: '사용자가 일기 옆에 적은 글에 캐릭터가 여백에 남기는 답입니다.', text: `You are {{char}}. {{user}} has read your diary entry and written a few lines beside it. Answer in the margin, by hand: one to three sentences in {{char}}'s own voice, answering what {{user}} actually wrote — shy, teasing or sincere, however {{char}} would be when someone has read their diary. Do not retell the entry. No greeting, no signature, same language as the entry. Output only the reply.` },
-  extract: { label: '약속 지금 뽑기', hint: '{{today}} · {{weekday}} 가 들어갑니다. JSON 형식(promises: date · time · what)은 바꾸지 마세요.', text: `You read a conversation between {{char}} and {{user}} and list the concrete plans they agreed on that have a day attached: meeting, calling, doing something together, a deadline one of them promised. Today is {{today}} ({{weekday}}). Every line of the conversation starts with the real date it was sent; resolve relative days ("tomorrow", "this Saturday") against the date of that line. Leave out vague intentions with no day, things that have already happened, and anything said as a joke.
+  exchange: { get label() { return tr('diary.prompt.exchange.label'); }, get hint() { return tr('diary.prompt.exchange.hint'); }, text: `You are {{char}}. {{user}} has read your diary entry and written a few lines beside it. Answer in the margin, by hand: one to three sentences in {{char}}'s own voice, answering what {{user}} actually wrote — shy, teasing or sincere, however {{char}} would be when someone has read their diary. Do not retell the entry. No greeting, no signature, same language as the entry. Output only the reply.` },
+  extract: { get label() { return tr('diary.prompt.extract.label'); }, get hint() { return tr('diary.prompt.extract.hint'); }, text: `You read a conversation between {{char}} and {{user}} and list the concrete plans they agreed on that have a day attached: meeting, calling, doing something together, a deadline one of them promised. Today is {{today}} ({{weekday}}). Every line of the conversation starts with the real date it was sent; resolve relative days ("tomorrow", "this Saturday") against the date of that line. Leave out vague intentions with no day, things that have already happened, and anything said as a joke.
 Reply with ONE JSON object and nothing else: {"promises":[{"date":"YYYY-MM-DD","time":"HH:MM or empty","what":"a short phrase in the language of the conversation"}]} — an empty list if there are none.` },
-  promiseOffer: { label: '약속 태그 안내 (캐릭터가 약속을 적는 방법)', hint: '{{today}} · {{weekday}} 가 들어갑니다. [promise: …] 형식은 바꾸지 마세요.', text: `[promise: date="YYYY-MM-DD", what="short phrase"] — when you and {{user}} agree to do something on a specific day (meet, call, watch something together, an anniversary), add this on its own line so it is written down in the promise notebook. Today is {{today}} ({{weekday}}); work the date out from that. You may add time="HH:MM". Only for real plans with a day, never for vague wishes. It is removed before {{user}} sees the message.` },
-  promiseToday: { label: '약속한 날이 되었을 때', hint: '{{what}} 약속 내용, {{time}} 시간(있을 때만)이 들어갑니다.', text: `Today is the day of a promise between you and {{user}}: "{{what}}"{{time}}. Bring it up first, naturally, the way {{char}} would.` },
-  promiseMissed: { label: '약속이 지켜지지 않고 지나갔을 때', hint: '{{what}} · {{date}} · {{ago}}(며칠 전) 이 들어갑니다.', text: `A promise passed without being kept: "{{what}}", which was for {{date}} ({{ago}} days ago). {{char}} remembers it and may be a little hurt or sulky about it — let it show once, in character, without nagging.` },
-  exchangeNote: { label: '교환 일기를 대화에 반영할 때', hint: '{{title}} 일기 제목, {{note}} 사용자가 적은 글, {{answer}} 캐릭터의 답글(있을 때만)이 들어갑니다.', text: `{{user}} read {{char}}'s diary entry "{{title}}" and wrote beside it: "{{note}}"{{answer}}
+  promiseOffer: { get label() { return tr('diary.prompt.promiseOffer.label'); }, get hint() { return tr('diary.prompt.promiseOffer.hint'); }, text: `[promise: date="YYYY-MM-DD", what="short phrase"] — when you and {{user}} agree to do something on a specific day (meet, call, watch something together, an anniversary), add this on its own line so it is written down in the promise notebook. Today is {{today}} ({{weekday}}); work the date out from that. You may add time="HH:MM". Only for real plans with a day, never for vague wishes. It is removed before {{user}} sees the message.` },
+  promiseToday: { get label() { return tr('diary.prompt.promiseToday.label'); }, get hint() { return tr('diary.prompt.promiseToday.hint'); }, text: `Today is the day of a promise between you and {{user}}: "{{what}}"{{time}}. Bring it up first, naturally, the way {{char}} would.` },
+  promiseMissed: { get label() { return tr('diary.prompt.promiseMissed.label'); }, get hint() { return tr('diary.prompt.promiseMissed.hint'); }, text: `A promise passed without being kept: "{{what}}", which was for {{date}} ({{ago}} days ago). {{char}} remembers it and may be a little hurt or sulky about it — let it show once, in character, without nagging.` },
+  exchangeNote: { get label() { return tr('diary.prompt.exchangeNote.label'); }, get hint() { return tr('diary.prompt.exchangeNote.hint'); }, text: `{{user}} read {{char}}'s diary entry "{{title}}" and wrote beside it: "{{note}}"{{answer}}
 Let this quietly color how {{char}} feels toward {{user}}. Do not quote it or bring up the diary unless {{user}} does.` },
-  font: { label: '일기장 글씨체 고르기', hint: '{{fonts}} 후보 목록, {{inks}} 잉크 색 목록이 들어갑니다. JSON 형식(font · reason · ink · size)은 바꾸지 마세요.', text: `You choose the handwriting for {{char}}'s private diary. Read the character below — personality, manner of speech, age and temperament — and pick the ONE font from the list whose hand feels most like how {{char}} would really write.
+  font: { get label() { return tr('diary.prompt.font.label'); }, get hint() { return tr('diary.prompt.font.hint'); }, text: `You choose the handwriting for {{char}}'s private diary. Read the character below — personality, manner of speech, age and temperament — and pick the ONE font from the list whose hand feels most like how {{char}} would really write.
 Candidates (name — impression):
 {{fonts}}
 Ink colours: {{inks}}.
@@ -80,8 +81,8 @@ export const tellErr = (e: unknown) => { if (errName(e) !== 'AbortError') toast(
 
 // ════════ 대화 한 편 ════════
 export const charOf = (chat?: DChat | null) => S.get('chars', chat?.charIds?.[0]);
-export const namesOf = (chat?: DChat | null) => (chat?.charIds || []).map(i => S.get('chars', i)?.name).filter(Boolean).join(', ') || '삭제된 캐릭터';
-export const roomOf = (chat: DChat) => { try { return chatApi.roomName(chat); } catch { return chat?.name || '대화'; } };
+export const namesOf = (chat?: DChat | null) => (chat?.charIds || []).map(i => S.get('chars', i)?.name).filter(Boolean).join(', ') || tr('diary.deletedChar');
+export const roomOf = (chat: DChat) => { try { return chatApi.roomName(chat); } catch { return chat?.name || tr('diary.chatFallback'); } };
 export const who = (chat?: DChat | null) => ({ char: charOf(chat)?.name || namesOf(chat), user: S.persona(chat)?.name || '나' });
 export const cleanText = (m: Msg) => { const s = K.swipeOf(m); return K.stripPromiseTags(Illust.strip(s.showTr && s.tr ? s.tr : s.text || '')); };
 const speaker = (m: Msg, chat: DChat) => m.role === 'user' ? who(chat).user : m.role === 'system' ? 'Narrator' : (m.name || S.get('chars', m.charId)?.name || who(chat).char);
@@ -100,7 +101,7 @@ export async function syncChat(chat: DChat, msgs: Msg[], { quiet = false } = {})
   const r = K.syncKeepsakes(chat.keepsakes || [], msgs);
   if (!r.changed) return r;
   chat.keepsakes = r.list; await save(chat);
-  if (r.added.length) { if (!quiet && A().keepsakeToast) toast(`장면 기념품을 일기장에 꽂아 두었어요 — ${r.added[r.added.length - 1].title || '이름 없는 장면'}`); changed(chat); }
+  if (r.added.length) { if (!quiet && A().keepsakeToast) toast(tr('diary.toast.keepsake', { title: r.added[r.added.length - 1].title || tr('diary.untitledScene') })); changed(chat); }
   return r;
 }
 /** 책에 꽂히는 쪽들: 일기 · 꿈 · 기념품 · 편지를 시간 순으로 */
@@ -110,24 +111,28 @@ export const pagesOf = (chat: DChat): Page[] => [
 ].sort((a, b) => (a.ts || 0) - (b.ts || 0));
 export const pageCount = (c: DChat) => (c.diary || []).length + (c.dreams || []).length + (c.letters || []).length + (c.keepsakes || []).filter(k => !k.gone).length;
 export const lastTs = (c: DChat) => pagesOf(c).reduce((t, p) => Math.max(t, p.ts || 0), 0);
-export const TYPE: Record<Page['type'], [string, string]> = { diary: ['DIARY', '일기'], dream: ['DREAM', '꿈'], keepsake: ['KEEPSAKE', '기념품'], letter: ['LETTER', '편지'] };
-export const titleOf = (p: Page) => p.type === 'diary' ? (p.ref.title || '제목 없는 밤') : p.type === 'dream' ? (p.ref.title || '이름 없는 꿈') : p.type === 'keepsake' ? (p.ref.title || '이름 없는 장면') : (p.ref.title || `${+p.ref.month.slice(5)}월의 편지`);
+export const TYPE: Record<Page['type'], [string, string]> = { get diary(): [string, string] { return ['DIARY', tr('diary.type.diary')]; }, get dream(): [string, string] { return ['DREAM', tr('diary.type.dream')]; }, get keepsake(): [string, string] { return ['KEEPSAKE', tr('diary.type.keepsake')]; }, get letter(): [string, string] { return ['LETTER', tr('diary.type.letter')]; } };
+/** "2025-03" → "3월" · "2025년 3월" (한국어 밖은 Intl) */
+export const monthLabel = (mk: string, year = false) => { const [y, m] = mk.split('-').map(Number); return getLang() === 'ko' ? `${year ? y + '년 ' : ''}${m}월` : fmtDate(new Date(y, m - 1, 1, 12), year ? { year: 'numeric', month: 'long' } : { month: 'long' }); };
+/** 글씨체 이름: 한국어는 한글 이름, 다른 언어는 글꼴 이름 */
+export const fontLabel = (f: { name: string; ko: string }) => getLang() === 'ko' ? f.ko : f.name;
+export const titleOf = (p: Page) => p.type === 'diary' ? (p.ref.title || tr('diary.untitledNight')) : p.type === 'dream' ? (p.ref.title || tr('diary.untitledDream')) : p.type === 'keepsake' ? (p.ref.title || tr('diary.untitledScene')) : (p.ref.title || tr('diary.letterOf', { month: monthLabel(p.ref.month) }));
 
 // ════════ 일기 (추가 호출 1회) ════════
 /** 마지막 일기 이후의 대화를 읽고 캐릭터가 일기를 쓴다 */
 export async function writeDiary(chat: DChat, msgs: Msg[], signal?: AbortSignal): Promise<DiaryEntry> {
-  const ch = charOf(chat); if (!ch) throw new Error('이 대화의 캐릭터를 찾을 수 없어요.');
+  const ch = charOf(chat); if (!ch) throw new Error(tr('diary.err.noChar'));
   const user = S.persona(chat)?.name || '나';
   let at = chat.diaryAt || 0;   // 메시지를 지워 자리가 어긋났으면 마지막 일기 뒤에 온 메시지부터
   if (at > msgs.length) { const t = (chat.diary || []).slice(-1)[0]?.ts || 0; at = msgs.findIndex(m => K.msgTs(m) > t); if (at < 0) at = msgs.length; }
   const fresh = msgs.slice(at).filter(m => !m.hidden);
-  if (fresh.length < 2) throw new Error('일기에 적을 새 이야기가 아직 없어요.');
+  if (fresh.length < 2) throw new Error(tr('diary.err.noNew'));
   const script = fresh.slice(-40).map(m => `${m.role === 'user' ? user : m.role === 'system' ? 'Narrator' : (m.name || ch.name)}: ${K.stripPromiseTags(Illust.strip(core.msgText(m))).slice(0, 1500)}`).join('\n\n');
   const prev = (chat.diary || []).slice(-1)[0];
   const sys = (String(S.settings.diary?.prompt || '').trim() || DIARY_PROMPT).replace(/\{\{char\}\}/g, ch.name).replace(/\{\{user\}\}/g, user);
   const out = await quickCall(sys, `[About ${ch.name}]\n${[ch.description, ch.personality].filter(Boolean).join('\n').slice(0, 2500)}\n\n${prev ? `[Previous entry]\n${prev.text.slice(0, 800)}\n\n` : ''}[What happened since]\n${script}`, { maxTokens: 1500, signal, conn: S.helperConn('all', chat) });
   const j = parseLoose(out);
-  const text = String(j?.text || out).trim(); if (!text) throw new Error('일기가 비어 있어요.');
+  const text = String(j?.text || out).trim(); if (!text) throw new Error(tr('diary.err.emptyDiary'));
   const scene = (Memory.get(chat.id)?.status || []).find(s => s.entity === 'scene' && s.slot === 'date');
   const pic = [...fresh].reverse().flatMap(m => m.swipes[m.sw]?.illust || []).filter(i => i && !i.hidden).map(i => i!.id)[0] || '';
   const entry: DiaryEntry = { id: core.uid(), ts: core.now(), title: str(j?.title).trim(), storyDate: str(j?.date || scene?.value).trim(), mood: str(j?.mood).trim().slice(0, 24), weather: str(j?.weather).trim().slice(0, 24), text, by: ch.id, illust: pic, from: at, to: msgs.length };
@@ -145,20 +150,20 @@ export const Promises = {
   async toggle(chat: DChat, p: PromiseRec) { p.done = !p.done; p.doneAt = p.done ? core.now() : 0; await save(chat); changed(chat); },
   /** 대화방 하나의 약속 + 연락 약속(chat.later)을 날짜 순으로 */
   of(chat: DChat): PromiseRec[] {
-    const k = K, laters = (chat.later || []).filter(l => l?.at).map((l): PromiseRec => ({ id: l.id, date: k.dayKey(l.at), time: `${k.pad(new Date(l.at).getHours())}:${k.pad(new Date(l.at).getMinutes())}`, what: l.about || '연락하기로 한 약속', by: 'later', later: true, made: l.made || 0 }));
+    const k = K, laters = (chat.later || []).filter(l => l?.at).map((l): PromiseRec => ({ id: l.id, date: k.dayKey(l.at), time: `${k.pad(new Date(l.at).getHours())}:${k.pad(new Date(l.at).getMinutes())}`, what: l.about || tr('diary.laterPromise'), by: 'later', later: true, made: l.made || 0 }));
     return [...(chat.promises || []).filter(p => k.validKey(p?.date)), ...laters].sort((a, b) => a.date.localeCompare(b.date) || (a.time || '').localeCompare(b.time || ''));
   },
 };
-export const BY: Record<string, string> = { char: '캐릭터가 적음', user: '내가 적음', extract: '대화에서 뽑음', later: '연락 약속' };
+export const BY: Record<string, string> = Object.defineProperties({} as Record<string, string>, Object.fromEntries(['char', 'user', 'extract', 'later'].map(k => [k, { enumerable: true, get: () => tr(`diary.by.${k}`) }])));
 /** 대화에서 약속을 지금 뽑는다 (추가 호출 1회) */
 export async function extractByCall(chat: DChat, msgs: Msg[], signal?: AbortSignal) {
   const k = K, rows = msgs.filter(m => m && !m.hidden && m.role !== 'system' && k.msgTs(m)).slice(-60);
-  if (rows.length < 2) throw new Error('약속을 찾을 대화가 아직 없어요.');
+  if (rows.length < 2) throw new Error(tr('diary.err.noTalkForPromise'));
   const today = k.dayKey(core.now()), w = who(chat);
   const script = rows.map(m => { const dk = k.dayKey(k.msgTs(m)); return `[${dk} ${WD_EN[k.keyDate(dk).getDay()].slice(0, 3)}] ${speaker(m, chat)}: ${cleanText(m).replace(/\s+/g, ' ').slice(0, 600)}`; }).join('\n');
   const out = await quickCall(fillT(P('extract'), { ...w, today, weekday: WD_EN[k.keyDate(today).getDay()] }), script, { maxTokens: 1200, signal, conn: S.helperConn('all', chat) });
   const j = parseLoose(out), list = Array.isArray(j?.promises) ? j.promises as { date?: unknown; time?: unknown; what?: unknown }[] : null;
-  if (!list) throw new Error('약속 목록을 읽지 못했어요. 다시 해 보세요.');
+  if (!list) throw new Error(tr('diary.err.promiseParse'));
   const found: FoundPromise[] = list.map(x => ({ date: k.resolveDate(x?.date, core.now()), time: k.normTime(x?.time), what: str(x?.what).replace(/\s+/g, ' ').trim().slice(0, 120) })).filter(x => x.date && x.what);
   const added = k.mergePromises(chat.promises ||= [], found, f => Promises.make(f, 'extract'));
   await save(chat); changed(chat);
@@ -167,7 +172,7 @@ export async function extractByCall(chat: DChat, msgs: Msg[], signal?: AbortSign
 
 // ════════ 이달의 편지 (추가 호출 1회) ════════
 export async function writeLetter(chat: DChat, msgs: Msg[], mk: string, signal?: AbortSignal): Promise<Letter> {
-  const ch = charOf(chat); if (!ch) throw new Error('이 대화의 캐릭터를 찾을 수 없어요.');
+  const ch = charOf(chat); if (!ch) throw new Error(tr('diary.err.noChar'));
   const k = K, w = who(chat), inMonth = (t?: number) => !!t && k.monthKey(t) === mk, st = k.monthStats(k.collectDays(chat, msgs), mk, A().goal);
   const diary = (chat.diary || []).filter(e => inMonth(e.ts)).slice(-8), mem = Memory.get(chat.id), ids = new Set(msgs.filter(m => inMonth(k.msgTs(m))).map(m => m.id));
   const mems = (mem?.memories || []).filter(m => m?.summary && (inMonth(m.ts) || ids.has(m.msgId || ''))).sort((a, b) => (b.importance || 0) - (a.importance || 0)).slice(0, 16);
@@ -178,13 +183,13 @@ export async function writeLetter(chat: DChat, msgs: Msg[], mk: string, signal?:
   if (keeps.length) parts.push(`[Scenes you kept a ticket from]\n${keeps.map(x => `- ${x.title || 'a meeting'}${x.place ? ` (${x.place})` : ''}${x.summary ? `: ${x.summary}` : ''}`).join('\n')}`);
   if (prs.length) parts.push(`[Promises this month]\n${prs.map(p => `- ${p.date} "${p.what}" — ${k.promiseState(p) === 'kept' ? 'kept' : k.promiseState(p) === 'missed' ? 'passed without being kept' : 'still ahead'}`).join('\n')}`);
   if (!diary.length && !mems.length) {   // 일기도 기억도 없는 달은 그달의 대화에서 직접
-    const rows = msgs.filter(m => !m.hidden && m.role !== 'system' && inMonth(k.msgTs(m))); if (rows.length < 2) throw new Error('이 달에는 편지에 담을 이야기가 없어요.');
+    const rows = msgs.filter(m => !m.hidden && m.role !== 'system' && inMonth(k.msgTs(m))); if (rows.length < 2) throw new Error(tr('diary.err.noLetterStory'));
     const pick = rows.length > 30 ? rows.filter((_, i) => i % Math.ceil(rows.length / 30) === 0) : rows;
     parts.push(`[Moments from this month's conversation]\n${pick.map(m => `(${k.dayKey(k.msgTs(m))}) ${speaker(m, chat)}: ${cleanText(m).replace(/\s+/g, ' ').slice(0, 420)}`).join('\n')}`);
   }
   const [y, mo] = mk.split('-').map(Number), month = `${new Date(y, mo - 1, 1).toLocaleDateString('en-US', { month: 'long' })} ${y}`;
   const out = await quickCall(fillT(P('letter'), { ...w, month, days: st.active }), parts.join('\n\n'), { maxTokens: 2000, signal, conn: S.helperConn('all', chat) });
-  const j = parseLoose(out), text = String(j?.text || out).trim(); if (!text) throw new Error('편지가 비어 있어요.');
+  const j = parseLoose(out), text = String(j?.text || out).trim(); if (!text) throw new Error(tr('diary.err.emptyLetter'));
   const rec: Letter = { id: core.uid(), month: mk, ts: core.now(), title: str(j?.title).trim().slice(0, 80), text, ps: str(j?.ps).trim().slice(0, 200), by: ch.id, days: st.active };
   chat.letters = [...(chat.letters || []).filter(l => l.month !== mk), rec].sort((a, b) => a.month.localeCompare(b.month));
   await save(chat); changed(chat);
@@ -193,15 +198,15 @@ export async function writeLetter(chat: DChat, msgs: Msg[], mk: string, signal?:
 
 // ════════ 꿈 페이지 (추가 호출 1회) ════════
 export async function dreamOf(chat: DChat, msgs: Msg[], day?: string, signal?: AbortSignal): Promise<Dream> {
-  const ch = charOf(chat); if (!ch) throw new Error('이 대화의 캐릭터를 찾을 수 없어요.');
+  const ch = charOf(chat); if (!ch) throw new Error(tr('diary.err.noChar'));
   const k = K, days = k.collectDays(chat, msgs), today = k.dayKey(core.now());
   day ||= [...days.values()].filter(d => d.n).map(d => d.key).sort().pop();
   const rows = msgs.filter(m => m && !m.hidden && m.role !== 'system' && k.msgTs(m) && k.dayKey(k.msgTs(m)) === day).slice(-30);
-  if (rows.length < 2 || !day) throw new Error('꿈의 재료가 될 그날의 대화가 없어요.');
+  if (rows.length < 2 || !day) throw new Error(tr('diary.err.noDreamTalk'));
   const night = day === today ? new Date() : new Date(k.keyDate(day).setHours(23, 50)), idx = k.phaseIndex(k.phaseAt(night)), w = who(chat);
   const script = rows.map(m => `${speaker(m, chat)}: ${cleanText(m).slice(0, 900)}`).join('\n\n');
   const out = await quickCall(fillT(P('dream'), { ...w, moon: MOON_EN[idx], mood: moods()[idx] }), `[About ${ch.name}]\n${[ch.description, ch.personality].filter(Boolean).join('\n').slice(0, 1800)}\n\n[The day's conversation]\n${script}`, { maxTokens: 1200, signal, conn: S.helperConn('all', chat) });
-  const j = parseLoose(out), text = String(j?.text || out).trim(); if (!text) throw new Error('꿈이 비어 있어요.');
+  const j = parseLoose(out), text = String(j?.text || out).trim(); if (!text) throw new Error(tr('diary.err.emptyDream'));
   const rec: Dream = { id: core.uid(), ts: +night, day, phase: idx, phaseName: k.PHASES[idx], title: str(j?.title).trim().slice(0, 80), text, by: ch.id };
   (chat.dreams ||= []).push(rec); chat.dreams.sort((a, b) => a.ts - b.ts);
   await save(chat); changed(chat);
@@ -217,11 +222,11 @@ export async function promoteDream(chat: DChat, d: Dream) {
 
 // ════════ 교환 일기 (답글은 추가 호출 1회) ════════
 export async function answerNote(chat: DChat, entry: DiaryEntry, signal?: AbortSignal) {
-  const note = String(entry.note || '').trim(); if (!note) throw new Error('먼저 일기 옆에 몇 줄 적어 주세요.');
-  const ch = S.get('chars', entry.by) || charOf(chat); if (!ch) throw new Error('이 대화의 캐릭터를 찾을 수 없어요.');
+  const note = String(entry.note || '').trim(); if (!note) throw new Error(tr('diary.err.noNote'));
+  const ch = S.get('chars', entry.by) || charOf(chat); if (!ch) throw new Error(tr('diary.err.noChar'));
   const w = { char: ch.name, user: S.persona(chat)?.name || '나' };
   const out = await quickCall(fillT(P('exchange'), w), `[About ${ch.name}]\n${[ch.description, ch.personality].filter(Boolean).join('\n').slice(0, 1800)}\n\n[Your diary entry${entry.title ? ` — ${entry.title}` : ''}]\n${String(entry.text).slice(0, 1600)}\n\n[What ${w.user} wrote beside it]\n${note.slice(0, 800)}`, { maxTokens: 500, signal, conn: S.helperConn('all', chat) });
-  const text = out.trim().replace(/^["“「]+|["”」]+$/g, '').trim(); if (!text) throw new Error('답글이 비어 있어요.');
+  const text = out.trim().replace(/^["“「]+|["”」]+$/g, '').trim(); if (!text) throw new Error(tr('diary.err.emptyAnswer'));
   entry.answer = text.slice(0, 600); entry.answerTs = core.now(); await save(chat); changed(chat);
   return entry.answer;
 }
@@ -236,7 +241,7 @@ export async function memoByCall(chat: DChat, p: MemoPage, whoName: string, user
   const sys = (String(S.settings.diary?.memoPrompt || '').trim() || MEMO_PROMPT).replace(/\{\{char\}\}/g, whoName).replace(/\{\{user\}\}/g, user);
   const out = await quickCall(sys, `[${isDream ? 'A dream ' + whoName + ' had — not a real event. Note it as a dream.' : p.type === 'letter' ? 'A letter from ' + whoName + ' to ' + user : 'Diary page by ' + whoName}]${e.title ? '\nTitle: ' + e.title : ''}${storyDate ? '\nIn-story date: ' + storyDate : ''}\n\n${String(e.text || '').slice(0, 6000)}${note ? `\n\n[${user} wrote beside it]\n${note}` : ''}${answer ? `\n\n[${whoName} answered]\n${answer}` : ''}`, { maxTokens: 500, conn: S.helperConn('all', chat) });
   const got = memoLines(String(out || '')).slice(0, 6);
-  if (!got.length) throw new Error('간추린 내용이 비어 있어요.');
+  if (!got.length) throw new Error(tr('diary.err.emptyMemo'));
   return got;
 }
 /** 간추린 줄들을 장기기억에 올린다 (먼저 올린 줄은 바꿔 넣는다) */
@@ -289,7 +294,7 @@ export async function afterReply({ msg, chat }: { msg?: Msg; chat?: DChat }) {
       }
       if (a.promiseTag !== 'off') {
         const added = k.mergePromises(chat.promises ||= [], ex.found, f => Promises.make(f, 'char', { msgId: msg.id }));
-        if (added.length) { dirty = true; toast(`약속 수첩에 적었어요 — ${k.koDate(added[0].date, { year: false })} ${added[0].what}${added.length > 1 ? ` 외 ${added.length - 1}개` : ''}`); }
+        if (added.length) { dirty = true; toast(added.length > 1 ? tn('diary.toast.promiseAddedMore', added.length - 1, { date: k.showDate(added[0].date, { year: false }), what: added[0].what }) : tr('diary.toast.promiseAdded', { date: k.showDate(added[0].date, { year: false }), what: added[0].what })); }
       }
     }
     if (a.promiseInject !== false && (chat.promises || []).length) {
@@ -307,7 +312,7 @@ export async function onChatOpen(chat?: DChat | null) {
     if (!chat) return;
     await syncChat(chat, await loadChat(chat));
     const today = K.dayKey(core.now()), key = chat.id + today, mine = (chat.promises || []).filter(p => !p.done && p.date === today);
-    if (mine.length && !greeted.has(key)) { greeted.add(key); toast(`오늘은 약속한 날이에요 — ${mine[0].what}${mine.length > 1 ? ` 외 ${mine.length - 1}개` : ''}`); }
+    if (mine.length && !greeted.has(key)) { greeted.add(key); toast(mine.length > 1 ? tn('diary.toast.todayMore', mine.length - 1, { what: mine[0].what }) : tr('diary.toast.today', { what: mine[0].what })); }
   } catch (e) { console.warn('[달력] 대화방 열기', e); }
 }
 /** 손으로 닫은 장면 · 생성이 끝난 뒤: 지금 열린 방이면 바로 기념품으로 */
@@ -323,19 +328,19 @@ export async function jumpTo(chatId: string, msgId?: string) {
     await core.sleep(110); if (route.page !== 'chat') return;
     const el = document.querySelector(`article.msg[data-id="${String(msgId).replace(/["\\]/g, '')}"]`);
     if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('alm-flash'); setTimeout(() => el.classList.remove('alm-flash'), 2000); return; }
-    const more = document.querySelector<HTMLElement>('#page .more-btn'); if (more) more.click(); else if (document.querySelector('#page article.msg')) return toast('그 메시지는 지금 대화에 남아 있지 않아요.');
+    const more = document.querySelector<HTMLElement>('#page .more-btn'); if (more) more.click(); else if (document.querySelector('#page article.msg')) return toast(tr('diary.toast.msgGone'));
   }
 }
 
 // ════════ 지시문 고치기에 쓰는 폼 항목 ════════
-export const promptDefs = (keys: string[]): FieldDef[] => keys.map(k => ({ k: `almanac.prompts.${k}`, label: PROMPTS[k].label, type: 'area', rows: 6, ph: PROMPTS[k].text, hint: `${PROMPTS[k].hint} 비워 두면 기본 문장을 씁니다 (칸에 흐리게 보이는 글).` }));
-export const moodDef: FieldDef = { k: 'almanac.dreamMoods', label: '달 위상별 꿈의 분위기 (한 줄에 하나씩: 삭 · 초승달 · 상현달 · 차오르는 달 · 보름달 · 기우는 달 · 하현달 · 그믐달)', type: 'area', rows: 8, ph: DREAM_MOODS.join('\n'), hint: '여덟 줄. 비워 둔 줄은 기본 문장을 씁니다.' };
+export const promptDefs = (keys: string[]): FieldDef[] => keys.map(k => ({ k: `almanac.prompts.${k}`, label: PROMPTS[k].label, type: 'area', rows: 6, ph: PROMPTS[k].text, hint: tr('diary.prompt.hintTail', { hint: PROMPTS[k].hint }) }));
+export const moodDef: FieldDef = { k: 'almanac.dreamMoods', get label() { return tr('diary.def.moods.label'); }, get hint() { return tr('diary.def.moods.hint'); }, type: 'area', rows: 8, ph: DREAM_MOODS.join('\n') };
 /** 체크 항목은 저장된 값이 없어도 기본값(켜짐)이 보이도록, 시작할 때 한 번 채워 둔다 */
 export const seed = () => { const al = (S.settings.almanac ||= {}) as Record<string, unknown>; for (const [k, v] of Object.entries(DEFAULTS)) if (al[k] == null && k !== 'goal') al[k] = v; return al; };
 
 // ════════ 대화 고르기 · 달력이 보는 대화 ════════
-export const md = (t: number) => { const d = new Date(t); return `${d.getFullYear() === new Date().getFullYear() ? '' : d.getFullYear() + '.'}${d.getMonth() + 1}.${d.getDate()}`; };
-export const roomLine = (c: DChat) => [`${c.count || 0}개`, (c.diary || []).length ? `일기 ${c.diary!.length}` : '', (c.promises || []).length ? `약속 ${c.promises!.length}` : '', md(c.updatedAt || c.createdAt)].filter(Boolean).join(' · ');
+export const md = (t: number) => { const d = new Date(t); if (getLang() !== 'ko') return fmtDate(d, d.getFullYear() === new Date().getFullYear() ? { month: 'numeric', day: 'numeric' } : { year: 'numeric', month: 'numeric', day: 'numeric' }); return `${d.getFullYear() === new Date().getFullYear() ? '' : d.getFullYear() + '.'}${d.getMonth() + 1}.${d.getDate()}`; };
+export const roomLine = (c: DChat) => [tn('diary.room.msgs', c.count || 0), (c.diary || []).length ? tn('diary.room.diary', c.diary!.length) : '', (c.promises || []).length ? tn('diary.room.promises', c.promises!.length) : '', md(c.updatedAt || c.createdAt)].filter(Boolean).join(' · ');
 export interface Group { rooms: DChat[]; chat: DChat; name: string; ch?: DChar; at: number; hit?: boolean }
 export const groupsOf = (): Group[] => {
   const map = new Map<string, DChat[]>();
@@ -351,19 +356,19 @@ export const levelOf = (n: number) => n >= 40 ? 3 : n >= 12 ? 2 : 1;
 // 구글 폰트의 한글 손글씨. k 는 글꼴마다 다른 눈대중 크기를 맞추는 배율, q 는 굵기 축. 고른 글꼴만 그때 불러온다.
 export interface FontDef { name: string; ko: string; k: number; q?: string; note: string; en: string }
 export const FONTS: FontDef[] = [
-  { name: 'Gaegu', ko: '개구', k: 1, q: ':wght@400;700', note: '둥글고 수수한 평소 글씨', en: 'round, plain, friendly everyday handwriting; honest and unfussy' },
-  { name: 'Nanum Pen Script', ko: '나눔 펜', k: 1.22, note: '가늘고 빠른 볼펜 글씨', en: 'quick, slender ballpoint script; neat, grown-up, a little hurried' },
-  { name: 'Gamja Flower', ko: '감자꽃', k: 1.05, note: '삐뚤빼뚤 여린 글씨', en: 'wobbly, soft and childlike; shy, gentle, slightly clumsy' },
-  { name: 'Hi Melody', ko: '하이 멜로디', k: 1.1, note: '가볍고 산뜻한 글씨', en: 'light, thin and airy; cheerful, girlish, dreamy' },
-  { name: 'Single Day', ko: '싱글 데이', k: 1.05, note: '통통 튀는 사인펜 글씨', en: 'bouncy rounded marker; playful, bright, outgoing' },
-  { name: 'Poor Story', ko: '푸어 스토리', k: 1, note: '또박또박 단정한 글씨', en: 'tidy, upright and modest; calm, bookish, careful' },
-  { name: 'Dongle', ko: '동글', k: 1.32, q: ':wght@400;700', note: '작고 동글동글한 글씨', en: 'compact and very round; cute, simple, cozy' },
-  { name: 'Yeon Sung', ko: '연성', k: 0.95, note: '힘 있게 눌러 쓴 글씨', en: 'weighty, pressed-down strokes; dignified, mature, deeply felt' },
-  { name: 'East Sea Dokdo', ko: '동해 독도', k: 1.3, note: '거칠게 휘갈긴 글씨', en: 'rough, fast, slanted scrawl; brash, impatient, rebellious' },
-  { name: 'Dokdo', ko: '독도', k: 1.15, note: '굵고 투박한 매직 글씨', en: 'thick, heavy-handed marker scrawl; blunt, tough, gruff' },
-  { name: 'Cute Font', ko: '큐트', k: 1.25, note: '좁고 길쭉한 낙서 글씨', en: 'narrow, tall, doodle-like letters; quirky, mischievous, eccentric' },
+  { name: 'Gaegu', ko: '개구', k: 1, q: ':wght@400;700', get note() { return tr('diary.font.gaegu.note'); }, en: 'round, plain, friendly everyday handwriting; honest and unfussy' },
+  { name: 'Nanum Pen Script', ko: '나눔 펜', k: 1.22, get note() { return tr('diary.font.nanumpenscript.note'); }, en: 'quick, slender ballpoint script; neat, grown-up, a little hurried' },
+  { name: 'Gamja Flower', ko: '감자꽃', k: 1.05, get note() { return tr('diary.font.gamjaflower.note'); }, en: 'wobbly, soft and childlike; shy, gentle, slightly clumsy' },
+  { name: 'Hi Melody', ko: '하이 멜로디', k: 1.1, get note() { return tr('diary.font.himelody.note'); }, en: 'light, thin and airy; cheerful, girlish, dreamy' },
+  { name: 'Single Day', ko: '싱글 데이', k: 1.05, get note() { return tr('diary.font.singleday.note'); }, en: 'bouncy rounded marker; playful, bright, outgoing' },
+  { name: 'Poor Story', ko: '푸어 스토리', k: 1, get note() { return tr('diary.font.poorstory.note'); }, en: 'tidy, upright and modest; calm, bookish, careful' },
+  { name: 'Dongle', ko: '동글', k: 1.32, q: ':wght@400;700', get note() { return tr('diary.font.dongle.note'); }, en: 'compact and very round; cute, simple, cozy' },
+  { name: 'Yeon Sung', ko: '연성', k: 0.95, get note() { return tr('diary.font.yeonsung.note'); }, en: 'weighty, pressed-down strokes; dignified, mature, deeply felt' },
+  { name: 'East Sea Dokdo', ko: '동해 독도', k: 1.3, get note() { return tr('diary.font.eastseadokdo.note'); }, en: 'rough, fast, slanted scrawl; brash, impatient, rebellious' },
+  { name: 'Dokdo', ko: '독도', k: 1.15, get note() { return tr('diary.font.dokdo.note'); }, en: 'thick, heavy-handed marker scrawl; blunt, tough, gruff' },
+  { name: 'Cute Font', ko: '큐트', k: 1.25, get note() { return tr('diary.font.cutefont.note'); }, en: 'narrow, tall, doodle-like letters; quirky, mischievous, eccentric' },
 ];
-export const INKS: Record<string, [string, string, string]> = { ink: ['먹색', '#2b2622', 'black ink'], navy: ['남색', '#1f2a52', 'dark navy'], cobalt: ['코발트', '#2340b8', 'cobalt blue pen'], brown: ['밤색', '#5a3a26', 'sepia brown'], green: ['솔잎색', '#2c4a3a', 'deep green'], plum: ['자두색', '#5a2748', 'plum'], pencil: ['연필', '#55555c', 'pencil grey'] };
+export const INKS: Record<string, [string, string, string]> = { get ink(): [string, string, string] { return [tr('diary.ink.ink'), '#2b2622', 'black ink']; }, get navy(): [string, string, string] { return [tr('diary.ink.navy'), '#1f2a52', 'dark navy']; }, get cobalt(): [string, string, string] { return [tr('diary.ink.cobalt'), '#2340b8', 'cobalt blue pen']; }, get brown(): [string, string, string] { return [tr('diary.ink.brown'), '#5a3a26', 'sepia brown']; }, get green(): [string, string, string] { return [tr('diary.ink.green'), '#2c4a3a', 'deep green']; }, get plum(): [string, string, string] { return [tr('diary.ink.plum'), '#5a2748', 'plum']; }, get pencil(): [string, string, string] { return [tr('diary.ink.pencil'), '#55555c', 'pencil grey']; } };
 const clampN = (v: unknown, a: number, b: number, d: number) => { const n = Number(v); return isFinite(n) && n ? Math.min(b, Math.max(a, n)) : d; };
 /** 이 캐릭터의 글씨: 정해 둔 것이 없으면 기본(Gaegu · 먹색) */
 export function fontOf(ch?: DChar | null) {
@@ -393,7 +398,7 @@ export async function pickFontByCall(ch: DChar, chat?: DChat | null, signal?: Ab
   const card = [`[Character: ${ch.name}]`, [ch.description, ch.personality].filter(Boolean).join('\n').slice(0, 3000), ch.mesExample ? `[How ${ch.name} talks]\n${String(ch.mesExample).slice(0, 1400)}` : '', ch.firstMes ? `[First message]\n${String(ch.firstMes).slice(0, 700)}` : ''].filter(Boolean).join('\n\n');
   const j = parseLoose(await quickCall(sys, card, { maxTokens: 400, signal, conn: S.helperConn('all', chat) }));
   const want = str(j?.font).trim().toLowerCase(), hit = FONTS.find(f => f.name.toLowerCase() === want) || FONTS.find(f => want && (want.includes(f.name.toLowerCase()) || f.name.toLowerCase().includes(want)));
-  if (!hit) throw new Error('글씨체를 고르지 못했어요. 다시 해 보세요.');
+  if (!hit) throw new Error(tr('diary.err.fontPick'));
   const inkKey = str(j?.ink).trim().toLowerCase(), size = str(j?.size);
   const pick: FontPick = { font: hit.name, reason: str(j?.reason).replace(/\s+/g, ' ').trim().slice(0, 160), ink: INKS[inkKey] ? inkKey : 'ink', size: /small|작/i.test(size) ? 0.9 : /large|big|크/i.test(size) ? 1.12 : 1 };
   await saveFont(ch, { ...pick, lh: ch.diaryFont?.lh || 1, by: 'ai', ai: { ...pick } });
@@ -402,7 +407,7 @@ export async function pickFontByCall(ch: DChar, chat?: DChat | null, signal?: Ab
 /** 글씨 견본에 쓸 한 줄: 이 캐릭터의 가장 최근 일기에서 */
 export const sampleOf = (ch: DChar) => {
   for (const c of [...S.chats].filter(x => x.charIds?.[0] === ch.id && (x.diary || []).length).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))) { const d = c.diary!, line = String(d[d.length - 1].text || '').split(/\n|(?<=[.!?。…])\s/).map(s => s.trim()).find(s => s.length >= 8); if (line) return line.slice(0, 64); }
-  return '오늘은 별일 없었는데, 자꾸 그 말이 생각난다.';
+  return tr('diary.font.sample');
 };
 
 // ════════ 한 권으로 묶기 ════════
@@ -437,10 +442,10 @@ export function gatherBook(chat: DChat, msgs: Msg[], o: Partial<BookOpt> = {}) {
   }
   const firstPic = opt.cover === 'photo' ? msgs.flatMap(m => m && !m.hidden ? k.photosOf(m) : []).map(photoSrc).find(Boolean) : '';
   const f = fontOf(ch);
-  return { title: opt.title.trim() || `${w.char}와(과)의 이야기`, sub: opt.sub.trim(), charName: w.char, userName: w.user, page: opt.page, accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(), madeKey: today, hand: opt.hand ? { family: f.name, q: f.q || '', scale: +(f.k * f.size).toFixed(3), lh: f.lh, color: f.color } : null,
+  return { title: opt.title.trim() || tr('diary.bind.defaultTitle', { name: w.char }), sub: opt.sub.trim(), charName: w.char, userName: w.user, page: opt.page, accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(), madeKey: today, hand: opt.hand ? { family: f.name, q: f.q || '', scale: +(f.k * f.size).toFixed(3), lh: f.lh, color: f.color } : null,
     avatar: opt.cover === 'avatar' ? ch?.avatar || '' : '', cover: firstPic || '', moonFill: months.length ? months[months.length - 1].fill : 0.18,
     stats: { msgs: [...days.values()].reduce((n, d) => n + d.n, 0), days: keys.length, from: first || '', to: last || '' }, chapters, loose,
-    letters: opt.letters ? (chat.letters || []).map(l => ({ t: 'letter', label: `${l.month.slice(0, 4)}년 ${+l.month.slice(5)}월`, title: l.title, text: l.text, ps: l.ps, sign: S.get('chars', l.by)?.name || w.char })) : [],
+    letters: opt.letters ? (chat.letters || []).map(l => ({ t: 'letter', label: monthLabel(l.month, true), title: l.title, text: l.text, ps: l.ps, sign: S.get('chars', l.by)?.name || w.char })) : [],
     months, promises: opt.almanac ? (chat.promises || []).filter(p => k.validKey(p.date)).sort((x, y) => x.date.localeCompare(y.date)).map(p => ({ date: p.date, time: p.time, what: p.what, state: k.promiseState(p, today) })) : [] };
 }
 export const makeBook = (chat: DChat, msgs: Msg[], o: Partial<BookOpt>) => buildBook(gatherBook(chat, msgs, o));

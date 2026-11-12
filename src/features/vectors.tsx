@@ -7,10 +7,11 @@ import { VectorsPane } from '../vectors/Pane';
 import { on } from '../lib/core';
 import { toast } from '../ui';
 import { X } from '../lib/hooks';
+import { t } from '../i18n';
 
 function setup() {
   X.before = X.before.filter(p => p.owner !== 'vectors');
-  X.before.push({ owner: 'vectors', fn: async a => { try { await prepare(a); } catch (e) { if (!isAbort(e)) { console.warn('[벡터 검색]', e); toast('벡터 검색을 건너뛰었어요: ' + errMsg(e).slice(0, 120), 'err'); } } } });
+  X.before.push({ owner: 'vectors', fn: async a => { try { await prepare(a); } catch (e) { if (!isAbort(e)) { console.warn('[벡터 검색]', e); toast(t('vectors.skipped', { error: errMsg(e).slice(0, 120) }), 'err'); } } } });
   X.loreVec = loreWoken;
   X.prompt = X.prompt.filter(p => p.owner !== 'vectors');
   X.prompt.push({ owner: 'vectors', fn: ({ chat }) => {

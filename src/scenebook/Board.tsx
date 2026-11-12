@@ -2,6 +2,7 @@
 import { useRef, type KeyboardEvent, type PointerEvent } from 'react';
 import { useBump } from './parts';
 import * as IL from '../lib/illust';
+import { t } from '../i18n';
 
 export interface BoardEntry { name?: string; x: number; y: number; set(x: number, y: number): void }
 
@@ -21,18 +22,18 @@ export function Board({ model, width, height, bg, entries, selected, onSelect, o
     <button type="button" className="chip" onClick={() => { entries.forEach((e, i) => { if (only && i !== sel) return; const p = snapPoint(...apply(e, i, entries.length), model); e.set(p.x, p.y); }); onMove(); bump(); }}>{label}</button>;
   const who = entries[sel];
   return <section className="sb-placement">
-    <p className="hint">{`드래그 · 클릭 · 방향키로 옮깁니다. ${free ? '자유 좌표 (Shift + 방향키는 크게)' : 'V4.5 · 5 × 5 격자'}`}</p>
-    <div ref={board} className={'sb-board' + (free ? '' : ' grid5')} aria-label="인물 배치 화면" style={{ aspectRatio: `${width} / ${height}`, maxWidth: Math.round(Math.min(520, 320 * width / height)) + 'px' }}
+    <p className="hint">{t('scenebook.board.hint', { mode: free ? t('scenebook.board.free') : t('scenebook.board.grid') })}</p>
+    <div ref={board} className={'sb-board' + (free ? '' : ' grid5')} aria-label={t('scenebook.board.label')} style={{ aspectRatio: `${width} / ${height}`, maxWidth: Math.round(Math.min(520, 320 * width / height)) + 'px' }}
       onPointerDown={e => { if (e.target === e.currentTarget && e.button === 0) { e.preventDefault(); fromPointer(e, sel); } }}>
       {bg ? <img className="sb-board-bg" src={bg} alt="" draggable={false} /> : null}
-      {entries.map((e, i) => { const p = snapPoint(e.x, e.y, model), name = e.name || `인물 ${i + 1}`;
-        return <button key={i} type="button" className={'sb-marker' + (sel === i ? ' on' : '')} title={name} aria-label={`${name} 위치 ${p.x}, ${p.y}`} style={{ left: p.x * 100 + '%', top: p.y * 100 + '%' }}
+      {entries.map((e, i) => { const p = snapPoint(e.x, e.y, model), name = e.name || t('scenebook.person.n', { n: i + 1 });
+        return <button key={i} type="button" className={'sb-marker' + (sel === i ? ' on' : '')} title={name} aria-label={t('scenebook.board.markerAria', { name, x: p.x, y: p.y })} style={{ left: p.x * 100 + '%', top: p.y * 100 + '%' }}
           onFocus={() => pick(i)} onClick={() => pick(i)} onKeyDown={ev => keys(ev, i)}
           onPointerDown={ev => { if (ev.button !== 0) return; ev.preventDefault(); pick(i); drag.current = ev.pointerId; ev.currentTarget.setPointerCapture(ev.pointerId); ev.currentTarget.focus(); }}
           onPointerMove={ev => { if (drag.current === ev.pointerId) fromPointer(ev, i); }}
           onPointerUp={end} onPointerCancel={end} onLostPointerCapture={() => { drag.current = null; }}>{String(i + 1)}</button>; })}
     </div>
-    <output className="sb-readout">{who ? `${who.name || `인물 ${sel + 1}`} · 가로 ${Number(who.x).toFixed(2)} / 세로 ${Number(who.y).toFixed(2)}` : '인물을 추가하면 배치할 수 있어요.'}</output>
-    <div className="row wrap sb-board-tools">{tool('균등 배치', (_e, i, n) => [(i + 1) / (n + 1), 0.5])}{tool('좌우 뒤집기', e => [1 - Number(e.x), Number(e.y)])}{tool('중앙', () => [0.5, 0.5], true)}</div>
+    <output className="sb-readout">{who ? t('scenebook.board.readout', { name: who.name || t('scenebook.person.n', { n: sel + 1 }), x: Number(who.x).toFixed(2), y: Number(who.y).toFixed(2) }) : t('scenebook.board.empty')}</output>
+    <div className="row wrap sb-board-tools">{tool(t('scenebook.board.spread'), (_e, i, n) => [(i + 1) / (n + 1), 0.5])}{tool(t('scenebook.board.flip'), e => [1 - Number(e.x), Number(e.y)])}{tool(t('scenebook.board.center'), () => [0.5, 0.5], true)}</div>
   </section>;
 }

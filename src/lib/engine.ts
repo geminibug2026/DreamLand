@@ -4,6 +4,7 @@ import * as hooks from './hooks';
 import { condBlocks, evalCond, pvResolve, type CondEnv, type PvMap } from './cond';
 import * as clock from './clock';
 import * as advanced from './advanced';
+import { t as tr } from '../i18n';
 
 // ════════ 자료 꼴 (엔진이 읽는 만큼) ════════
 type Obj = Record<string, unknown>;
@@ -823,6 +824,10 @@ export const PROVIDERS: Record<string, ProviderDef> = {
   custom: P('OpenAI 호환 (직접 입력)', '기타', '', [], { ph: 'https://…/v1', samplers: true, keyless: true }),
   mock: P('연습용 에코 (키 불필요)', '기타', '', ['echo'], { kind: 'mock', keyless: true }),
 };
+// 화면에 보이는 이름 · 안내 · 자리 표시 글은 부를 때마다 지금 언어로 (group 은 한국어 id 그대로 — 그리는 쪽이 번역한다)
+for (const [id, f, k] of [['vertexai', 'name', 'vertexai.name'], ['azure', 'ph', 'azure.ph'], ['azure', 'note', 'azure.note'], ['workers_ai', 'ph', 'workers_ai.ph'], ['bedrock', 'name', 'bedrock.name'], ['bedrock', 'note', 'bedrock.note'], ['zai_coding', 'name', 'zai_coding.name'],
+  ['horde', 'note', 'horde.note'], ['novelai', 'name', 'novelai.name'], ['novelai', 'note', 'novelai.note'], ['koboldclassic', 'name', 'koboldclassic.name'], ['textcomp', 'name', 'textcomp.name'], ['textcomp', 'note', 'textcomp.note'], ['custom', 'name', 'custom.name'], ['mock', 'name', 'mock.name']] as const)
+  Object.defineProperty(PROVIDERS[id], f, { get: () => tr('engine.provider.' + k), enumerable: true, configurable: true });
 const defOf = (c: Conn) => PROVIDERS[c.provider] || PROVIDERS.custom;
 const baseOf = (c: Conn) => (c.baseUrl || defOf(c).base || '').trim().replace(/\/+$/, '');
 const claudeAdaptive = (m?: string) => /fable|mythos|opus-(4-[6-9]|[5-9])|sonnet-(4-[6-9]|[5-9])|haiku-[5-9]/.test(m || '');
@@ -837,8 +842,8 @@ const tokenCache = new Map<string, { token: string; exp: number }>();
 const b64url = (buf: Uint8Array | string) => { const u = buf instanceof Uint8Array ? buf : new TextEncoder().encode(buf); let s = ''; for (const c of u) s += String.fromCharCode(c); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
 export interface ServiceAccount { client_email: string; private_key: string; token_uri?: string; project_id?: string; [k: string]: unknown }
 export function parseServiceAccount(text: unknown): ServiceAccount {
-  let j: ServiceAccount; try { j = JSON.parse(text as string); } catch { throw new Error('서비스 계정 키가 올바른 JSON 이 아닙니다.'); }
-  if (!j.client_email || !j.private_key) throw new Error('서비스 계정 키에 client_email 또는 private_key 가 없습니다.');
+  let j: ServiceAccount; try { j = JSON.parse(text as string); } catch { throw new Error(tr('engine.err.saJson')); }
+  if (!j.client_email || !j.private_key) throw new Error(tr('engine.err.saFields'));
   return j;
 }
 interface TokenJson { access_token?: string; expires_in?: number; error?: string; error_description?: string }
@@ -846,7 +851,7 @@ async function vertexToken(conn: Conn): Promise<string> {
   if (Secrets.is(conn.serviceAccount)) {   // 키가 서버에 보관돼 있으면 서버가 서명한다
     const hit = tokenCache.get('ref:' + conn.id); if (hit && hit.exp > Date.now() + 60000) return hit.token;
     const r = await fetch('/api/vertex-token', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dreamland': '1' }, body: JSON.stringify({ ref: conn.id }) });
-    const j: TokenJson = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || 'Google 인증 실패');
+    const j: TokenJson = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || tr('engine.err.googleAuth'));
     tokenCache.set('ref:' + conn.id, { token: j.access_token as string, exp: Date.now() + (j.expires_in || 3600) * 1000 }); return j.access_token as string;
   }
   const sa = parseServiceAccount(conn.serviceAccount);
@@ -857,11 +862,11 @@ async function vertexToken(conn: Conn): Promise<string> {
   try {
     const r = await fetch('/api/vertex-token', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dreamland': '1' }, body: JSON.stringify({ serviceAccount: sa }) });
     if (r.ok) { const j: TokenJson = await r.json(); token = j.access_token; ttl = j.expires_in || ttl; }
-    else if (r.status !== 404) throw new Error((await r.json().catch(() => ({})) as TokenJson).error || '토큰 발급 실패');
+    else if (r.status !== 404) throw new Error((await r.json().catch(() => ({})) as TokenJson).error || tr('engine.err.token'));
   } catch (e) { if (!/Failed to fetch|NetworkError|404/.test(String(errMsg(e)))) throw e; }
   // 2) 서버가 없으면 브라우저에서 직접
   if (!token) {
-    if (!crypto?.subtle) throw new Error('이 접속 환경에서는 서비스 계정 서명을 할 수 없어요. 드림랜드 서버(start.bat)로 열어 주세요.');
+    if (!crypto?.subtle) throw new Error(tr('engine.err.noSubtle'));
     const now = Math.floor(Date.now() / 1000), aud = sa.token_uri || 'https://oauth2.googleapis.com/token';
     const unsigned = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' })) + '.' + b64url(JSON.stringify({ iss: sa.client_email, scope: 'https://www.googleapis.com/auth/cloud-platform', aud, iat: now, exp: now + 3600 }));
     const der = Uint8Array.from(atob(sa.private_key.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '')), c => c.charCodeAt(0));
@@ -869,7 +874,7 @@ async function vertexToken(conn: Conn): Promise<string> {
     const sig = new Uint8Array(await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(unsigned)));
     const r = await fetch(aud, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: unsigned + '.' + b64url(sig) }) });
     const j: TokenJson = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error('Google 인증 실패: ' + (j.error_description || j.error || r.status));
+    if (!r.ok) throw new Error(tr('engine.err.googleAuthWhy', { why: j.error_description || j.error || r.status }));
     token = j.access_token; ttl = j.expires_in || ttl;
   }
   tokenCache.set(sa.client_email, { token: token as string, exp: Date.now() + ttl * 1000 });
@@ -884,7 +889,7 @@ async function vertexTarget(conn: Conn, publisher: string, model: string, method
     return { url: `${host}/v1/${project ? `projects/${project}/locations/${region}/` : ''}publishers/${publisher}/models/${model}:${method}`, headers: bearer ? { Authorization: 'Bearer ' + key } : { 'x-goog-api-key': key } };
   }
   const sa = Secrets.is(conn.serviceAccount) ? { project_id: conn.saProject || '' } : parseServiceAccount(conn.serviceAccount), region = ((conn.region as string) || 'global').trim(), project = ((conn.project as string) || sa.project_id || '').trim();
-  if (!project) throw new Error('프로젝트 ID 를 알 수 없어요. 연결 설정에 프로젝트 ID 를 넣어 주세요.');
+  if (!project) throw new Error(tr('engine.err.noProject'));
   const host = conn.baseUrl?.trim().replace(/\/+$/, '') || (region === 'global' ? 'https://aiplatform.googleapis.com' : `https://${region}-aiplatform.googleapis.com`);
   return { url: `${host}/v1/projects/${project}/locations/${region}/publishers/${publisher}/models/${model}:${method}`, headers: { Authorization: 'Bearer ' + await vertexToken(conn) } };
 }
@@ -901,7 +906,7 @@ async function call(conn: Conn, url: string, { method = 'POST', headers = {}, bo
   } catch (e) {
     if (errName(e) === 'AbortError') throw e;
     if (!conn.proxy) { try { res = await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dreamland': '1' }, body: JSON.stringify({ url, method, headers, body }), signal }); } catch (e2) { if (errName(e2) === 'AbortError') throw e2; res = null; } }
-    if (!res) throw new Error(`연결하지 못했어요 (${errMsg(e)}). 주소를 확인하거나, 연결 설정에서 "드림랜드 서버를 거쳐 연결"을 켜 보세요.`);
+    if (!res) throw new Error(tr('engine.err.connect', { why: errMsg(e) }));
   }
   const r = res as Response;
   if (!r.ok) {
@@ -910,7 +915,7 @@ async function call(conn: Conn, url: string, { method = 'POST', headers = {}, bo
       const j = JSON.parse(t as string), e = Array.isArray(j) ? j[0]?.error : j.error;
       t = e?.message || e?.type || j.message || j.detail || (typeof j.error === 'string' ? j.error : t);
     } catch { /* JSON 이 아니면 글 그대로 */ }
-    throw new Error(`API 오류 ${r.status}: ${String(t).slice(0, 400) || r.statusText}`);
+    throw new Error(tr('engine.err.apiStatus', { status: r.status, body: String(t).slice(0, 400) || r.statusText }));
   }
   return r;
 }
@@ -1056,7 +1061,7 @@ export interface StreamResult { text: string; think: string; finish: string | un
 
 /** 스트리밍 채팅. onText(delta), onThink(delta) */
 export async function streamChat(conn: Conn | null | undefined, Pin: Params, messages: PromptList, { signal, onText = () => { }, onThink = () => { } }: StreamOpts = {}): Promise<StreamResult> {
-  if (!conn) throw new Error('API 연결이 없습니다. 먼저 연결을 추가해 주세요.');
+  if (!conn) throw new Error(tr('engine.err.noConn'));
   let P = Pin;
   const def = defOf(conn), kind = def.kind, model = conn.model as string;
   const stream = P.stream !== false;
@@ -1077,9 +1082,9 @@ export async function streamChat(conn: Conn | null | undefined, Pin: Params, mes
     return { text, think, finish: 'stop', usage };
   }
 
-  if (!model) throw new Error('모델이 선택되지 않았습니다.');
+  if (!model) throw new Error(tr('engine.err.noModel'));
   const base = baseOf(conn);
-  if (!base && kind !== 'vertex' && kind !== 'horde' && kind !== 'novelai') throw new Error('연결 주소가 비어 있습니다.');
+  if (!base && kind !== 'vertex' && kind !== 'horde' && kind !== 'novelai') throw new Error(tr('engine.err.noBase'));
 
   const claudeOnVertex = kind === 'vertex' && /^claude/i.test(model);
   if (kind === 'anthropic' || claudeOnVertex) {
@@ -1111,7 +1116,7 @@ export async function streamChat(conn: Conn | null | undefined, Pin: Params, mes
       delete body.model; body.anthropic_version = 'vertex-2023-10-16';
     }
     const res = await call(conn, url, { headers, body, signal });
-    const stopNote = (r?: string) => { if (r === 'refusal') put('\n\n*(모델이 이 요청에 대한 응답을 거절했습니다.)*'); };
+    const stopNote = (r?: string) => { if (r === 'refusal') put('\n\n' + tr('engine.refused')); };
     if (!stream) {
       const j: AnthJson = await res.json();
       for (const b of j.content || []) { if (b.type === 'text') put(b.text); if (b.type === 'thinking') putThink(b.thinking); }
@@ -1122,7 +1127,7 @@ export async function streamChat(conn: Conn | null | undefined, Pin: Params, mes
       const ev = evRaw as AnthEvent;
       if (ev.type === 'content_block_delta') { if (ev.delta?.type === 'text_delta') put(ev.delta.text); else if (ev.delta?.type === 'thinking_delta') putThink(ev.delta.thinking); }
       else if (ev.type === 'message_delta') { finish = ev.delta?.stop_reason || finish; usage = ev.usage || usage; }
-      else if (ev.type === 'error') throw new Error('API 오류: ' + (ev.error?.message || 'stream error'));
+      else if (ev.type === 'error') throw new Error(tr('engine.err.api', { why: ev.error?.message || 'stream error' }));
     }
     stopNote(finish);
     return { text, think, finish, usage };
@@ -1150,19 +1155,19 @@ export async function streamChat(conn: Conn | null | undefined, Pin: Params, mes
     const eat = (jIn: unknown) => {
       let j = jIn as GemJson;
       if (Array.isArray(j)) j = j[0] || {};
-      if (j.error) throw new Error(`API 오류 ${j.error.code || ''}: ${j.error.message || JSON.stringify(j.error)}`);
+      if (j.error) throw new Error(tr('engine.err.apiStatus', { status: j.error.code || '', body: j.error.message || JSON.stringify(j.error) }));
       const c = j.candidates?.[0];
       for (const p of c?.content?.parts || []) { if (p.thought) putThink(p.text); else put(p.text); }
       if (c?.finishReason) finish = c.finishReason;
-      if (j.promptFeedback?.blockReason) put(`\n\n*(요청이 차단되었습니다: ${j.promptFeedback.blockReason})*`);
+      if (j.promptFeedback?.blockReason) put('\n\n' + tr('engine.blocked', { why: j.promptFeedback.blockReason }));
       usage = j.usageMetadata || usage;
     };
     if (stream) { for await (const ev of sse(res)) eat(ev); } else eat(await res.json());
     // 글이 한 자도 안 왔으면 이유를 알려 준다
     if (!text.trim()) {
-      const why = ({ MAX_TOKENS: '출력 토큰이 모자라 답변을 쓰기 전에 끊겼어요. 프리셋의 최대 응답 길이를 늘려 주세요.', SAFETY: '안전 필터에 걸려 답변이 비었어요.', PROHIBITED_CONTENT: '금지된 내용으로 판단되어 답변이 비었어요.', RECITATION: '인용 필터에 걸려 답변이 비었어요.', BLOCKLIST: '차단 목록에 걸려 답변이 비었어요.', SPII: '개인정보 필터에 걸려 답변이 비었어요.', OTHER: '모델이 이유를 밝히지 않고 답변을 비웠어요.' } as Record<string, string>)[finish as string];
+      const why = ['MAX_TOKENS', 'SAFETY', 'PROHIBITED_CONTENT', 'RECITATION', 'BLOCKLIST', 'SPII', 'OTHER'].includes(finish as string) ? tr('engine.finish.' + finish) : '';
       if (why) throw new Error(`${why} (finishReason: ${finish})`);
-      if (!think) throw new Error('모델이 빈 답변을 돌려줬어요. 모델 이름과 지역(리전), 프로젝트 ID 를 확인해 주세요.');
+      if (!think) throw new Error(tr('engine.err.empty'));
     }
     return { text, think, finish, usage };
   }
@@ -1177,7 +1182,7 @@ export async function streamChat(conn: Conn | null | undefined, Pin: Params, mes
       Object.assign(body, extra);
       const res = await call(conn, base + '/completions', { headers: { 'Content-Type': 'application/json', ...(conn.apiKey ? { Authorization: 'Bearer ' + conn.apiKey } : {}) }, body, signal });
       if (!stream) { const j: OaiJson = await res.json(); put(j.choices?.[0]?.text || ''); return { text, think, finish: j.choices?.[0]?.finish_reason, usage: j.usage }; }
-      for await (const evRaw of sse(res)) { const ev = evRaw as OaiJson; if (ev.error) throw new Error('API 오류: ' + (ev.error.message || JSON.stringify(ev.error))); put(ev.choices?.[0]?.text || ''); if (ev.choices?.[0]?.finish_reason) finish = ev.choices[0].finish_reason; }
+      for await (const evRaw of sse(res)) { const ev = evRaw as OaiJson; if (ev.error) throw new Error(tr('engine.err.api', { why: ev.error.message || JSON.stringify(ev.error) })); put(ev.choices?.[0]?.text || ''); if (ev.choices?.[0]?.finish_reason) finish = ev.choices[0].finish_reason; }
       return { text, think, finish, usage };
     }
     const kparams = { max_context_length: P.contextSize || 8192, max_length: Math.min(P.maxTokens || 512, 2048), stop_sequence: stops, ...(num(P.temperature) ? { temperature: +P.temperature } : {}), ...(num(P.topP) ? { top_p: +P.topP } : {}), ...(num(P.topK) ? { top_k: +P.topK } : {}), ...(num(P.topA) ? { top_a: +P.topA } : {}), ...(num(P.minP) ? { min_p: +P.minP } : {}), ...(num(P.repPen) ? { rep_pen: +P.repPen } : {}) };
@@ -1192,7 +1197,7 @@ export async function streamChat(conn: Conn | null | undefined, Pin: Params, mes
         for (;;) {
           await new Promise((r, j) => { const t = setTimeout(r, 2500); signal?.addEventListener('abort', () => { clearTimeout(t); j(new DOMException('aborted', 'AbortError')); }, { once: true }); });
           const st = await (await call(conn, hb + '/generate/text/status/' + id, { method: 'GET', headers, signal })).json() as { faulted?: boolean; done?: boolean; generations?: { text?: string }[] };
-          if (st.faulted) throw new Error('AI Horde 작업이 실패했어요.');
+          if (st.faulted) throw new Error(tr('engine.err.horde'));
           if (st.done) { put(st.generations?.[0]?.text || ''); return { text, think, finish: 'stop', usage }; }
         }
       } catch (e) { if (errName(e) === 'AbortError') call(conn, hb + '/generate/text/status/' + id, { method: 'DELETE', headers }).catch(() => { }); throw e; }
@@ -1235,7 +1240,7 @@ export async function streamChat(conn: Conn | null | undefined, Pin: Params, mes
   }
   for await (const evRaw of sse(res)) {
     const ev = evRaw as OaiJson;
-    if (ev.error) throw new Error('API 오류: ' + (ev.error.message || JSON.stringify(ev.error)));
+    if (ev.error) throw new Error(tr('engine.err.api', { why: ev.error.message || JSON.stringify(ev.error) }));
     const d = ev.choices?.[0]?.delta || {};
     putThink(d.reasoning_content || d.reasoning || '');
     put(typeof d.content === 'string' ? d.content : '');

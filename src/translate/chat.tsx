@@ -10,6 +10,7 @@ import { artOf, busy, cfg, persist, translate, translateMsg } from './logic';
 import { toast } from '../ui';
 import { X } from '../lib/hooks';
 import { chatApi } from '../chat/actions';
+import { t } from '../i18n';
 
 export const GLOBE = 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM3 12h18M12 3c2.6 2.7 3.9 5.7 3.9 9s-1.3 6.3-3.9 9c-2.6-2.7-3.9-5.7-3.9-9s1.3-6.3 3.9-9z';
 export const SPIRAL = 'M20 11a8 8 0 1 0-2.3 6.3M20 4v7h-7';   // 다시 번역: 새로 고침 모양
@@ -21,18 +22,18 @@ const slot = () => { const el = document.createElement('span'); el.className = '
 /** 번역문을 메시지 자리에서 바로 고친다. 비우고 저장하면 번역을 지운다 */
 function EditBox({ value, onClose, onDone }: { value: string; onClose: () => void; onDone: (v: string) => void }) {
   const ta = useRef<HTMLTextAreaElement>(null), text = useRef(value);   // 마지막으로 적은 글 (상자가 먼저 내려가도 잃지 않게)
-  const fit = () => { const t = ta.current; if (!t) return; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight + 4, innerHeight * 0.6) + 'px'; };
+  const fit = () => { const el = ta.current; if (!el) return; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight + 4, innerHeight * 0.6) + 'px'; };
   useEffect(() => { fit(); ta.current?.focus({ preventScroll: true }); }, []);
   return <>
-    <div className="trx-edit-head"><PathIcon d={SHEET} size={15} /><b>번역 고치기</b><span>원문은 그대로 두고 번역문만 바꿉니다. 비우고 저장하면 번역을 지웁니다.</span></div>
+    <div className="trx-edit-head"><PathIcon d={SHEET} size={15} /><b>{t('translate.edit.title')}</b><span>{t('translate.edit.hint')}</span></div>
     <textarea className="inp trx-edit-area" ref={ta} defaultValue={value} spellCheck={false} onInput={e => { text.current = e.currentTarget.value; fit(); }}
       onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) onDone(text.current); }} />
-    <div className="row end"><Btn label="취소" cls="ghost" onClick={onClose} /><Btn label="저장" cls="primary" ic="check" onClick={() => onDone(text.current)} /></div>
+    <div className="row end"><Btn label={t('common.cancel')} cls="ghost" onClick={onClose} /><Btn label={t('common.save')} cls="primary" ic="check" onClick={() => onDone(text.current)} /></div>
   </>;
 }
 function editTranslation(m: Msg) {
   const { chat, msgs } = chatApi.current(); const s = m?.swipes?.[m.sw];
-  if (!chat || !s?.tr) return toast('고칠 번역문이 없어요. 먼저 번역해 주세요.');
+  if (!chat || !s?.tr) return toast(t('translate.edit.none'));
   const art = artOf(m.id), body = art?.querySelector<HTMLElement>('.msg-body');
   if (!art || !body || art.querySelector('.trx-edit')) return;
   const box = document.createElement('div'); box.className = 'trx-edit';
@@ -51,7 +52,7 @@ async function quickTranslate(b: HTMLButtonElement) {
   const ta = b.closest('.composer-box')?.querySelector('textarea'); if (!ta) return;
   const st = ta.selectionStart, en = ta.selectionEnd, part = en > st && en - st < ta.value.length;
   const src = part ? ta.value.slice(st, en) : ta.value;
-  if (!src.trim()) return toast('번역할 내용을 먼저 적어 주세요');
+  if (!src.trim()) return toast(t('chat.translate.empty'));
   quickBusy = true; b.classList.add('busy');
   try {
     const out = await (X.translate || translate)(src, cfg().inputLang || 'English', { chat: chatApi.current().chat });
@@ -59,7 +60,7 @@ async function quickTranslate(b: HTMLButtonElement) {
     const next = part ? ta.value.slice(0, st) + out + ta.value.slice(en) : out;
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(ta, next);
     ta.dispatchEvent(new Event('input', { bubbles: true })); ta.focus();
-  } catch (e) { toast('번역 실패: ' + errMsg(e), 'err'); }
+  } catch (e) { toast(t('chat.translate.fail', { err: errMsg(e) }), 'err'); }
   finally { quickBusy = false; b.classList.remove('busy'); }
 }
 
@@ -77,11 +78,11 @@ function decorate() {
     const m = msgs.find(x => x.id === art.dataset.id), s = m?.swipes?.[m.sw]; if (!m || !s) continue;
     const wait = busy.has(m.id) ? 'busy' : '';
     const add: BtnDef[] = [];
-    if (c.btnTranslate !== false) add.push({ cls: 'trx-go', d: GLOBE, title: s.tr ? (s.showTr ? '원문 보기' : '번역 보기') : '번역', mark: [wait, s.tr ? (s.showTr ? 'on' : 'has') : ''].filter(Boolean).join(' '), fn: x => void translateMsg(x) });
-    if (c.btnRe !== false) add.push({ cls: 'trx-re', d: SPIRAL, title: '다시 번역', mark: wait, fn: x => void translateMsg(x, true) });
-    if (c.btnEdit !== false) add.push({ cls: 'trx-ed', d: SHEET, title: '번역 고치기', mark: s.tr ? '' : 'idle', fn: editTranslation });
+    if (c.btnTranslate !== false) add.push({ cls: 'trx-go', d: GLOBE, title: s.tr ? (s.showTr ? t('chat.msgMenu.original') : t('chat.msgMenu.showTr')) : t('chat.msgMenu.translate'), mark: [wait, s.tr ? (s.showTr ? 'on' : 'has') : ''].filter(Boolean).join(' '), fn: x => void translateMsg(x) });
+    if (c.btnRe !== false) add.push({ cls: 'trx-re', d: SPIRAL, title: t('chat.msgMenu.retranslate'), mark: wait, fn: x => void translateMsg(x, true) });
+    if (c.btnEdit !== false) add.push({ cls: 'trx-ed', d: SHEET, title: t('chat.translate.edit'), mark: s.tr ? '' : 'idle', fn: editTranslation });
     if (!add.length) continue;
-    const host = slot(), more = [...tools.children].find(x => (x as HTMLElement).title === '더 보기');
+    const host = slot(), more = [...tools.children].find(x => (x as HTMLElement).title === t('chat.msg.more'));
     if (more) more.before(host); else tools.append(host);
     createRoot(host).render(<MsgBtns id={m.id} list={add} />);
     if (s.tr && s.showTr) art.classList.add('trx-shown');
@@ -91,7 +92,7 @@ function decorate() {
   else if (box && !have && !box.querySelector('.trx-slot')) {
     const host = slot();
     (box.querySelector('.send') || box.lastElementChild)?.before(host);
-    createRoot(host).render(<button type="button" className="trx-quick" title={`입력한 글을 ${langLabel(c.inputLang || 'English')}(으)로 번역 · 일부만 고르면 그 부분만`} aria-label="입력한 글 번역"
+    createRoot(host).render(<button type="button" className="trx-quick" title={t('translate.quick.title', { lang: langLabel(c.inputLang || 'English') })} aria-label={t('translate.quick.aria')}
       onClick={e => void quickTranslate(e.currentTarget)}><PathIcon d={GLOBE} size={19} /></button>);
   }
 }

@@ -3,6 +3,7 @@
 import { S, now, debounce } from './core';
 import { quickCall } from './engine';
 import { Clock } from './clock';
+import { t } from '../i18n';
 
 const clockDate = () => Clock.date();
 
@@ -11,9 +12,14 @@ export interface Block { from: number; to: number; status: Status; activity: str
 export interface Sched { on?: boolean; days: Block[][]; guide?: string; at?: number }
 type RawBlock = { from?: unknown; to?: unknown; status?: unknown; activity?: unknown };
 
+/** 한국어 요일 이름 (모델 답을 읽을 때 쓰는 식별자. 화면에는 dayName · dayFull) */
 export const DAYS = ['월', '화', '수', '목', '금', '토', '일'];
 export const DAY_EN = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-export const STATUS: Record<string, string> = { online: '온라인', idle: '자리 비움', dnd: '방해 금지', offline: '오프라인' };
+/** 화면에 쓰는 요일 이름 (월요일이 0): 짧게 · 길게 */
+export const dayName = (i: number) => t(`schedule.day.${i}`);
+export const dayFull = (i: number) => t(`schedule.dayFull.${i}`);
+/** 상태 이름 (화면용, 읽을 때마다 지금 언어로) */
+export const STATUS: Record<string, string> = Object.defineProperties({} as Record<string, string>, Object.fromEntries(['online', 'idle', 'dnd', 'offline'].map(k => [k, { enumerable: true, get: () => t(`schedule.status.${k}`) }])));
 export const STATUS_EN: Record<Status, string> = { online: 'online', idle: 'idle / half-available', dnd: 'busy / do not disturb', offline: 'offline' };
 export const DAY = 1440, WEEK = 10080, FREE = '자유 시간';
 const isStatus = (v: unknown): v is Status => typeof v === 'string' && Object.prototype.hasOwnProperty.call(STATUS, v);
@@ -78,9 +84,9 @@ export const todayLine = (sched?: Sched | null, date: Date = clockDate()) => (sc
 /** 모델이 돌려준 일정 JSON 을 읽는다. { days: [7칸], found: 읽힌 요일 수 } */
 export function parseSchedule(text: unknown): { days: Block[][]; found: number } {
   let s = String(text || '').trim(); const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i); if (fence) s = fence[1].trim();
-  const a = s.indexOf('{'), z = s.lastIndexOf('}'); if (a < 0 || z <= a) throw new Error('일정 형식(JSON)을 찾지 못했어요.');
+  const a = s.indexOf('{'), z = s.lastIndexOf('}'); if (a < 0 || z <= a) throw new Error(t('schedule.err.noJson'));
   s = s.slice(a, z + 1).replace(/,\s*([\]}])/g, '$1');
-  let j: Record<string, unknown>; try { j = JSON.parse(s) as Record<string, unknown>; } catch { throw new Error('일정을 읽지 못했어요. 모델이 형식을 지키지 않았어요.'); }
+  let j: Record<string, unknown>; try { j = JSON.parse(s) as Record<string, unknown>; } catch { throw new Error(t('schedule.err.badJson')); }
   const src = (j.days && typeof j.days === 'object' ? j.days : j) as Record<string, unknown>, raw: RawBlock[][] = Array.from({ length: 7 }, () => []), carry: RawBlock[][] = Array.from({ length: 7 }, () => []);
   const key = (k: string) => { const t = String(k).trim().toLowerCase(); let i = DAY_EN.findIndex(d => t.startsWith(d.toLowerCase().slice(0, 3))); if (i < 0) i = DAYS.findIndex(d => t.startsWith(d)); if (i < 0 && /^[0-6]$/.test(t) && Array.isArray(src)) i = +t; return i; };
   let found = 0;
@@ -95,27 +101,15 @@ export function parseSchedule(text: unknown): { days: Block[][]; found: number }
       else if (to < from) { raw[i].push({ ...blk, from, to: DAY }); if (to > 0) carry[(i + 1) % 7].push({ ...blk, from: 0, to }); }   // 자정을 넘기는 블록은 둘로 나눈다
     }
   }
-  if (!found) throw new Error('요일별 일정이 들어 있지 않아요.');
+  if (!found) throw new Error(t('schedule.err.noDays'));
   return { days: raw.map((d, i) => normDay(d, d.length ? carry[i] : [])), found };
 }
 
 // ── 선톡 동기 ──
 /** 종류: [이름, 기본 쿨다운(시간), 설명] */
-export const MOTIVES: Record<string, [string, number, string]> = {
-  later: ['약속한 연락', 0, '"이따 연락할게"라고 한 시간이 되었을 때'],
-  away: ['부재 중 연락', 0, '오래 자리를 비운 사이에 남겨 둔 한 통'],
-  back: ['복귀', 4, '내 말에 답하지 못하다가 여유가 생겼을 때'],
-  longAbsence: ['장기 부재', 36, '오랫동안 서로 연락이 없었을 때'],
-  morning: ['아침 인사', 20, '자고 일어나 하루를 시작할 때'],
-  night: ['밤 인사', 20, '잠들기 전'],
-  afterBusy: ['바쁜 뒤', 3, '바쁜 일을 막 끝냈을 때'],
-  meal: ['식사', 3, '밥을 먹거나 잠깐 쉬는 틈'],
-  transition: ['일과 전환', 2, '하던 일이 바뀌는 사이'],
-  unread: ['읽지 않음', 0, '보낸 말을 내가 아직 읽지 않았을 때'],
-  ghosted: ['읽고 답 없음', 0, '읽고도 답이 없을 때'],
-  checkin: ['그냥 안부', 0, '특별한 이유 없이 생각났을 때'],
-  chime: ['끼어들기', 0, '그룹에서 다른 캐릭터의 말에 반응'],
-};
+const MOTIVE_HOURS: Record<string, number> = { later: 0, away: 0, back: 4, longAbsence: 36, morning: 20, night: 20, afterBusy: 3, meal: 3, transition: 2, unread: 0, ghosted: 0, checkin: 0, chime: 0 };
+/** 이름 · 설명은 읽을 때마다 지금 언어로 (schedule.motive.<종류>.name / .desc) */
+export const MOTIVES: Record<string, [string, number, string]> = Object.defineProperties({} as Record<string, [string, number, string]>, Object.fromEntries(Object.entries(MOTIVE_HOURS).map(([k, h]) => [k, { enumerable: true, get: (): [string, number, string] => [t(`schedule.motive.${k}.name`), h, t(`schedule.motive.${k}.desc`)] }])));
 export const motiveLabel = (k: string) => MOTIVES[k]?.[0] || '';
 /** 일정과 시각에서 고르는 순서 */
 export const MOTIVE_ORDER = ['longAbsence', 'back', 'morning', 'night', 'afterBusy', 'meal', 'transition'] as const;
@@ -163,30 +157,30 @@ export interface PlanEnv {
  * → { at, kind: 'later'|'owed'|'auto'|'', blocks: [막힌 이유], notes: [미뤄지는 이유] }
  */
 export function planAuto(env: PlanEnv) {
-  const t = env.nowTs || Date.now(), blocks: string[] = [], notes: string[] = [];
-  const hold = (at: number) => { let x = at; if (env.wakeMs > 0) x = Math.max(x, t + env.wakeMs); if (env.quietMs > 0) x = Math.max(x, t + env.quietMs); return x; };
-  if (!env.talk) return { at: 0, kind: '', blocks: ['대화 모드가 아니에요'], notes };
-  if (!env.conn) blocks.push('API 연결이 없어요');
-  if (env.scene) blocks.push('장면이 열려 있는 동안에는 연락하지 않아요');
-  if (env.userStatus === 'dnd') blocks.push('내 상태가 방해 금지예요');
-  if (env.wakeMs === Infinity) blocks.push('캐릭터가 계속 오프라인이에요');
+  const tr = t, t0 = env.nowTs || Date.now(), blocks: string[] = [], notes: string[] = [];
+  const hold = (at: number) => { let x = at; if (env.wakeMs > 0) x = Math.max(x, t0 + env.wakeMs); if (env.quietMs > 0) x = Math.max(x, t0 + env.quietMs); return x; };
+  if (!env.talk) return { at: 0, kind: '', blocks: [tr('schedule.plan.notTalk')], notes };
+  if (!env.conn) blocks.push(tr('schedule.plan.noConn'));
+  if (env.scene) blocks.push(tr('schedule.plan.scene'));
+  if (env.userStatus === 'dnd') blocks.push(tr('schedule.plan.userDnd'));
+  if (env.wakeMs === Infinity) blocks.push(tr('schedule.plan.alwaysOffline'));
   const hard = blocks.length > 0;
-  if (env.wakeMs > 0 && isFinite(env.wakeMs)) notes.push('캐릭터가 오프라인이라 깨어난 뒤로 미뤄요');
-  if (env.quietMs > 0) notes.push('연락하지 않는 시간대라 그 뒤로 미뤄요');
-  if (env.hidden) notes.push('화면을 보고 있지 않아서 돌아올 때까지 미뤄요');
+  if (env.wakeMs > 0 && isFinite(env.wakeMs)) notes.push(tr('schedule.plan.offlineWait'));
+  if (env.quietMs > 0) notes.push(tr('schedule.plan.quietWait'));
+  if (env.hidden) notes.push(tr('schedule.plan.hiddenWait'));
   // 답하지 못한 내 말이 먼저, 그다음 약속, 그다음 조용할 때
   const cand: { at: number; kind: string }[] = [];
-  if (env.owedAt && !hard) cand.push({ at: hold(Math.max(env.owedAt, t)), kind: 'owed' });
-  if (env.laterAt && env.laterOn !== false && !hard) cand.push({ at: hold(Math.max(env.laterAt, t)), kind: 'later' });
+  if (env.owedAt && !hard) cand.push({ at: hold(Math.max(env.owedAt, t0)), kind: 'owed' });
+  if (env.laterAt && env.laterOn !== false && !hard) cand.push({ at: hold(Math.max(env.laterAt, t0)), kind: 'later' });
   const auto: string[] = [];
-  if (!env.on) auto.push('"먼저 말 걸기"가 꺼져 있어요');
-  if (!env.hasUser) auto.push('아직 내가 한 번도 말하지 않았어요');
-  if (env.count >= env.cap) auto.push(`오늘 한도를 다 썼어요 (${env.count}/${env.cap})`);
-  if (env.streak >= env.maxStreak) auto.push(`답이 없어 ${env.streak}번 연달아 보낸 뒤 멈췄어요 — 내가 말하면 다시 시작해요`);
+  if (!env.on) auto.push(tr('schedule.plan.autoOff'));
+  if (!env.hasUser) auto.push(tr('schedule.plan.noUser'));
+  if (env.count >= env.cap) auto.push(tr('schedule.plan.cap', { count: env.count, cap: env.cap }));
+  if (env.streak >= env.maxStreak) auto.push(tr('schedule.plan.streak', { streak: env.streak }));
   if (!auto.length && !hard) {
     const wait = (env.minutes || 10) * 60000 * Math.pow(Math.max(1, +(env.backoff ?? 0) || 2), env.streak || 0) * (env.status === 'dnd' ? 3 : 1);
-    if (env.status === 'dnd') notes.push('캐릭터가 바빠서 평소의 3배를 기다려요');
-    cand.push({ at: hold(Math.max((env.base || t) + wait, t)), kind: 'auto' });
+    if (env.status === 'dnd') notes.push(tr('schedule.plan.busyWait'));
+    cand.push({ at: hold(Math.max((env.base || t0) + wait, t0)), kind: 'auto' });
   }
   cand.sort((a, b) => a.at - b.at);
   return { at: cand[0]?.at || 0, kind: cand[0]?.kind || '', blocks: [...blocks, ...(cand.some(c => c.kind === 'auto') ? [] : auto)], notes };
@@ -237,7 +231,7 @@ export const Schedule = {
   /** LLM 으로 일주일(또는 하루) 일정을 짠다 — 호출 1회 */
   async generate(ch: SchedChar, { guide = '', only = -1, signal }: { guide?: string; only?: number; signal?: AbortSignal } = {}): Promise<Block[][]> {
     const S = SS(), conn = S.get('conns', S.settings.helpers?.all) || S.get('conns', ch.bind?.connId) || S.conn();
-    if (!conn) throw new Error('먼저 API 연결을 추가해 주세요.');
+    if (!conn) throw new Error(t('schedule.err.noConn'));
     const cur = rawSchedule(ch), sheet = [ch.description, ch.personality && `Personality: ${ch.personality}`, ch.scenario && `Situation: ${ch.scenario}`].filter(Boolean).join('\n').replace(/\{\{char\}\}/gi, ch.name).replace(/\{\{user\}\}/gi, S.settings.userNameFallback || 'the user').slice(0, 6000);
     const others = only >= 0 && hasBlocks(cur) ? DAY_EN.map((d, i) => i === only ? '' : `${d}: ${(cur!.days[i] || []).map(b => `${fmtMin(b.from)}-${fmtMin(b.to)} ${b.activity} (${b.status})`).join('; ') || 'unscheduled'}`).filter(Boolean).join('\n') : '';
     const sys = (String(modes().schedPrompt || '').trim() || SCHEDULE_PROMPT)
@@ -247,8 +241,8 @@ export const Schedule = {
       .replace('{{shape}}', only >= 0 ? `Return only the "${DAY_EN[only]}" key.${others ? ` The other days, for consistency (do not rewrite them):\n${others}` : ''}` : 'Include all seven keys, Monday to Sunday, each fully filled in.');
     const out = await ask(sys, only >= 0 ? `Write ${DAY_EN[only]} now.` : 'Write the week now.', { maxTokens: only >= 0 ? 1500 : 5000, conn, signal });
     const got = parseSchedule(out);
-    if (only >= 0) { if (!got.days[only].length) throw new Error(`${DAYS[only]}요일 일정이 비어 돌아왔어요.`); const days = normWeek(cur?.days); days[only] = got.days[only]; return days; }
-    if (got.days.filter(d => d.length).length < 7) throw new Error(`일곱 요일 중 ${got.days.filter(d => d.length).length}일만 돌아왔어요. 다시 시도해 주세요.`);
+    if (only >= 0) { if (!got.days[only].length) throw new Error(t('schedule.err.dayEmpty', { day: dayFull(only) })); const days = normWeek(cur?.days); days[only] = got.days[only]; return days; }
+    if (got.days.filter(d => d.length).length < 7) throw new Error(t('schedule.err.partial', { count: got.days.filter(d => d.length).length }));
     return got.days;
   },
 };

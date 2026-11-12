@@ -17,10 +17,11 @@ import { Memory } from '../lib/memory';
 import { Illust, translateText } from '../lib/illust';
 import { Clock } from '../lib/clock';
 import { render } from '../lib/format';
+import { t, getLang, fmtDate } from '../i18n';
 
 // ── 방 · 이름 ──
 export const charsOf = (chat: Room): Cast[] => chat.charIds.map(id => S.get('chars', id)).filter((c): c is Cast => !!c);
-export const titleOf = (chat: Room) => charsOf(chat).map(c => c.name).join(', ') || '삭제된 캐릭터';
+export const titleOf = (chat: Room) => charsOf(chat).map(c => c.name).join(', ') || t('chat.deletedChar');
 export const modeOf = (chat?: Room | null): 'rp' | 'talk' => chat?.mode === 'talk' ? 'talk' : 'rp';
 export const groupKey = (c: Room) => [...c.charIds].sort().join('+') || '-';
 let roomIdx: Map<string, number> | null = null, roomIdxKey = '';
@@ -29,9 +30,9 @@ const roomNo = (c: Room) => {
   if (!roomIdx || roomIdxKey !== key || !roomIdx.has(c.id)) { roomIdx = new Map(); roomIdxKey = key; const seen = new Map<string, number>(); for (const x of [...S.chats].sort((a, b) => a.createdAt - b.createdAt)) { const k = groupKey(x), n = (seen.get(k) || 0) + 1; seen.set(k, n); roomIdx.set(x.id, n); } }
   return roomIdx.get(c.id) || 1;
 };
-export const roomName = (c: Room) => { const t = titleOf(c), n = String(c.name || '').trim(); const cut = n.toLowerCase().startsWith(t.toLowerCase()) ? n.slice(t.length).replace(/^[\s\-–—·:@]+/, '') : n; return cut || `대화 ${roomNo(c)}`; };
+export const roomName = (c: Room) => { const ttl = titleOf(c), n = String(c.name || '').trim(); const cut = n.toLowerCase().startsWith(ttl.toLowerCase()) ? n.slice(ttl.length).replace(/^[\s\-–—·:@]+/, '') : n; return cut || t('chat.roomN', { n: roomNo(c) }); };
 export const daysOf = (c: Room) => Math.max(1, Math.round(((c.updatedAt || c.createdAt) - c.createdAt) / 86400000) + 1);
-export const ago = (t: number) => { const d = (Date.now() - t) / 60000; return d < 1 ? '방금' : d < 60 ? `${Math.floor(d)}분 전` : d < 1440 ? `${Math.floor(d / 60)}시간 전` : d < 43200 ? `${Math.floor(d / 1440)}일 전` : new Date(t).toLocaleDateString('ko-KR', { year: '2-digit', month: 'numeric', day: 'numeric' }); };
+export const ago = (ts: number) => { const d = (Date.now() - ts) / 60000; return d < 1 ? t('chat.ago.now') : d < 60 ? t('chat.ago.min', { n: Math.floor(d) }) : d < 1440 ? t('chat.ago.hour', { n: Math.floor(d / 60) }) : d < 43200 ? t('chat.ago.day', { n: Math.floor(d / 1440) }) : getLang() === 'ko' ? new Date(ts).toLocaleDateString('ko-KR', { year: '2-digit', month: 'numeric', day: 'numeric' }) : fmtDate(ts, { year: '2-digit', month: 'numeric', day: 'numeric' }); };
 const now = () => Date.now();
 const save = () => S.saveMsgs(cur.chat!, cur.msgs);
 const onChat = () => route.page === 'chat';
@@ -159,11 +160,11 @@ async function afterDelete() {
   drawSide(); await save(); emit('message:deleted', { chat: cur.chat, msgs: cur.msgs });
 }
 export async function delMsg(m: Msg) {
-  if (cur.msgs.indexOf(m) < 0 || (ux().confirmDelete && !(await confirmBox('이 메시지를 삭제할까요?', '삭제', true)))) return;
+  if (cur.msgs.indexOf(m) < 0 || (ux().confirmDelete && !(await confirmBox(t('chat.msg.confirmDelete'), t('common.delete'), true)))) return;
   const i = cur.msgs.indexOf(m); if (i < 0) return; cur.msgs.splice(i, 1); await afterDelete();
 }
 export async function delFrom(m: Msg) {
-  if (!(await confirmBox('이 메시지와 그 아래를 모두 삭제할까요?', '삭제', true))) return;
+  if (!(await confirmBox(t('chat.msg.confirmDeleteFrom'), t('common.delete'), true))) return;
   const i = cur.msgs.indexOf(m); if (i < 0) return; cur.msgs.splice(i); await afterDelete();
 }
 export async function toggleHidden(m: Msg) { m.hidden = !m.hidden; await save(); redraw(m); }
@@ -179,7 +180,7 @@ export async function branch(idx: number) {
   const c = cur.chat!;
   try {
     const n = S.chats.filter(x => x.parent?.id === c.id).length + 1;
-    const chat = newChat({ ...copy(c), id: uid(), name: `${roomName(c)} · 분기 ${n}`, createdAt: now(), src: '', pinned: false, parent: { id: c.id, at: idx + 1 }, diary: copy((c.diary || []).filter(d => (d.to || 0) <= idx + 1)), diaryAt: Math.min(c.diaryAt || 0, idx + 1) });
+    const chat = newChat({ ...copy(c), id: uid(), name: t('chat.branch.name', { room: roomName(c), n }), createdAt: now(), src: '', pinned: false, parent: { id: c.id, at: idx + 1 }, diary: copy((c.diary || []).filter(d => (d.to || 0) <= idx + 1)), diaryAt: Math.min(c.diaryAt || 0, idx + 1) });
     const list = copy(cur.msgs.slice(0, idx + 1));
     Live.rewind(chat, list); syncScene(chat, list); delete chat.owed; chat.later = [];
     // 삽화는 대화방마다 따로 보관하므로 새 방 몫으로 복사한다
@@ -189,8 +190,8 @@ export async function branch(idx: number) {
     // 장기기억도 이어받는다 (분기점 뒤의 기록은 다음 생성 때 걸러진다)
     const mem = await DB.get('mem', c.id).catch(() => null); if (mem) await DB.put('mem', { ...copy(mem), id: chat.id });
     await S.saveMsgs(chat, list);
-    toast(`"${chat.name}" 방을 만들어 옮겨 왔어요`, 'ok'); go('chat', chat.id);
-  } catch (e) { console.error(e); toast('분기하지 못했어요: ' + errMsg(e), 'err'); }
+    toast(t('chat.branch.done', { name: chat.name }), 'ok'); go('chat', chat.id);
+  } catch (e) { console.error(e); toast(t('chat.branch.fail', { err: errMsg(e) }), 'err'); }
 }
 // 후처리(번역 · 삽화) 결과를 그 메시지가 속한 방에 저장한다. 기다리는 사이 방을 옮겼거나 다시 열었어도 같은 메시지를 찾아 옮겨 적는다
 async function saveIn(chat: Room, list: Msg[], m: Msg, carry: (live: Msg) => void) {
@@ -201,41 +202,41 @@ const translator = () => X.translate || translateText;
 export async function translate(m: Msg, { again = false, chat = cur.chat!, msgs: list = cur.msgs } = {}) {
   const s = m.swipes[m.sw];
   if (s.tr && !again) { s.showTr = !s.showTr; await save(); return redraw(m); }
-  setStatus('번역 중…');
+  setStatus(t('chat.status.translating'));
   try {
     const idx = list.indexOf(m), user = S.persona(chat).name, n = S.settings.translate.context || 0;
     const context = n ? list.slice(Math.max(0, idx - n), idx).filter(x => !x.hidden).map(x => ({ name: x.role === 'user' ? user : (x.name || 'Narrator'), text: msgText(x) })) : [];
     const src = s.text;
     s.tr = await translator()(Illust.strip(s.text), S.settings.translate.lang, { chat, context }); s.showTr = true;
     await saveIn(chat, list, m, live => { const t = live.swipes?.[m.swipes.indexOf(s)]; if (t && t.text === src) { t.tr = s.tr; t.showTr = true; } });
-  } catch (e) { toast('번역 실패: ' + errMsg(e), 'err'); } finally { setStatus(''); }
+  } catch (e) { toast(t('chat.translate.fail', { err: errMsg(e) }), 'err'); } finally { setStatus(''); }
 }
 export async function editTranslation(m: Msg) {
-  const s = m.swipes[m.sw]; const v = await promptBox('번역 고치기', s.tr || '', { area: true });
+  const s = m.swipes[m.sw]; const v = await promptBox(t('chat.translate.edit'), s.tr || '', { area: true });
   if (v === null) return; if (v.trim()) { s.tr = v; s.showTr = true; } else { delete s.tr; s.showTr = false; }
   await save(); redraw(m);
 }
 export async function translateInput() {
-  const inp = ui.input, text = inp?.value.trim(); if (!inp || !text) return toast('번역할 내용을 먼저 적어 주세요');
-  setStatus('번역 중…');
-  try { inp.value = await translator()(text, S.settings.translate.inputLang || 'English', { chat: cur.chat }); inp.dispatchEvent(new Event('input')); } catch (e) { toast('번역 실패: ' + errMsg(e), 'err'); } finally { setStatus(''); }
+  const inp = ui.input, text = inp?.value.trim(); if (!inp || !text) return toast(t('chat.translate.empty'));
+  setStatus(t('chat.status.translating'));
+  try { inp.value = await translator()(text, S.settings.translate.inputLang || 'English', { chat: cur.chat }); inp.dispatchEvent(new Event('input')); } catch (e) { toast(t('chat.translate.fail', { err: errMsg(e) }), 'err'); } finally { setStatus(''); }
 }
 // ── 삽화 ──
 export function drawScene(m: Msg, scene: SceneSpec, at?: { chat: Room; msgs: Msg[] }) {
-  setStatus('삽화 그리는 중…');
+  setStatus(t('chat.status.drawing'));
   const g = cur.gen?.msgs.includes(m) ? cur.gen : null, chat = at?.chat || g?.chat || cur.chat!, list = at?.msgs || g?.msgs || cur.msgs;
   Illust.enqueue(chat, m, scene as unknown as Record<string, unknown>, async err => {
-    setStatus(''); if (err) return toast('삽화 실패: ' + err.message, 'err');
+    setStatus(''); if (err) return toast(t('chat.illust.fail', { err: err.message }), 'err');
     await saveIn(chat, list, m, live => m.swipes.forEach((sw, i) => { const t = live.swipes?.[i]; if (t && t.text === sw.text) { if (sw.illust) t.illust = sw.illust; if (sw.illustPlan) t.illustPlan = sw.illustPlan; if (sw.illustDraft) t.illustDraft = sw.illustDraft; } }));
   });
 }
 export async function removeIllust(m: Msg, s: Swipe, id: string) {
-  if (!(await confirmBox('이 삽화를 지울까요?', '지우기', true))) return;
+  if (!(await confirmBox(t('chat.illust.confirmRemove'), t('chat.illust.remove'), true))) return;
   const i = (s.illust || []).findIndex(x => x.id === id); if (i >= 0) s.illust!.splice(i, 1);
   await Illust.remove(id); await save(); redraw(m);
 }
 export function speak(text: string) {
-  if (!('speechSynthesis' in window)) return toast('이 브라우저는 읽어 주기를 지원하지 않아요', 'err');
+  if (!('speechSynthesis' in window)) return toast(t('chat.speak.unsupported'), 'err');
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text.replace(/[*_`#>]/g, '')); u.lang = /[가-힣]/.test(text) ? 'ko-KR' : 'en-US';
   speechSynthesis.speak(u);
@@ -250,7 +251,7 @@ export async function send() {
     const chat = cur.chat, chars = charsOf(chat), persona = S.persona(chat);
     const ctx = makeCtx({ chat, char: chars[0], chars, persona, msgs: cur.msgs, input: raw });
     let text = applyRegex(macro(raw, ctx), { who: 'user', target: 'store', ctx }), mine = '';
-    if (S.settings.translate.autoInput && text.trim()) { setStatus('번역 중…'); try { mine = text; text = await translator()(text, S.settings.translate.inputLang || 'English', { chat }); } catch (e) { mine = ''; toast('입력 번역 실패: ' + errMsg(e), 'err'); } finally { setStatus(''); } }
+    if (S.settings.translate.autoInput && text.trim()) { setStatus(t('chat.status.translating')); try { mine = text; text = await translator()(text, S.settings.translate.inputLang || 'English', { chat }); } catch (e) { mine = ''; toast(t('chat.translate.inputFail', { err: errMsg(e) }), 'err'); } finally { setStatus(''); } }
     const m = newMsg('user', text, { name: persona.name, ...(modeOf(chat) === 'talk' && chat.scene?.on ? { scene: true } : {}) });
     chat.seenAt = now();
     if (mine) { m.swipes[0].tr = mine; m.swipes[0].showTr = true; }   // 화면에는 내가 쓴 말을, 모델에는 번역문을
@@ -264,14 +265,16 @@ export async function send() {
   void generate('normal');
 }
 
-const HELP: [string, string][] = [['/roll 2d6+1', '주사위를 굴려 결과를 장면에 남깁니다'], ['/sys 문장', '나레이션(시스템) 메시지를 넣습니다'], ['/continue', '마지막 답변을 이어 씁니다'], ['/regen', '마지막 답변을 다시 생성합니다'], ['/imp', '내 차례를 AI 가 대신 씁니다'],
-  ['/note 문장', '작가 노트를 설정합니다 (비우면 삭제)'], ['/setvar 이름 값', '대화 변수를 설정합니다 · {{getvar::이름}}'], ['/getvar 이름', '대화 변수 값을 확인합니다'], ['/bg 주소', '대화 배경 이미지를 바꿉니다 (비우면 제거)']];
+// [명령, 인자 키, 설명 키] — 인자 이름 · 설명은 그릴 때 t() 로
+const HELP_KEYS: [string, string, string][] = [['/roll', '', 'roll'], ['/sys', 'text', 'sys'], ['/continue', '', 'continue'], ['/regen', '', 'regen'], ['/imp', '', 'imp'],
+  ['/note', 'text', 'note'], ['/setvar', 'nameValue', 'setvar'], ['/getvar', 'name', 'getvar'], ['/bg', 'url', 'bg']];
+const HELP = (): [string, string][] => HELP_KEYS.map(([c, a, d]) => [c === '/roll' ? '/roll 2d6+1' : a ? c + ' ' + t('chat.cmd.arg.' + a) : c, t('chat.cmd.help.' + d)]);
 const ALIAS: Record<string, string[]> = { '/roll': ['/r', '/dice'], '/sys': ['/narrate'], '/continue': ['/cont'], '/imp': ['/impersonate'], '/help': ['/?'] };
 /** 입력창의 명령어 목록: 기본 명령어 + 기능 · 확장이 등록한 명령어 */
 export function commandList(): CmdItem[] {
-  const base: CmdItem[] = [...HELP, ['/help', '명령어를 모두 봅니다'] as [string, string]].map(([c, d]) => { const [cmd, ...a] = c.split(' '); return { cmd, args: a.join(' '), help: d, alias: ALIAS[cmd] }; });
+  const base: CmdItem[] = [...HELP(), ['/help', t('chat.cmd.help.help')] as [string, string]].map(([c, d]) => { const [cmd, ...a] = c.split(' '); return { cmd, args: a.join(' '), help: d, alias: ALIAS[cmd] }; });
   const seen = new Set(base.flatMap(b => [b.cmd, ...(b.alias || [])]));
-  const ext = [...X.commands].filter(([k]) => !seen.has(k)).map(([k, v]) => ({ cmd: k, args: v.args || '', help: v.help || '확장 명령어' })).sort((x, y) => x.cmd.localeCompare(y.cmd));
+  const ext = [...X.commands].filter(([k]) => !seen.has(k)).map(([k, v]) => ({ cmd: k, args: v.args || '', help: v.help || t('chat.cmd.extension') })).sort((x, y) => x.cmd.localeCompare(y.cmd));
   return [...base, ...ext];
 }
 export async function command(line: string): Promise<unknown> {
@@ -280,7 +283,7 @@ export async function command(line: string): Promise<unknown> {
   const push = async (m: Msg) => { cur.msgs.push(m); appendMsg(m); toBottom(); await save(); };
   switch (cmd.toLowerCase()) {
     case '/roll': case '/r': case '/dice': {
-      const r = roll(arg || '1d20'); if (!r) return toast('주사위 식을 확인해 주세요 (예: 2d6+1)', 'err');
+      const r = roll(arg || '1d20'); if (!r) return toast(t('chat.cmd.badDice'), 'err');
       const who = S.persona(chat).name, sides = +r.expr.split('d')[1].replace(/[+-].*/, '');
       return push(newMsg('system', `${who}의 주사위 ${r.expr} → ${r.rolls.join(', ')}${r.mod ? ` (${r.mod > 0 ? '+' : ''}${r.mod})` : ''} = ${r.total}`, { dice: { expr: r.expr, rolls: r.rolls, mod: r.mod, total: r.total, sides }, diceBy: who }));
     }
@@ -288,14 +291,14 @@ export async function command(line: string): Promise<unknown> {
     case '/continue': case '/cont': return generate('continue');
     case '/regen': return generate('regen');
     case '/imp': case '/impersonate': return generate('impersonate');
-    case '/note': chat.note = { ...(chat.note || { depth: 4, role: 'system' }), text: arg }; await S.save('chats', chat, true); toast(arg ? '작가 노트를 설정했어요' : '작가 노트를 비웠어요'); if (cur.drawer) drawDrawer(); return;
+    case '/note': chat.note = { ...(chat.note || { depth: 4, role: 'system' }), text: arg }; await S.save('chats', chat, true); toast(arg ? t('chat.cmd.noteSet') : t('chat.cmd.noteCleared')); if (cur.drawer) drawDrawer(); return;
     case '/setvar': (chat.vars ||= {})[rest[0]] = rest.slice(1).join(' '); await S.save('chats', chat, true); toast(`${rest[0]} = ${rest.slice(1).join(' ')}`); if (cur.drawer) drawDrawer(); return;
-    case '/getvar': return toast(`${rest[0]} = ${chat.vars?.[rest[0]] ?? '(없음)'}`);
+    case '/getvar': return toast(`${rest[0]} = ${chat.vars?.[rest[0]] ?? t('chat.cmd.noValue')}`);
     case '/bg': chat.bg = arg; await S.save('chats', chat, true); return drawMain();
-    case '/help': case '/?': return openModal({ title: '명령어', body: <div className="help">{[...HELP, ...[...X.commands].map(([k, v]): [string, string] => [k, v.help || '확장 명령어'])].map(([c, d], i) => <div className="help-row" key={i}><code>{c}</code><span>{d}</span></div>)}</div> });
+    case '/help': case '/?': return openModal({ title: t('chat.cmd.title'), body: <div className="help">{[...HELP(), ...[...X.commands].map(([k, v]): [string, string] => [k, v.help || t('chat.cmd.extension')])].map(([c, d], i) => <div className="help-row" key={i}><code>{c}</code><span>{d}</span></div>)}</div> });
     default: {
       const ext = X.commands.get(cmd.toLowerCase());
-      if (!ext) { const inp = ui.input; if (inp && !inp.value) { inp.value = line; inp.dispatchEvent(new Event('input')); } return toast(`알 수 없는 명령어: ${cmd}`, 'err'); }
+      if (!ext) { const inp = ui.input; if (inp && !inp.value) { inp.value = line; inp.dispatchEvent(new Event('input')); } return toast(t('chat.cmd.unknown', { cmd }), 'err'); }
       try { return await ext.run(arg, chatApi); } catch (e) { console.error(e); return toast(`${cmd}: ${errMsg(e)}`, 'err'); }
     }
   }
@@ -445,7 +448,7 @@ export async function openScene(info: { title?: string; place?: string; time?: s
 }
 export async function closeScene(summary = '', auto = false) {
   const chat = cur.chat; if (!chat?.scene?.on) return;
-  if (!auto && !summary) { const v = await promptBox('이 장면을 한 줄로 남길까요? (비워도 됩니다)', '', { placeholder: '예: 역 앞에서 만나 우산을 같이 썼다' }); if (v === null) return; summary = v.trim(); }
+  if (!auto && !summary) { const v = await promptBox(t('chat.scene.closePrompt'), '', { placeholder: t('chat.scene.closePlaceholder') }); if (v === null) return; summary = v.trim(); }
   chat.scene = { ...chat.scene, on: false };
   cur.msgs.push(newMsg('system', `Scene ends${summary ? ': ' + summary : ''}. Back to texting.`, { curtain: { kind: 'close', summary } }));
   await save(); emit('scene:close', { chat }); drawMain(); armAuto();
@@ -469,9 +472,9 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
   if (cur.busy || cur.prep || !cur.chat) return;
   const E = engine;
   const chat = cur.chat, msgs = cur.msgs, chars = charsOf(chat);
-  if (!chars.length) return toast('이 대화의 캐릭터가 삭제되었어요', 'err');
+  if (!chars.length) return toast(t('chat.gen.noChar'), 'err');
   const conn = (opt.proactive && S.get('conns', S.settings.modes.autoConn)) || S.connFor(chat);
-  if (!conn) { if (opt.proactive) return; toast('먼저 API 연결을 추가해 주세요', 'err'); return go('conns'); }
+  if (!conn) { if (opt.proactive) return; toast(t('chat.gen.noConn'), 'err'); return go('conns'); }
   const last = msgs[msgs.length - 1];
   if ((type === 'regen' || type === 'continue') && last?.role !== 'assistant') type = 'normal';
   let speaker = opt.speaker || (type === 'normal' || type === 'impersonate' ? pickSpeaker(chars) : (S.get('chars', last.charId) || chars[0]));
@@ -485,7 +488,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
     else {
       const p = presenceOf(chat, speaker), wake = wakeMsOf(chat, speaker), owe = mo('offlineWake') !== false && last?.role === 'user';
       if (owe) { chat.owed ||= { at: now(), charId: speaker.id }; await S.save('chats', chat, true); }
-      toast(`${speaker.name}은(는) 지금 오프라인이에요${p.activity ? ` (${p.activity})` : ''}. ${owe && isFinite(wake) ? `${Live.clock(now() + wake)} 쯤 답장이 올 거예요.` : '답장이 오지 않아요.'}`);
+      toast((p.activity ? t('chat.gen.offlineAct', { name: speaker.name, activity: p.activity }) : t('chat.gen.offline', { name: speaker.name })) + ' ' + (owe && isFinite(wake) ? t('chat.gen.replyAt', { time: Live.clock(now() + wake) }) : t('chat.gen.noReply')));
       drawTop(); armAuto(); return;
     }
   }
@@ -493,7 +496,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
   // 상태창: 다시 생성할 때는 그 답변이 나오기 전의 상태로 되감고 시작한다
   if (trackOn && type !== 'impersonate') { Live.arm(chat); if (type === 'regen' && Live.rewind(chat, msgs, msgs.length - 1)) drawHud(); }
   if (X.before.length) {   // 답변 전 준비: 그동안 다른 생성이 끼어들지 못하게 하고, 방이 바뀌었으면 그만둔다
-    cur.prep = true; setStatus('기억 찾는 중…');
+    cur.prep = true; setStatus(t('chat.status.recalling'));
     try { for (const b of X.before) { try { await b.fn({ chat, msgs, type, chars, persona }); } catch (e) { console.warn('[생성 전 준비]', b.owner, e); } } } finally { cur.prep = false; setStatus(''); }
     if (cur.chat !== chat || cur.msgs !== msgs || cur.busy) return;
   }
@@ -502,7 +505,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
   Live.pending = opt.live || null;
   if (pres) chat.presence = { status: pres.status, activity: pres.activity };   // 엔진이 읽는 자리에 지금의 실제 상태(일정 포함)를 잠깐 올려 둔다
   let built;
-  try { built = E.buildPrompt({ chat: pchat, char: speaker, chars, persona, preset, msgs, type, commit: true, proactive: !!opt.proactive }); } catch (e) { console.error(e); return toast('프롬프트 조립 실패: ' + errMsg(e), 'err'); }
+  try { built = E.buildPrompt({ chat: pchat, char: speaker, chars, persona, preset, msgs, type, commit: true, proactive: !!opt.proactive }); } catch (e) { console.error(e); return toast(t('chat.gen.buildFail', { err: errMsg(e) }), 'err'); }
   finally { Live.pending = null; if (pres) { if (keepPresence === undefined) delete chat.presence; else chat.presence = keepPresence; } }
   emit('prompt:ready', { messages: built.messages, chat, type, speaker });
   cur.lastPrompt = built; drawGauge();
@@ -542,7 +545,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
       onText: d => { acc += d; if (target && sw) { const sp = E.splitThink(base + acc); sw.text = sp.text; if (sp.think && !apiThink) sw.reasoning = sp.think; schedule(); } else if (ui.input) { ui.input.value = impersonateBase + acc; ui.input.dispatchEvent(new Event('input')); } },
       onThink: d => { if (target && sw) { apiThink = true; sw.reasoning = (sw.reasoning || '') + d; schedule(); } },
     });
-    if (target && sw && !res.text.trim() && !sw.reasoning) toast('빈 응답이 돌아왔어요. 프리셋이나 모델 설정을 확인해 보세요.', 'err');
+    if (target && sw && !res.text.trim() && !sw.reasoning) toast(t('chat.gen.empty'), 'err');
   } catch (e) {
     if (!(e instanceof Error && e.name === 'AbortError')) { console.error(e); toast(errMsg(e), 'err'); }
   } finally {
@@ -592,8 +595,8 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
 async function afterReply(chat: Room, msgs: Msg[]) {
   const st = S.settings; armAuto();
   const tail = msgs[msgs.length - 1];
-  if (st.illust.auto && tail?.role === 'assistant' && !tail.swipes[tail.sw].illust?.length && (st.illust.mode === 'call') && msgs.filter(m => m.role === 'assistant').length % Math.max(1, st.illust.every || 1) === 0) Illust.analyze(chat, msgs, tail, undefined, { manual: false }).then(sc => sc.slice(0, st.illust.maxScenes || 1).forEach(x => drawScene(tail, x, { chat, msgs }))).catch(e => toast('삽화 계획 실패: ' + errMsg(e), 'err'));
-  if (st.memory.enabled && st.memory.auto && tail?.role === 'assistant') { setStatus('기억 정리 중…'); try { await Memory.commit(chat, msgs, tail); if (cur.drawer && cur.chat === chat) drawDrawer(); } catch (e) { toast('기억 기록 실패: ' + errMsg(e), 'err'); } finally { setStatus(''); } }
+  if (st.illust.auto && tail?.role === 'assistant' && !tail.swipes[tail.sw].illust?.length && (st.illust.mode === 'call') && msgs.filter(m => m.role === 'assistant').length % Math.max(1, st.illust.every || 1) === 0) Illust.analyze(chat, msgs, tail, undefined, { manual: false }).then(sc => sc.slice(0, st.illust.maxScenes || 1).forEach(x => drawScene(tail, x, { chat, msgs }))).catch(e => toast(t('chat.illust.planFail', { err: errMsg(e) }), 'err'));
+  if (st.memory.enabled && st.memory.auto && tail?.role === 'assistant') { setStatus(t('chat.status.memorizing')); try { await Memory.commit(chat, msgs, tail); if (cur.drawer && cur.chat === chat) drawDrawer(); } catch (e) { toast(t('chat.memory.fail', { err: errMsg(e) }), 'err'); } finally { setStatus(''); } }
   if (st.translate.auto && tail?.role === 'assistant' && !tail.swipes[tail.sw].tr) await translate(tail, { chat, msgs });
   if (st.tracker.enabled && st.tracker.mode !== 'inline') await track(chat, msgs);
   maybeChime(chat, msgs);
@@ -603,14 +606,14 @@ async function afterReply(chat: Room, msgs: Msg[]) {
 export async function moveOldSummary(chat: Room) {
   const text = String(chat.summary || '').trim(); if (!text) return;
   await Memory.add(chat.id, { summary: text, kind: 'event', importance: 0.8, entities: charsOf(chat).map(c => c.name) });
-  chat.summary = ''; chat.summaryAt = 0; await S.save('chats', chat, true); toast('옛 요약을 장기기억으로 옮겼어요', 'ok'); if (cur.drawer && cur.chat === chat) drawDrawer();
+  chat.summary = ''; chat.summaryAt = 0; await S.save('chats', chat, true); toast(t('chat.memory.movedSummary'), 'ok'); if (cur.drawer && cur.chat === chat) drawDrawer();
 }
 
 export async function track(chat: Room, msgs: Msg[]) {
   const E = engine, chars = charsOf(chat), persona = S.persona(chat);
   const ctx = E.makeCtx({ chat, char: chars[0], chars, persona, msgs }), mx = (t: string) => E.macro(t, ctx);
   const call = Live.trackCall(chat, chars, mx); if (!call.any) return;
-  setStatus('상태 갱신 중…');
+  setStatus(t('chat.status.tracking'));
   try {
     const recent = msgs.filter(m => !m.hidden).slice(-6).map(m => `${m.role === 'user' ? ctx.user : (m.name || 'Narrator')}: ${msgText(m)}`).join('\n\n');
     const out = await E.quickCall(call.system, `[Previous state]\n${JSON.stringify(call.prev)}\n\n[Latest messages]\n${recent}`, { maxTokens: 900, conn: S.connFor(chat) });

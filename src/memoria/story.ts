@@ -15,6 +15,7 @@
 import { importanceStars, parseRecord } from './scene';
 import type { TimelineLayout, TimelineRow } from './scene';
 import type { BondStep } from './types';
+import { t } from '../i18n';
 
 /** "지금" 칸에 그릴 것 */
 export interface HeroTile { value: string | number; label: string }
@@ -50,11 +51,11 @@ const starsText = (v?: number | null) => '★'.repeat(importanceStars(v));
 /** model: { place, when, present: [이름], tiles: [{ value, label }] } */
 export function heroHtml(model: HeroModel): string {
     const present = (model.present || []).slice(0, 6).map(n => `<span class="mm-st-who">${esc(n)}</span>`).join('');
-    const tiles = (model.tiles || []).map(t => `<div class="mm-st-tile"><b>${esc(t.value)}</b><span>${esc(t.label)}</span></div>`).join('');
+    const tiles = (model.tiles || []).map(x => `<div class="mm-st-tile"><b>${esc(x.value)}</b><span>${esc(x.label)}</span></div>`).join('');
     return `<div class="mm-st-hero">
         <div class="mm-st-hero-now">
-            <span class="mm-st-hero-label">지금</span>
-            <strong>${esc(model.place || '장면이 아직 기록되지 않았어요')}</strong>
+            <span class="mm-st-hero-label">${esc(t('memoria.engine.story.now'))}</span>
+            <strong>${esc(model.place || t('memoria.engine.story.noScene'))}</strong>
             ${model.when ? `<span class="mm-st-hero-when">${esc(model.when)}</span>` : ''}
             ${present ? `<div class="mm-st-hero-who">${present}</div>` : ''}
         </div>
@@ -103,14 +104,14 @@ export function pulseSvg(turns: PulseTurn[] | null | undefined, { spans = [], ma
             <title>${esc(clip(t.summary || `t${t.turnIndex}`, 140))}</title>
         </g>`;
     }).join('');
-    return `<svg class="mm-st-pulse" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="턴별 이야기 무게">${bars}</svg>`;
+    return `<svg class="mm-st-pulse" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(t('memoria.engine.story.pulseLabel'))}">${bars}</svg>`;
 }
 
 /* ------------------------------------------------------------
  * 흐름
  * ------------------------------------------------------------ */
 
-const LEVEL_LABEL: Record<string, string> = { arc: '연대기', chunk: '챕터', carried: '이전 채팅' };
+const levelLabel = (level: string) => ['arc', 'chunk', 'carried'].includes(level) ? t('memoria.engine.story.level.' + level) : '';
 
 /**
  * nodes: [{ id, level, fromTurn, toTurn, text, carried, carriedFrom, marks: [{ title }], open }]
@@ -125,14 +126,14 @@ export function flowHtml(nodes: FlowNode[] | null | undefined): string {
         // 구조가 없는 옛 요약은 첫 문장이 제목 노릇을 한다 — 아래에서 되풀이하지 않는다
         const title = rec.when || rec.beats[0] || '';
         const beats = (rec.when ? rec.beats : rec.beats.slice(1)).map(b => `<li>${esc(b)}</li>`).join('');
-        const marks = (n.marks || []).map(m => `<span class="mm-st-chip mm-st-chip--mark" title="전환점">★ ${esc(m.title)}</span>`).join('');
-        const shifts = rec.shifts.map(s => `<span class="mm-st-chip mm-st-chip--shift" title="바뀐 것">${esc(s)}</span>`).join('');
-        const open = rec.open.map(s => `<span class="mm-st-chip mm-st-chip--open" title="남은 것">${esc(s)}</span>`).join('');
+        const marks = (n.marks || []).map(m => `<span class="mm-st-chip mm-st-chip--mark" title="${esc(t('memoria.engine.story.mark'))}">★ ${esc(m.title)}</span>`).join('');
+        const shifts = rec.shifts.map(s => `<span class="mm-st-chip mm-st-chip--shift" title="${esc(t('memoria.engine.story.shift'))}">${esc(s)}</span>`).join('');
+        const open = rec.open.map(s => `<span class="mm-st-chip mm-st-chip--open" title="${esc(t('memoria.engine.story.open'))}">${esc(s)}</span>`).join('');
         return `<li class="mm-st-node mm-st-node--${level}">
             <span class="mm-st-node-dot" aria-hidden="true"></span>
             <details class="mm-st-card" data-id="${esc(n.id)}" data-level="${esc(n.level)}"${n.open ? ' open' : ''}>
                 <summary>
-                    <span class="mm-st-card-top"><span class="mm-st-tag mm-st-tag--${level}">${LEVEL_LABEL[level]}</span><small>${range}</small><span class="mm-actions" data-slot="acts"></span></span>
+                    <span class="mm-st-card-top"><span class="mm-st-tag mm-st-tag--${level}">${esc(levelLabel(level))}</span><small>${range}</small><span class="mm-actions" data-slot="acts"></span></span>
                     <span class="mm-st-when">${esc(title)}</span>
                 </summary>
                 ${beats ? `<ul class="mm-st-beats">${beats}</ul>` : ''}
@@ -192,8 +193,8 @@ export function tableHtml(rows: TimelineRow[], { sort = 'order', desc = false }:
         <td class="mm-st-stars-cell"><span class="mm-st-stars">${'★'.repeat(importanceStars(r.importance))}</span>${r.mesId >= 0 ? `<button type="button" class="mm-st-jump" data-mes="${r.mesId}">#${r.mesId}</button>` : ''}</td>
     </tr>`).join('');
     return `<div class="mm-st-table-wrap"><table class="mm-st-table">
-        <thead><tr>${th('order', '#')}${th('when', '언제 · 어디')}${th('', '무슨 일')}${th('importance', '★')}</tr></thead>
-        <tbody>${body || '<tr><td colspan="4" class="mm-st-none">맞는 줄이 없어요</td></tr>'}</tbody>
+        <thead><tr>${th('order', '#')}${th('when', esc(t('memoria.engine.story.colWhen')))}${th('', esc(t('memoria.engine.story.colWhat')))}${th('importance', '★')}</tr></thead>
+        <tbody>${body || `<tr><td colspan="4" class="mm-st-none">${esc(t('memoria.engine.story.noRows'))}</td></tr>`}</tbody>
     </table></div>`;
 }
 
@@ -254,7 +255,7 @@ export function bondMapSvg(bonds: BondEdge[], { picked = '', focus = '' }: BondP
             <title>${esc(n)}</title>
         </g>`;
     }).join('');
-    return `<svg class="mm-bond-map" viewBox="${box.map(n => Math.round(n)).join(' ')}" style="max-width:${Math.round(box[2])}px" role="img" aria-label="관계도">
+    return `<svg class="mm-bond-map" viewBox="${box.map(n => Math.round(n)).join(' ')}" style="max-width:${Math.round(box[2])}px" role="img" aria-label="${esc(t('memoria.engine.story.bondMap'))}">
         <defs><marker id="${arrowId}" viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 z"/></marker></defs>
         ${edges}${nodes}
     </svg>`;
@@ -266,7 +267,7 @@ export function bondMapSvg(bonds: BondEdge[], { picked = '', focus = '' }: BondP
  */
 export function bondCardsHtml(bonds: BondCardRow[], { picked = '', focus = '' }: BondPick = {}): string {
     const list = (bonds || []).filter(b => !focus || b.from === focus || b.to === focus);
-    if (!list.length) return '<div class="mm-empty"><i class="mm-star">✦</i><span>관계선이 아직 없어요</span></div>';
+    if (!list.length) return `<div class="mm-empty"><i class="mm-star">✦</i><span>${esc(t('memoria.engine.story.noBonds'))}</span></div>`;
     return `<div class="mm-bond-list">${list.map((bond) => {
         const steps: BondStep[] = [];
         for (const e of bond.log || []) if (steps[steps.length - 1]?.stage !== e.stage) steps.push(e);
@@ -274,9 +275,9 @@ export function bondCardsHtml(bonds: BondCardRow[], { picked = '', focus = '' }:
         // 계단은 최근 넷만 그린다 — 더 쌓여도 좁은 화면에서 글 칸이 줄지 않게. 그 앞은 한 줄로 접는다.
         const shown = steps.slice(-4);
         const earlier = steps.slice(0, -4);
-        const stairs = (earlier.length ? `<li class="is-earlier" style="--mm-st-step:0"><small>앞서 · ${earlier.map(st => esc(st.stage)).join(' → ')}</small></li>` : '')
+        const stairs = (earlier.length ? `<li class="is-earlier" style="--mm-st-step:0"><small>${esc(t('memoria.engine.story.earlier'))} · ${earlier.map(st => esc(st.stage)).join(' → ')}</small></li>` : '')
             + shown.map((st, i) => `<li class="${i === shown.length - 1 ? 'is-now' : ''}" style="--mm-st-step:${i}"><b>${esc(st.stage)}</b>${st.basis ? `<small>${esc(st.basis)}</small>` : ''}</li>`).join('');
-        const extra = [now.calls ? `<span class="mm-st-chip">부르는 말 · ${esc(now.calls)}</span>` : '', now.unsaid ? `<span class="mm-st-chip mm-st-chip--open">말하지 못한 것 · ${esc(now.unsaid)}</span>` : ''].join('');
+        const extra = [now.calls ? `<span class="mm-st-chip">${esc(t('memoria.engine.story.calls'))} · ${esc(now.calls)}</span>` : '', now.unsaid ? `<span class="mm-st-chip mm-st-chip--open">${esc(t('memoria.engine.story.unsaid'))} · ${esc(now.unsaid)}</span>` : ''].join('');
         return `<section class="mm-bond-card${picked === bond.id ? ' is-picked' : ''}" data-id="${esc(bond.id)}">
             <h5>${esc(bond.from)} <span class="mm-bond-arrow">→</span> ${esc(bond.to)}</h5>
             <ol class="mm-bond-stairs">${stairs}</ol>
@@ -291,7 +292,7 @@ export function bondCardsHtml(bonds: BondCardRow[], { picked = '', focus = '' }:
 
 /** history: [{ mesId, when, place, weather }] — 최신이 위 */
 export function statusListHtml(history: StatusHistoryRow[] | null | undefined): string {
-    if (!history?.length) return '<div class="mm-empty"><i class="mm-star">✦</i><span>읽은 상태창이 아직 없어요</span></div>';
+    if (!history?.length) return `<div class="mm-empty"><i class="mm-star">✦</i><span>${esc(t('memoria.engine.story.noStatus'))}</span></div>`;
     return `<ol class="mm-st-status">${history.map(h => `<li>
         <button type="button" class="mm-st-jump" data-mes="${h.mesId}">#${h.mesId}</button>
         <span class="mm-st-status-when">${esc(h.when || '—')}</span>

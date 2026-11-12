@@ -3,8 +3,9 @@ import { useEffect, useState } from 'react';
 import { PageHead } from '../ui';
 import { Calendar, PromisesTab, SettingsTab, Shelf, type DiaryArg } from '../diary/tabs';
 import { S } from '../lib/core';
+import { t as tr } from '../i18n';
 
-const TABS = [['calendar', '달력'], ['shelf', '책장'], ['promises', '약속 수첩'], ['settings', '설정']] as const;
+const TABS = [['calendar', 'diary.tab.calendar'], ['shelf', 'diary.tab.shelf'], ['promises', 'diary.tab.promises'], ['settings', 'diary.tab.settings']] as const;
 const isTab = (t?: string) => TABS.some(x => x[0] === t);
 const keep = (t: string) => { (S.settings.almanac ||= {}).tab = t; S.saveSettings(); };
 
@@ -18,8 +19,8 @@ function Diary({ arg }: { arg?: unknown }) {
   const show = (t: string) => { keep(t); setSt(s => ({ tab: t, pass: {}, n: s.n + 1 })); };
   const t = st.tab;
   return <section className="pagebox alm-page">
-    <PageHead eyebrow="diary" title="꿈 일기장" />
-    <div className="tabs alm-tabs">{TABS.map(([k, l]) => <button key={k} className={'tab' + (k === t ? ' on' : '')} onClick={() => show(k)}>{l}</button>)}</div>
+    <PageHead eyebrow="diary" title={tr('diary.page.title')} />
+    <div className="tabs alm-tabs">{TABS.map(([k, l]) => <button key={k} className={'tab' + (k === t ? ' on' : '')} onClick={() => show(k)}>{tr(l)}</button>)}</div>
     <div className={`alm-host tab-${t}`} key={st.n}>
       {t === 'calendar' ? <Calendar arg={st.pass} /> : t === 'promises' ? <PromisesTab arg={st.pass} /> : t === 'settings' ? <SettingsTab /> : <Shelf />}
     </div>

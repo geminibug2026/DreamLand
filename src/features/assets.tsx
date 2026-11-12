@@ -8,6 +8,7 @@ import { toast } from '../ui';
 import { S } from '../lib/core';
 import { X } from '../lib/hooks';
 import { chatApi } from '../chat/actions';
+import { t } from '../i18n';
 
 function setup() {
   useCss('f-assets.css');
@@ -19,24 +20,24 @@ function setup() {
 
   // ════════ 명령어 ════════
   const currentChar = () => { const { chat } = chatApi.current(); return S.get('chars', chat?.charIds?.[0]) || null; };
-  X.commands.set('/assets-upload', { owner: 'assets', help: '주소의 이미지를 지금 캐릭터의 에셋으로 올립니다 · 예: /assets-upload label=joy https://…/joy.png',
+  X.commands.set('/assets-upload', { owner: 'assets', get help() { return t('assets.cmd.upload'); },
     run: async arg => {
       const m = String(arg || '').match(/^\s*(?:label=("([^"]*)"|'([^']*)'|\S+)\s+)?(\S+)\s*$/i);
-      if (!m) return toast('이렇게 적어 주세요: /assets-upload label=키워드 주소', 'err');
-      const char = currentChar(); if (!char) return toast('열린 대화의 캐릭터가 없어요', 'err');
+      if (!m) return toast(t('assets.cmd.usage'), 'err');
+      const char = currentChar(); if (!char) return toast(t('assets.cmd.noChar'), 'err');
       const owner = As.ownerOfChar(char.id);
-      if (As.source(owner) !== owner) return toast('에셋 링크를 쓰는 캐릭터에는 올릴 수 없어요', 'err');
-      chatApi.setStatus('에셋 올리는 중…');
+      if (As.source(owner) !== owner) return toast(t('assets.cmd.linked'), 'err');
+      chatApi.setStatus(t('assets.cmd.uploading'));
       try { if (await uploadFromUrl(owner, As.verOf(owner), m[4], As.cleanName(m[2] ?? m[3] ?? m[1] ?? ''))) chatApi.redraw(); } finally { chatApi.setStatus(''); }
     } });
-  X.commands.set('/assets-gallery', { owner: 'assets', help: '지금 캐릭터의 에셋 갤러리를 엽니다',
+  X.commands.set('/assets-gallery', { owner: 'assets', get help() { return t('assets.cmd.gallery'); },
     run: async () => {
-      const char = currentChar(); if (!char) return toast('열린 대화의 캐릭터가 없어요', 'err');
+      const char = currentChar(); if (!char) return toast(t('assets.cmd.noChar'), 'err');
       const owner = As.ownerOfChar(char.id); await As.load([owner]);
-      const src = As.source(owner); openGallery(src, As.verOf(owner), `${char.name}의 에셋 갤러리`, { locked: src !== owner, onChange: () => chatApi.redraw() });
+      const src = As.source(owner); openGallery(src, As.verOf(owner), t('assets.galleryTitle', { name: t('assets.ofName', { name: char.name }) }), { locked: src !== owner, onChange: () => chatApi.redraw() });
     } });
-  X.commands.set('/refresh-img-keywords', { owner: 'assets', help: '에셋 보관함을 다시 읽어 키워드를 새로 고칩니다',
-    run: async () => { const { chat } = chatApi.current(); if (!chat) return toast('열린 대화가 없어요', 'err'); const owners = ownersOf(chat); await As.reload(owners); chatApi.redraw(); toast(`키워드를 새로 고쳤어요: ${As.names(owners).join(', ') || '(없음)'}`.slice(0, 200), 'ok'); } });
+  X.commands.set('/refresh-img-keywords', { owner: 'assets', get help() { return t('assets.cmd.refresh'); },
+    run: async () => { const { chat } = chatApi.current(); if (!chat) return toast(t('assets.cmd.noChat'), 'err'); const owners = ownersOf(chat); await As.reload(owners); chatApi.redraw(); toast(t('assets.cmd.refreshed', { names: As.names(owners).join(', ') || t('assets.cmd.noneParen') }).slice(0, 200), 'ok'); } });
 }
 
 export const feature = { name: 'assets', setup };

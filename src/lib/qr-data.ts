@@ -3,6 +3,7 @@
 // 세트 = { id, name, scope: 'global'|'char'|'chat', on, charIds, chatIds, items: [버튼] }
 // 버튼 = { id, label, icon, title, text, kind: 'insert'(입력창에 넣기)|'send'(바로 보내기)|'script'(명령 실행), hidden, auto: { start, open, newChat, user, ai, gen }, automationId }
 import { S, uid, arr } from './core';
+import { t } from '../i18n';
 
 export interface QrAuto { start?: boolean; open?: boolean; newChat?: boolean; user?: boolean; ai?: boolean; gen?: boolean }
 export interface QrItem { id: string; label: string; icon: string; title: string; text: string; kind: 'insert' | 'send' | 'script'; hidden: boolean; auto: QrAuto; automationId: string; stIcon?: string }
@@ -18,12 +19,13 @@ const St = S as unknown as QStore;
 const mkId = uid as unknown as () => string;
 const toArr = arr as unknown as <T>(v: T | T[] | null | undefined | '') => T[];
 
-export const QR_KINDS = { insert: '입력창에 넣기', send: '바로 보내기', script: '명령 실행' };
-export const QR_AUTO = { open: '대화를 열 때', newChat: '새 대화를 처음 열 때', user: '내가 보낸 뒤', ai: '답변이 온 뒤', gen: '생성을 시작할 때', start: '앱을 켤 때' };
-export const QR_SCOPES = { global: '모든 대화', char: '고른 캐릭터', chat: '고른 대화방' };
+// 표시 이름: 읽을 때마다 지금 언어로 (키 · 순서는 그대로)
+export const QR_KINDS = { get insert() { return t('qr.kind.insert'); }, get send() { return t('qr.kind.send'); }, get script() { return t('qr.kind.script'); } };
+export const QR_AUTO = { get open() { return t('qr.auto.open'); }, get newChat() { return t('qr.auto.newChat'); }, get user() { return t('qr.auto.user'); }, get ai() { return t('qr.auto.ai'); }, get gen() { return t('qr.auto.gen'); }, get start() { return t('qr.auto.start'); } };
+export const QR_SCOPES = { get global() { return t('qr.scope.global'); }, get char() { return t('qr.scope.char'); }, get chat() { return t('qr.scope.chat'); } };
 
-export const newQrItem = (o: Partial<QrItem> = {}): QrItem => ({ id: mkId(), label: '새 버튼', icon: '', title: '', text: '', kind: 'insert', hidden: false, auto: {}, automationId: '', ...o });
-export const newQrSet = (o: Partial<QrSet> = {}): QrSet => ({ id: mkId(), name: '새 세트', scope: 'global', on: true, charIds: [], chatIds: [], items: [], ...o });
+export const newQrItem = (o: Partial<QrItem> = {}): QrItem => ({ id: mkId(), label: t('qr.newItem'), icon: '', title: '', text: '', kind: 'insert', hidden: false, auto: {}, automationId: '', ...o });
+export const newQrSet = (o: Partial<QrSet> = {}): QrSet => ({ id: mkId(), name: t('qr.newSet'), scope: 'global', on: true, charIds: [], chatIds: [], items: [], ...o });
 const kindOf = (text?: string) => /^\s*\//.test(text || '') ? 'script' : 'insert';
 
 /** 저장소. 예전 빠른 답장(S.settings.quick: [{ label, text }])은 처음 한 번 "기본 버튼" 세트로 옮긴다 */
@@ -32,8 +34,8 @@ export function qrStore(): QrStore {
   if (!Array.isArray(q.sets)) q.sets = [];
   if (!q.migrated) {
     const d = Object.getOwnPropertyDescriptor(St.settings, 'quick'), old: Loose[] = d && 'value' in d && Array.isArray(d.value) ? d.value : [];
-    const items = old.filter(x => x && x.text).map(x => newQrItem({ label: String(x.label || '버튼'), text: String(x.text), kind: kindOf(x.text) }));
-    if (items.length && !q.sets.some(s => s.legacy)) q.sets.unshift(newQrSet({ name: '기본 버튼', legacy: true, items }));
+    const items = old.filter(x => x && x.text).map(x => newQrItem({ label: String(x.label || t('qr.button')), text: String(x.text), kind: kindOf(x.text) }));
+    if (items.length && !q.sets.some(s => s.legacy)) q.sets.unshift(newQrSet({ name: t('qr.defaultSet'), legacy: true, items }));
     q.migrated = true; St.saveSettings?.();
   }
   return q;
@@ -50,9 +52,9 @@ export const qrFind = (key: unknown, chat?: QChat | null) => { const k = String(
 export function stQrToSet(j: StQrSet, name?: string): QrSet {
   const noSend = !!j.disableSend;
   return newQrSet({
-    name: j.name || name || '가져온 세트', src: 'st',
+    name: j.name || name || t('qr.importedSet'), src: 'st',
     items: toArr(j.qrList).filter(x => x && (x.message || x.label)).map(x => newQrItem({
-      label: String(x.label || x.title || '버튼'), title: x.title || '', text: x.message || '', kind: /^\s*\//.test(x.message || '') ? 'script' : (noSend ? 'insert' : 'send'), hidden: !!x.isHidden,
+      label: String(x.label || x.title || t('qr.button')), title: x.title || '', text: x.message || '', kind: /^\s*\//.test(x.message || '') ? 'script' : (noSend ? 'insert' : 'send'), hidden: !!x.isHidden,
       auto: { start: !!x.executeOnStartup, open: !!x.executeOnChatChange, newChat: !!x.executeOnNewChat, user: !!x.executeOnUser, ai: !!x.executeOnAi, gen: !!x.executeBeforeGeneration },
       automationId: x.automationId || '', stIcon: x.icon || '',
     })),
@@ -77,9 +79,9 @@ export function qrAddSet(set: QrSet): number {
 export function qrAddLoose(list: Loose[] | Loose | null | undefined): number {
   const q = qrStore(); let base = q.sets.find(s => s.legacy); const add = toArr(list).filter(x => x && x.text);
   if (!add.length) return 0;
-  if (!base) { base = newQrSet({ name: '기본 버튼', legacy: true }); q.sets.unshift(base); }
+  if (!base) { base = newQrSet({ name: t('qr.defaultSet'), legacy: true }); q.sets.unshift(base); }
   const have = base;
   const fresh = add.filter(a => !have.items.some(i => i.text === a.text));
-  have.items.push(...fresh.map(x => newQrItem({ label: String(x.label || '버튼'), text: String(x.text), kind: kindOf(x.text) })));
+  have.items.push(...fresh.map(x => newQrItem({ label: String(x.label || t('qr.button')), text: String(x.text), kind: kindOf(x.text) })));
   qrSave(); return fresh.length;
 }

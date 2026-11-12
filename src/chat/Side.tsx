@@ -9,23 +9,24 @@ import type { Room } from './types';
 import { go } from '../lib/router';
 import { startMenu } from './start';
 import { S } from '../lib/core';
+import { t } from '../i18n';
 
 /** 실리태번 지난 대화 검색처럼: 낱말을 띄어 나눠 모두 들어 있어야 맞는다 */
-const matcher = (term: string) => { const fr = term.split(/\s+/).filter(Boolean); return (c: Room) => { if (!fr.length) return true; const t = [titleOf(c), roomName(c), c.preview || ''].join(' ').toLowerCase(); return fr.every(f => t.includes(f)); }; };
+const matcher = (term: string) => { const fr = term.split(/\s+/).filter(Boolean); return (c: Room) => { if (!fr.length) return true; const hay = [titleOf(c), roomName(c), c.preview || ''].join(' ').toLowerCase(); return fr.every(f => hay.includes(f)); }; };
 const pin = (a: Room, b: Room) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.updatedAt - a.updatedAt;
 
 function room(c: Room, max: number, depth = 0, isFlat = false) {
   const parent = c.parent && S.get('chats', c.parent.id), n = c.count || 0, mode = modeOf(c);
   return <button key={c.id} className={['room', c.id === cur.chat?.id && 'on', depth > 0 && 'sub'].filter(Boolean).join(' ')} style={depth ? { marginLeft: Math.min(depth, 3) * 14 + 'px' } : undefined}
     onClick={() => { setSide(false); go('chat', c.id); }} onContextMenu={e => { e.preventDefault(); chatMenu(e.currentTarget, c); }}>
-    <div className="room-top">{depth ? <Icon name="branch" size={13} /> : null}<i className={'room-mode ' + mode}>{mode === 'talk' ? '대화' : 'RP'}</i><b>{isFlat ? `${titleOf(c)} · ${roomName(c)}` : roomName(c)}</b>
-      {c.pinned ? <i className="room-pin">✦</i> : null}{c.unread ? <i className="room-unread">{String(c.unread)}</i> : null}{c.scene?.on ? <i className="room-scene">장면 중</i> : null}<time>{ago(c.updatedAt)}</time></div>
-    <small className="room-prev">{c.preview || '아직 아무 말도 없어요'}</small>
-    <div className="room-meta"><span className="room-bar" title={`메시지 ${n}개`}><i style={{ width: Math.max(n ? 6 : 0, Math.round(n / Math.max(30, max) * 100)) + '%' }} /></span><span>{`${n}개`}</span><span>{`${daysOf(c)}일`}</span>
-      {(c.diary || []).length ? <span>{`일기 ${(c.diary || []).length}`}</span> : null}{c.parent ? <span title={parent ? `${roomName(parent)}에서 갈라진 방` : ''}>{`${c.parent.at}번째에서 분기`}</span> : null}</div>
+    <div className="room-top">{depth ? <Icon name="branch" size={13} /> : null}<i className={'room-mode ' + mode}>{mode === 'talk' ? t('chat.side.talk') : 'RP'}</i><b>{isFlat ? `${titleOf(c)} · ${roomName(c)}` : roomName(c)}</b>
+      {c.pinned ? <i className="room-pin">✦</i> : null}{c.unread ? <i className="room-unread">{String(c.unread)}</i> : null}{c.scene?.on ? <i className="room-scene">{t('chat.side.scene')}</i> : null}<time>{ago(c.updatedAt)}</time></div>
+    <small className="room-prev">{c.preview || t('chat.side.noMsgs')}</small>
+    <div className="room-meta"><span className="room-bar" title={t('chat.side.msgCount', { count: n })}><i style={{ width: Math.max(n ? 6 : 0, Math.round(n / Math.max(30, max) * 100)) + '%' }} /></span><span>{t('chat.side.count', { count: n })}</span><span>{t('chat.side.days', { count: daysOf(c) })}</span>
+      {(c.diary || []).length ? <span>{t('chat.side.diary', { count: (c.diary || []).length })}</span> : null}{c.parent ? <span title={parent ? t('chat.side.branchedFrom', { name: roomName(parent) }) : ''}>{t('chat.side.branchAt', { n: c.parent.at })}</span> : null}</div>
   </button>;
 }
-const empty = (term: string) => <p className="dim pad">{term ? '검색 결과가 없어요.' : '대화가 여기에 쌓여요.'}</p>;
+const empty = (term: string) => <p className="dim pad">{term ? t('chat.side.noResults') : t('chat.side.empty')}</p>;
 
 /** 최근순: 방 하나가 한 줄. 실리태번 캐릭터 목록처럼 쪽으로 나누고 쪽 이동은 목록 위에 둔다 */
 function Flat({ term }: { term: string }) {
@@ -53,9 +54,9 @@ function ByChar({ term }: { term: string }) {
       <div className="cgroup-head">
         <button className="cgroup-main" onClick={() => { if (open) { fold.delete('+' + k); fold.add(k); } else { fold.delete(k); fold.add('+' + k); } redraw(x => x + 1); }}>
           <div className="av-stack">{chars.slice(0, 2).map(ch => <Avatar key={ch.id} o={ch} cls="sm" />)}{chars.length > 2 ? <i className="av-more">{`+${chars.length - 2}`}</i> : null}</div>
-          <div className="cgroup-text"><b>{titleOf(rooms[0])}</b><small>{`대화방 ${rooms.length} · 메시지 ${total.toLocaleString()} · ${ago(newest(rooms))}`}</small></div>
+          <div className="cgroup-text"><b>{titleOf(rooms[0])}</b><small>{t('chat.side.groupSummary', { rooms: rooms.length, msgs: total.toLocaleString(), ago: ago(newest(rooms)) })}</small></div>
           <Icon name={open ? 'down' : 'right'} size={15} /></button>
-        <IconBtn ic="plus" title="이 캐릭터와 새 대화방" onClick={e => startMenu(e.currentTarget, rooms[0].charIds)} /></div>
+        <IconBtn ic="plus" title={t('chat.side.newRoom')} onClick={e => startMenu(e.currentTarget, rooms[0].charIds)} /></div>
       {open ? <div className="cgroup-rooms">{roots.flatMap(c => walk(c, 0))}</div> : null}
     </section>;
   })}{sorted.length ? null : empty(term)}</div>;
@@ -70,10 +71,10 @@ export const Side = memo(function Side() {
   const view = S.settings.sideView || 'chars';
   return kept.current = <>
     <header className="side-head">
-      <input className="inp search" placeholder="캐릭터 · 대화방 · 내용 찾기" onChange={e => { const v = e.target.value.trim().toLowerCase(); clearTimeout(timer.current); timer.current = window.setTimeout(() => setTerm(v), 140); }} />
-      <IconBtn ic="users" title="그룹 채팅 만들기" onClick={groupDialog} /><IconBtn ic="x" title="닫기" onClick={() => setSide(false)} /></header>
-    <div className="side-view">{([['chars', '캐릭터별'], ['recent', '최근순']] as const).map(([k, l]) => <button key={k} className={view === k ? 'on' : undefined} onClick={() => { S.set({ sideView: k }); drawSide(); }}>{l}</button>)}
-      <span>{`대화방 ${S.chats.length}`}</span></div>
+      <input className="inp search" placeholder={t('chat.side.search')} onChange={e => { const v = e.target.value.trim().toLowerCase(); clearTimeout(timer.current); timer.current = window.setTimeout(() => setTerm(v), 140); }} />
+      <IconBtn ic="users" title={t('chat.side.newGroup')} onClick={groupDialog} /><IconBtn ic="x" title={t('common.close')} onClick={() => setSide(false)} /></header>
+    <div className="side-view">{([['chars', t('chat.side.byChar')], ['recent', t('chat.side.recent')]] as const).map(([k, l]) => <button key={k} className={view === k ? 'on' : undefined} onClick={() => { S.set({ sideView: k }); drawSide(); }}>{l}</button>)}
+      <span>{t('chat.side.rooms', { count: S.chats.length })}</span></div>
     {view === 'recent' ? <Flat key={'r' + opened.current} term={term} /> : <ByChar key={'c' + opened.current} term={term} />}
   </>;
 });

@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { Btn, IconBtn } from '../kit';
+import { t } from '../i18n';
 
 /** 창 아래 버튼. onclick 이 false 를 돌려주면(약속이어도 된다) 창을 닫지 않는다 */
 import type { ModalAction, ModalHandle } from '../lib/types';
@@ -57,7 +58,7 @@ export function Modal({ title, wide = false, actions = [], onClose, handle, wrap
   }, [wrap, close]);
 
   return createPortal(<div className={wide ? 'modal wide' : 'modal'} role="dialog" aria-modal="true">
-    <header className="modal-head"><h2>{title || ''}</h2><IconBtn ic="x" title="닫기" onClick={close} /></header>
+    <header className="modal-head"><h2>{title || ''}</h2><IconBtn ic="x" title={t('common.close')} cls="modal-x" onClick={close} /></header>
     <div className="modal-body">{children}</div>
     {actions.length ? <footer className="modal-foot">{actions.map((a, i) =>
       <Btn key={i} label={a.label} ic={a.ic} cls={a.cls || ''} onClick={async () => { if ((await a.onclick?.()) !== false) close(); }} />)}</footer> : null}
@@ -75,9 +76,9 @@ export function openModal({ body, onClose, ...o }: Omit<ModalProps, 'children' |
 }
 
 /** 예/아니오. 확인을 누르면 true, 그 밖에는 false */
-export const confirmBox = (msg: string, okLabel = '확인', danger = false) => new Promise<boolean>(res => {
+export const confirmBox = (msg: string, okLabel = t('common.ok'), danger = false) => new Promise<boolean>(res => {
   let done = false;
-  const m = openModal({ title: msg, body: <div />, onClose: () => { if (!done) res(false); }, actions: [{ label: '취소' }, { label: okLabel, cls: danger ? 'danger' : 'primary', onclick: () => { done = true; res(true); } }] });
+  const m = openModal({ title: msg, body: <div />, onClose: () => { if (!done) res(false); }, actions: [{ label: t('common.cancel') }, { label: okLabel, cls: danger ? 'danger' : 'primary', onclick: () => { done = true; res(true); } }] });
   m.el.classList.add('dialog');   // 휴대폰에서도 아래에 붙지 않고 가운데에 뜬다
 });
 
@@ -86,7 +87,7 @@ export const promptBox = (title: string, value = '', { area = false, placeholder
   let done = false, el: HTMLInputElement | HTMLTextAreaElement | null = null;
   const ok = () => { done = true; res(el ? el.value : value); };
   const m: ModalHandle = openModal({
-    title, onClose: () => { if (!done) res(null); }, actions: [{ label: '취소' }, { label: '확인', cls: 'primary', onclick: ok }],
+    title, onClose: () => { if (!done) res(null); }, actions: [{ label: t('common.cancel') }, { label: t('common.ok'), cls: 'primary', onclick: ok }],
     body: area
       ? <textarea className="inp" defaultValue={value} placeholder={placeholder} rows={6} ref={x => { el = x; }} />
       : <input className="inp" defaultValue={value} placeholder={placeholder} ref={x => { el = x; }} onKeyDown={e => { if (e.key === 'Enter') { ok(); m.close(); } }} />,

@@ -6,6 +6,7 @@
 import { S, on, emit } from './core';
 import { X } from './hooks';
 import { toast } from '../ui';
+import { t, getLang, fmtDate } from '../i18n';
 import type { Chat } from './types';
 
 export type { ClockCfg } from './types';
@@ -20,7 +21,7 @@ const onX = on as unknown as (name: string, fn: (data: never) => unknown) => voi
 const pad = (n: number) => String(n).padStart(2, '0');
 const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
 const cfg = (chat: ClockChat | null | undefined) => chat?.clock && chat.clock.mode && chat.clock.mode !== 'real' ? chat.clock : null;
-const short = (t: number) => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()}(${WEEK[d.getDay()]}) ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const short = (ms: number) => { const d = new Date(ms); if (getLang() !== 'ko') return fmtDate(d, { month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }); return `${d.getMonth() + 1}/${d.getDate()}(${WEEK[d.getDay()]}) ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const save = async (chat: ClockChat) => { await SS().save('chats', chat, true); emitX('clock', chat); };
 
 /** "2h" · "90m" · "1d" · "2시간 30분" · "3일" → 분 (모르면 0) */
@@ -82,14 +83,14 @@ onX('chat:open', (chat: ClockChat | null) => { Clock.current = chat || null; });
 
 /** 상단 바에 붙는 짧은 표시 (현실 시각이면 빈 글) */
 export const clockLabel = (chat: ClockChat | null | undefined) => { const c = cfg(chat); return !c ? '' : c.mode === 'none' ? '' : short(Clock.ms(chat)); };
-export const clockHint = (chat: ClockChat | null | undefined) => { const c = cfg(chat); return !c ? '현실 시각' : c.mode === 'none' ? '시각 없음' : `이야기 ${short(Clock.ms(chat))}`; };
+export const clockHint = (chat: ClockChat | null | undefined) => { const c = cfg(chat); return !c ? t('clock.hint.real') : c.mode === 'none' ? t('clock.hint.none') : t('clock.hint.story', { time: short(Clock.ms(chat)) }); };
 
-(X as unknown as { commands: Map<string, Cmd> }).commands.set('/time', { owner: 'clock', args: '22:30 | +2시간', help: '이 방의 이야기 시각을 옮기거나 확인합니다', run: async (arg, api) => {
+(X as unknown as { commands: Map<string, Cmd> }).commands.set('/time', { owner: 'clock', get args() { return t('clock.cmd.args'); }, get help() { return t('clock.cmd.help'); }, run: async (arg, api) => {
   const chat = api.current().chat; if (!chat) return;
-  if (!arg) return toast(Clock.mode(chat) === 'story' ? `이 방의 시각: ${short(Clock.ms(chat))}` : Clock.mode(chat) === 'none' ? '이 방은 시각을 쓰지 않아요' : '이 방은 현실 시각을 따라요 (대화 메뉴 → 이 방의 시각)');
+  if (!arg) return toast(Clock.mode(chat) === 'story' ? t('clock.toast.now', { time: short(Clock.ms(chat)) }) : Clock.mode(chat) === 'none' ? t('clock.toast.none') : t('clock.toast.real'));
   const prev = chat.clock;
   if (Clock.mode(chat) !== 'story') { chat.clock = { flow: 'hold', step: 5, ai: false, ...(chat.clock || {}), mode: 'story', at: Date.now(), setAt: Date.now() }; }
   const ok = await Clock.move(chat, /^\s*\+/.test(arg) || (parseSpan(arg) && parseMoment(arg) == null) ? { advance: arg } : { set: arg });
-  if (!ok) { if (prev === undefined) delete chat.clock; else chat.clock = prev; return toast('시각을 알아보지 못했어요. 예: /time 22:30 · /time +2시간 · /time 2024-03-02 08:00', 'err'); }
-  toast(`이 방의 시각: ${short(Clock.ms(chat))}`, 'ok');
+  if (!ok) { if (prev === undefined) delete chat.clock; else chat.clock = prev; return toast(t('clock.toast.bad'), 'err'); }
+  toast(t('clock.toast.now', { time: short(Clock.ms(chat)) }), 'ok');
 } });

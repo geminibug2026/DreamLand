@@ -10,6 +10,7 @@ import { render } from './format';
 import { chatApi } from '../chat/actions';
 import { toast, menu, confirmBox, promptBox } from '../ui';
 import { avatar, modal, form } from '../ui/dom';
+import { t } from '../i18n';
 
 export const APP_VERSION = '1.1.0';
 export interface CatalogItem { id: string; name: string; version?: string; author?: string; description?: string; source: 'folder' | 'installed'; entry?: string; css?: string; code?: string }
@@ -65,7 +66,7 @@ async function load(item: CatalogItem) {
     if (item.css) { const l = h('link', { rel: 'stylesheet', href: item.css, dataset: { ext: item.id } }); document.head.append(l); rec.cleanup.push(() => l.remove()); }
     const def = (mod.default || mod) as ExtModule;
     const activate = def.activate || mod.activate;
-    if (typeof activate !== 'function') throw new Error('activate(api) 함수를 찾을 수 없어요');
+    if (typeof activate !== 'function') throw new Error(t('ext.noActivate'));
     const ret = await activate(makeApi(item.id));
     if (typeof ret === 'function') rec.cleanup.push(ret as () => unknown);
   } catch (e) { console.error(`[확장 ${item.id}]`, e); rec.error = (e as Error).message || String(e); }
@@ -96,26 +97,26 @@ export async function setEnabled(item: CatalogItem, on: boolean) {
 // 코드에서 선언부 읽기: export const manifest = {...} 또는 export default { id, name, ... }
 async function inspect(code: string) {
   const blob = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
-  try { const mod = await import(/* @vite-ignore */ blob) as ExtModule; const def = mod.default || {}; const m = (mod.manifest || def.manifest || def) as Record<string, string>; if (typeof (def.activate || mod.activate) !== 'function') throw new Error('activate(api) 함수가 없어요'); return { id: String(m.id || '').trim(), name: m.name || m.id || '이름 없는 확장', version: m.version || '', author: m.author || '', description: m.description || '' }; }
+  try { const mod = await import(/* @vite-ignore */ blob) as ExtModule; const def = mod.default || {}; const m = (mod.manifest || def.manifest || def) as Record<string, string>; if (typeof (def.activate || mod.activate) !== 'function') throw new Error(t('ext.noActivateFn')); return { id: String(m.id || '').trim(), name: m.name || m.id || t('ext.unnamed'), version: m.version || '', author: m.author || '', description: m.description || '' }; }
   finally { URL.revokeObjectURL(blob); }
 }
 export async function install(code: string, hint = '') {
   // 선언부를 읽으려면 코드를 한 번 돌려야 하므로, 돌리기 전에 먼저 묻는다
-  if (!(await confirmBox(`${hint ? `"${hint}"` : '이 코드'}를 확장으로 설치할까요? 확장은 대화와 API 키를 포함한 드림랜드의 모든 데이터에 접근할 수 있습니다. 믿을 수 있는 것만 설치하세요.`, '설치'))) return;
+  if (!(await confirmBox(hint ? t('ext.installConfirm', { name: hint }) : t('ext.installConfirmCode'), t('ext.install')))) return;
   let meta;
-  try { meta = await inspect(code); } catch (e) { return toast('확장으로 읽을 수 없어요: ' + (e as Error).message, 'err'); }
+  try { meta = await inspect(code); } catch (e) { return toast(t('ext.readFail', { error: (e as Error).message }), 'err'); }
   if (!meta.id) meta.id = (hint.replace(/\.[^.]+$/, '') || 'ext-' + uid()).toLowerCase().replace(/[^\w-]+/g, '-');
   unload(meta.id);
   await DB.put('kv', { id: 'ext:' + meta.id, extId: meta.id, meta, code });
   await readCatalog();
   await setEnabled(catalog.find(c => c.id === meta.id) as CatalogItem, true);
-  toast(`${meta.name} 을(를) 설치했어요`, 'ok'); refresh();
+  toast(t('ext.installed', { name: meta.name }), 'ok'); refresh();
 }
 export async function installFromUrl(url: string) {
   url = url.trim().replace(/^https:\/\/github\.com\/([^/]+\/[^/]+)\/blob\//, 'https://raw.githubusercontent.com/$1/');
   let text: string;
   try { const r = await fetch(url); if (!r.ok) throw new Error(String(r.status)); text = await r.text(); }
-  catch { const r = await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dreamland': '1' }, body: JSON.stringify({ url, method: 'GET' }) }).catch(() => null); if (!r?.ok) return toast('그 주소에서 받아 오지 못했어요', 'err'); text = await r.text(); }
+  catch { const r = await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dreamland': '1' }, body: JSON.stringify({ url, method: 'GET' }) }).catch(() => null); if (!r?.ok) return toast(t('ext.fetchFail'), 'err'); text = await r.text(); }
   await install(text, url.split('/').pop() as string);
 }
 

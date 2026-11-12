@@ -9,6 +9,10 @@
  */
 
 import type { CheckIssue } from './types';
+import { t } from '../i18n';
+
+/** 연표 내보내기의 칸 이름 */
+const timelineCols = () => ['order', 'when', 'where', 'people', 'text', 'importance', 'message'].map(k => t('memoria.engine.timeline.col.' + k));
 
 /** 본문에서 읽은 상태창 한 줄 */
 export interface StatusBar { raw: string; when: string; place: string; weather: string }
@@ -288,14 +292,14 @@ export const importanceStars = (v?: number | null): number => Math.max(1, Math.m
 
 export function timelineMarkdown(rows: TimelineRow[]): string {
     const cell = (s: unknown) => String(s ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
-    const head = '| 순서 | 작중 시간 | 장소 | 인물 | 내용 | 중요도 | 메시지 |\n|---|---|---|---|---|---|---|';
+    const head = `| ${timelineCols().join(' | ')} |\n|---|---|---|---|---|---|---|`;
     return [head, ...rows.map(r => `| ${r.order} | ${cell(r.when)} | ${cell(r.where)} | ${cell(r.people.join(', '))} | ${cell(r.text)} | ${'★'.repeat(importanceStars(r.importance))} | ${r.mesId >= 0 ? `#${r.mesId}` : ''} |`)].join('\n');
 }
 
 /** CSV — 엑셀에서 한글이 깨지지 않게 BOM을 붙인다 */
 export function timelineCsv(rows: TimelineRow[]): string {
     const cell = (s: unknown) => `"${String(s ?? '').replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`;
-    const lines = [['순서', '작중 시간', '장소', '인물', '내용', '중요도', '메시지'].map(cell).join(',')];
+    const lines = [timelineCols().map(cell).join(',')];
     for (const r of rows) lines.push([r.order, r.when, r.where, r.people.join(', '), r.text, importanceStars(r.importance), r.mesId >= 0 ? `#${r.mesId}` : ''].map(cell).join(','));
     return `﻿${lines.join('\r\n')}`;
 }
@@ -304,7 +308,7 @@ export function timelineCsv(rows: TimelineRow[]): string {
  * 연표 그래프의 배치 — 가로는 사건 순서(작중 시간 띠로 묶음), 세로는 인물 또는 장소 줄.
  * 자주 나온 8개까지 줄을 주고 나머지는 한 줄로 모은다.
  */
-export function layoutTimelineGraph(rows: TimelineRow[], { by = 'people', maxLanes = 8, other = '그 밖' }: TimelineGraphOptions = {}): TimelineLayout {
+export function layoutTimelineGraph(rows: TimelineRow[], { by = 'people', maxLanes = 8, other = t('memoria.engine.timeline.other') }: TimelineGraphOptions = {}): TimelineLayout {
     const keysOf = (r: TimelineRow) => (by === 'place' ? [r.where || '?'] : (r.people.length ? r.people : ['?']));
     const count = new Map<string, number>();
     for (const r of rows) for (const k of keysOf(r)) count.set(k, (count.get(k) || 0) + 1);
@@ -358,7 +362,7 @@ export function verifyIssues(issues: unknown, reply: string, context: string): {
         seen.add(q);
         const e = squash(issue.evidence);
         if (e.length >= 4 && contextN.includes(e)) kept.push(issue);
-        else filtered.push({ ...issue, why: '근거 문장을 기록·최근 대화에서 그대로 찾지 못했어요' });
+        else filtered.push({ ...issue, why: t('memoria.engine.check.noEvidence') });
     }
     return { kept: kept.slice(0, 6), filtered: filtered.slice(0, 6) };
 }

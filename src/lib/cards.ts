@@ -3,6 +3,7 @@ import { tplKind, tplImport, KINDS } from './advanced';
 import { stQrToSet, qrAddSet } from './qr-data';
 import { S, uid, now, arr, bool, parseMaybe, parseDate, bytesToDataURL, dataURLToBytes, mimeOf, shrinkImage, newChar, newPersona, newLore, newEntry, newRegex, newChat, newMsg, defaultPreset, MARKERS, emit } from './core';
 import type { Chat, Msg, Regex } from './types';
+import { t } from '../i18n';
 
 // ── 자료 꼴 ──
 type O = Record<string, unknown>;
@@ -534,7 +535,7 @@ export function bridgeSource(root: string): Source {
   return {
     label: root,
     async list(sub) { const r = await post('/api/fs/list', { root, sub }); return r.ok ? r.json() : []; },
-    async bytes(rel) { const r = await post('/api/fs/read', { root, rel }); if (!r.ok) throw new Error(`${rel} 읽기 실패`); return new Uint8Array(await r.arrayBuffer()); },
+    async bytes(rel) { const r = await post('/api/fs/read', { root, rel }); if (!r.ok) throw new Error(t('cards.err.readFailed', { file: rel })); return new Uint8Array(await r.arrayBuffer()); },
     async text(rel) { return new TextDecoder().decode(await this.bytes(rel)); },
   };
 }
@@ -559,8 +560,8 @@ export function filesSource(files: File[]): Source | null {
       for (const [p, f] of map) { if (!p.startsWith(pre)) continue; const rest = p.slice(pre.length); const i = rest.indexOf('/'); const name = i < 0 ? rest : rest.slice(0, i); if (name && !seen.has(name)) seen.set(name, { name, dir: i >= 0, size: i < 0 ? f.size : 0, mtime: f.lastModified }); }
       return [...seen.values()];
     },
-    async bytes(rel) { const f = map.get(rel); if (!f) throw new Error(`${rel} 없음`); return new Uint8Array(await f.arrayBuffer()); },
-    async text(rel) { const f = map.get(rel); if (!f) throw new Error(`${rel} 없음`); return f.text(); },
+    async bytes(rel) { const f = map.get(rel); if (!f) throw new Error(t('cards.err.missing', { file: rel })); return new Uint8Array(await f.arrayBuffer()); },
+    async text(rel) { const f = map.get(rel); if (!f) throw new Error(t('cards.err.missing', { file: rel })); return f.text(); },
   };
 }
 
@@ -611,7 +612,7 @@ export async function importST(src: Source, want: Want, progress: Progress = () 
   const worldIds = new Map<string, string>();
 
   if (want.lore) for (const f of inv.worlds) {
-    progress(`로어북 · ${f}`);
+    progress(t('cards.progress.lore', { name: f }));
     await safe(T, f, async () => {
       const name = f.replace(/\.json$/i, '');
       const book = worldToLore(JSON.parse(await src.text('worlds/' + f)), name); book.name = name;
@@ -628,10 +629,10 @@ export async function importST(src: Source, want: Want, progress: Progress = () 
 
   const charByFile = new Map<string, DChar>();
   if (want.chars) for (const f of inv.chars) {
-    progress(`캐릭터 · ${f}`);
+    progress(t('cards.progress.char', { name: f }));
     await safe(T, f, async () => {
       const bytes = await src.bytes('characters/' + f);
-      const card = readPngCard(bytes); if (!card) throw new Error('카드 정보가 없는 이미지');
+      const card = readPngCard(bytes); if (!card) throw new Error(t('cards.err.noCardShort'));
       const ch = await saveCard(card, await avatarFrom(bytes, f), tag('char/' + f), T);
       const linked = worldIds.get(ch.worldName as string) || St.lore.find(l => l.name === ch.worldName)?.id;
       if (linked && !ch.loreIds.includes(linked)) { ch.loreIds.push(linked); await St.save('chars', ch, true); }
@@ -644,7 +645,7 @@ export async function importST(src: Source, want: Want, progress: Progress = () 
       const [dir, file] = rel.split('/'); const key = tag('chat/' + rel);
       const ch = charByFile.get(dir + '.png') || [...charByFile.values()].find(c => c.name === dir);
       if (!ch || St.chats.some(c => c.src === key)) { T.skipped++; continue; }
-      progress(`채팅 · ${rel}`);
+      progress(t('cards.progress.chat', { name: rel }));
       await safe(T, rel, async () => {
         const { chat, msgs } = stChatToChat(await src.text('chats/' + rel), { charIds: [ch.id], name: file.replace(/\.jsonl$/i, '') });
         if (!msgs.length) { T.skipped++; return; }
@@ -657,7 +658,7 @@ export async function importST(src: Source, want: Want, progress: Progress = () 
       if (!members.length) { T.skipped++; return; }
       for (const id of K.arr(g.chats)) {
         const key = tag(`gchat/${id}`); if (St.chats.some(c => c.src === key)) { T.skipped++; continue; }
-        progress(`그룹 채팅 · ${g.name}`);
+        progress(t('cards.progress.group', { name: g.name }));
         const text = await src.text(`group chats/${id}.jsonl`).catch(() => ''); if (!text) continue;
         const { chat, msgs } = stChatToChat(text, { charIds: members.map(m => m.id), name: `${g.name} · ${id}`, resolve: r => (charByFile.get(r.original_avatar as string) || members.find(m => m.name === r.name) || members[0]).id });
         if (!msgs.length) continue;
@@ -672,7 +673,7 @@ export async function importST(src: Source, want: Want, progress: Progress = () 
     for (const f of files) await safe(T, `${kind}/${f}`, async () => { const j = JSON.parse(await src.text(`${kind}/${f}`)); if (tplKind(j) !== kind) return; T.templates += tplImport(j, f).filter(x => !x.same).length; });
   }
   if (want.presets) for (const f of inv.presets) {
-    progress(`프리셋 · ${f}`);
+    progress(t('cards.progress.preset', { name: f }));
     await safe(T, f, async () => {
       const { preset } = stPresetToPreset(JSON.parse(await src.text('OpenAI Settings/' + f)), f.replace(/\.json$/i, ''));
       if (!want.regex) preset.regex = [];
@@ -685,7 +686,7 @@ export async function importST(src: Source, want: Want, progress: Progress = () 
   if (want.personas) {
     const pu = settings.power_user || {};
     for (const [file, name] of Object.entries(pu.personas || {})) {
-      progress(`페르소나 · ${name}`);
+      progress(t('cards.progress.persona', { name }));
       await safe(T, name, async () => {
         const avatar = await src.bytes('User Avatars/' + file).then(b => avatarFrom(b, file)).catch(() => '');
         const p = await upsert('personas', K.newPersona({ name, avatar, description: pu.persona_descriptions?.[file]?.description || '' }), tag('persona/' + file)); T.personas++;
@@ -743,7 +744,7 @@ export async function importME(src: Source, want: Want, progress: Progress = () 
     const books = await meTable<MeBook>(src, 'lorebooks'), entries = await meTable<MeEntry>(src, 'lorebook_entries');
     const globals: string[] = [];
     for (const lb of books) {
-      progress(`로어북 · ${lb.name}`);
+      progress(t('cards.progress.lore', { name: lb.name }));
       await safe(T, lb.name, async () => {
         const mine = entries.filter(e => e.lorebookId === lb.id);
         const saved = await upsert('lore', meLoreToLore(lb, mine), tag('lore/' + lb.id));
@@ -759,7 +760,7 @@ export async function importME(src: Source, want: Want, progress: Progress = () 
 
   if (want.chars) for (const row of await meTable<MeRow>(src, 'characters')) {
     const d = meCharData(row); if (isMariBuiltin(row, d)) continue;
-    progress(`캐릭터 · ${d.name || row.id}`);
+    progress(t('cards.progress.char', { name: d.name || row.id }));
     await safe(T, d.name || row.id, async () => {
       const ch = await saveCard({ data: d }, await avatarOf(row.avatarPath), tag('char/' + row.id), T);
       charMap.set(row.id, ch);
@@ -772,7 +773,7 @@ export async function importME(src: Source, want: Want, progress: Progress = () 
   }
 
   if (want.personas) for (const p of await meTable<MePersona>(src, 'personas')) {
-    progress(`페르소나 · ${p.name}`);
+    progress(t('cards.progress.persona', { name: p.name }));
     await safe(T, p.name, async () => {
       const desc = [p.description, p.personality && `[Personality]\n${p.personality}`, p.appearance && `[Appearance]\n${p.appearance}`, p.backstory && `[Backstory]\n${p.backstory}`].filter(Boolean).join('\n\n');
       const saved = await upsert('personas', K.newPersona({ name: p.name || '나', avatar: await avatarOf(p.avatarPath), description: desc }), tag('persona/' + p.id));
@@ -784,7 +785,7 @@ export async function importME(src: Source, want: Want, progress: Progress = () 
   if (want.presets) {
     const [sections, groups, choices] = await Promise.all([meTable<MeSection>(src, 'prompt_sections'), meTable<MeGroup>(src, 'prompt_groups'), meTable<MeChoice>(src, 'choice_blocks')]);
     for (const pr of await meTable<MePreset>(src, 'prompt_presets')) {
-      progress(`프리셋 · ${pr.name}`);
+      progress(t('cards.progress.preset', { name: pr.name }));
       await safe(T, pr.name, async () => { await upsert('presets', mePresetToPreset(pr, sections.filter(s => s.presetId === pr.id), groups.filter(g => g.presetId === pr.id), choices.filter(c => c.presetId === pr.id).map(c => ({ ...c }))), tag('preset/' + pr.id)); T.presets++; });
     }
   }
@@ -802,7 +803,7 @@ export async function importME(src: Source, want: Want, progress: Progress = () 
       const ids = K.arr(K.parseMaybe(c.characterIds, [])); const key = tag('chat/' + c.id);
       const members = ids.map(id => charMap.get(id)).filter(Boolean) as DChar[];
       if (!members.length || St.chats.some(x => x.src === key)) { T.skipped++; continue; }
-      progress(`채팅 · ${c.name}`);
+      progress(t('cards.progress.chat', { name: c.name }));
       await safe(T, c.name, async () => {
         const meta = K.parseMaybe<{ summary?: unknown; activeLorebookIds?: unknown }>(c.metadata, {}) || {};
         const chat = K.newChat({ name: c.name || '', mode: c.mode === 'conversation' ? 'talk' : 'rp', charIds: members.map(m => m.id), personaId: personaMap.get(c.personaId) || '', createdAt: K.parseDate(c.createdAt) || K.now(), summary: typeof meta.summary === 'string' ? meta.summary : '', loreIds: K.arr(meta.activeLorebookIds).map(id => loreMap.get(id)).filter(Boolean), src: key });
@@ -834,7 +835,7 @@ export async function importFiles(files: File[], progress: Progress = () => { })
       const ext = (f.name.split('.').pop() as string).toLowerCase(); const base = f.name.replace(/\.[^.]+$/, '');
       if (['png', 'webp', 'jpg', 'jpeg'].includes(ext)) {
         const bytes = new Uint8Array(await f.arrayBuffer()); const card = readPngCard(bytes);
-        if (!card) throw new Error('캐릭터 카드 정보가 들어 있지 않은 이미지입니다');
+        if (!card) throw new Error(t('cards.err.noCard'));
         await saveCard(card, await avatarFrom(bytes, f.name), '', T); return;
       }
       const text = await f.text();
@@ -856,7 +857,7 @@ export async function importFiles(files: File[], progress: Progress = () => { })
         if (M.type === 'marinara_persona') { await St.save('personas', K.newPersona({ name: d.name || '나', description: [d.description, d.personality, d.appearance, d.backstory].filter(Boolean).join('\n\n'), avatar: d.avatar ? await K.shrinkImage(d.avatar, 720) : '' }), true); T.personas++; return; }
         if (M.type === 'marinara_lorebook') { await St.save('lore', meLoreToLore((d.lorebook || d) as MeBook, K.arr<MeEntry>(d.entries)), true); T.lore++; return; }
         if (M.type === 'marinara_preset') { await St.save('presets', mePresetToPreset((d.preset || d) as MePreset, K.arr<MeSection>(d.sections), K.arr<MeGroup>(d.groups), K.arr<MeChoice>(d.choiceBlocks)), true); T.presets++; return; }
-        throw new Error(`아직 지원하지 않는 Marinara 내보내기 형식 (${M.type})`);
+        throw new Error(t('cards.err.meUnsupported', { type: M.type }));
       }
       if (j.spec || (j.name && (j.first_mes !== undefined || j.description !== undefined)) || j.data?.first_mes !== undefined) { await saveCard(j, '', '', T); return; }
       if (j.entries && typeof j.entries === 'object') { const b = worldToLore(j, base); if (!j.name) b.name = base; await St.save('lore', b, true); T.lore++; return; }
@@ -869,10 +870,10 @@ export async function importFiles(files: File[], progress: Progress = () => { })
       if (rs.length && rs.every(r => r && ((r as StRegex).findRegex !== undefined || (r as { find?: unknown }).find !== undefined))) { let n = St.regex.reduce((m, r) => Math.max(m, +(r.order as number) || 0), 0); for (const r of regexFromJson(rs)) { r.order = ++n; await St.save('regex', r, true); T.regex++; } return; }
       if (tplKind(j) || Object.keys(KINDS).some(k => tplKind(j[k]) === k)) { T.templates += tplImport(j, base).length; return; }   // 고급 포맷팅 템플릿 (낱개 · 전체 내보내기)
       if (Array.isArray(j.qrList)) { T.quick += qrAddSet(stQrToSet(j, base)); return; }   // Quick Reply 세트
-      throw new Error('알 수 없는 형식의 파일입니다');
+      throw new Error(t('cards.err.unknown'));
     });
   }
   K.emit('imported'); return T;
 }
 
-export const summarize = (T: Tally) => ([['캐릭터', T.chars], ['채팅', T.chats], ['메시지', T.msgs], ['로어북', T.lore], ['프리셋', T.presets], ['페르소나', T.personas], ['정규식', T.regex], ['빠른 답장', T.quick], ['포맷팅 템플릿', T.templates]] as [string, number][]).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join(' · ') || '새로 가져온 항목 없음';
+export const summarize = (T: Tally) => ([['chars', T.chars], ['chats', T.chats], ['msgs', T.msgs], ['lore', T.lore], ['presets', T.presets], ['personas', T.personas], ['regex', T.regex], ['quick', T.quick], ['templates', T.templates]] as [string, number][]).filter(([, n]) => n).map(([k, n]) => t('cards.sum.' + k, { n })).join(' · ') || t('cards.sum.none');

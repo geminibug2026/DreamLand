@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../kit';
 import type { Msg } from './types';
 import { S } from '../lib/core';
+import { t } from '../i18n';
 
 type V3 = [number, number, number];
 type M3 = [V3, V3, V3];
@@ -128,7 +129,7 @@ export function Die({ sides, value, animate = false, delay = 0, size = 104, tone
     return () => { live = false; cancelAnimationFrame(raf); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return <div className={['die3', tone, settled && 'settled'].filter(Boolean).join(' ')} role="img" aria-label={`${sides}면 주사위: ${value}`} ref={box}>
+  return <div className={['die3', tone, settled && 'settled'].filter(Boolean).join(' ')} role="img" aria-label={t('chat.dice.aria', { sides, value })} ref={box}>
     <canvas ref={cvRef} width={px} height={px} style={{ width: size + 'px', height: size + 'px' }} />
   </div>;
 }
@@ -140,7 +141,7 @@ export function DiceCard({ m }: { m: Msg }) {
   const [done, setDone] = useState(!fresh), left = useRef(d.rolls.length);
   const many = d.rolls.length >= 6;
   const settle = () => { if (--left.current > 0 || !fresh) return; setDone(true); };
-  const best = d.sides === 20 && d.rolls.length === 1 ? (d.rolls[0] === 20 ? '대성공' : d.rolls[0] === 1 ? '대실패' : '') : '';
+  const best = d.sides === 20 && d.rolls.length === 1 ? (d.rolls[0] === 20 ? t('chat.dice.crit') : d.rolls[0] === 1 ? t('chat.dice.fumble') : '') : '';
   return <div className={['dice-card', many && 'many', done && 'done'].filter(Boolean).join(' ')}>
     <div className="dice-head"><Icon name="dice" size={15} /><span>{`${m.diceBy || ''} · ${d.expr}`}</span>{best ? <em>{best}</em> : null}</div>
     <div className="dice-row">{d.rolls.map((v, i) => <Die key={i} sides={d.sides} value={v} animate={fresh} delay={i * 130} size={many ? 76 : 132} tone={d.sides === 20 && v === 20 ? 'crit' : d.sides === 20 && v === 1 ? 'fumble' : ''} onSettle={settle} />)}</div>

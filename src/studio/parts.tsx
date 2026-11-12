@@ -2,6 +2,7 @@
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import type { Chat } from '../lib/types';
 import { Form, openModal as uiModal, toast, type ModalAction, type ModalHandle } from '../ui';
+import { t } from '../i18n';
 
 export { PageHead, charPicker, confirmBox, menu, promptBox, toast, useDragSort, type FormDefs, type FieldDef as FormDef } from '../ui';
 export type Obj = Record<string, unknown>;
@@ -47,7 +48,7 @@ export function openModal(o: { title?: string; wide?: boolean; actions?: (ModalA
 export const textModal = (title: string, cls: string, text: string) => { uiModal({ title, wide: true, body: <pre className={cls}>{text}</pre> }); };
 /** 그림 크게 보기 */
 export const imageModal = (title: string, src: string) => { uiModal({ title, wide: true, body: <img className="full-img" src={src} alt={title} /> }); };
-export const copyText = (text: string) => { void navigator.clipboard?.writeText(text).then(() => toast('복사했어요', 'ok'), () => toast('복사하지 못했어요', 'err')); };
+export const copyText = (text: string) => { void navigator.clipboard?.writeText(text).then(() => toast(t('studio.copied'), 'ok'), () => toast(t('studio.copyFailed'), 'err')); };
 /** 잠깐 모았다가 한 번만 부른다 */
 export function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number) {
   let t: ReturnType<typeof setTimeout> | undefined;

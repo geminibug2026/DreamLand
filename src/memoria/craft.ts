@@ -9,6 +9,7 @@
  */
 
 import type { Cfg } from './types';
+import { t } from '../i18n';
 
 /** withDeadline 의 결과 */
 export interface Deadline<T> { value: T; timedOut: boolean }
@@ -308,7 +309,7 @@ export function parseBundleFile(text: unknown, defaults: BundleValues): BundleFi
         if (sameKind) values[k] = clone(v);
     }
     const name = String(data.name ?? '').replace(/\s+/g, ' ').trim().slice(0, 40);
-    return Object.keys(values).length ? { name: name || '가져온 세트', values } : null;
+    return Object.keys(values).length ? { name: name || t('memoria.engine.bundle.imported'), values } : null;
 }
 
 /* ------------------------------------------------------------

@@ -4,7 +4,8 @@
   "scripts": {
     "build": "tsc --noEmit && vite build",
     "watch": "vite build --watch",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "i18n:check": "node scripts/i18n-check.mjs"
   },
   "dependencies": {
     "react": "^19.3.1",

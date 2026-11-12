@@ -7,6 +7,7 @@ import { S, on } from '../lib/core';
 import { toast } from '../ui';
 import { modal } from '../ui/dom';
 import { chatApi } from '../chat/actions';
+import { t } from '../i18n';
 
 type Pic = Pick<Sprite, 'id' | 'data'>;
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
@@ -59,13 +60,13 @@ function applyDossier(layout: Element, chars: CharX[], state: Map<string, ExprSt
   const st = group ? null : state.get(chars[0].id), sig = [st ? st.label : 'g', c.standing, c.mode].join('|');
   if (cap?.dataset.sig === sig) return;
   const next = el('div', 'exs-cap'); next.dataset.sig = sig;
-  if (!st) next.append(el('span', 'exs-cap-label', '표정'));
+  if (!st) next.append(el('span', 'exs-cap-label', t('expressions.panel.title')));
   else {
-    const b = el('button', 'exs-cap-btn'); b.type = 'button'; b.title = '이 답변의 표정 바꾸기';
-    b.addEventListener('click', () => { const { chat: ch, msgs } = chatApi.current(); const m = ch && lastReply(msgs, ch, ch.charIds[0]); if (ch && m) void openPicker(m, ch); else toast('아직 답변이 없어요'); });
-    b.append(el('i', '', '✦'), el('span', '', st.label ? nameOf(st.label) : '기본 표정'), iconEl('down', 12)); next.append(b);
+    const b = el('button', 'exs-cap-btn'); b.type = 'button'; b.title = t('expressions.cap.change');
+    b.addEventListener('click', () => { const { chat: ch, msgs } = chatApi.current(); const m = ch && lastReply(msgs, ch, ch.charIds[0]); if (ch && m) void openPicker(m, ch); else toast(t('expressions.noReply')); });
+    b.append(el('i', '', '✦'), el('span', '', st.label ? nameOf(st.label) : t('expressions.fallbackName')), iconEl('down', 12)); next.append(b);
   }
-  const sb = el('button', 'exs-cap-btn exs-cap-stand' + (c.standing ? ' on' : ''), c.standing ? '스탠딩 끄기' : '스탠딩 보기'); sb.type = 'button'; sb.title = '화면 한쪽에 큰 초상을 세웁니다';
+  const sb = el('button', 'exs-cap-btn exs-cap-stand' + (c.standing ? ' on' : ''), c.standing ? t('expressions.standing.off') : t('expressions.standing.on')); sb.type = 'button'; sb.title = t('expressions.cap.standingTip');
   sb.addEventListener('click', () => toggleStanding()); next.append(sb);
   if (cap) cap.replaceWith(next); else (card.querySelector(':scope > .sheet-window, :scope > .cast-grid') || card.firstChild as ChildNode | null)?.after(next);
 }
@@ -88,7 +89,7 @@ function applyStanding(layout: Element, chat: ChatX, chars: CharX[], state: Map<
   if (!figs.length) { stage?.remove(); return; }
   if (!stage) {
     stage = el('div', 'exs-stage');
-    const x = el('button', 'exs-x'); x.type = 'button'; x.title = '스탠딩 끄기'; x.setAttribute('aria-label', '스탠딩 끄기'); x.addEventListener('click', () => toggleStanding(false)); x.append(iconEl('x', 14));
+    const x = el('button', 'exs-x'); x.type = 'button'; x.title = t('expressions.standing.off'); x.setAttribute('aria-label', t('expressions.standing.off')); x.addEventListener('click', () => toggleStanding(false)); x.append(iconEl('x', 14));
     stage.append(el('div', 'exs-row'), x);
     layout.append(stage);
     const made = stage;

@@ -6,6 +6,7 @@ import * as libEmbed from '../lib/embed';
 import { DB, S, msgText } from '../lib/core';
 import { activeBooks } from '../lib/engine';
 import { chatApi } from '../chat/actions';
+import { t } from '../i18n';
 
 export interface EmbedOpt { connId?: string; kind?: string; model?: string; signal?: AbortSignal; timeoutMs?: number; query?: boolean }
 export interface EmbedMod {
@@ -96,7 +97,7 @@ export const lastSearch = () => lastInfo;
 
 function lorePieces(chat: ChatX, c: VecCfg): LorePiece[] {
   const chars = (chat.charIds || []).map(id => S.get('chars', id)).filter(x => !!x), books = activeBooks(chat, chars, S.persona(chat)), out: LorePiece[] = [];
-  for (const b of books) for (const e of b.entries || []) { if (e.enabled === false || e.constant || !(e.content || '').trim() || !(c.loreAll || e.vectorized)) continue; const text = clean([e.name, (e.keys || []).join(', '), e.content].filter(Boolean).join('\n')); out.push({ key: e.id + ':' + hash(text), text, id: e.id, name: e.name || (e.keys || [])[0] || '항목' }); }
+  for (const b of books) for (const e of b.entries || []) { if (e.enabled === false || e.constant || !(e.content || '').trim() || !(c.loreAll || e.vectorized)) continue; const text = clean([e.name, (e.keys || []).join(', '), e.content].filter(Boolean).join('\n')); out.push({ key: e.id + ':' + hash(text), text, id: e.id, name: e.name || (e.keys || [])[0] || t('vectors.entry') }); }
   return out;
 }
 
@@ -117,7 +118,7 @@ export async function prepare({ chat, msgs, type }: { chat?: ChatX; msgs?: Msg[]
   if (!pieces.length && !lore.length) return;
   const cst = pieces.length ? await loadStore('vec:' + chat.id, sig) : null, lst = lore.length ? await loadStore('vec:lore', sig) : null;
   const fresh = (cst ? pieces.filter(p => !cst.items[p.key]).length : 0) + (lst ? lore.filter(p => !lst.items[p.key]).length : 0);
-  if (fresh > 24) chatApi.setStatus?.(`벡터 만드는 중… ${fresh}조각`);
+  if (fresh > 24) chatApi.setStatus?.(t('vectors.building', { count: fresh }));
   // 답변 직전에는 가장 최근 조각 256개까지만 새로 만든다 (나머지는 다음 턴이나 「지금 만들기」에서)
   if (cst) await sync(cst, pieces, c, { max: 256 });
   if (lst) { await sync(lst, lore, c, { prune: false, max: 256 }); pruneLore(lst, lore); }

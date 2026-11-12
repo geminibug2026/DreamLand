@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import { Btn, Icon, IconBtn, Moon, mountInto } from '../kit';
 import { confirmBox, menu, promptBox } from '../ui';
 import { bindDialog, editPrompts, fontDialog, memoDialog } from './dialogs';
-import { DIARY_DEF, MEMO_DEF, TYPE, answerNote, book, charOf, dreamOf, fontOf, fontStyle, jumpTo, loadChat, pagesOf, save, syncChat, tellErr, titleOf, writeDiary } from './logic';
+import { DIARY_DEF, MEMO_DEF, TYPE, fontLabel, monthLabel, answerNote, book, charOf, dreamOf, fontOf, fontStyle, jumpTo, loadChat, pagesOf, save, syncChat, tellErr, titleOf, writeDiary } from './logic';
 import { MoonDial, Paras, Polaroid, Ticket } from './parts';
 import type { DChar as Char, DChat, DiaryEntry, Msg, Page } from './types';
 import { Illust } from '../lib/illust';
@@ -13,6 +13,7 @@ import { moonPhase } from '../lib/moon';
 import { go } from '../lib/router';
 import * as core from '../lib/core';
 import * as K from '../lib/f-keepsake';
+import { t as tr, tn, getLang, fmtDate, locale } from '../i18n';
 
 // ── 책장 넘기기 ──
 // 넘어가는 종이(leaf)의 앞면은 지금 쪽, 뒷면은 다음 펼침의 맞은편 쪽. 아직 가려져 있어야 할 반대쪽에는 옛 쪽을 잠깐 덮어 둔다.
@@ -46,7 +47,7 @@ function flipLeaves(bookEl: HTMLElement, before: Required<Look>, dir: number, fa
 }
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
-const md = (t: number) => { const d = new Date(t); return `${d.getMonth() + 1}.${pad2(d.getDate())}`; };
+const md = (t: number) => { const d = new Date(t); if (getLang() !== 'ko') return fmtDate(d, { month: 'numeric', day: '2-digit' }); return `${d.getMonth() + 1}.${pad2(d.getDate())}`; };
 const calm = () => S.settings.motion === false || matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 function Book({ chat, msgs, at, close }: { chat: DChat; msgs: Msg[]; at?: string; close: () => void }) {
@@ -93,35 +94,35 @@ function Book({ chat, msgs, at, close }: { chat: DChat; msgs: Msg[]; at?: string
   // ── 오른쪽 쪽: 종류마다
   const exchange = (e: DiaryEntry) => {   // 교환 일기: 내가 몇 줄 적으면 캐릭터가 여백에 답한다
     if (s.writing) return <div className="bk-ex">
-      <div className="bk-ex-head"><span>교환 일기</span><small>{`${user}의 자리`}</small></div>
-      <textarea key={e.id} ref={noteEl} className="bk-note-inp" rows={3} maxLength={800} placeholder={`${ch.name}의 일기 옆에 몇 줄 적어 보세요.`} defaultValue={e.note || ''} />
-      <div className="bk-ex-acts"><button className="bk-btn" onClick={() => { s.writing = false; draw(); }}>그만두기</button>
-        <button className="bk-btn ink" onClick={async () => { const v = (noteEl.current?.value || '').trim(); if (v !== (e.note || '')) { if (v) { e.note = v; e.noteTs = core.now(); } else { delete e.note; delete e.noteTs; delete e.answer; delete e.answerTs; } await save(chat); } s.writing = false; draw(); }}>적어 두기</button></div>
+      <div className="bk-ex-head"><span>{tr('diary.exchange.title')}</span><small>{tr('diary.exchange.seat', { user })}</small></div>
+      <textarea key={e.id} ref={noteEl} className="bk-note-inp" rows={3} maxLength={800} placeholder={tr('diary.exchange.ph', { name: ch.name })} defaultValue={e.note || ''} />
+      <div className="bk-ex-acts"><button className="bk-btn" onClick={() => { s.writing = false; draw(); }}>{tr('diary.exchange.stop')}</button>
+        <button className="bk-btn ink" onClick={async () => { const v = (noteEl.current?.value || '').trim(); if (v !== (e.note || '')) { if (v) { e.note = v; e.noteTs = core.now(); } else { delete e.note; delete e.noteTs; delete e.answer; delete e.answerTs; } await save(chat); } s.writing = false; draw(); }}>{tr('diary.pd.save')}</button></div>
     </div>;
-    if (!e.note) return <div className="bk-ex"><button className="bk-ex-add" onClick={startWriting}><Icon name="feather" size={15} /><span>옆에 몇 줄 적기</span><small>교환 일기</small></button></div>;
+    if (!e.note) return <div className="bk-ex"><button className="bk-ex-add" onClick={startWriting}><Icon name="feather" size={15} /><span>{tr('diary.exchange.add')}</span><small>{tr('diary.exchange.title')}</small></button></div>;
     return <div className="bk-ex">
-      <div className="bk-ex-head"><span>교환 일기</span><small>{e.noteTs ? md(e.noteTs) : ''}</small></div>
-      <div className="bk-note"><Paras text={e.note} /><span className="bk-by">{`— ${user}`}</span><button className="bk-mini" title="고쳐 적기" onClick={startWriting}><Icon name="edit" size={13} /></button></div>
+      <div className="bk-ex-head"><span>{tr('diary.exchange.title')}</span><small>{e.noteTs ? md(e.noteTs) : ''}</small></div>
+      <div className="bk-note"><Paras text={e.note} /><span className="bk-by">{`— ${user}`}</span><button className="bk-mini" title={tr('diary.exchange.rewrite')} onClick={startWriting}><Icon name="edit" size={13} /></button></div>
       {e.answer ? <div className="bk-ans"><Paras text={e.answer} /><span className="bk-by">{`— ${S.get('chars', e.by)?.name || ch.name}`}</span></div> : null}
-      <div className="bk-ex-acts"><button className="bk-btn ink" disabled={!!busy} onClick={() => void run('answer', async () => { await answerNote(chat, e); return e.id; })}>{busy === 'answer' ? `${ch.name}이(가) 여백에 적는 중…` : e.answer ? '답글 다시 받기 · 호출 1회' : '답글 받기 · 호출 1회'}</button></div>
+      <div className="bk-ex-acts"><button className="bk-btn ink" disabled={!!busy} onClick={() => void run('answer', async () => { await answerNote(chat, e); return e.id; })}>{busy === 'answer' ? tr('diary.exchange.answering', { name: ch.name }) : e.answer ? tr('diary.exchange.answerAgain') : tr('diary.exchange.answer')}</button></div>
     </div>;
   };
   const rightOf = (pg: Page): ReactNode => {
     const sign = `— ${S.get('chars', 'by' in pg.ref ? pg.ref.by : '')?.name || ch.name}`;
     const foot = (mid?: ReactNode) => <div className="book-foot"><span className="book-no">{`${page + 1} / ${pages.length}`}</span>{mid}<span className="book-sign">{sign}</span></div>;
-    const head = (small?: string) => <div className="book-head"><span>{when.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' })}</span>{small ? <small>{small}</small> : null}</div>;
-    if (pg.type === 'diary') { const e = pg.ref; return <>{head(e.to > e.from ? `대화 ${e.from + 1}–${e.to}번째` : '')}<div className="bk-scroll"><div className="book-text"><Paras text={e.text} /></div>{exchange(e)}</div>{foot()}</>; }
-    if (pg.type === 'dream') { const e = pg.ref; return <>{head(`${e.phaseName || moonPhase(when).name} 뜬 밤의 꿈`)}<div className="bk-scroll"><div className="book-text"><Paras text={e.text} /></div></div>{foot(<span className="bk-stamp">꿈 · 정사가 아님</span>)}</>; }
-    if (pg.type === 'letter') { const e = pg.ref; return <>{head(`${e.days || 0}일의 이야기를 담아`)}<div className="bk-scroll"><div className="book-text"><Paras text={e.text} />{e.ps ? <p className="bk-ps">{`추신. ${e.ps}`}</p> : null}</div></div>{foot()}</>; }
+    const head = (small?: string) => <div className="book-head"><span>{when.toLocaleDateString(locale(), { month: 'long', day: 'numeric', weekday: 'short' })}</span>{small ? <small>{small}</small> : null}</div>;
+    if (pg.type === 'diary') { const e = pg.ref; return <>{head(e.to > e.from ? tr('diary.book.range', { from: e.from + 1, to: e.to }) : '')}<div className="bk-scroll"><div className="book-text"><Paras text={e.text} /></div>{exchange(e)}</div>{foot()}</>; }
+    if (pg.type === 'dream') { const e = pg.ref; return <>{head(tr('diary.book.dreamHead', { phase: e.phaseName ? K.phaseNameLabel(e.phaseName) : moonPhase(when).name }))}<div className="bk-scroll"><div className="book-text"><Paras text={e.text} /></div></div>{foot(<span className="bk-stamp">{tr('diary.book.dreamStamp')}</span>)}</>; }
+    if (pg.type === 'letter') { const e = pg.ref; return <>{head(tn('diary.book.letterHead', e.days || 0))}<div className="bk-scroll"><div className="book-text"><Paras text={e.text} />{e.ps ? <p className="bk-ps">{tr('diary.ps', { ps: e.ps })}</p> : null}</div></div>{foot()}</>; }
     // 기념품: 인화 사진 + 한 줄
     const e = pg.ref, scene = K.scenesOf(msgs).find(x => x.id === e.id), ids = [...new Set((scene?.photos || []).map(x => x.id).filter((id): id is string => !!id && !!Illust.data(id)))], src = Illust.data(e.photo);
     const swap = ids.length > 1 ? async () => { e.photo = ids[(ids.indexOf(e.photo) + 1) % ids.length]; e.picked = true; await save(chat); draw(); } : undefined;
-    return <>{head(`장면 ${e.lines || 0}마디${e.photoCount ? ` · 사진 ${e.photoCount}장` : ''}`)}
-      <div className="bk-scroll bk-keep">{src ? <Polaroid src={src} cls="big" onClick={swap} title={swap ? '눌러서 다른 사진으로' : ''} /> : <div className="bk-nophoto"><Moon size={54} date={when} /><small>이 장면에는 남은 사진이 없어요.</small></div>}
+    return <>{head(tr('diary.book.sceneLines', { count: e.lines || 0 }) + (e.photoCount ? ' · ' + tr('diary.book.scenePics', { count: e.photoCount }) : ''))}
+      <div className="bk-scroll bk-keep">{src ? <Polaroid src={src} cls="big" onClick={swap} title={swap ? tr('diary.book.swapPhoto') : ''} /> : <div className="bk-nophoto"><Moon size={54} date={when} /><small>{tr('diary.book.noPhoto')}</small></div>}
         {e.summary ? <p className="bk-sum">{e.summary}</p> : null}{e.memo ? <p className="bk-memo">{e.memo}</p> : null}
-        <div className="bk-ex-acts"><button className="bk-btn" onClick={async () => { const v = await promptBox('기념품에 적어 둘 말', e.memo || '', { area: true, placeholder: '이 장면에 대해 남겨 두고 싶은 말' }); if (v === null) return; e.memo = v.trim().slice(0, 300); await save(chat); draw(); }}>{e.memo ? '적어 둔 말 고치기' : '한마디 적어 두기'}</button>
-          {msgs.some(m => m.id === e.id) ? <button className="bk-btn ink" onClick={() => { close(); void jumpTo(chat.id, e.openId && msgs.some(m => m.id === e.openId) ? e.openId : e.id); }}>이 장면으로 가기</button> : null}</div></div>
-      <div className="book-foot"><span className="book-no">{`${page + 1} / ${pages.length}`}</span><span className="bk-stamp">추가 호출 없이 꽂아 둔 기념품</span></div></>;
+        <div className="bk-ex-acts"><button className="bk-btn" onClick={async () => { const v = await promptBox(tr('diary.book.memoTitle'), e.memo || '', { area: true, placeholder: tr('diary.book.memoPh') }); if (v === null) return; e.memo = v.trim().slice(0, 300); await save(chat); draw(); }}>{e.memo ? tr('diary.book.memoEdit') : tr('diary.book.memoAdd')}</button>
+          {msgs.some(m => m.id === e.id) ? <button className="bk-btn ink" onClick={() => { close(); void jumpTo(chat.id, e.openId && msgs.some(m => m.id === e.openId) ? e.openId : e.id); }}>{tr('diary.goScene')}</button> : null}</div></div>
+      <div className="book-foot"><span className="book-no">{`${page + 1} / ${pages.length}`}</span><span className="bk-stamp">{tr('diary.book.keepStamp')}</span></div></>;
   };
   const blankMid = () => ch.avatar ? <div className="book-photo small"><img src={ch.avatar} alt="" /></div> : <div className="book-moon"><Moon size={96} date={when} /></div>;
   const leftMid = (pg: Page) => {
@@ -133,27 +134,27 @@ function Book({ chat, msgs, at, close }: { chat: DChat; msgs: Msg[]; at?: string
   };
   const chipsOf = (pg: Page) => {
     const list: ReactNode[] = pg.type === 'diary' ? [pg.ref.storyDate && <em key="a">{pg.ref.storyDate}</em>, pg.ref.weather && <span key="b">{pg.ref.weather}</span>, pg.ref.mood && <span key="c">{pg.ref.mood}</span>]
-      : pg.type === 'dream' ? [pg.ref.phaseName && <em key="a">{pg.ref.phaseName}</em>, <span key="b">정사가 아님</span>, (pg.ref.memId || pg.ref.memIds?.length) ? <span key="c">기억에 올림</span> : null]
-        : pg.type === 'keepsake' ? [pg.ref.place && <em key="a">{pg.ref.place}</em>, pg.ref.time && <span key="b">{pg.ref.time}</span>] : [<em key="a">{`${pg.ref.month.slice(0, 4)}년 ${+pg.ref.month.slice(5)}월`}</em>, <span key="b">보름달</span>];
+      : pg.type === 'dream' ? [pg.ref.phaseName && <em key="a">{K.phaseNameLabel(pg.ref.phaseName)}</em>, <span key="b">{tr('diary.notCanon')}</span>, (pg.ref.memId || pg.ref.memIds?.length) ? <span key="c">{tr('diary.book.inMemory')}</span> : null]
+        : pg.type === 'keepsake' ? [pg.ref.place && <em key="a">{pg.ref.place}</em>, pg.ref.time && <span key="b">{pg.ref.time}</span>] : [<em key="a">{monthLabel(pg.ref.month, true)}</em>, <span key="b">{tr('diary.fullMoon')}</span>];
     return list.some(Boolean) ? <div className="book-chips">{list.filter(Boolean)}</div> : null;
   };
 
-  const waiting = busy === 'diary' ? `${ch.name}이(가) 펜을 들었어요…` : busy === 'dream' ? `${ch.name}이(가) 잠들었어요…` : '';
+  const waiting = busy === 'diary' ? tr('diary.book.penUp', { name: ch.name }) : busy === 'dream' ? tr('diary.book.asleep', { name: ch.name }) : '';
   const range = p?.type === 'diary' && p.ref.to > p.ref.from ? msgs[p.ref.from] : null;
   const more = (ev: MouseEvent<HTMLButtonElement>) => menu(ev.currentTarget, [
-    p && p.type !== 'keepsake' && { label: '이 쪽 고치기', ic: 'edit', onclick: async () => { const v = await promptBox(`${TYPE[p.type][1]} 고치기`, p.ref.text, { area: true }); if (v?.trim()) { p.ref.text = v.trim(); await save(chat); draw(); } } },
-    p && { label: p.type === 'keepsake' ? '이 기념품 빼기' : '이 쪽 찢기', ic: 'trash', danger: true, onclick: async () => {
-      if (!(await confirmBox(`이 ${TYPE[p.type][1]}을(를) 지울까요?`, '지우기', true))) return;
+    p && p.type !== 'keepsake' && { label: tr('diary.book.editPage'), ic: 'edit', onclick: async () => { const v = await promptBox(tr('diary.book.editKind', { kind: TYPE[p.type][1] }), p.ref.text, { area: true }); if (v?.trim()) { p.ref.text = v.trim(); await save(chat); draw(); } } },
+    p && { label: p.type === 'keepsake' ? tr('diary.book.removeKeep') : tr('diary.book.tearPage'), ic: 'trash', danger: true, onclick: async () => {
+      if (!(await confirmBox(tr('diary.book.removeAsk', { kind: TYPE[p.type][1] }), tr('diary.remove'), true))) return;
       if (p.type === 'diary') chat.diary = (chat.diary || []).filter(x => x !== p.ref); else if (p.type === 'dream') chat.dreams = (chat.dreams || []).filter(x => x !== p.ref); else if (p.type === 'letter') chat.letters = (chat.letters || []).filter(x => x !== p.ref); else p.ref.gone = true;   // 기념품은 다시 꽂히지 않게 표시만
       await save(chat); reload(); draw(); } },
     p && '-',
-    range && { label: '이 일기의 대화로 가기', ic: 'chat', onclick: () => { close(); void jumpTo(chat.id, range.id); } },
-    { label: '달력에서 보기', ic: 'moon', onclick: () => { close(); go('diary', { tab: 'calendar', chatId: chat.id, day: p ? K.dayKey(p.ts) : undefined }); } },
-    { label: `${ch.name}의 글씨체`, ic: 'feather', hint: fontOf(charOf(chat) || null).ko, onclick: () => { fontDialog(charOf(chat), { chat, onChange: draw }); } },
-    { label: '지시문 고치기', ic: 'sliders', onclick: () => { editPrompts(['dream', 'exchange', 'letter'], '일기장 지시문', [DIARY_DEF, MEMO_DEF]); } },
+    range && { label: tr('diary.book.goDiaryChat'), ic: 'chat', onclick: () => { close(); void jumpTo(chat.id, range.id); } },
+    { label: tr('diary.seeCal'), ic: 'moon', onclick: () => { close(); go('diary', { tab: 'calendar', chatId: chat.id, day: p ? K.dayKey(p.ts) : undefined }); } },
+    { label: tr('diary.book.fontOf', { name: ch.name }), ic: 'feather', hint: fontLabel(fontOf(charOf(chat) || null)), onclick: () => { fontDialog(charOf(chat), { chat, onChange: draw }); } },
+    { label: tr('diary.prompts.edit'), ic: 'sliders', onclick: () => { editPrompts(['dream', 'exchange', 'letter'], tr('diary.book.promptTitle'), [DIARY_DEF, MEMO_DEF]); } },
     '-',
-    { label: '한 권으로 묶기', ic: 'book', hint: '인쇄용', onclick: () => void bindDialog(chat) },
-    (chat.diary || []).length ? { label: '일기 글만 내보내기', ic: 'import', hint: '.txt', onclick: () => core.download(`${ch.name}-diary.txt`, (chat.diary || []).map(x => `${new Date(x.ts).toLocaleDateString('ko-KR')} ${x.storyDate ? `(${x.storyDate}) ` : ''}${x.title}\n\n${x.text}${x.note ? `\n\n[${user}] ${x.note}${x.answer ? `\n[${ch.name}] ${x.answer}` : ''}` : ''}`).join('\n\n— ✦ —\n\n'), 'text/plain') } : null]);
+    { label: tr('diary.bind.title'), ic: 'book', hint: tr('diary.book.forPrint'), onclick: () => void bindDialog(chat) },
+    (chat.diary || []).length ? { label: tr('diary.book.exportTxt'), ic: 'import', hint: '.txt', onclick: () => core.download(`${ch.name}-diary.txt`, (chat.diary || []).map(x => `${new Date(x.ts).toLocaleDateString(locale())} ${x.storyDate ? `(${x.storyDate}) ` : ''}${x.title}\n\n${x.text}${x.note ? `\n\n[${user}] ${x.note}${x.answer ? `\n[${ch.name}] ${x.answer}` : ''}` : ''}`).join('\n\n— ✦ —\n\n'), 'text/plain') } : null]);
   const tool = (ic: string, label: string, cost: string, title: string, onClick: () => void, cls = '') => <button type="button" className={`bk-tool${cls}`} title={title} disabled={!!busy} onClick={onClick}><Icon name={ic} size={16} /><span>{label}</span>{cost ? <em>{cost}</em> : null}</button>;
   const memod = p && p.type !== 'keepsake' ? !!(p.ref.memIds?.length || p.ref.memId) : false;
 
@@ -162,23 +163,23 @@ function Book({ chat, msgs, at, close }: { chat: DChat; msgs: Msg[]; at?: string
       <i className="book-ribbon" />
       <div className="book-page left">
         <div className="book-top"><span className="book-tag">{p ? `No. ${no} · ${TYPE[p.type][0]}` : 'DIARY'}</span><span className="book-phase"><Moon size={26} date={when} />{moonPhase(when).name}</span></div>
-        <div className="book-day"><b>{pad2(when.getDate())}</b><span>{when.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })}<small>{when.toLocaleDateString('ko-KR', { weekday: 'long' })}</small></span></div>
-        {p ? <><h3 className="book-title">{titleOf(p)}</h3>{chipsOf(p)}</> : <h3 className="book-title">{`${ch.name}의 일기장`}</h3>}
+        <div className="book-day"><b>{pad2(when.getDate())}</b><span>{when.toLocaleDateString(locale(), { year: 'numeric', month: 'long' })}<small>{when.toLocaleDateString(locale(), { weekday: 'long' })}</small></span></div>
+        {p ? <><h3 className="book-title">{titleOf(p)}</h3>{chipsOf(p)}</> : <h3 className="book-title">{tr('diary.book.titleOf', { name: ch.name })}</h3>}
         <div className="book-mid">{p ? leftMid(p) : blankMid()}</div>
         {pages.length > 1 ? <div className="book-index">{pages.map((x, i) => <button key={x.type + x.id} className={'book-idx' + (i === page ? ' on' : '')} onClick={() => turn(i - page)}><i>{pad2(i + 1)}</i><span>{x.type !== 'diary' ? <em className="bk-kind">{TYPE[x.type][1]}</em> : null}{titleOf(x)}</span><small>{md(x.ts)}</small></button>)}</div> : null}
       </div>
       <i className="book-spine" />
       <div className="book-page right">{p && !waiting ? rightOf(p)
-        : <div className="book-empty"><p>{waiting || '아직 아무것도 적혀 있지 않아요.'}</p>{!busy ? <Btn label="첫 일기 쓰기 · 호출 1회" ic="feather" cls="primary" onClick={write} /> : null}</div>}</div>
+        : <div className="book-empty"><p>{waiting || tr('diary.book.empty')}</p>{!busy ? <Btn label={tr('diary.book.first')} ic="feather" cls="primary" onClick={write} /> : null}</div>}</div>
     </div>
     <div className="book-bar">
-      <div className="bk-nav"><IconBtn ic="left" title="앞 장 (←)" onClick={() => turn(-1)} /><span className="bk-count">{pages.length ? `${page + 1} / ${pages.length}` : '—'}</span><IconBtn ic="right" title="뒷 장 (→)" onClick={() => turn(1)} /></div>
+      <div className="bk-nav"><IconBtn ic="left" title={tr('diary.book.prev')} onClick={() => turn(-1)} /><span className="bk-count">{pages.length ? `${page + 1} / ${pages.length}` : '—'}</span><IconBtn ic="right" title={tr('diary.book.next')} onClick={() => turn(1)} /></div>
       <div className="bk-tools">
-        {tool('feather', busy === 'diary' ? '쓰는 중' : '일기', '1회', '마지막 일기 이후의 이야기로 오늘의 일기를 씁니다 · 모델 호출 1회', write, ' ink')}
-        {tool('moon', busy === 'dream' ? '꿈꾸는 중' : '꿈', '1회', '가장 최근에 이야기한 날의 조각으로 꿈을 꿉니다. 오늘 밤 달의 위상에 따라 분위기가 달라져요 · 모델 호출 1회', dream)}
-        {p && p.type !== 'keepsake' ? tool('up', memod ? '기억됨' : '기억', '', memod ? '기억에 올린 내용을 보거나 다시 올립니다' : '이 쪽을 간추려 장기기억에 올립니다', () => { memoDialog(chat, p, { ch, user, onDone: draw }); }, memod ? ' done' : '') : null}
+        {tool('feather', busy === 'diary' ? tr('diary.book.toolWriting') : tr('diary.type.diary'), tr('diary.book.once'), tr('diary.book.toolDiary'), write, ' ink')}
+        {tool('moon', busy === 'dream' ? tr('diary.book.toolDreaming') : tr('diary.type.dream'), tr('diary.book.once'), tr('diary.book.toolDream'), dream)}
+        {p && p.type !== 'keepsake' ? tool('up', memod ? tr('diary.book.memoDone') : tr('diary.book.memo'), '', memod ? tr('diary.book.memoDoneTitle') : tr('diary.book.memoTitleTool'), () => { memoDialog(chat, p, { ch, user, onDone: draw }); }, memod ? ' done' : '') : null}
       </div>
-      <div className="bk-nav"><IconBtn ic="more" title="더 보기" onClick={more} /><IconBtn ic="x" title="덮기 (Esc)" onClick={close} /></div>
+      <div className="bk-nav"><IconBtn ic="more" title={tr('common.more')} onClick={more} /><IconBtn ic="x" title={tr('diary.book.close')} onClick={close} /></div>
     </div>
   </>;
 }

@@ -3,6 +3,7 @@
 import * as core from './core';
 import { regexAllowed, type Regex, type Preset, type Chat } from './engine';
 import * as cards from './cards';
+import { t } from '../i18n';
 
 export type ScKind = 'global' | 'preset' | 'char';
 /** sc = { kind: 'global' } | { kind: 'preset', id } | { kind: 'char', id } */
@@ -29,9 +30,9 @@ export const G: Sc = { kind: 'global' };
 export const isGlobal = (r: Regex) => !r.scope || r.scope === 'global';
 const byOrder = (list: Regex[]) => list.map((r, i) => [r, i] as const).sort((a, b) => (+(a[0].order as number) || 0) - (+(b[0].order as number) || 0) || a[1] - b[1]).map(x => x[0]);
 export const scKey = (sc: Sc) => (sc.kind === 'global' ? 'global' : `${sc.kind}:${sc.id}`);
-export const scShort = (sc: Sc) => ({ global: '전역', preset: '프리셋', char: '캐릭터' }[sc.kind]);
-export const scOwner = (sc: Sc) => (sc.kind === 'preset' ? (S.get('presets', sc.id) as Preset | undefined)?.name || '없어진 프리셋' : sc.kind === 'char' ? (S.get('chars', sc.id) as { name?: string } | undefined)?.name || '없어진 캐릭터' : '');
-export const scName = (sc: Sc) => (sc.kind === 'global' ? '전역' : `${scShort(sc)} · ${scOwner(sc)}`);
+export const scShort = (sc: Sc) => t(({ global: 'regex.scope.global', preset: 'regex.scope.preset', char: 'regex.scope.char' } as const)[sc.kind]);
+export const scOwner = (sc: Sc) => (sc.kind === 'preset' ? (S.get('presets', sc.id) as Preset | undefined)?.name || t('regex.scope.gonePreset') : sc.kind === 'char' ? (S.get('chars', sc.id) as { name?: string } | undefined)?.name || t('regex.scope.goneChar') : '');
+export const scName = (sc: Sc) => (sc.kind === 'global' ? t('regex.scope.global') : `${scShort(sc)} · ${scOwner(sc)}`);
 const presetOf = (sc: Sc) => S.get('presets', sc.id) as Preset | undefined;
 export const Scope = {
   list(sc: Sc): Regex[] { return sc.kind === 'global' ? byOrder(S.regex.filter(isGlobal)) : sc.kind === 'char' ? scopedRegex(sc.id) : arr(presetOf(sc)?.regex as Regex[] | undefined).filter(r => r && typeof r === 'object'); },
@@ -46,7 +47,7 @@ export const Scope = {
     r.scope = sc.kind === 'global' ? 'global' : sc.kind === 'char' ? sc.id as string : 'preset';
     r.order = list.reduce((m, x) => Math.max(m, +(x.order as number) || 0), -1) + 1;
     if (sc.kind === 'preset') {
-      const p = presetOf(sc); if (!p) throw new Error('프리셋을 찾지 못했어요');
+      const p = presetOf(sc); if (!p) throw new Error(t('regex.scope.presetMissing'));
       if (list.some(x => x.id === r.id)) r.id = uid();
       p.regex = [...list, r]; await S.save('presets', p, true);
     } else { const hit = S.get('regex', r.id); if (hit && hit !== r) r.id = uid(); await S.save('regex', r, true); }

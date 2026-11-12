@@ -8,6 +8,7 @@ import type { Part3 } from './part3';
 import type { Mem, Msg, ChatM, CastCard, Bond, BondStep, MemItem, Pledge, Relation, StatusRow } from '../types';
 import { SCOPES, NARRATOR, MEMORY_DEFAULTS, CHARACTER_LINES_MAX, CHARACTER_GROWTH_MAX, BOND_LOG_MAX, BOND_SETTLE_TURNS, cache, mesHashOf, list, low, cleanStr, clipStr, toSnake, num01, firstSentence, canonSlot, na, visibleProse, ekey, overlap, parseDurationDays, normKind, normLockKind, normVisibility, pledgeId, upsertRow } from './base';
 import { THREAD_KINDS } from '../craft';
+import { t as tr } from '../../i18n';
 
 /** 사서가 돌려준 JSON (읽기 전의 날것 — 칸마다 믿을 수 없다) */
 export interface RawExtraction {
@@ -255,12 +256,12 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     let stale = false;
     if (mesHashOf(ai) !== h0) {
       if (retry > 0) { await this.save(mem); return this.commitOne(chat, msgs, ai, { signal, force, retry: retry - 1 }); }
-      stale = true; ext = null; error = '기록하는 동안 답변이 바뀌었어요 — 다시 기록하면 새 내용으로 기록합니다';   // 재기록도 어긋나면 색인 재시도 대상으로만 남긴다
+      stale = true; ext = null; error = tr('memoria.engine.turn.staleLong');   // 재기록도 어긋나면 색인 재시도 대상으로만 남긴다
     }
     const failed = !ext || (!ext.turnSummary && !ext.memories.length);
-    if (!ext) this.logActivity('error', `턴 기록 실패 — ${stale ? '기록하는 동안 답변이 바뀌었어요' : '모델 응답을 읽지 못했어요'} (도구 → 색인으로 재시도)`);
+    if (!ext) this.logActivity('error', tr('memoria.engine.log.turnFailed', { why: stale ? tr('memoria.engine.turn.stale') : tr('memoria.engine.turn.unreadable') }));
     if (!ext) ext = { turnSummary: '', importance: 0.3, elapsedDays: 0, memories: [], worldRules: [], entityStates: [], locks: [], characters: [], milestones: [], items: [], bonds: [], settledPledges: [], settledHow: {} };   // 사서가 실패해도 원문 발췌 기억은 남긴다
-    const turn = { msgId: ai.id, hash: mesHashOf(ai), digest: ext.turnSummary, weight: ext.importance, days: cfg.storyClock !== false ? (ext.elapsedDays || 0) : 0, when: '', where: '', failed, error: failed ? (error || (answered ? '사서가 아무것도 기록하지 않았어요' : '사서의 답을 읽지 못했어요')) : '', ts: now() };
+    const turn = { msgId: ai.id, hash: mesHashOf(ai), digest: ext.turnSummary, weight: ext.importance, days: cfg.storyClock !== false ? (ext.elapsedDays || 0) : 0, when: '', where: '', failed, error: failed ? (error || (answered ? tr('memoria.engine.turn.nothing') : tr('memoria.engine.turn.noAnswer'))) : '', ts: now() };
     at = mem.turns.findIndex(t => t.msgId === ai.id);   // 기다리는 사이 다른 턴이 지워졌을 수 있다 — 자리를 다시 잡는다
     if (at >= 0) mem.turns[at] = turn; else { at = place(); mem.turns.splice(at, 0, turn); if (at < mem.turns.length - 1) this.shiftTurns(mem, at, 1); }
     if (stale) { await this.save(mem); return mem; }
@@ -295,13 +296,13 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     if (cfg.items) for (const it of ext.items || []) this.upsertItem(mem, it, at, ai.id);
     mem.clockDays = mem.turns.reduce((a, t) => a + (t.days || 0), 0);
     this.prune(mem);
-    if (!turn.failed) this.logActivity('record', `t${at + 1} 턴 기록 — 기억 ${rows.length}개`);
+    if (!turn.failed) this.logActivity('record', tr('memoria.engine.log.recorded', { n: at + 1, count: rows.length }));
     await this.save(mem);
     if (!failed) await this.embedMemories(chat, mem, { signal }).catch(e => console.warn('[장기기억] 임베딩', e));
     await this.waitForChatIdle('요약·서고 정리');   // 요약 · 정리는 급하지 않다 — 그사이 새 답변을 생성하기 시작했으면 끝난 뒤에 한다
     await this.housekeeping(chat, mem, signal);
     const slept = this.sleepStaleThreads(mem);
-    if (slept) { this.logActivity('summary', `오래 진전 없는 떡밥 ${slept}개를 잠재웠어요 (세계 탭에서 깨울 수 있어요)`); await this.save(mem); }
+    if (slept) { this.logActivity('summary', tr('memoria.engine.log.slept', { n: slept })); await this.save(mem); }
     return mem;
   },
   commitTurn(chat, msgs, ai, opts) { return this.commitOne(chat, msgs, ai, opts); },
@@ -553,7 +554,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     await this.maybeConsolidate(chat, mem, signal);
     await this.maybeConsolidateArcs(chat, mem, signal);
     await this.maybeFoldEras(chat, mem, signal);
-    if (mem.chunks.length + mem.arcs.length !== before) this.logActivity('summary', '지금까지의 이야기 요약을 갱신했어요');
+    if (mem.chunks.length + mem.arcs.length !== before) this.logActivity('summary', tr('memoria.engine.log.summaryUpdated'));
     await this.save(mem);
     return made;
   },

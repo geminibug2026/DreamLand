@@ -13,6 +13,7 @@ import { chatApi } from '../chat/actions';
 import * as C from '../lib/core';
 import { cur, guard } from '../scenebook/util';
 import { Illust } from '../scenebook/illust';
+import { t, tn } from '../i18n';
 
 const OWNER = 'scenebook';
 const TAB_WORDS: Record<string, string> = { 갤러리: 'gallery', 작업: 'queue', 인물: 'cast', 참조: 'refs', 생성: 'gen', gallery: 'gallery', queue: 'queue' };
@@ -25,12 +26,12 @@ function setup() {
   x.studio = x.studio.filter(t => t.owner !== OWNER); x.actions = x.actions.filter(a => a.owner !== OWNER); x.composer = x.composer.filter(a => a.owner !== OWNER); x.panels = x.panels.filter(p => p.owner !== OWNER);
   x.studio.push({ owner: OWNER, title: '삽화', render: () => mountNode(make('div', 'card sb-studio'), <Studio />) });
   x.actions.push(
-    { owner: OWNER, id: 'sb-draw', label: '삽화 자동 그리기', icon: 'image', run: guard(async (m: Msg) => { if (m.role !== 'assistant') throw new Error('캐릭터의 답변에서 써 주세요.'); await quickDraw(m); }) },
-    { owner: OWNER, id: 'sb-analyze', label: '장면 분석', icon: 'sparkle', run: guard((m: Msg) => compose(m, { manual: false })) },
-    { owner: OWNER, id: 'sb-compose', label: '장면 편집', icon: 'sliders', run: guard((m: Msg) => compose(m)) });
-  x.composer.push({ owner: OWNER, id: 'sb-studio', label: '삽화 스튜디오', icon: 'image', run: () => openStudio() });
-  for (const name of ['/scenebook', '/삽화']) x.commands.set(name, { owner: OWNER, help: '삽화 스튜디오를 엽니다. (/삽화 갤러리 · 작업 · 인물 · 참조 · 생성)', run: arg => openStudio(TAB_WORDS[String(arg || '').trim()]) });
-  x.panels.push({ owner: OWNER, id: 'scenebook', title: '삽화', icon: 'image', render: () => mountNode(make('div', 'col sb-panel'), <Panel />) });
+    { owner: OWNER, id: 'sb-draw', get label() { return t('scenebook.action.autoDraw'); }, icon: 'image', run: guard(async (m: Msg) => { if (m.role !== 'assistant') throw new Error(t('scenebook.err.notReply')); await quickDraw(m); }) },
+    { owner: OWNER, id: 'sb-analyze', get label() { return t('scenebook.analyze'); }, icon: 'sparkle', run: guard((m: Msg) => compose(m, { manual: false })) },
+    { owner: OWNER, id: 'sb-compose', get label() { return t('scenebook.compose'); }, icon: 'sliders', run: guard((m: Msg) => compose(m)) });
+  x.composer.push({ owner: OWNER, id: 'sb-studio', get label() { return t('scenebook.action.studio'); }, icon: 'image', run: () => openStudio() });
+  for (const name of ['/scenebook', '/삽화']) x.commands.set(name, { owner: OWNER, get help() { return t('scenebook.cmd.help'); }, run: arg => openStudio(TAB_WORDS[String(arg || '').trim()]) });
+  x.panels.push({ owner: OWNER, id: 'scenebook', get title() { return t('scenebook.illust'); }, icon: 'image', render: () => mountNode(make('div', 'col sb-panel'), <Panel />) });
 
   // ════════ 이벤트 ════════
   const shown = () => !!cur().chat && !!document.querySelector('.illusts[data-sb]');
@@ -47,12 +48,12 @@ function setup() {
     const d = data as { msg?: Msg; chat?: { id?: string } } | undefined, msg = d?.msg, plan = Illust.takePlan(), c = Illust.cfg(), sw = msg?.swipes?.[msg.sw];
     if (plan && sw && (plan.found || (plan.asked && c.auto))) {
       const queued = Illust.queue().some(j => j.sw === sw && j.state !== 'cancelled');
-      sw.illustPlan = !plan.found ? { status: 'missing', error: 'AI 답변에 삽화 지시가 없어 그림을 만들지 않았어요.', ts: now() }
+      sw.illustPlan = !plan.found ? { status: 'missing', error: t('scenebook.plan.missing'), ts: now() }
         : plan.error ? { status: 'failed', raw: plan.raw, error: plan.error, ts: now() }
           : { status: queued ? 'queued' : sw.illustDraft?.length ? 'ready' : 'failed', raw: plan.raw, repairs: plan.repairs, warnings: plan.warnings, ts: now() };
-      if (sw.illustPlan.status === 'missing' || plan.error) toast(sw.illustPlan.error + ' 답변 아래에서 장면 분석을 누르거나 지시 기록을 확인해 주세요.');
-      else if (sw.illustPlan.status === 'ready') toast(`장면 ${sw.illustDraft?.length}개를 초안으로 저장했어요 · 답변 아래에서 확인`);
-      flow.note = sw.illustPlan.error || ({ queued: '삽화 지시를 읽어 그리기를 요청했어요', ready: `장면 ${sw.illustDraft?.length || 0}개 준비됨 · 답변 아래에서 확인` } as Record<string, string>)[sw.illustPlan.status || ''] || flow.note;
+      if (sw.illustPlan.status === 'missing' || plan.error) toast(t('scenebook.plan.missingToast', { error: sw.illustPlan.error }));
+      else if (sw.illustPlan.status === 'ready') toast(tn('scenebook.plan.draftSaved', sw.illustDraft?.length ?? 0));
+      flow.note = sw.illustPlan.error || ({ queued: t('scenebook.plan.queued'), ready: tn('scenebook.plan.ready', sw.illustDraft?.length || 0) } as Record<string, string>)[sw.illustPlan.status || ''] || flow.note;
       // 답변이 속한 방이 열려 있을 때만 여기서 저장한다. 다른 방의 답변은 생성 쪽이 이 알림 바로 뒤에 그 방에 저장한다
       if (!d?.chat || cur().chat?.id === d.chat.id) void chatApi.save();
     }

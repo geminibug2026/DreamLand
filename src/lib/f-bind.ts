@@ -1,7 +1,11 @@
 // ── Dreamland bind: 한 권으로 묶기. 대화 한 편을 인쇄용 HTML 한 파일로 ── (옛 js/f-bind.js, 동작 그대로)
 // 바깥 그림·스크립트를 하나도 부르지 않는다 (사진은 dataURL 로 함께 담는다). 화면·저장소를 건드리지 않는 순수 함수.
 // 하나뿐인 예외: 캐릭터의 일기장 글씨체를 쓰기로 했을 때의 글꼴 link (없어도 기본 글꼴로 읽힌다).
-import { moonPath, fillToPhase, pad, koDate, keyDate, WEEK, MONTHS_EN, seatOf, type Cell } from './f-keepsake';
+import { moonPath, fillToPhase, pad, showDate, keyDate, WEEK, weekLabel, phaseNameLabel, MONTHS_EN, seatOf, type Cell } from './f-keepsake';
+import { t, getLang, fmtDate } from '../i18n';
+/** 일기 · 꿈 쪽 머리의 "2026년 11월" */
+const ym = (d: Date) => t('bind.yearMonth', { year: d.getFullYear(), month: d.getMonth() + 1, monthName: fmtDate(d, { month: 'long' }) });
+const wdLong = (d: Date) => getLang() === 'ko' ? WEEK[d.getDay()] + '요일' : fmtDate(d, { weekday: 'long' });
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' } as Record<string, string>)[c]);
 const safeColor = (c: unknown) => /^#[0-9a-f]{3,8}$/i.test(String(c || '').trim()) ? String(c).trim() : '#2340d6';
@@ -149,31 +153,31 @@ export interface BookData { title?: string; sub?: string; charName?: string; use
 
 const diaryPage = (e: BookExtra, sign: string) => {
   const d = new Date(e.ts as number);
-  return `<section class="page diary"><div class="head"><div class="day"><b>${pad(d.getDate())}</b><span>${d.getFullYear()}년 ${d.getMonth() + 1}월<small>${WEEK[d.getDay()]}요일</small></span></div><span class="tag">Diary</span></div>
-<h3>${esc(e.title || '제목 없는 밤')}</h3>${e.storyDate || e.weather || e.mood ? `<div class="chips">${e.storyDate ? `<em>${esc(e.storyDate)}</em>` : ''}${e.weather ? `<span>${esc(e.weather)}</span>` : ''}${e.mood ? `<span>${esc(e.mood)}</span>` : ''}</div>` : ''}
+  return `<section class="page diary"><div class="head"><div class="day"><b>${pad(d.getDate())}</b><span>${ym(d)}<small>${wdLong(d)}</small></span></div><span class="tag">Diary</span></div>
+<h3>${esc(e.title || t('keepsake.untitledNight'))}</h3>${e.storyDate || e.weather || e.mood ? `<div class="chips">${e.storyDate ? `<em>${esc(e.storyDate)}</em>` : ''}${e.weather ? `<span>${esc(e.weather)}</span>` : ''}${e.mood ? `<span>${esc(e.mood)}</span>` : ''}</div>` : ''}
 <div class="ruled">${fmtText(e.text)}</div><div class="sign">— ${esc(e.sign || sign)}</div>
 ${e.note ? `<div class="exch"><div class="note"><small>${esc(e.noteBy || '')}</small>${fmtText(e.note)}</div>${e.answer ? `<div class="ans"><small>${esc(e.sign || sign)}</small>${fmtText(e.answer)}</div>` : ''}</div>` : ''}</section>`;
 };
 const dreamPage = (e: BookExtra) => {
   const d = new Date(e.ts as number);
-  return `<section class="page dream"><div class="head"><div class="day"><b>${pad(d.getDate())}</b><span>${d.getFullYear()}년 ${d.getMonth() + 1}월<small>${esc(e.phaseName || '')}${e.phaseName ? ' 뜬 밤' : ''}</small></span></div><span class="stamp">꿈 · 정사가 아님</span></div>
-<h3>${esc(e.title || '이름 없는 꿈')}</h3><div class="txt">${fmtText(e.text)}</div></section>`;
+  return `<section class="page dream"><div class="head"><div class="day"><b>${pad(d.getDate())}</b><span>${ym(d)}<small>${e.phaseName ? esc(t('bind.dreamNight', { phase: phaseNameLabel(e.phaseName) })) : ''}</small></span></div><span class="stamp">${esc(t('bind.dreamStamp'))}</span></div>
+<h3>${esc(e.title || t('bind.untitledDream'))}</h3><div class="txt">${fmtText(e.text)}</div></section>`;
 };
-const keepPage = (k: BookExtra) => `<section class="keep"><div class="ticket"><div class="main"><small>SCENE No. ${pad(k.no || 1)}</small><b>${esc(k.title || '이름 없는 장면')}</b>${k.place || k.time ? `<span>${esc([k.place, k.time].filter(Boolean).join(' · '))}</span>` : ''}${k.summary ? `<p>${esc(k.summary)}</p>` : ''}</div>
+const keepPage = (k: BookExtra) => `<section class="keep"><div class="ticket"><div class="main"><small>SCENE No. ${pad(k.no || 1)}</small><b>${esc(k.title || t('keepsake.untitledScene'))}</b>${k.place || k.time ? `<span>${esc([k.place, k.time].filter(Boolean).join(' · '))}</span>` : ''}${k.summary ? `<p>${esc(k.summary)}</p>` : ''}</div>
 <div class="stub"><small>ADMIT ONE</small><b>${md(k.day)}</b><span>${esc(seatOf(k.id))}</span></div></div>${photo(k.photo ? { src: k.photo, title: k.title } : null)}${k.memo ? `<p class="memo">${esc(k.memo)}</p>` : ''}</section>`;
-const letterPage = (l: BookExtra, sign: string) => `<section class="page letter"><div class="inner"><div class="head"><span class="tag">${esc(l.label || '')}</span>${moon(1, 22)}</div><h3>${esc(l.title || '이달의 편지')}</h3><div class="txt">${fmtText(l.text)}</div>${l.ps ? `<p class="ps">추신. ${esc(l.ps)}</p>` : ''}<div class="sign">— ${esc(l.sign || sign)}</div></div></section>`;
+const letterPage = (l: BookExtra, sign: string) => `<section class="page letter"><div class="inner"><div class="head"><span class="tag">${esc(l.label || '')}</span>${moon(1, 22)}</div><h3>${esc(l.title || t('bind.monthLetter'))}</h3><div class="txt">${fmtText(l.text)}</div>${l.ps ? `<p class="ps">${esc(t('bind.ps', { text: l.ps }))}</p>` : ''}<div class="sign">— ${esc(l.sign || sign)}</div></div></section>`;
 const extra = (x: BookExtra, sign: string) => x.t === 'diary' ? diaryPage(x, sign) : x.t === 'dream' ? dreamPage(x) : x.t === 'keepsake' ? keepPage(x) : x.t === 'letter' ? letterPage(x, sign) : '';
 
 const block = (b: BookBlock) => {
-  if (b.t === 'curtain') return `<div class="curtain ${b.kind === 'open' ? 'open' : 'close'}"><div><small>${b.kind === 'open' ? 'SCENE' : 'SCENE END'}</small><b>${esc(b.kind === 'open' ? (b.title || '이름 없는 장면') : (b.summary || '다시 메시지로'))}</b>${b.kind === 'open' && (b.place || b.time) ? `<span>${esc([b.place, b.time].filter(Boolean).join(' · '))}</span>` : ''}</div></div>`;
+  if (b.t === 'curtain') return `<div class="curtain ${b.kind === 'open' ? 'open' : 'close'}"><div><small>${b.kind === 'open' ? 'SCENE' : 'SCENE END'}</small><b>${esc(b.kind === 'open' ? (b.title || t('keepsake.untitledScene')) : (b.summary || t('bind.backToMessages')))}</b>${b.kind === 'open' && (b.place || b.time) ? `<span>${esc([b.place, b.time].filter(Boolean).join(' · '))}</span>` : ''}</div></div>`;
   if (b.t === 'sys') { const t = fmtText(b.text); return t ? `<div class="msg sys">${t}</div>` : ''; }
   const body = fmtText(b.text), pics = (b.photos || []).map(p => photo(p)).filter(Boolean);
   if (!body && !pics.length) return '';
   return `<div class="msg ${b.role === 'user' ? 'user' : 'ai'}${b.style === 'chat' ? ' chat' : ''}"><div class="who"><b>${esc(b.name)}</b>${b.time ? `<time>${esc(b.time)}</time>` : ''}</div>${body ? `<div class="txt">${body}</div>` : ''}${pics.length ? `<div class="photos">${pics.join('')}</div>` : ''}</div>`;
 };
 
-const monthCard = (m: BookMonth) => `<div class="mon"><header>${moon(m.fill, 26)}<b>${+m.mk.slice(5)}</b><span>${MONTHS_EN[+m.mk.slice(5) - 1]} ${m.mk.slice(0, 4)}<small>${m.active}일 / 보름 ${m.target}일</small></span>${m.full ? star(11) : ''}</header>
-<table><tr>${WEEK.map(w => `<th>${w}</th>`).join('')}</tr>${m.weeks.map(w => `<tr>${w.map(c => !c.inMonth ? '<td></td>' : `<td class="${c.n ? 'on' : ''}${c.mark ? ' mark' : ''}"${c.n ? ` style="--d:${c.n >= 40 ? 2.6 : c.n >= 12 ? 2 : 1.4}mm"` : ''}>${c.d}</td>`).join('')}</tr>`).join('')}</table></div>`;
+const monthCard = (m: BookMonth) => `<div class="mon"><header>${moon(m.fill, 26)}<b>${+m.mk.slice(5)}</b><span>${MONTHS_EN[+m.mk.slice(5) - 1]} ${m.mk.slice(0, 4)}<small>${esc(t('bind.monthDays', { active: m.active, target: m.target }))}</small></span>${m.full ? star(11) : ''}</header>
+<table><tr>${WEEK.map((_, i) => `<th>${esc(weekLabel(i))}</th>`).join('')}</tr>${m.weeks.map(w => `<tr>${w.map(c => !c.inMonth ? '<td></td>' : `<td class="${c.n ? 'on' : ''}${c.mark ? ' mark' : ''}"${c.n ? ` style="--d:${c.n >= 40 ? 2.6 : c.n >= 12 ? 2 : 1.4}mm"` : ''}>${c.d}</td>`).join('')}</tr>`).join('')}</table></div>`;
 
 /** 책 한 권의 HTML 을 만든다. data 의 모양은 f-almanac.js 의 gatherBook 참고 */
 export function buildBook(data: BookData) {
@@ -185,25 +189,25 @@ export function buildBook(data: BookData) {
   const handVars = hand ? ` class="hand" style="--hand:'${hand.family}';--hk:${num(hand.scale, 1)};--hl:${(num(hand.lh, 1) * Math.max(1, num(hand.scale, 1) * 0.85)).toFixed(3)};--hand-ink:${safeColor(hand.color)}"` : '';
   const chapters = B.chapters.filter(c => (c.blocks || []).length || (c.extras || []).length);
   const cover = safeSrc(B.cover), avatar = safeSrc(B.avatar), st = B.stats || {};
-  const range = st.from && st.to ? (st.from === st.to ? koDate(st.from, { week: false }) : `${koDate(st.from, { week: false })} – ${koDate(st.to, { week: false, year: st.from.slice(0, 4) !== st.to.slice(0, 4) })}`) : '';
+  const range = st.from && st.to ? (st.from === st.to ? showDate(st.from, { week: false }) : `${showDate(st.from, { week: false })} – ${showDate(st.to, { week: false, year: st.from.slice(0, 4) !== st.to.slice(0, 4) })}`) : '';
   const out: string[] = [];
   out.push(`<section class="leaf cover"><div class="cover-top"><span class="tag">Dreamland · ${esc(B.madeKey ? B.madeKey.replace(/-/g, '.') : '')}</span><div class="cover-moon">${star(13)}${moon(B.moonFill ?? 0.18, 92)}${star(8)}</div></div>
 <div class="cover-mid"><div><h1>${esc(B.title || B.charName)}</h1></div>${B.sub ? `<p class="sub">${esc(B.sub)}</p>` : ''}<div class="who">${esc(B.charName)} <i>✦</i> ${esc(B.userName)}</div></div>
 ${cover ? photo({ src: cover }, 'cover-photo') : avatar ? photo({ src: avatar }, 'cover-photo avatar-ph') : ''}<div class="halftone"></div>
 <div class="cover-foot"><div>${esc(range)}</div><div style="text-align:right"><b>${st.days || 0}</b>DAYS · ${st.msgs || 0} LINES</div></div></section>`);
-  const appx = [B.loose.length && ['loose', '끼워 둔 것들'], B.letters.length && ['letters', '편지'], B.months.length && ['months', '달이 차오른 달력'], B.promises.length && ['promises', '약속 수첩']].filter(Boolean) as [string, string][];
-  if (chapters.length + appx.length > 1) out.push(`<section class="leaf toc"><span class="tag">Contents</span><h2>차례</h2><div class="rule"><i></i></div><ol>${chapters.map((c, i) => `<li><i>${pad(i + 1)}</i><b><a href="#c${i + 1}">${esc(c.title || `${i + 1}장`)}</a></b><small>${esc(c.sub || '')}</small></li>`).join('')}${appx.map(([id, t]) => `<li class="app"><i>✦</i><b><a href="#${id}">${t}</a></b><small></small></li>`).join('')}</ol></section>`);
-  chapters.forEach((c, i) => out.push(`<section class="leaf chapter" id="c${i + 1}"><header><span class="tag">Chapter ${pad(i + 1)}</span><h2>${esc(c.title || `${i + 1}장`)}</h2>${c.sub ? `<p class="sub">${esc(c.sub)}</p>` : ''}<div class="rule"><i></i></div></header>
+  const appx = [B.loose.length && ['loose', t('bind.loose')], B.letters.length && ['letters', t('bind.letters')], B.months.length && ['months', t('bind.months')], B.promises.length && ['promises', t('bind.promises')]].filter(Boolean) as [string, string][];
+  if (chapters.length + appx.length > 1) out.push(`<section class="leaf toc"><span class="tag">Contents</span><h2>${esc(t('bind.toc'))}</h2><div class="rule"><i></i></div><ol>${chapters.map((c, i) => `<li><i>${pad(i + 1)}</i><b><a href="#c${i + 1}">${esc(c.title || t('bind.chapterN', { n: i + 1 }))}</a></b><small>${esc(c.sub || '')}</small></li>`).join('')}${appx.map(([id, label]) => `<li class="app"><i>✦</i><b><a href="#${id}">${esc(label)}</a></b><small></small></li>`).join('')}</ol></section>`);
+  chapters.forEach((c, i) => out.push(`<section class="leaf chapter" id="c${i + 1}"><header><span class="tag">Chapter ${pad(i + 1)}</span><h2>${esc(c.title || t('bind.chapterN', { n: i + 1 }))}</h2>${c.sub ? `<p class="sub">${esc(c.sub)}</p>` : ''}<div class="rule"><i></i></div></header>
 ${(c.blocks || []).map(block).join('\n')}${(c.extras || []).map(x => extra(x, sign)).join('\n')}</section>`));
-  if (B.loose.length) out.push(`<section class="leaf" id="loose"><span class="tag">Keepsakes</span><h2 class="sec-h">끼워 둔 것들</h2><div class="rule"><i></i></div>${B.loose.map(x => extra(x, sign)).join('\n')}</section>`);
-  if (B.letters.length) out.push(`<section class="leaf" id="letters"><span class="tag">Letters</span><h2 class="sec-h">편지</h2><div class="rule"><i></i></div>${B.letters.map(l => letterPage(l, sign)).join('\n')}</section>`);
-  if (B.months.length) out.push(`<section class="leaf" id="months"><span class="tag">Almanac</span><h2 class="sec-h">달이 차오른 달력</h2><div class="rule"><i></i></div><div class="months">${B.months.map(monthCard).join('')}</div></section>`);
-  if (B.promises.length) out.push(`<section class="leaf${B.months.length ? ' flow' : ''}" id="promises"><span class="tag">Promises</span><h2 class="sec-h">약속 수첩</h2><div class="rule"><i></i></div><table class="plist">${B.promises.map(p => `<tr class="${esc(p.state)}"><td>${esc(p.date.replace(/-/g, '.'))}${p.time ? ' ' + esc(p.time) : ''}</td><td>${esc(p.what)}</td><td>${p.state === 'kept' ? '지킴 ●' : p.state === 'missed' ? '지나감 ✕' : '약속 ○'}</td></tr>`).join('')}</table></section>`);
-  out.push(`<section class="leaf flow colophon">${moon(1, 20)}<b>DREAMLAND</b><span>${esc(B.charName)}와(과) ${esc(B.userName)}의 이야기 · ${esc(B.madeKey ? koDate(B.madeKey, { week: false }) : '')}에 묶음</span></section>`);
+  if (B.loose.length) out.push(`<section class="leaf" id="loose"><span class="tag">Keepsakes</span><h2 class="sec-h">${esc(t('bind.loose'))}</h2><div class="rule"><i></i></div>${B.loose.map(x => extra(x, sign)).join('\n')}</section>`);
+  if (B.letters.length) out.push(`<section class="leaf" id="letters"><span class="tag">Letters</span><h2 class="sec-h">${esc(t('bind.letters'))}</h2><div class="rule"><i></i></div>${B.letters.map(l => letterPage(l, sign)).join('\n')}</section>`);
+  if (B.months.length) out.push(`<section class="leaf" id="months"><span class="tag">Almanac</span><h2 class="sec-h">${esc(t('bind.months'))}</h2><div class="rule"><i></i></div><div class="months">${B.months.map(monthCard).join('')}</div></section>`);
+  if (B.promises.length) out.push(`<section class="leaf${B.months.length ? ' flow' : ''}" id="promises"><span class="tag">Promises</span><h2 class="sec-h">${esc(t('bind.promises'))}</h2><div class="rule"><i></i></div><table class="plist">${B.promises.map(p => `<tr class="${esc(p.state)}"><td>${esc(p.date.replace(/-/g, '.'))}${p.time ? ' ' + esc(p.time) : ''}</td><td>${esc(p.what)}</td><td>${esc(p.state === 'kept' ? t('bind.kept') : p.state === 'missed' ? t('bind.missed') : t('bind.open'))}</td></tr>`).join('')}</table></section>`);
+  out.push(`<section class="leaf flow colophon">${moon(1, 20)}<b>DREAMLAND</b><span>${esc(t('bind.colophon', { char: B.charName, user: B.userName, date: B.madeKey ? showDate(B.madeKey, { week: false }) : '' }))}</span></section>`);
   return `<!DOCTYPE html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(B.title || B.charName)}</title>${handLink}<style>${css}</style></head>
+<html lang="${esc(getLang())}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(B.title || B.charName)}</title>${handLink}<style>${css}</style></head>
 <body${handVars}><svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><pattern id="ht" width="1.6" height="1.6" patternUnits="userSpaceOnUse"><circle cx=".8" cy=".8" r=".34" fill="currentColor"/></pattern></defs></svg>
-<div class="bar"><span>${esc(B.title || B.charName)} — 인쇄 창에서 "PDF로 저장"을 고르면 책 한 권이 됩니다 (${A4 ? 'A4' : 'A5'}, 배경 그래픽 켜기).</span><button type="button" onclick="window.print()">인쇄 · PDF로 저장</button></div>
+<div class="bar"><span>${esc(t('bind.barHint', { title: B.title || B.charName, page: A4 ? 'A4' : 'A5' }))}</span><button type="button" onclick="window.print()">${esc(t('bind.print'))}</button></div>
 <main class="book">
 ${out.join('\n')}
 </main></body></html>`;

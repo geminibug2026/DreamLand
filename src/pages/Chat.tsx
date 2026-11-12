@@ -17,6 +17,7 @@ import { S, emit } from '../lib/core';
 import { Assets } from '../lib/assets';
 import { Memory } from '../lib/memory';
 import { Illust } from '../lib/illust';
+import { t } from '../i18n';
 
 export const page = { name: 'chat', Component: ChatPage };
 
@@ -73,7 +74,7 @@ function ChatPage({ arg }: { arg?: unknown }) {
   return <section className={['chat-layout', cur.drawer && 'with-drawer', cur.sideOpen && 'show-side'].filter(Boolean).join(' ')} ref={layout}>
     <aside className="chat-side" ref={sideRef}><Side /></aside>
     <aside className="dossier">{st === 'ready' ? <Dossier /> : null}</aside>
-    {st === 'ready' ? <Main /> : <div className="chat-main">{st === 'none' ? <div className="empty big"><Icon name="moon" size={46} /><p>아직 대화가 없어요. 캐릭터를 골라 첫 장면을 열어 보세요.</p><Btn label="캐릭터 보러 가기" ic="home" cls="primary" onClick={() => go('home')} /></div> : null}</div>}
+    {st === 'ready' ? <Main /> : <div className="chat-main">{st === 'none' ? <div className="empty big"><Icon name="moon" size={46} /><p>{t('chat.page.empty')}</p><Btn label={t('chat.page.toChars')} ic="home" cls="primary" onClick={() => go('home')} /></div> : null}</div>}
     <aside className="drawer"><Drawer /></aside>
   </section>;
 }

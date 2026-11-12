@@ -15,8 +15,9 @@ import { go } from '../lib/router';
 import { toast } from '../ui';
 import { X } from '../lib/hooks';
 import { chatApi } from '../chat/actions';
+import { t } from '../i18n';
 
-function openStudioTab() { go('studio'); const t = [...document.querySelectorAll<HTMLElement>('#page .tabs .tab')].find(b => b.textContent === '표정'); if (t && !t.classList.contains('on')) t.click(); }
+function openStudioTab() { go('studio'); const t = [...document.querySelectorAll<HTMLElement>('#page .tabs .tab')].find(b => b.dataset.tab === '표정'); if (t && !t.classList.contains('on')) t.click(); }
 
 /** 장면 패널: 지금 표정 (초상 영역이 없는 좁은 화면에서도 보고 바꿀 수 있게) */
 function ExprPanel({ chat, msgs }: { chat: ChatX; msgs: Msg[] }) {
@@ -29,39 +30,39 @@ function ExprPanel({ chat, msgs }: { chat: ChatX; msgs: Msg[] }) {
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  if (!ready) return <p className="dim">불러오는 중…</p>;
+  if (!ready) return <p className="dim">{t('expressions.panel.loading')}</p>;
   const withSet = chars.filter(ch => Sprites.list(ch.id).length);
-  if (!withSet.length) return <><p className="dim">표정 그림을 올리면 감정에 따라 초상이 바뀝니다.</p><Btn label="표정 그림 올리기" ic="upload" cls="ghost" onClick={openStudioTab} /></>;
-  const mode = MODES.find(x => x[0] === c.mode);
+  if (!withSet.length) return <><p className="dim">{t('expressions.panel.empty')}</p><Btn label={t('expressions.panel.upload')} ic="upload" cls="ghost" onClick={openStudioTab} /></>;
+  const mode = MODES().find(x => x[0] === c.mode);
   return <>
     {withSet.map(ch => {
       const st = currentOf(chat, msgs, ch.id), m = lastReply(msgs, chat, ch.id), have = Sprites.labels(ch.id);
-      const opts: Opt[] = [['', '기본 표정'], ...universe(ch.id).filter(l => have.includes(l) || l === st.label).map(l => [l, fullName(l)] as const)];
+      const opts: Opt[] = [['', t('expressions.fallbackName')], ...universe(ch.id).filter(l => have.includes(l) || l === st.label).map(l => [l, fullName(l)] as const)];
       return <div key={ch.id} className="exs-panel-row">
-        <button type="button" className="exs-panel-pic" title="표정 고르기" onClick={() => m ? void openPicker(m, chat) : toast('아직 답변이 없어요')}>{st.sprite ? <img src={st.sprite.data} alt="" /> : <span>{ch.name.slice(0, 1)}</span>}</button>
+        <button type="button" className="exs-panel-pic" title={t('expressions.panel.pick')} onClick={() => m ? void openPicker(m, chat) : toast(t('expressions.noReply'))}>{st.sprite ? <img src={st.sprite.data} alt="" /> : <span>{ch.name.slice(0, 1)}</span>}</button>
         <div className="exs-panel-text"><b>{ch.name}</b>
-          <Select title="마지막 답변의 표정" disabled={!m} value={m ? (m.swipes[m.sw]?.expr || '') : ''} opts={opts} onChange={async v => { if (m) { await setExpr(chat, m, v); draw(); } }} /></div>
+          <Select title={t('expressions.panel.lastExpr')} disabled={!m} value={m ? (m.swipes[m.sw]?.expr || '') : ''} opts={opts} onChange={async v => { if (m) { await setExpr(chat, m, v); draw(); } }} /></div>
       </div>;
     })}
-    <Check label="스탠딩 보기" on={c.standing} onChange={v => { toggleStanding(v); draw(); }} />
-    <small className="hint">{`감정 판정: ${mode?.[1] || '직접 고르기'} (${mode?.[3] || '호출 없음'})`}</small>
-    <Btn label="표정 설정" ic="sliders" cls="ghost" onClick={openStudioTab} />
+    <Check label={t('expressions.standing.on')} on={c.standing} onChange={v => { toggleStanding(v); draw(); }} />
+    <small className="hint">{t('expressions.panel.modeLine', { mode: mode?.[1] || t('expressions.mode.off'), cost: mode?.[3] || t('expressions.mode.noCall') })}</small>
+    <Btn label={t('expressions.panel.settings')} ic="sliders" cls="ghost" onClick={openStudioTab} />
   </>;
 }
 
 const emote = async (arg: string) => {
-  const { chat, msgs } = chatApi.current(); if (!chat) return toast('열린 대화가 없어요', 'err');
+  const { chat, msgs } = chatApi.current(); if (!chat) return toast(t('expressions.noChat'), 'err');
   let text = String(arg || '').trim(), charId = '';
   // 그룹: "/emote 이름: 감정" 또는 "/emote 이름 감정"
   for (const ch of chat.charIds.map(id => S.get('chars', id)).filter(x => !!x)) if (text.toLowerCase().startsWith(ch.name.toLowerCase()) && /^[\s:：]/.test(text.slice(ch.name.length))) { charId = ch.id; text = text.slice(ch.name.length).replace(/^[\s:：]+/, ''); break; }
-  const m = lastReply(msgs, chat, charId); if (!m) return toast('표정을 바꿀 답변이 없어요', 'err');
+  const m = lastReply(msgs, chat, charId); if (!m) return toast(t('expressions.emote.noReply'), 'err');
   if (!text) return openPicker(m, chat);
   const cid = charIdOf(m, chat); await Sprites.load(cid);
-  if (/^(reset|clear|none|지우기|초기화|없음)$/i.test(text)) { await setExpr(chat, m, ''); return toast('표정 기록을 지웠어요'); }
+  if (/^(reset|clear|none|지우기|초기화|없음)$/i.test(text)) { await setExpr(chat, m, ''); return toast(t('expressions.toast.cleared')); }
   const label = canonLabel(text, universe(cid));
-  if (!label) return toast(`"${text}" 감정을 찾지 못했어요. 쓸 수 있는 이름: ${(Sprites.labels(cid).length ? Sprites.labels(cid) : DEFAULT_LABELS).map(nameOf).join(', ')}`.slice(0, 220), 'err');
+  if (!label) return toast(t('expressions.emote.notFound', { text, names: (Sprites.labels(cid).length ? Sprites.labels(cid) : DEFAULT_LABELS).map(nameOf).join(', ') }).slice(0, 220), 'err');
   await setExpr(chat, m, label);
-  toast(`표정: ${nameOf(label)}${Sprites.of(cid, label).length ? '' : ' (그림이 없어 가까운 표정으로 보여요)'}`);
+  toast(Sprites.of(cid, label).length ? t('expressions.toast.set', { name: nameOf(label) }) : t('expressions.toast.setNear', { name: nameOf(label) }));
 };
 
 function setup() {
@@ -91,11 +92,11 @@ function setup() {
       if (c.mode === 'call' && c.show && has && candidates(charId).length > 1) {
         const text = sw.text, here = () => chatApi.current().chat?.id === chat.id;
         const msgs = here() ? chatApi.current().msgs : await S.msgs(chat.id);
-        if (here()) chatApi.setStatus('표정 고르는 중…');
+        if (here()) chatApi.setStatus(t('expressions.status.picking'));
         try {
           const got = await classify(chat, msgs, msg);
           if (got && msg.swipes[msg.sw] === sw && extractTag(sw.text).text === extractTag(text).text) { sw.expr = got; delete sw.exprPick; await persist(chat, msg); sync(); }
-        } catch (e) { console.warn('[표정]', e); toast('표정 판정 실패: ' + errMsg(e), 'err'); }
+        } catch (e) { console.warn('[표정]', e); toast(t('expressions.detectFailed', { error: errMsg(e) }), 'err'); }
         finally { if (here()) chatApi.setStatus(''); }
       }
     } catch (e) { console.warn('[표정]', e); }
@@ -148,15 +149,15 @@ function setup() {
 
   // ── 메시지 ⋯ 메뉴 · 입력창 + 메뉴 · 명령어 ──
   X.actions = X.actions.filter(a => a.owner !== 'expr');
-  X.actions.push({ owner: 'expr', id: 'expr-pick', label: '표정 바꾸기', icon: 'user', run: (msg, chat) => openPicker(msg, chat!) });
+  X.actions.push({ owner: 'expr', id: 'expr-pick', get label() { return t('expressions.action.change'); }, icon: 'user', run: (msg, chat) => openPicker(msg, chat!) });
   X.composer = X.composer.filter(a => a.owner !== 'expr');
-  X.composer.push({ owner: 'expr', id: 'expr-standing', icon: 'user', get label() { return cfg().standing ? '스탠딩 끄기' : '스탠딩 보기'; }, run: () => toggleStanding() });
-  X.commands.set('/emote', { owner: 'expr', help: '마지막 답변의 표정을 바꿉니다 · 예: /emote 기쁨, /emote anger (비우면 고르는 창)', run: emote });
-  X.commands.set('/표정', { owner: 'expr', help: '/emote 와 같습니다', run: emote });
-  X.commands.set('/standing', { owner: 'expr', help: '스탠딩 보기를 켜거나 끕니다', run: async () => { toggleStanding(); toast(cfg().standing ? '스탠딩 보기를 켰어요' : '스탠딩 보기를 껐어요'); } });
+  X.composer.push({ owner: 'expr', id: 'expr-standing', icon: 'user', get label() { return cfg().standing ? t('expressions.standing.off') : t('expressions.standing.on'); }, run: () => toggleStanding() });
+  X.commands.set('/emote', { owner: 'expr', get help() { return t('expressions.cmd.emote'); }, run: emote });
+  X.commands.set('/표정', { owner: 'expr', get help() { return t('expressions.cmd.emoteAlias'); }, run: emote });
+  X.commands.set('/standing', { owner: 'expr', get help() { return t('expressions.cmd.standing'); }, run: async () => { toggleStanding(); toast(cfg().standing ? t('expressions.standing.turnedOn') : t('expressions.standing.turnedOff')); } });
 
   X.panels = X.panels.filter(p => p.owner !== 'expr');
-  X.panels.push({ owner: 'expr', id: 'expr', title: '표정', icon: 'user', render: (chat, msgs) => reactNode('expr-panel', 'div.exs-panel', <ExprPanel chat={chat} msgs={msgs} />) });
+  X.panels.push({ owner: 'expr', id: 'expr', get title() { return t('expressions.panel.title'); }, icon: 'user', render: (chat, msgs) => reactNode('expr-panel', 'div.exs-panel', <ExprPanel chat={chat} msgs={msgs} />) });
 
   X.studio = X.studio.filter(t => t.owner !== 'expr');
   X.studio.push({ owner: 'expr', title: '표정', render: () => reactNode('expr-studio', 'div.exs', <ExprStudio />) });

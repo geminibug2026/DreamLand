@@ -41,11 +41,11 @@ export function Text({ obj, k, label, ph = '', onInput, cls = '' }: { obj: objec
   const bump = useBump(), o = obj as Bag;
   return <Fld label={label} cls={cls}><input className="inp" value={String(o[k] ?? '')} placeholder={ph} spellCheck={false} autoComplete="off" onChange={e => { o[k] = e.target.value; onInput?.(); bump(); }} /></Fld>;
 }
-const openGroups = new Set(['이미지']);
-/** 접었다 펴는 묶음. 펴 둔 것은 화면을 다시 그려도 기억한다 */
-export function Group({ title, children }: { title: string; children: ReactNode }) {
-  const [open] = useState(() => openGroups.has(title));
-  return <details className="sb-group" open={open} onToggle={e => { if (e.currentTarget.open) openGroups.add(title); else openGroups.delete(title); }}><summary>{title}</summary><div className="sb-group-body">{children}</div></details>;
+const openGroups = new Set(['image']);
+/** 접었다 펴는 묶음. 펴 둔 것은 화면을 다시 그려도 기억한다 (id 를 주면 제목 대신 그것으로 기억한다 — 제목은 언어마다 다르다) */
+export function Group({ title, id, children }: { title: string; id?: string; children: ReactNode }) {
+  const key = id ?? title, [open] = useState(() => openGroups.has(key));
+  return <details className="sb-group" open={open} onToggle={e => { if (e.currentTarget.open) openGroups.add(key); else openGroups.delete(key); }}><summary>{title}</summary><div className="sb-group-body">{children}</div></details>;
 }
 export const Empty = ({ children }: { children: ReactNode }) => <p className="sb-empty">{children}</p>;
 

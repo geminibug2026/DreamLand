@@ -6,15 +6,16 @@ import type { Lore } from '../editors/types';
 import { editorApi } from '../editors/parts';
 import { S } from '../lib/core';
 import * as core from '../lib/core';
+import { t, tn } from '../i18n';
 
 export const page = { name: 'lore', Component: LorePage };
 
 function LorePage({ arg }: { arg?: unknown }) {
-  return <LibraryPage<Lore> arg={arg} title="로어북" eyebrow="lorebook" coll="lore" ic="book" create={() => core.newLore()} label={b => b.name} sub={b => [`항목 ${b.entries.length}개`, ...loreLinks(b)].join(' · ')}
-    note={() => { const n = S.lore.filter(b => S.settings.activeLore.includes(b.id)).length; return <small>{n ? `켠 로어북 ${n}개가 모든 대화에서 쓰여요` : '스위치를 켠 로어북은 모든 대화에서 쓰여요'}</small>; }}
+  return <LibraryPage<Lore> arg={arg} title={t('lore.title')} eyebrow="lorebook" coll="lore" ic="book" create={() => core.newLore()} label={b => b.name} sub={b => [tn('lore.entries', b.entries.length), ...loreLinks(b)].join(' · ')}
+    note={() => { const n = S.lore.filter(b => S.settings.activeLore.includes(b.id)).length; return <small>{n ? tn('lore.page.active', n) : t('lore.page.hint')}</small>; }}
     trail={(b, redraw) => <LoreSwitch b={b} after={redraw} />}
-    paged={{ id: 'lore', text: b => b.name + ' ' + (b.description || ''), placeholder: '로어북 찾기' }}
-    empty="세계관과 설정을 키워드로 불러오는 로어북을 만들어 보세요."
-    actions={[{ ic: 'sliders', title: '로어북 전체 설정', onclick: () => loreSettingsDialog() }, { ic: 'import', title: '로어북 가져오기 (JSON · 실리태번 월드 인포)', onclick: draw => void importDialog('.json', draw) }]}
+    paged={{ id: 'lore', text: b => b.name + ' ' + (b.description || ''), placeholder: t('lore.page.search') }}
+    empty={t('lore.page.empty')}
+    actions={[{ ic: 'sliders', title: t('lore.global.title'), onclick: () => loreSettingsDialog() }, { ic: 'import', title: t('lore.page.import'), onclick: draw => void importDialog('.json', draw) }]}
     editor={(b, api) => <LoreEditor b={b} api={editorApi(api, 'lore')} />} />;
 }

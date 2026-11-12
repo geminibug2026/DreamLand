@@ -7,6 +7,7 @@ import { pickItems } from '../modules/PickItems';
 import { go } from '../lib/router';
 import { X } from '../lib/hooks';
 import { Switch } from '../studio/parts';
+import { t } from '../i18n';
 
 const byName = (a: Module, b: Module) => a.name.localeCompare(b.name, 'ko');
 
@@ -16,22 +17,22 @@ function ModPanel({ chat }: { chat: Chat }) {
   if (!ready) return null;
   const all = Modules.list;
   const flip = async (m: Module, v: boolean) => { await Modules.setRoom(m, chat, v); draw(); };
-  const origin = (m: Module) => Object.hasOwn(m.rooms, chat.id) ? (m.rooms[chat.id] ? '이 방에서만 켬' : '이 방에서만 끔') : m.scope === 'global' ? '전역' : m.scope === 'char' ? '캐릭터' : '이 방';
+  const origin = (m: Module) => Object.hasOwn(m.rooms, chat.id) ? (m.rooms[chat.id] ? t('modules.panel.onHereOnly') : t('modules.panel.offHereOnly')) : m.scope === 'global' ? t('modules.scope.global') : m.scope === 'char' ? t('modules.scope.char') : t('modules.panel.thisRoom');
   const row = (m: Module, isOn: boolean) => {
     const n = counts(m);
     return <div className={'mod-prow' + (isOn ? '' : ' off')} key={m.id}>
-      <div className="mod-row-text"><b>{m.name}</b><small>{[origin(m), n.lore && `로어북 ${n.lore}`, n.regex && `정규식 ${n.regex}`, n.assets && `에셋 ${n.assets}`, n.quick && `버튼 ${n.quick}`, n.css && m.cssOn && 'CSS'].filter(Boolean).join(' · ')}</small></div>
-      <Switch checked={isOn} title={`${m.name} — 이 방에서 켜기 · 끄기`} onChange={v => void flip(m, v)} /></div>;
+      <div className="mod-row-text"><b>{m.name}</b><small>{[origin(m), n.lore && t('modules.count.lore', { n: n.lore }), n.regex && t('modules.count.regex', { n: n.regex }), n.assets && t('modules.count.assets', { n: n.assets }), n.quick && t('modules.count.quick', { n: n.quick }), n.css && m.cssOn && 'CSS'].filter(Boolean).join(' · ')}</small></div>
+      <Switch checked={isOn} title={t('modules.panel.toggleTitle', { name: m.name })} onChange={v => void flip(m, v)} /></div>;
   };
   const onHere = all.filter(m => Modules.effective(m, chat)).sort(byName);
   const offHere = all.filter(m => m.rooms[chat.id] === false).sort(byName);
   const rest = all.filter(m => !onHere.includes(m) && !offHere.includes(m));
-  const turnOn = () => pickItems({ title: '이 방에서 켤 모듈', okLabel: '켜기', ph: '모듈 이름으로 찾기',
-    items: [...rest].sort(byName).map(m => { const n = counts(m); return { id: m.id, ic: 'panel', title: m.name, sub: [`로어북 ${n.lore}`, `정규식 ${n.regex}`, `에셋 ${n.assets}`, m.on ? scopeLabel(m) : '꺼져 있음'].join(' · '), search: (m.name + ' ' + m.author + ' ' + m.description).toLowerCase() }; }),
+  const turnOn = () => pickItems({ title: t('modules.panel.pickTitle'), okLabel: t('modules.panel.pickOk'), ph: t('modules.panel.pickPh'),
+    items: [...rest].sort(byName).map(m => { const n = counts(m); return { id: m.id, ic: 'panel', title: m.name, sub: [t('modules.count.lore', { n: n.lore }), t('modules.count.regex', { n: n.regex }), t('modules.count.assets', { n: n.assets }), m.on ? scopeLabel(m) : t('modules.panel.isOff')].join(' · '), search: (m.name + ' ' + m.author + ' ' + m.description).toLowerCase() }; }),
     onDone: async sel => { for (const id of sel) { const m = Modules.byId(id); if (m) await Modules.setRoom(m, chat, true); } draw(); } });
   return <>
-    {onHere.length || offHere.length ? <div className="mod-prows">{onHere.map(m => row(m, true))}{offHere.map(m => row(m, false))}</div> : <p className="dim">{all.length ? '이 방에 켜진 모듈이 없어요.' : '아직 모듈이 없어요.'}</p>}
-    <div className="row wrap">{rest.length ? <Btn label="이 방에 모듈 켜기" ic="plus" cls="ghost" onClick={turnOn} /> : null}<Btn label="모듈 화면" ic="right" cls="ghost" onClick={() => go('modules')} /></div>
+    {onHere.length || offHere.length ? <div className="mod-prows">{onHere.map(m => row(m, true))}{offHere.map(m => row(m, false))}</div> : <p className="dim">{all.length ? t('modules.panel.noneHere') : t('modules.panel.noneYet')}</p>}
+    <div className="row wrap">{rest.length ? <Btn label={t('modules.panel.turnOn')} ic="plus" cls="ghost" onClick={turnOn} /> : null}<Btn label={t('modules.panel.openPage')} ic="right" cls="ghost" onClick={() => go('modules')} /></div>
   </>;
 }
 

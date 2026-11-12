@@ -12,9 +12,11 @@ import { pageRefresh } from './refresh';
 import { S } from '../lib/core';
 import { AssetsPane } from '../studio/AssetsPane';
 import * as engine from '../lib/engine';
+import { t } from '../i18n';
 
 const TABS = ['기본', '설정', '인사말', '에셋', '고급 정의'] as const;
-const tokText = (v: unknown) => v ? `≈${engine.tokens(String(v)).toLocaleString()} 토큰` : '';
+const TAB_KEY: Record<typeof TABS[number], string> = { '기본': 'editors.char.tab.basic', '설정': 'editors.char.tab.settings', '인사말': 'editors.char.tab.greetings', '에셋': 'editors.char.tab.assets', '고급 정의': 'editors.char.tab.advanced' };
+const tokText = (v: unknown) => v ? t('editors.tokens', { n: engine.tokens(String(v)).toLocaleString() }) : '';
 
 /** 카드에 실려 온 나머지 필드: 고쳐 쓸 수 있게 JSON 으로 보여 준다 */
 function JsonField({ c, k, label, hint, save }: { c: XChar; k: 'ext' | 'more'; label: string; hint: string; save: () => void }) {
@@ -24,7 +26,7 @@ function JsonField({ c, k, label, hint, save }: { c: XChar; k: 'ext' | 'more'; l
       const v = e.target.value.trim();
       try { const j: unknown = v ? JSON.parse(v) : {}; if (!j || typeof j !== 'object' || Array.isArray(j)) throw new Error(); c[k] = j as Record<string, unknown>; setBad(false); save(); } catch { setBad(true); }
     }} />
-    <small className={'hint' + (bad ? ' bad' : '')}>{bad ? 'JSON 객체 형식이 아니라서 아직 저장하지 않았어요.' : hint}</small></label>;
+    <small className={'hint' + (bad ? ' bad' : '')}>{bad ? t('editors.char.jsonBad') : hint}</small></label>;
 }
 
 function Greets({ c, save }: { c: XChar; save: () => void }) {
@@ -32,15 +34,15 @@ function Greets({ c, save }: { c: XChar; save: () => void }) {
   const again = () => { gen.current++; redraw(); };   // 순서 · 개수가 바뀌면 칸을 새로 만든다
   const swap = (i: number, j: number) => { [alt[i], alt[j]] = [alt[j], alt[i]]; save(); again(); };
   return <div className="greets">
-    <label className="field"><span className="field-label">첫 인사</span><textarea className="inp" rows={7} spellCheck={false} defaultValue={c.firstMes ?? ''} onChange={e => { c.firstMes = e.target.value; save(); }} /></label>
-    <p className="hint">다른 인사를 넣어 두면 새 대화의 첫 메시지를 좌우로 넘겨 고를 수 있어요.</p>
+    <label className="field"><span className="field-label">{t('editors.char.greet.first')}</span><textarea className="inp" rows={7} spellCheck={false} defaultValue={c.firstMes ?? ''} onChange={e => { c.firstMes = e.target.value; save(); }} /></label>
+    <p className="hint">{t('editors.char.greet.hint')}</p>
     {alt.map((g, i) => <label className="field" key={`${gen.current}-${i}`}>
-      <span className="field-label">{`다른 인사 ${i + 1}`}<em className="tok">{g ? `≈${engine.tokens(g).toLocaleString()} 토큰` : ''}</em>
-        <IconBtn ic="up" title="위로" cls="tiny" onClick={() => { if (i > 0) swap(i, i - 1); }} />
-        <IconBtn ic="down" title="아래로" cls="tiny" onClick={() => { if (i < alt.length - 1) swap(i, i + 1); }} />
-        <IconBtn ic="trash" title="삭제" cls="tiny" onClick={async () => { if ((alt[i] || '').trim() && !(await confirmBox('이 첫 메시지를 삭제할까요?', '삭제', true))) return; alt.splice(i, 1); save(); again(); }} /></span>
+      <span className="field-label">{t('editors.char.greet.alt', { n: i + 1 })}<em className="tok">{g ? t('editors.tokens', { n: engine.tokens(g).toLocaleString() }) : ''}</em>
+        <IconBtn ic="up" title={t('editors.moveUp')} cls="tiny" onClick={() => { if (i > 0) swap(i, i - 1); }} />
+        <IconBtn ic="down" title={t('editors.moveDown')} cls="tiny" onClick={() => { if (i < alt.length - 1) swap(i, i + 1); }} />
+        <IconBtn ic="trash" title={t('common.delete')} cls="tiny" onClick={async () => { if ((alt[i] || '').trim() && !(await confirmBox(t('editors.char.greet.confirmDelete'), t('common.delete'), true))) return; alt.splice(i, 1); save(); again(); }} /></span>
       <textarea className="inp" rows={5} spellCheck={false} defaultValue={g} onChange={e => { alt[i] = e.target.value; save(); }} /></label>)}
-    <Btn label="다른 인사 추가" ic="plus" cls="ghost" onClick={() => { alt.push(''); again(); }} />
+    <Btn label={t('editors.char.greet.add')} ic="plus" cls="ghost" onClick={() => { alt.push(''); again(); }} />
   </div>;
 }
 
@@ -52,32 +54,32 @@ function Editor({ c }: { c: XChar }) {
   useEffect(counts);
   const pick = (list: { id: string; name: string }[]) => list.map(x => [x.id, x.name] as const);
   const forms: Record<'기본' | '설정' | '고급 정의', FormDefs> = {
-    '기본': [{ k: 'name', label: '이름' }, { k: 'avatar', label: '초상', type: 'image', max: 900 }, { k: 'tags', label: '태그', type: 'tags' }],
-    '설정': [{ k: 'description', label: '설명', type: 'area', rows: 12, count: true }, { k: 'personality', label: '성격 요약', type: 'area', rows: 3, count: true, ph: '(성격을 짧게 요약)' }, { k: 'scenario', label: '시나리오', type: 'area', rows: 4, count: true, ph: '(대화가 벌어지는 상황과 맥락)' }],
+    '기본': [{ k: 'name', label: t('common.name') }, { k: 'avatar', label: t('editors.char.f.avatar'), type: 'image', max: 900 }, { k: 'tags', label: t('editors.char.f.tags'), type: 'tags' }],
+    '설정': [{ k: 'description', label: t('editors.char.f.description'), type: 'area', rows: 12, count: true }, { k: 'personality', label: t('editors.char.f.personality'), type: 'area', rows: 3, count: true, ph: t('editors.char.f.personalityPh') }, { k: 'scenario', label: t('editors.char.f.scenario'), type: 'area', rows: 4, count: true, ph: t('editors.char.f.scenarioPh') }],
     '고급 정의': [
-      { section: '프롬프트 덮어쓰기' },
-      { el: <p className="hint">{'채팅 완성형에서는 프리셋의 메인 프롬프트 · 후속 지시 블록을, 텍스트 완성형에서는 고급 포맷팅의 시스템 프롬프트를 이 캐릭터에 한해 바꿉니다. {{original}} 을 넣으면 그 자리에 원래 프롬프트가 들어갑니다.'}</p> },
-      { k: 'systemPrompt', label: '메인 프롬프트', type: 'area', rows: 3, count: true, ph: '여기에 적은 내용이 이 캐릭터의 메인 프롬프트를 대신합니다. (V2 스펙: system_prompt)' },
-      { k: 'postHistory', label: '후속 지시', type: 'area', rows: 3, count: true, ph: '여기에 적은 내용이 이 캐릭터의 후속 지시를 대신합니다. (V2 스펙: post_history_instructions)' },
-      { section: '제작자 정보 (프롬프트에 들어가지 않음)' },
-      { k: 'creator', label: '제작자', half: true, ph: '(만든 사람 이름 · 연락처)' }, { k: 'version', label: '캐릭터 버전', half: true, ph: '(버전을 관리하고 싶다면)' },
-      { k: 'creatorNotes', label: '제작자 노트', type: 'area', rows: 4, ph: '(캐릭터 소개, 쓰는 요령, 시험해 본 모델 등. 캐릭터 프로필에 보입니다.)' },
-      { section: '캐릭터 노트' },
-      { k: 'depthPrompt.prompt', label: '캐릭터 노트', type: 'area', rows: 3, count: true, ph: '(대화 중간의 지정한 깊이와 역할로 계속 삽입되는 글)' }, { k: 'depthPrompt.depth', label: '@ 깊이', type: 'num', min: 0, half: true }, { k: 'depthPrompt.role', label: '역할', type: 'select', opts: [['system', '시스템'], ['user', '사용자'], ['assistant', '어시스턴트']], half: true },
-      { section: '수다스러움' },
-      { k: 'talk', label: '그룹 채팅에서 얼마나 자주 말하는지', type: 'range', min: 0, max: 1, step: 0.05 }, { el: <div className="af-talk"><span>수줍음</span><span>보통</span><span>수다쟁이</span></div> },
-      { section: '대화 예시' },
-      { k: 'mesExample', label: '말투와 문체를 잡는 데 중요합니다', type: 'area', rows: 6, count: true, ph: '(대화 예시. 예시마다 새 줄에 <START> 로 시작합니다.)\n<START>\n{{user}}: …\n{{char}}: …' },
-      { section: '로어북' },
-      { el: <div className="field"><span className="field-label">연결된 로어북</span><LoreLinker holder={c} save={saveNow} /><small className="hint">맨 처음 연결한 로어북은 카드를 내보낼 때 카드 안에 함께 담깁니다.</small></div> },
-      { section: '이 캐릭터 전용 설정' },
-      { k: 'bind.connId', label: 'API 연결', type: 'select', opts: [['', '기본 연결을 따름'], ...pick(S.conns)], third: true }, { k: 'bind.presetId', label: '프리셋', type: 'select', opts: [['', '기본 프리셋을 따름'], ...pick(S.presets)], third: true }, { k: 'bind.personaId', label: '페르소나', type: 'select', opts: [['', '기본 페르소나를 따름'], ...pick(S.personas)], third: true },
-      { section: '카드의 나머지 필드' },
-      { el: <JsonField c={c} k="ext" label="확장 필드 (extensions)" hint="다른 프런트엔드나 확장이 카드에 넣어 둔 값입니다. 내보낼 때 그대로 실립니다." save={saveNow} /> },
-      { el: <JsonField c={c} k="more" label="V3 필드" hint="nickname · source · group_only_greetings · creator_notes_multilingual 같은 V3 스펙 필드입니다. 내보낼 때 그대로 실립니다." save={saveNow} /> }],
+      { section: t('editors.char.sec.override') },
+      { el: <p className="hint">{t('editors.char.overrideHint')}</p> },
+      { k: 'systemPrompt', label: t('editors.char.f.systemPrompt'), type: 'area', rows: 3, count: true, ph: t('editors.char.f.systemPromptPh') },
+      { k: 'postHistory', label: t('editors.char.f.postHistory'), type: 'area', rows: 3, count: true, ph: t('editors.char.f.postHistoryPh') },
+      { section: t('editors.char.sec.creator') },
+      { k: 'creator', label: t('editors.char.f.creator'), half: true, ph: t('editors.char.f.creatorPh') }, { k: 'version', label: t('editors.char.f.version'), half: true, ph: t('editors.char.f.versionPh') },
+      { k: 'creatorNotes', label: t('editors.char.f.creatorNotes'), type: 'area', rows: 4, ph: t('editors.char.f.creatorNotesPh') },
+      { section: t('editors.char.sec.charNote') },
+      { k: 'depthPrompt.prompt', label: t('editors.char.sec.charNote'), type: 'area', rows: 3, count: true, ph: t('editors.char.f.charNotePh') }, { k: 'depthPrompt.depth', label: t('editors.char.f.depth'), type: 'num', min: 0, half: true }, { k: 'depthPrompt.role', label: t('editors.char.f.role'), type: 'select', opts: [['system', t('editors.role.system')], ['user', t('editors.role.user')], ['assistant', t('editors.role.assistant')]], half: true },
+      { section: t('editors.char.sec.talk') },
+      { k: 'talk', label: t('editors.char.f.talk'), type: 'range', min: 0, max: 1, step: 0.05 }, { el: <div className="af-talk"><span>{t('editors.char.talk.shy')}</span><span>{t('editors.char.talk.normal')}</span><span>{t('editors.char.talk.chatty')}</span></div> },
+      { section: t('editors.char.sec.examples') },
+      { k: 'mesExample', label: t('editors.char.f.examples'), type: 'area', rows: 6, count: true, ph: t('editors.char.f.examplesPh') },
+      { section: t('editors.char.sec.lore') },
+      { el: <div className="field"><span className="field-label">{t('editors.char.f.linkedLore')}</span><LoreLinker holder={c} save={saveNow} /><small className="hint">{t('editors.char.f.linkedLoreHint')}</small></div> },
+      { section: t('editors.char.sec.bind') },
+      { k: 'bind.connId', label: t('editors.char.f.conn'), type: 'select', opts: [['', t('editors.char.f.connDefault')], ...pick(S.conns)], third: true }, { k: 'bind.presetId', label: t('editors.char.f.preset'), type: 'select', opts: [['', t('editors.char.f.presetDefault')], ...pick(S.presets)], third: true }, { k: 'bind.personaId', label: t('editors.char.f.persona'), type: 'select', opts: [['', t('editors.char.f.personaDefault')], ...pick(S.personas)], third: true },
+      { section: t('editors.char.sec.rest') },
+      { el: <JsonField c={c} k="ext" label={t('editors.char.f.ext')} hint={t('editors.char.f.extHint')} save={saveNow} /> },
+      { el: <JsonField c={c} k="more" label={t('editors.char.f.v3')} hint={t('editors.char.f.v3Hint')} save={saveNow} /> }],
   };
   return <div>
-    <div className="tabs">{TABS.map(t => <button key={t} className={'tab' + (t === tab ? ' on' : '')} onClick={() => setTab(t)}>{t}</button>)}<span className="tokbadge">{`≈${charTokens(c).toLocaleString()} 토큰`}</span></div>
+    <div className="tabs">{TABS.map(x => <button key={x} className={'tab' + (x === tab ? ' on' : '')} onClick={() => setTab(x)}>{t(TAB_KEY[x])}</button>)}<span className="tokbadge">{t('editors.tokens', { n: charTokens(c).toLocaleString() })}</span></div>
     <div className="tab-pane" ref={pane}>
       {tab === '인사말' ? <Greets c={c} save={saveNow} /> : tab === '에셋' ? <span style={{ display: 'contents' }}><AssetsPane owner={Assets.ownerOfChar(c.id)} holder={c} save={saveNow} /></span> : <Form key={tab} obj={c} defs={forms[tab]} onChange={saveNow} />}
     </div>
@@ -87,5 +89,5 @@ function Editor({ c }: { c: XChar }) {
 export function charEditor(ch: Char) {
   const c = ch as XChar;
   c.bind ||= { connId: '', presetId: '', personaId: '' }; c.depthPrompt ||= { prompt: '', depth: 4, role: 'system' }; c.ext ||= {}; c.more ||= {}; c.altGreetings ||= []; c.loreIds ||= [];
-  openModal({ title: '캐릭터 편집', wide: true, body: <Editor c={c} />, onClose: () => { void S.save('chars', c, true).then(pageRefresh); }, actions: [{ label: '완료', cls: 'primary' }] });
+  openModal({ title: t('editors.char.title'), wide: true, body: <Editor c={c} />, onClose: () => { void S.save('chars', c, true).then(pageRefresh); }, actions: [{ label: t('editors.done'), cls: 'primary' }] });
 }

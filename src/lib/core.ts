@@ -1,4 +1,5 @@
 // ── Dreamland core: 유틸 · IndexedDB · 스토어 · 기본값 ── (옛 js/core.js 그대로)
+import { fmtDate, getLang, locale, t as tr } from '../i18n';
 import type { Char, Chat, Colls, CollName, Conn, KvRow, Lore, LoreEntry, Msg, MsgsRow, Persona, Preset, PresetBlock, Regex, Role, Settings, StoreName, Asset } from './types';
 
 // replaceChildren / append 에 null·false·undefined 가 섞여 들어가면 글자로 찍히므로 걸러 낸다
@@ -110,10 +111,10 @@ export function fmtTime(ts: number | string | Date | null | undefined) {
   if (!ts) return '';
   const d = new Date(ts), n = new Date();
   const same = d.toDateString() === n.toDateString();
-  const hm = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+  const hm = d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
   if (same) return hm;
-  if (d.getFullYear() === n.getFullYear()) return `${d.getMonth() + 1}월 ${d.getDate()}일`;
-  return `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`;
+  if (d.getFullYear() === n.getFullYear()) return getLang() === 'ko' ? `${d.getMonth() + 1}월 ${d.getDate()}일` : fmtDate(d, { month: 'short', day: 'numeric' });
+  return getLang() === 'ko' ? `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}` : fmtDate(d, { year: 'numeric', month: 'numeric', day: 'numeric' });
 }
 export function parseDate(v: unknown): number {
   if (!v) return 0;
@@ -242,12 +243,12 @@ export const defaultSettings = (): Settings => ({
 });
 
 export const newChar = (o: Partial<Char> = {}): Char => ({
-  id: uid(), name: '새 캐릭터', avatar: '', description: '', personality: '', scenario: '', firstMes: '', altGreetings: [], mesExample: '',
+  id: uid(), name: tr('core.newChar'), avatar: '', description: '', personality: '', scenario: '', firstMes: '', altGreetings: [], mesExample: '',
   systemPrompt: '', postHistory: '', creatorNotes: '', creator: '', version: '', tags: [], fav: false, talk: 0.5,
   depthPrompt: { prompt: '', depth: 4, role: 'system' }, ext: {}, more: {}, loreIds: [], bind: { connId: '', presetId: '', personaId: '' }, createdAt: now(), updatedAt: now(), ...o,
 });
 export const newPersona = (o: Partial<Persona> = {}): Persona => ({ id: uid(), name: '나', avatar: '', description: '', loreIds: [], createdAt: now(), ...o });
-export const newLore = (o: Partial<Lore> = {}): Lore => ({ id: uid(), name: '새 로어북', description: '', scanDepth: 4, tokenBudget: 2048, recursive: false, caseSensitive: false, wholeWord: false, entries: [], createdAt: now(), ...o });
+export const newLore = (o: Partial<Lore> = {}): Lore => ({ id: uid(), name: tr('core.newLore'), description: '', scanDepth: 4, tokenBudget: 2048, recursive: false, caseSensitive: false, wholeWord: false, entries: [], createdAt: now(), ...o });
 export const newEntry = (o: Partial<LoreEntry> = {}): LoreEntry => ({
   id: uid(), name: '', keys: [], keys2: [], logic: 0, content: '', constant: false, enabled: true, position: 'before', depth: 4, role: 'system',
   order: 100, probability: 100, caseSensitive: null, wholeWord: null, useRegex: false, noRecurse: false, outlet: '', group: '', sticky: null, cooldown: null, delay: null, scanDepth: null,
@@ -258,8 +259,8 @@ export const newEntry = (o: Partial<LoreEntry> = {}): LoreEntry => ({
 });
 // 정규식 스크립트. scope: 'global' 전역 · 캐릭터 id · 'preset'(프리셋의 regex 배열 안에 산다). 대상: onUser · onAI · onSlash(명령어로 넣은 글) · onLore(로어북 내용) · onReason(생각 과정).
 // mode: display 화면만 · prompt 전송만 · both 둘 다 · store 원문을 바꿔 저장. subst: 찾기 안의 매크로 0 그대로 · 1 값 넣기 · 2 기호를 글자로 바꿔 넣기. order: 같은 범위 안의 순서
-export const newRegex = (o: Partial<Regex> = {}): Regex => ({ id: uid(), name: '새 정규식', find: '', replace: '', trim: [], onUser: false, onAI: true, onSlash: false, onLore: false, onReason: false, mode: 'display', enabled: true, runOnEdit: true, subst: 0, minDepth: null, maxDepth: null, scope: 'global', order: 0, ...o });
-export const newConn = (o: Partial<Conn> = {}): Conn => ({ id: uid(), name: '새 연결', provider: 'openai', baseUrl: '', apiKey: '', model: '', proxy: false, postProcess: 'none', extraHeaders: '', extraBody: '', cache: false, ...o });
+export const newRegex = (o: Partial<Regex> = {}): Regex => ({ id: uid(), name: tr('core.newRegex'), find: '', replace: '', trim: [], onUser: false, onAI: true, onSlash: false, onLore: false, onReason: false, mode: 'display', enabled: true, runOnEdit: true, subst: 0, minDepth: null, maxDepth: null, scope: 'global', order: 0, ...o });
+export const newConn = (o: Partial<Conn> = {}): Conn => ({ id: uid(), name: tr('core.newConn'), provider: 'openai', baseUrl: '', apiKey: '', model: '', proxy: false, postProcess: 'none', extraHeaders: '', extraBody: '', cache: false, ...o });
 export const newChat = (o: Partial<Chat> = {}): Chat => ({
   id: uid(), name: '', charIds: [], personaId: '', note: { text: '', depth: 4, role: 'system' }, summary: '', summaryAt: 0, vars: {}, loreIds: [],
   tracker: {}, bg: '', mode: 'rp', diary: [], diaryAt: 0, groupOrder: 'natural', count: 0, preview: '', createdAt: now(), updatedAt: now(), ...o,
@@ -278,7 +279,7 @@ export const Secrets = {
   get on() { return this.ok && S.settings.security?.serverKeys !== false; },
   tail(id: string, field: string) { return this.items[id]?.[field]?.tail || ''; },
   has(id: string, field: string) { return !!this.items[id]?.[field]; },
-  async post(path: string, body: unknown): Promise<Record<string, string>> { const r = await fetch('/api/secrets/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dreamland': '1' }, body: JSON.stringify(body) }); const j = await r.json().catch(() => ({})) as Record<string, string>; if (!r.ok) throw new Error(j.error || '키 보관 실패'); return j; },
+  async post(path: string, body: unknown): Promise<Record<string, string>> { const r = await fetch('/api/secrets/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dreamland': '1' }, body: JSON.stringify(body) }); const j = await r.json().catch(() => ({})) as Record<string, string>; if (!r.ok) throw new Error(j.error || tr('core.secretFail')); return j; },
   async init() { try { const r = await fetch('/api/secrets'); if (r.ok && (r.headers.get('content-type') || '').includes('json')) { this.items = await r.json(); this.ok = true; } } catch { this.ok = false; } return this.ok; },
   async put(id: string, field: string, value: string, hosts: string[], note = '') { const j = await this.post('put', { id, field, value, hosts, note }); (this.items[id] ||= {})[field] = { tail: j.tail || '', hosts, note }; return this.ref(id, field); },
   async del(id: string, field?: string) { if (!this.ok) return; await this.post('delete', { id, field }).catch(() => { }); if (field) delete this.items[id]?.[field]; else delete this.items[id]; },
@@ -330,7 +331,7 @@ export const Vault = {
   get on() { return !!S.settings.vault; },
   get locked() { return this.on && !this.key; },
   async derive(pass: string, salt: Uint8Array) {
-    if (!crypto?.subtle) throw new Error('이 접속 환경(보안 연결이 아님)에서는 키 잠금을 쓸 수 없어요. localhost 로 열어 주세요.');
+    if (!crypto?.subtle) throw new Error(tr('core.vaultInsecure'));
     const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass), 'PBKDF2', false, ['deriveKey']);
     return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: salt as BufferSource, iterations: 250000, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
   },
@@ -349,7 +350,7 @@ export const Vault = {
     if (S.settings.illustSec) { try { S.settings.illust.naiKey = await this.dec(S.settings.illustSec); } catch { } }
     emit('vault'); return true;
   },
-  async disable() { if (this.locked) throw new Error('먼저 잠금을 풀어 주세요.'); delete S.settings.vault; delete S.settings.illustSec; this.key = null; await this.resave(); },
+  async disable() { if (this.locked) throw new Error(tr('core.vaultUnlockFirst')); delete S.settings.vault; delete S.settings.illustSec; this.key = null; await this.resave(); },
   async resave() { for (const c of S.conns) await S.save('conns', c, true); await DB.put('kv', await this.packSettings()); emit('vault'); },
   /** 저장용 사본: 비밀 값은 암호문으로만 남긴다 */
   async packConn(c: Conn): Promise<Conn> {
@@ -483,7 +484,7 @@ export const S: Store = {
   },
   async importAll(raw, replace) {
     const data = raw as Record<string, unknown> | null | undefined;
-    if (data?.app !== 'dreamland') throw new Error('드림랜드 백업 파일이 아닙니다');
+    if (data?.app !== 'dreamland') throw new Error(tr('core.notBackup'));
     // 백업에는 키가 없다: 같은 연결이 이미 있으면 그 키를 지킨다. 확장 코드와 확장 켜짐 목록, 키 잠금 정보는 파일에서 들이지 않는다
     const oldConns = new Map((await DB.all('conns')).map(c => [c.id, c])), oldSet = await DB.get('kv', 'settings') as Plain | undefined;
     for (const c of STORES) {

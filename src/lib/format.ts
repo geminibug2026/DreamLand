@@ -1,5 +1,6 @@
 // ── Dreamland format: 마크다운 + RP 말풍선 렌더러 + HTML 정화 ──
 import { esc, S } from './core';
+import { t as tr } from '../i18n';
 
 const BAD_TAGS = new Set(['script', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'form', 'input', 'button', 'textarea', 'select', 'frame', 'frameset', 'applet', 'title', 'head', 'html', 'body', 'noscript', 'noembed', 'noframes', 'xmp', 'plaintext', 'template', 'math', 'portal']);
 const blockRemote = () => !!(S.settings as { security?: { blockRemoteImages?: boolean } }).security?.blockRemoteImages;
@@ -19,7 +20,7 @@ export function sanitize(html: string): string {
         else if (n === 'style' && /expression\(|javascript:|position:fixed|@import/.test(v)) el.removeAttribute(a.name);
       }
       if (tag === 'a') { el.setAttribute('target', '_blank'); el.setAttribute('rel', 'noopener noreferrer'); }
-      if (blockRemote() && ['img', 'video', 'audio', 'source'].includes(tag) && /^(https?:)?\/\//i.test(el.getAttribute('src') || '')) { const a = doc.createElement('a'); a.href = el.getAttribute('src') as string; a.textContent = '[외부 이미지 — 눌러서 열기]'; a.target = '_blank'; a.rel = 'noopener noreferrer'; el.replaceWith(a); continue; }
+      if (blockRemote() && ['img', 'video', 'audio', 'source'].includes(tag) && /^(https?:)?\/\//i.test(el.getAttribute('src') || '')) { const a = doc.createElement('a'); a.href = el.getAttribute('src') as string; a.textContent = tr('format.remoteImage'); a.target = '_blank'; a.rel = 'noopener noreferrer'; el.replaceWith(a); continue; }
       if (tag === 'img') el.setAttribute('referrerpolicy', 'no-referrer');
       walk(el);
     }

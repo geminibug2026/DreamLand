@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../kit';
 import { S } from '../lib/core';
+import { t } from '../i18n';
 
 export interface PagedOpts {
   /** 한 쪽 개수를 기억할 이름. 없으면 기억하지 않는다 */
@@ -52,14 +53,14 @@ export function usePaged<T>(list: T[], { id, perPage: base = 50, sizes = [10, 25
   const start = pg * fit, rows = list.slice(start, start + fit);
   const opts = [...new Set([...sizes, size])].sort((a, b) => a - b);
   const end = Math.min(list.length, start + fit), dbl = (ic: string) => <span className="pg-dbl"><Icon name={ic} size={14} /><Icon name={ic} size={14} /></span>;
-  const pager = list.length > Math.min(fit, ...sizes) || pages > 1 ? <nav className="pager" aria-label="쪽 이동">
-    <button type="button" className="pg-step" disabled={pg === 0} title="첫 쪽" aria-label="첫 쪽" onClick={() => setPage(0)}>{dbl('left')}</button>
-    <button type="button" className="pg-step" disabled={pg === 0} title="앞 쪽" aria-label="앞 쪽" onClick={() => setPage(pg - 1)}><Icon name="left" size={16} /></button>
-    <small className="pg-info" title={`${pg + 1} / ${pages}쪽`}>{`${start + 1}–${end} / ${list.length}`}</small>
-    <button type="button" className="pg-step" disabled={pg >= pages - 1} title="다음 쪽" aria-label="다음 쪽" onClick={() => setPage(pg + 1)}><Icon name="right" size={16} /></button>
-    <button type="button" className="pg-step" disabled={pg >= pages - 1} title="마지막 쪽" aria-label="마지막 쪽" onClick={() => setPage(pages - 1)}>{dbl('right')}</button>
-    <select className="inp pg-size" aria-label="한 쪽에 보일 수" title="한 쪽에 보일 수" value={size} onChange={e => { const n = +e.target.value; setSize(n); if (id) remember(id, n); setPage(0); }}>
-      {opts.map(n => <option key={n} value={n}>{`${unit > 1 ? Math.max(1, Math.round((n + reserve) / unit)) * unit - reserve : n}개씩`}</option>)}</select>
+  const pager = list.length > Math.min(fit, ...sizes) || pages > 1 ? <nav className="pager" aria-label={t('ui.pager.nav')}>
+    <button type="button" className="pg-step" disabled={pg === 0} title={t('ui.pager.first')} aria-label={t('ui.pager.first')} onClick={() => setPage(0)}>{dbl('left')}</button>
+    <button type="button" className="pg-step" disabled={pg === 0} title={t('ui.pager.prev')} aria-label={t('ui.pager.prev')} onClick={() => setPage(pg - 1)}><Icon name="left" size={16} /></button>
+    <small className="pg-info" title={t('ui.pager.pageOf', { page: pg + 1, pages })}>{`${start + 1}–${end} / ${list.length}`}</small>
+    <button type="button" className="pg-step" disabled={pg >= pages - 1} title={t('ui.pager.next')} aria-label={t('ui.pager.next')} onClick={() => setPage(pg + 1)}><Icon name="right" size={16} /></button>
+    <button type="button" className="pg-step" disabled={pg >= pages - 1} title={t('ui.pager.last')} aria-label={t('ui.pager.last')} onClick={() => setPage(pages - 1)}>{dbl('right')}</button>
+    <select className="inp pg-size" aria-label={t('ui.pager.size')} title={t('ui.pager.size')} value={size} onChange={e => { const n = +e.target.value; setSize(n); if (id) remember(id, n); setPage(0); }}>
+      {opts.map(n => <option key={n} value={n}>{t('ui.pager.perPage', { count: unit > 1 ? Math.max(1, Math.round((n + reserve) / unit)) * unit - reserve : n })}</option>)}</select>
   </nav> : null;
   return { rows, start, page: pg, pages, perPage: fit, setPage, pager, listRef };
 }
@@ -68,9 +69,9 @@ export function usePaged<T>(list: T[], { id, perPage: base = 50, sizes = [10, 25
 export function crossPageItems(at: number, total: number, perPage: number, move: (from: number, to: number) => void) {
   const page = Math.floor(at / perPage), start = page * perPage;
   return [
-    page > 0 && { label: '앞 쪽 끝으로', ic: 'up', onclick: () => move(at, start - 1) },
-    start + perPage < total && { label: '다음 쪽 처음으로', ic: 'down', onclick: () => move(at, start + perPage) },
-    at > 0 && { label: '맨 처음으로', ic: 'up', onclick: () => move(at, 0) },
-    at < total - 1 && { label: '맨 끝으로', ic: 'down', onclick: () => move(at, total - 1) },
+    page > 0 && { label: t('ui.pager.toPrevEnd'), ic: 'up', onclick: () => move(at, start - 1) },
+    start + perPage < total && { label: t('ui.pager.toNextStart'), ic: 'down', onclick: () => move(at, start + perPage) },
+    at > 0 && { label: t('ui.pager.toFirst'), ic: 'up', onclick: () => move(at, 0) },
+    at < total - 1 && { label: t('ui.pager.toLast'), ic: 'down', onclick: () => move(at, total - 1) },
   ];
 }

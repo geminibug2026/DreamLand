@@ -2,6 +2,7 @@
 // js/core.js 의 DB 와 src/lib/core.ts 의 DB 는 모양이 같다 — installMirror(DB) 하나로 둘 다 감싼다.
 // 원칙: 어떤 경우에도 조용히 지우지 않는다. 판단이 애매하면 둘 다 남긴다(서버의 _conflicts/).
 import { decode, keepSecrets, pack, packSync, timeOf, type Json } from './codec';
+import { t, tn } from '../i18n';
 
 type Fn = (...a: never[]) => unknown;
 export interface MirrorDb {
@@ -109,11 +110,11 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
   // ── 서버와 주고받기 ──
   const headers = { 'Content-Type': 'application/json', 'x-dreamland': '1' };
   async function getJson<T>(path: string): Promise<T> {
-    const r = await fetch(api + path, { cache: 'no-store' }); if (!r.ok || !(r.headers.get('content-type') || '').includes('json')) throw new Error('서버 응답 ' + r.status); return r.json() as Promise<T>;
+    const r = await fetch(api + path, { cache: 'no-store' }); if (!r.ok || !(r.headers.get('content-type') || '').includes('json')) throw new Error(t('datafolder.err.status', { status: r.status })); return r.json() as Promise<T>;
   }
   async function post<T>(path: string, body: unknown): Promise<T> {
     const r = await fetch(api + path, { method: 'POST', headers, body: JSON.stringify(body) });
-    const j = await r.json().catch(() => ({})) as T & { error?: string }; if (!r.ok) throw new Error(j.error || '서버 응답 ' + r.status); return j;
+    const j = await r.json().catch(() => ({})) as T & { error?: string }; if (!r.ok) throw new Error(j.error || t('datafolder.err.status', { status: r.status })); return j;
   }
   async function ping() {
     try { const s = await getJson<{ on: boolean; dir: string }>('status'); st.server = s.on ? 'on' : 'off'; st.dir = s.dir || ''; }
@@ -153,7 +154,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
 
   async function flushOnce() {
     if (!st.enabled) return;
-    if (st.server !== 'on' && !(await ping())) throw new Error('서버에 닿지 않음');
+    if (st.server !== 'on' && !(await ping())) throw new Error(t('datafolder.err.unreachable'));
     await Promise.all([...qWrites]);
     if (needBackup) { await post('backup', { reason: needBackup }); needBackup = ''; }
     const db = await mirrorDb();
@@ -174,7 +175,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
     }
     const res = await sendOps(ops);
     const nb: [string, string | null][] = []; let bad = 0;
-    res.forEach((r, i) => { const m = meta[i]; if (r.ok) { nb.push([m.e.k, m.hash === null ? null : r.hash || m.hash]); done.push(m.e); } else { bad++; st.error = r.error || '저장 실패'; } });
+    res.forEach((r, i) => { const m = meta[i]; if (r.ok) { nb.push([m.e.k, m.hash === null ? null : r.hash || m.hash]); done.push(m.e); } else { bad++; st.error = r.error || t('datafolder.err.save'); } });
     await setBases(nb);
     // 보내는 사이 다시 바뀐 것(t 가 달라진 것)은 지우지 않고 남긴다
     await mtx(db, 'q', 'readwrite', o => { for (const e of done) { const g = o.get(e.k); g.onsuccess = () => { const cur = g.result as QEntry | undefined; if (cur && cur.t === e.t) o.delete(e.k); }; } });
@@ -186,7 +187,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
     if (flushing) { again = true; return flushing; }
     flushing = (async () => {
       try { do { again = false; await locked(flushOnce); } while (again); backoff = 1000; }
-      catch (e) { st.error = navigator.onLine === false ? '오프라인 — 다시 연결되면 보냅니다' : (e instanceof Error ? e.message : String(e)); emit(); schedule(backoff); backoff = Math.min(backoff * 2, 60000); }
+      catch (e) { st.error = navigator.onLine === false ? t('datafolder.err.offline') : (e instanceof Error ? e.message : String(e)); emit(); schedule(backoff); backoff = Math.min(backoff * 2, 60000); }
       finally { flushing = null; }
     })();
     return flushing;
@@ -202,7 +203,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
     return out;
   }
   async function dump(): Promise<Map<string, { store: string; id: unknown; hash: string; value: Json }>> {
-    const r = await fetch(api + 'dump', { cache: 'no-store' }); if (!r.ok || !r.body) throw new Error('서버에서 받지 못했습니다');
+    const r = await fetch(api + 'dump', { cache: 'no-store' }); if (!r.ok || !r.body) throw new Error(t('datafolder.err.dump'));
     const out = new Map<string, { store: string; id: unknown; hash: string; value: Json }>();
     const rd = r.body.pipeThrough(new TextDecoderStream()).getReader(); let buf = '';
     for (; ;) {
@@ -285,8 +286,8 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
       if (pulls.length || asides.length) {
         // 새로 연 뒤에도 또 받아 오면 무언가 맞지 않는 것: 2분 안에 세 번이면 멈추고 알린다 (무한히 새로 열지 않게)
         const hist = (sessionStorage.getItem('dl-mirror-reload') || '').split(',').map(Number).filter(t => t > Date.now() - 120000);
-        if (hist.length < 3) { sessionStorage.setItem('dl-mirror-reload', [...hist, Date.now()].join(',')); opts.toast?.(`자료 폴더에서 ${pulls.length}개를 불러왔어요. 화면을 새로 엽니다.`, 'ok'); await sleep(600); (opts.reload || (() => location.reload()))(); }
-        else { frozen = false; st.error = '서버 자료와 맞추기를 여러 번 되풀이해 멈췄어요'; opts.toast?.(st.error, 'err'); }
+        if (hist.length < 3) { sessionStorage.setItem('dl-mirror-reload', [...hist, Date.now()].join(',')); opts.toast?.(tn('datafolder.pulled', pulls.length), 'ok'); await sleep(600); (opts.reload || (() => location.reload()))(); }
+        else { frozen = false; st.error = t('datafolder.err.loop'); opts.toast?.(st.error, 'err'); }
       }
     } catch (e) { st.error = e instanceof Error ? e.message : String(e); schedule(5000); }
     finally { st.phase = 'idle'; await count(); }

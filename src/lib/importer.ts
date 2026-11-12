@@ -1,6 +1,7 @@
 // ── Dreamland importer: 이식 센터의 화면 아닌 부분 — 설치 종류 · 폴더 찾기 · 서버 브리지 · 옮겨 오기 (옛 js/importer.js 에서) ──
 // 화면은 src/pages/Import.tsx. 거기서 부르던 cards 의 bridge · bridgeSource · filesSource · scanST/importST · scanME/importME · importFiles · summarize 는 ./cards 에 있다.
 import { S } from './core';
+import { t } from '../i18n';
 import { bridge, bridgeSource, filesSource, scanST, importST, scanME, importME, importFiles, summarize, type Source, type Found, type Want, type Progress, type Tally, type StInventory, type MeInventory } from './cards';
 
 export type ImportKind = 'st' | 'marinara';
@@ -12,6 +13,9 @@ const ST: KindInfo<StInventory> = { name: 'SillyTavern', hint: '설치 폴더 �
 const ME: KindInfo<MeInventory> = { name: 'Marinara Engine', hint: '설치 폴더 또는 packages/server/data 폴더', scan: scanME, run: importME,
   parts: [['chars', '캐릭터', i => i.chars], ['chats', '대화', i => i.chats], ['lore', '로어북', i => i.lore], ['presets', '프리셋', i => i.presets], ['personas', '페르소나', i => i.personas], ['regex', '정규식', i => i.regex]] };
 export const KIND = { st: ST, marinara: ME };
+/** 화면용 이름 · 안내 (KIND 의 한국어 원문은 그대로 둔다) */
+export const partLabel = (key: string) => t('import.part.' + key);
+export const kindHint = (kind: ImportKind) => t('import.hint.' + kind);
 
 interface BStore { settings: { bridge: { st?: string; me?: string; [k: string]: unknown } }; set(patch: object): void }
 const St = S as unknown as BStore;
@@ -27,7 +31,7 @@ export const hasBridge = () => bridge.ok();
 export async function detectInstalls(): Promise<Record<ImportKind, FoundSource[]>> {
   const found = await bridge.detect();
   const out = { st: [] as FoundSource[], marinara: [] as FoundSource[] };
-  for (const kind of ['st', 'marinara'] as const) for (const f of found.filter(x => x.kind === kind)) out[kind].push({ src: bridgeSource(f.root), label: kind === 'st' ? `사용자 · ${f.label}` : f.label, sub: f.root });
+  for (const kind of ['st', 'marinara'] as const) for (const f of found.filter(x => x.kind === kind)) out[kind].push({ src: bridgeSource(f.root), label: kind === 'st' ? t('import.user', { name: f.label }) : f.label, sub: f.root });
   return out;
 }
 /** 적은 경로에서 찾기. 찾으면 경로를 설정에 적어 두고 소스들을, 못 찾으면 null 을 돌려준다 */
@@ -42,10 +46,10 @@ export async function findAt(kind: ImportKind, raw: string): Promise<FoundSource
 export function fromFolder(kind: ImportKind, files: File[]): FoundSource | null {
   const src = filesSource(files);
   if (!src || src.kind !== kind) return null;
-  return { src, label: '선택한 폴더', sub: src.label || '' };
+  return { src, label: t('import.pickedFolder'), sub: src.label || '' };
 }
 /** 옮겨 온 결과 한 줄 (이식 센터 기록) */
-export const runLine = (kind: ImportKind, T: Tally) => `${KIND[kind].name} → ${summarize(T)}${T.skipped ? ` · 이미 있거나 비어 있어 건너뜀 ${T.skipped}` : ''}`;
+export const runLine = (kind: ImportKind, T: Tally) => `${KIND[kind].name} → ${summarize(T)}` + (T.skipped ? t('import.skipped', { n: T.skipped }) : '');
 /** 파일로 가져온 결과 한 줄 */
-export const filesLine = (n: number, T: Tally) => `파일 ${n}개 → ${summarize(T)}`;
+export const filesLine = (n: number, T: Tally) => t('import.filesLine', { n, sum: summarize(T) });
 export { importFiles, summarize };

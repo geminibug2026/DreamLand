@@ -10,6 +10,7 @@ import { go, route } from '../../lib/router';
 import { Memory } from '../../lib/memory';
 import { S } from '../../lib/core';
 import { chatApi } from '../../chat/actions';
+import { t } from '../../i18n';
 import * as memMod from '../../lib/memory';
 import * as core from '../../lib/core';
 
@@ -64,7 +65,7 @@ export const safe = (v: unknown) => String(v ?? '').replace(/[^\w-]/g, '') || 'x
 export const pct = (v?: number | null) => `${Math.round((v || 0) * 100)}%`;
 export const cur = () => chatApi.current();
 export const isCur = (chat?: ChatM | null) => cur().chat?.id === chat?.id;
-export const chatTitle = (chat?: ChatM | null) => chat?.name || (chat?.charIds || []).map(id => S.get('chars', id)?.name).filter(Boolean).join(', ') || '대화';
+export const chatTitle = (chat?: ChatM | null) => chat?.name || (chat?.charIds || []).map(id => S.get('chars', id)?.name).filter(Boolean).join(', ') || t('memoria.parts.chat');
 export const msgsOf = async (chat: ChatM) => isCur(chat) ? cur().msgs : await S.msgs(chat.id);
 export const persistMsgs = async (chat: ChatM, msgs: Msg[]) => { if (isCur(chat)) { await chatApi.save(); chatApi.redraw(); } else await S.saveMsgs(chat, msgs); };
 export const histOf = (msgs: Msg[]) => { const c = Memory.cfg(), vis = msgs.filter(m => !m.hidden); return (c.trim ? vis.slice(-(c.keepRecent || 20)) : vis.slice(-30)).map(m => ({ role: m.role, content: core.msgText(m) })); };
@@ -78,8 +79,8 @@ export function ensureCfg(): Cfg {
   return m as Cfg;
 }
 export const saveCfg = () => S.set({ memory: { ...S.settings.memory } as Cfg });
-export const turnTag = (_mem: Mem, x: { manual?: boolean; turn?: number | null }) => x.manual || x.turn == null ? '수동' : `t${x.turn + 1}`;
-export const copyText = (t: string) => navigator.clipboard?.writeText(t).then(() => toast('복사했어요'), () => toast('복사하지 못했어요', 'err'));
+export const turnTag = (_mem: Mem, x: { manual?: boolean; turn?: number | null }) => x.manual || x.turn == null ? t('memoria.parts.manual') : `t${x.turn + 1}`;
+export const copyText = (text: string) => navigator.clipboard?.writeText(text).then(() => toast(t('memoria.parts.copied')), () => toast(t('memoria.parts.copyFail'), 'err'));
 /** 단추를 잠그고 일을 한다 (끝나면 푼다). 오류는 알림으로 */
 export async function busyBtn<T>(b: HTMLButtonElement, fn: () => T | Promise<T>): Promise<T | undefined> {
   if (b.disabled) return; b.disabled = true; b.classList.add('mm-busy');
@@ -98,55 +99,55 @@ export const VIS_IC: Record<string, string> = { public: 'globe', private: 'lock'
 /** 지금 장면 한 줄 — 장소 · 날짜 · 시간 · 자리에 있는 사람들 · 분위기 */
 export function SceneLine({ m, sc = Memory.scene(m) }: { m: Mem; sc?: SceneNow }) {
   if (!sc.any) return null;
-  return <div className="mm-scene">{sc.location ? <span title="장소"><Ico name="place" />{sc.location}</span> : null}{sc.date ? <span title="날짜"><Ico name="cal" />{sc.date}</span> : null}{sc.time ? <span title="시간"><Ico name="clock" />{sc.time}</span> : null}
-    {sc.present ? <span title="지금 장면에 있는 사람들"><Ico name="users" />{sc.present}</span> : null}{sc.mood ? <span title="장면의 분위기"><Ico name="moon" />{sc.mood}</span> : null}</div>;
+  return <div className="mm-scene">{sc.location ? <span title={t('memoria.parts.scene.place')}><Ico name="place" />{sc.location}</span> : null}{sc.date ? <span title={t('memoria.parts.scene.date')}><Ico name="cal" />{sc.date}</span> : null}{sc.time ? <span title={t('memoria.parts.scene.time')}><Ico name="clock" />{sc.time}</span> : null}
+    {sc.present ? <span title={t('memoria.parts.scene.present')}><Ico name="users" />{sc.present}</span> : null}{sc.mood ? <span title={t('memoria.parts.scene.mood')}><Ico name="moon" />{sc.mood}</span> : null}</div>;
 }
 /** 숫자 띠 + 지금 장면 (개요 맨 위) */
 export function Stats({ st }: { st: StOpen }) {
   const m = st.mem, failed = m.turns.filter(t => t.failed).length, { fmtDays } = memMod;
   const tile = (n: ReactNode, l: string, cls?: string) => <div className={cls}><b>{String(n)}</b><span>{l}</span></div>;
-  return <div className="mm-top"><div className="mm-stats">{tile(m.turns.length, '턴')}{tile(m.memories.length, '기억')}{tile(m.cast.length, '인물')}{tile(m.pledges.filter(p => p.status === 'active').length, '서약')}{tile(m.chunks.length + m.arcs.length, '요약')}{tile(m.clockDays >= 1 / 24 ? fmtDays(m.clockDays) : '–', '서사 시계')}{failed ? tile(failed, '기록 실패', 'bad') : null}</div>
+  return <div className="mm-top"><div className="mm-stats">{tile(m.turns.length, t('memoria.parts.stat.turns'))}{tile(m.memories.length, t('memoria.parts.stat.memories'))}{tile(m.cast.length, t('memoria.parts.stat.cast'))}{tile(m.pledges.filter(p => p.status === 'active').length, t('memoria.parts.stat.pledges'))}{tile(m.chunks.length + m.arcs.length, t('memoria.parts.stat.summaries'))}{tile(m.clockDays >= 1 / 24 ? fmtDays(m.clockDays) : '–', t('memoria.parts.stat.clock'))}{failed ? tile(failed, t('memoria.parts.stat.failed'), 'bad') : null}</div>
     <SceneLine m={m} /></div>;
 }
 type ArrKey = 'memories' | 'canon' | 'status' | 'pledges' | 'cast' | 'chunks' | 'arcs' | 'items' | 'milestones' | 'dossier' | 'bonds';
 /** 줄 지우기 단추: 확인받고 st.mem[arr] 에서 x 를 뺀 뒤 저장하고 다시 그린다 */
 export function Del({ st, arr, x, what }: { st: StOpen; arr: ArrKey; x: object; what: string }) {
-  return <Ib name="trash" title="삭제" cls="del" onClick={async () => { if (!(await confirmBox(`${what}을(를) 삭제할까요?`, '삭제', true))) return; const list = st.mem[arr] as object[], i = list.indexOf(x); if (i >= 0) list.splice(i, 1); await Memory.save(st.mem); st.draw(); }} />;
+  return <Ib name="trash" title={t('common.delete')} cls="del" onClick={async () => { if (!(await confirmBox(t('memoria.parts.deleteAsk', { what }), t('common.delete'), true))) return; const list = st.mem[arr] as object[], i = list.indexOf(x); if (i >= 0) list.splice(i, 1); await Memory.save(st.mem); st.draw(); }} />;
 }
 
 // ════════ 창 ════════
 /** 폼으로 고쳐서 돌려받는 대화상자 (취소하면 null). 돌려받는 것은 obj 의 사본이다 */
-export function editBox<T extends object>(title: string, obj: T, defs: FormDefs, { wide = false, okLabel = '저장' }: { wide?: boolean; okLabel?: string } = {}): Promise<T | null> {
+export function editBox<T extends object>(title: string, obj: T, defs: FormDefs, { wide = false, okLabel = t('common.save') }: { wide?: boolean; okLabel?: string } = {}): Promise<T | null> {
   return new Promise(res => {
     let done = false; const draft = JSON.parse(JSON.stringify(obj, (k, v) => k === 'av' ? undefined : v)) as T;
-    openModal({ title, wide, body: <Form obj={draft} defs={defs} />, onClose: () => { if (!done) res(null); }, actions: [{ label: '취소' }, { label: okLabel, cls: 'primary', onclick: () => { done = true; res(draft); } }] });
+    openModal({ title, wide, body: <Form obj={draft} defs={defs} />, onClose: () => { if (!done) res(null); }, actions: [{ label: t('common.cancel') }, { label: okLabel, cls: 'primary', onclick: () => { done = true; res(draft); } }] });
   });
 }
 /** 무엇이 달라지는지 항목으로 알려 주고 확인받는다 */
-export const confirmList = (title: string, lines: string[], okLabel = '확인', danger = false) => new Promise<boolean>(res => {
+export const confirmList = (title: string, lines: string[], okLabel = t('common.ok'), danger = false) => new Promise<boolean>(res => {
   let ok = false;
-  openModal({ title, body: <ul className="mm-points">{lines.map((l, i) => <li key={i}>{l}</li>)}</ul>, onClose: () => res(ok), actions: [{ label: '취소' }, { label: okLabel, cls: danger ? 'danger' : 'primary', onclick: () => { ok = true; } }] });
+  openModal({ title, body: <ul className="mm-points">{lines.map((l, i) => <li key={i}>{l}</li>)}</ul>, onClose: () => res(ok), actions: [{ label: t('common.cancel') }, { label: okLabel, cls: danger ? 'danger' : 'primary', onclick: () => { ok = true; } }] });
 });
 export interface Progress { signal: AbortSignal; stopped(): boolean; set(done: number, total: number, label?: string): void; say(t: string): void; close(): void }
 export function progressBox(title: string): Progress {
   const ac = new AbortController(); let stopped = false, fin = false, text: HTMLElement | null = null, bar: HTMLElement | null = null;
-  const box = openModal({ title, body: <div className="col"><p ref={el => { text = el; }}>준비 중…</p><div className="mm-meter big"><i ref={el => { bar = el; }} /></div></div>, onClose: () => { if (!fin) { stopped = true; ac.abort(); } }, actions: [{ label: '멈추기' }] });
+  const box = openModal({ title, body: <div className="col"><p ref={el => { text = el; }}>{t('memoria.parts.progress.preparing')}</p><div className="mm-meter big"><i ref={el => { bar = el; }} /></div></div>, onClose: () => { if (!fin) { stopped = true; ac.abort(); } }, actions: [{ label: t('memoria.parts.progress.stop') }] });
   return {
     signal: ac.signal, stopped: () => stopped,
     set(done, total, label = '') { if (text) text.textContent = `${label} ${done} / ${total}`.trim(); if (bar) bar.style.width = (total ? done / total * 100 : 0) + '%'; },
-    say(t) { if (text) text.textContent = t; }, close() { fin = true; box.close(); },
+    say(s) { if (text) text.textContent = s; }, close() { fin = true; box.close(); },
   };
 }
 /** 바뀔 내용을 먼저 보여 주고 확인받는다 */
-export function review(changes: Change[], title: string, note = '확인한 변경만 적용합니다. 적용 직전의 서고는 복구 지점에 보관합니다.'): Promise<boolean> {
-  const SHELF_KO: Record<string, string> = { ...memMod.SHELF_LABELS, canon: '캐논', pledges: '서약' };
+export function review(changes: Change[], title: string, note = t('memoria.parts.review.note')): Promise<boolean> {
+  const SHELF_KO: Record<string, string> = { ...memMod.SHELF_LABELS, canon: t('memoria.parts.review.canon'), pledges: t('memoria.parts.review.pledges') };
   return new Promise(res => {
-    let ok = false; const n = (t: string) => changes.filter(c => c.type === t).length, LB = { added: '추가', changed: '변경', removed: '삭제' };
+    let ok = false; const n = (ty: string) => changes.filter(c => c.type === ty).length, LB = { added: t('memoria.parts.review.added'), changed: t('memoria.parts.review.changed'), removed: t('memoria.parts.review.removed') };
     openModal({
-      title, wide: true, onClose: () => res(ok), actions: [{ label: '취소' }, { label: '변경 적용', cls: 'primary', onclick: () => { ok = true; } }],
-      body: <div className="mm-review"><p className="hint">{note}</p><div className="mm-chips"><Chip text={`추가 ${n('added')}`} cls="add" /><Chip text={`변경 ${n('changed')}`} cls="chg" /><Chip text={`삭제 ${n('removed')}`} cls="del" /></div>
-        <div className="mm-review-list">{changes.map((c, i) => <article key={i} className={`mm-diff ${c.type}`}><header><b>{SHELF_KO[c.shelf] || c.shelf}</b><em className="badge">{LB[c.type]}</em></header>{c.before ? <div className="mm-before">{c.before}</div> : null}{c.after ? <div className="mm-after">{c.after}</div> : null}{c.type === 'changed' && c.impBefore !== c.impAfter ? <small>{`중요도 ${pct(c.impBefore)} → ${pct(c.impAfter)}`}</small> : null}</article>)}
-          {!changes.length ? <p className="dim">목록 내용의 차이가 없습니다. 서고의 설정과 기록 시점은 교체될 수 있습니다.</p> : null}</div></div>,
+      title, wide: true, onClose: () => res(ok), actions: [{ label: t('common.cancel') }, { label: t('memoria.parts.review.apply'), cls: 'primary', onclick: () => { ok = true; } }],
+      body: <div className="mm-review"><p className="hint">{note}</p><div className="mm-chips"><Chip text={t('memoria.parts.review.addedN', { count: n('added') })} cls="add" /><Chip text={t('memoria.parts.review.changedN', { count: n('changed') })} cls="chg" /><Chip text={t('memoria.parts.review.removedN', { count: n('removed') })} cls="del" /></div>
+        <div className="mm-review-list">{changes.map((c, i) => <article key={i} className={`mm-diff ${c.type}`}><header><b>{SHELF_KO[c.shelf] || c.shelf}</b><em className="badge">{LB[c.type]}</em></header>{c.before ? <div className="mm-before">{c.before}</div> : null}{c.after ? <div className="mm-after">{c.after}</div> : null}{c.type === 'changed' && c.impBefore !== c.impAfter ? <small>{t('memoria.parts.review.importance', { before: pct(c.impBefore), after: pct(c.impAfter) })}</small> : null}</article>)}
+          {!changes.length ? <p className="dim">{t('memoria.parts.review.noDiff')}</p> : null}</div></div>,
     });
   });
 }
@@ -156,11 +157,11 @@ export function showSource(st: StOpen, m: MemItem) {
   const i = st.msgs.findIndex(x => x.id === m.msgId), msg = st.msgs[i] as Msg | undefined, user = msg && [...st.msgs.slice(0, i)].reverse().find(x => x.role === 'user');
   const prose = (x: Msg) => visibleProse(msgText(x)) || msgText(x);
   openModal({
-    title: '기억의 출처', wide: true,
+    title: t('memoria.parts.source.title'), wide: true,
     body: <div className="col"><p className="mm-src-sum">{m.summary}</p>
-      {msg ? <>{user ? <div className="mm-src"><b>{`#${st.msgs.indexOf(user) + 1} · ${user.name || '나'}`}</b><pre>{prose(user)}</pre></div> : null}<div className="mm-src"><b>{`#${i + 1} · ${msg.name || '답변'}`}</b><pre>{prose(msg)}</pre></div></>
-        : <p className="dim">{m.manual || (m.tags || []).includes('carried') ? '수동 또는 인계된 기억입니다. 이 대화에서 원문을 확인할 수 없습니다.' : '원문이 편집·삭제되었거나 기록과 일치하지 않습니다. 도구의 「대화와 기록 맞추기」를 실행해 주세요.'}</p>}</div>,
-    actions: [...(msg && isCur(st.chat) ? [{ label: '대화에서 보기', ic: 'chat', onclick: () => { st.close?.(); if (route.page !== 'chat') go('chat', st.chat.id); setTimeout(() => chatApi.scrollTo(msg.id), 300); } }] : []), { label: '닫기', cls: 'primary' }],
+      {msg ? <>{user ? <div className="mm-src"><b>{`#${st.msgs.indexOf(user) + 1} · ${user.name || t('memoria.parts.me')}`}</b><pre>{prose(user)}</pre></div> : null}<div className="mm-src"><b>{`#${i + 1} · ${msg.name || t('memoria.parts.source.reply')}`}</b><pre>{prose(msg)}</pre></div></>
+        : <p className="dim">{m.manual || (m.tags || []).includes('carried') ? t('memoria.parts.source.manual') : t('memoria.parts.source.missing')}</p>}</div>,
+    actions: [...(msg && isCur(st.chat) ? [{ label: t('memoria.parts.source.inChat'), ic: 'chat', onclick: () => { st.close?.(); if (route.page !== 'chat') go('chat', st.chat.id); setTimeout(() => chatApi.scrollTo(msg.id), 300); } }] : []), { label: t('common.close'), cls: 'primary' }],
   });
 }
 const nkey = (v: unknown) => String(v || '').toLowerCase().replace(/[\s._\-'"`]+/g, '');
@@ -169,19 +170,19 @@ export async function mergeCast(st: StOpen, keep: CastCard) {
   const mem = st.mem, others = mem.cast.filter(c => c !== keep), M = Memory;
   // 카드는 없는데 상태 보드 · 기억에만 떠도는 표기
   const known = new Set(mem.cast.flatMap(c => [c.name, ...(c.aka || [])]).map(nkey)), stray = [...new Set([...mem.status.map(s => s.entity), ...mem.memories.flatMap(m => m.entities || [])])].filter(n => n && nkey(n) !== 'scene' && !known.has(nkey(n))).slice(0, 40);
-  if (!others.length && !stray.length) return toast('병합할 다른 인물 카드나 갈라진 이름이 없습니다.');
-  const d = await editBox(`「${keep.name}」 카드로 병합`, { from: others[0] ? 'c:' + others[0].id : 'n:' + stray[0], typed: '' }, [
-    { k: 'from', label: '이 카드로 접을 대상', type: 'select', opts: [...others.map(c => ['c:' + c.id, `카드 — ${c.name}`] as const), ...stray.map(n => ['n:' + n, `갈라진 이름 — ${n}`] as const)] },
-    { k: 'typed', label: '또는 이름을 직접 적기 (적으면 위 선택 대신 이 이름을 씁니다)', ph: '예: kkang', hint: '같은 인물이 두 카드로 나뉜 경우 카드를 합칩니다. 카드는 하나인데 상태 보드가 다른 표기로 갈라진 경우(예: kkang) 별칭으로 묶고 상태·기억을 이 카드로 접습니다.' }], { okLabel: '병합' });
+  if (!others.length && !stray.length) return toast(t('memoria.parts.merge.none'));
+  const d = await editBox(t('memoria.parts.merge.title', { name: keep.name }), { from: others[0] ? 'c:' + others[0].id : 'n:' + stray[0], typed: '' }, [
+    { k: 'from', label: t('memoria.parts.merge.from'), type: 'select', opts: [...others.map(c => ['c:' + c.id, t('memoria.parts.merge.card', { name: c.name })] as const), ...stray.map(n => ['n:' + n, t('memoria.parts.merge.stray', { name: n })] as const)] },
+    { k: 'typed', label: t('memoria.parts.merge.typed'), ph: t('memoria.parts.merge.typedPh'), hint: t('memoria.parts.merge.typedHint') }], { okLabel: t('memoria.parts.merge.ok') });
   if (!d) return;
   const typed = String(d.typed || '').trim().slice(0, 60), name = typed || (d.from.startsWith('n:') ? d.from.slice(2) : '');
   const src = typed ? others.find(c => nkey(c.name) === nkey(typed) || (c.aka || []).some(a => nkey(a) === nkey(typed))) : mem.cast.find(c => 'c:' + c.id === d.from);
-  if (src) { M.mergeCast(mem, keep, src); await M.save(mem); st.draw(); return toast(`「${src.name}」 카드를 「${keep.name}」(으)로 병합했습니다.`, 'ok'); }
+  if (src) { M.mergeCast(mem, keep, src); await M.save(mem); st.draw(); return toast(t('memoria.parts.merge.doneCard', { from: src.name, to: keep.name }), 'ok'); }
   if (!name) return;
-  if (!mem.status.some(s => nkey(s.entity) === nkey(name)) && !mem.memories.some(m => (m.entities || []).some(e => nkey(e) === nkey(name)))) return toast(`「${name}」 — 인물 카드에도, 상태 보드나 기억에도 없는 이름입니다.`, 'err');
+  if (!mem.status.some(s => nkey(s.entity) === nkey(name)) && !mem.memories.some(m => (m.entities || []).some(e => nkey(e) === nkey(name)))) return toast(t('memoria.parts.merge.unknown', { name }), 'err');
   keep.aka = [...new Set([...(keep.aka || []), name])].filter(a => a && nkey(a) !== nkey(keep.name)).slice(0, 8);
   const folded = M.foldAliases(mem); await M.save(mem); st.draw();
-  toast(`「${name}」 → 「${keep.name}」 별칭으로 묶었습니다 (상태 ${folded.states}건 · 기억 ${folded.memories}건 합침)`, 'ok');
+  toast(t('memoria.parts.merge.doneAlias', { from: name, to: keep.name, states: folded.states, memories: folded.memories }), 'ok');
 }
 /** 복구 지점을 남기고 고친 뒤 저장 · 다시 그리기 */
 export async function withCheckpoint(st: StOpen, label: string, fn: () => unknown) { await Memory.checkpoint(st.mem, label).catch(() => { }); await fn(); await Memory.save(st.mem); st.draw(); }

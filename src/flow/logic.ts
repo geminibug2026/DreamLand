@@ -9,6 +9,7 @@ import { go, route } from '../lib/router';
 import { macro, tokens } from '../lib/engine';
 import { X } from '../lib/hooks';
 import { chatApi } from '../chat/actions';
+import { t } from '../i18n';
 
 export const cur = () => chatApi.current();
 const copy = <T,>(o: T): T => { try { return structuredClone(o); } catch { return JSON.parse(JSON.stringify(o)) as T; } };
@@ -17,7 +18,7 @@ const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 const now = () => Date.now();
 export const saveChat = (c: ChatX) => S.save('chats', c, true);
 export const charsOf = (chat?: ChatX | null): CharX[] => (chat?.charIds || []).map(id => S.get('chars', id)).filter((x): x is CharX => !!x);
-export const waitIdle = async (stopped = () => false, max = 900000) => { const t0 = now(); while (cur().busy) { if (stopped()) throw new Error('멈췄어요'); if (now() - t0 > max) throw new Error('생성이 끝나지 않아 멈췄어요'); await sleep(150); } };
+export const waitIdle = async (stopped = () => false, max = 900000) => { const t0 = now(); while (cur().busy) { if (stopped()) throw new Error(t('flow.err.stopped')); if (now() - t0 > max) throw new Error(t('flow.err.timeout')); await sleep(150); } };
 
 // ════════ 사용자가 생성을 멈췄는지 (자동 진행이 다시 시작하지 않도록) ════════
 const gen = { startedAt: 0, abortedAt: 0 };
@@ -33,11 +34,11 @@ interface Reply { msg: Msg; chat: ChatX; at: number }
 let pending: Reply | null = null;
 /** 다시 생성할 까닭이 있으면 그 까닭을 글로 */
 export function swipeReason(text: unknown, W = A().swipe): string {
-  const t = String(text || '').trim();
-  if (+W.minLen > 0 && t.length < +W.minLen) return `${t.length}자 — 최소 ${W.minLen}자보다 짧음`;
-  const words = (W.words || []).map(w => String(w).trim()).filter(Boolean), low = t.toLowerCase();
+  const tx = String(text || '').trim();
+  if (+W.minLen > 0 && tx.length < +W.minLen) return t('flow.swipe.short', { len: tx.length, min: W.minLen });
+  const words = (W.words || []).map(w => String(w).trim()).filter(Boolean), low = tx.toLowerCase();
   const hits = words.filter(w => low.includes(w.toLowerCase()));
-  if (words.length && hits.length >= Math.max(1, +W.threshold || 1)) return `금칙어 ${hits.slice(0, 3).join(', ')}${hits.length > 3 ? ` 외 ${hits.length - 3}개` : ''}`;
+  if (words.length && hits.length >= Math.max(1, +W.threshold || 1)) return hits.length > 3 ? t('flow.swipe.bannedMore', { words: hits.slice(0, 3).join(', '), more: hits.length - 3 }) : t('flow.swipe.banned', { words: hits.slice(0, 3).join(', ') });
   return '';
 }
 async function afterReply(R: Reply, type?: string) {
@@ -48,9 +49,9 @@ async function afterReply(R: Reply, type?: string) {
     const why = swipeReason(text);
     if (why) {
       const n = tally.swipes.get(key) || 0, max = Math.max(1, +a.swipe.max || 1);
-      if (n >= max) { if (n === max) { tally.swipes.set(key, n + 1); toast(`자동 다시 생성을 ${max}번 했지만 조건을 채우지 못했어요 (${why})`); } return; }
-      tally.swipes.set(key, n + 1); autoStat.calls++; autoStat.note = `자동 다시 생성 ${n + 1}/${max} · ${why}`;
-      toast(`${autoStat.note} — 모델을 한 번 더 부릅니다`);
+      if (n >= max) { if (n === max) { tally.swipes.set(key, n + 1); toast(t('flow.swipe.gaveUp', { max, why })); } return; }
+      tally.swipes.set(key, n + 1); autoStat.calls++; autoStat.note = t('flow.swipe.note', { n: n + 1, max, why });
+      toast(t('flow.swipe.calling', { note: autoStat.note }));
       return chatApi.generate('regen');
     }
   }
@@ -59,7 +60,7 @@ async function afterReply(R: Reply, type?: string) {
     tally.len.set(sk, text.length);
     if (size >= (+a.cont.target || 0) || n >= max) return;
     if (type === 'continue' && prev != null && text.length - prev < 12) return;   // 더 쓸 말이 없으면 그만둔다
-    tally.conts.set(sk, n + 1); autoStat.calls++; autoStat.note = `자동 이어쓰기 ${n + 1}/${max} · ≈${size}/${a.cont.target} 토큰`;
+    tally.conts.set(sk, n + 1); autoStat.calls++; autoStat.note = t('flow.cont.note', { n: n + 1, max, size, target: a.cont.target });
     chatApi.setStatus(autoStat.note);
     try { await chatApi.generate('continue'); } finally { chatApi.setStatus(''); }
   }
@@ -74,7 +75,7 @@ const why = { text: '', draft: '' };
 /** 이유를 반영해 마지막 답변을 다시 생성한다 */
 export async function regenWith(reason: unknown) {
   const { chat, msgs, busy } = cur(); const last = msgs?.[msgs.length - 1];
-  if (!chat || busy) return; if (last?.role !== 'assistant') return toast('다시 생성할 답변이 없어요');
+  if (!chat || busy) return; if (last?.role !== 'assistant') return toast(t('flow.regen.none'));
   const r = String(reason || '').trim();
   if (r) { const R = regenCfg(); R.recent = [r, ...(R.recent || []).filter(x => x !== r)].slice(0, 6); S.set({ regenWhy: R }); }
   why.text = r; why.draft = msgText(last).slice(0, 6000);
@@ -92,20 +93,20 @@ export async function setDirect(chat: ChatX | null | undefined, v: boolean | 'to
 const toBottom = () => { const s = document.querySelector('.chat-scroll'); if (s) s.scrollTop = s.scrollHeight; };
 /** 지시 한 번 보내기 (모드를 켜지 않고) */
 export async function sendDirection(text: unknown, trigger = true) {
-  const { chat, msgs, busy } = cur(); const t = String(text || '').trim(); if (!chat || !t) return '';
+  const { chat, msgs, busy } = cur(); const tx = String(text || '').trim(); if (!chat || !tx) return '';
   if (busy) await waitIdle();
-  const m = newMsg('user', t, { name: S.persona(chat)?.name, direct: true, ...(chat.scene?.on ? { scene: true } : {}) });
+  const m = newMsg('user', tx, { name: S.persona(chat)?.name, direct: true, ...(chat.scene?.on ? { scene: true } : {}) });
   msgs.push(m); chat.seenAt = now(); emit('message:sent', { msg: m, chat });
   await chatApi.save(); chatApi.redraw(); toBottom();
   if (trigger) await chatApi.generate('normal');
-  return t;
+  return tx;
 }
 export function dressComposer() {
   const { chat } = cur(), box = document.querySelector('.composer'), inp = document.querySelector<HTMLTextAreaElement>('.composer-input'); if (!box || !inp) return;
   const onNow = directOn(chat);
   if (inp.dataset.ph == null) inp.dataset.ph = inp.placeholder;
   box.classList.toggle('is-direct', onNow);
-  inp.placeholder = onNow ? '연출 지시를 적어 주세요 — 대사가 아니라 "이런 일이 벌어진다"를 작가로서 적습니다' : inp.dataset.ph;
+  inp.placeholder = onNow ? t('flow.direct.ph') : inp.dataset.ph;
 }
 
 // ════════ 체크포인트: 이름 붙인 지점. 그 지점에서 새 갈래를 열거나, 지금 방을 그 지점으로 되돌린다 ════════
@@ -114,10 +115,10 @@ export interface Checkpoint { id: string; name: string; msgId: string; at: numbe
 export const cps = (chat: ChatX) => (chat.checkpoints ||= []) as Checkpoint[];
 export const posOf = (cp: Checkpoint, msgs: Msg[]) => { const i = msgs.findIndex(m => m.id === cp.msgId); return i >= 0 ? i : -1; };
 export async function addCheckpoint(msg?: Msg | null, name?: string) {
-  const { chat, msgs } = cur(); msg ||= msgs?.[msgs.length - 1]; if (!chat || !msg) throw new Error('체크포인트를 남길 메시지가 없어요');
+  const { chat, msgs } = cur(); msg ||= msgs?.[msgs.length - 1]; if (!chat || !msg) throw new Error(t('flow.cp.noMsg'));
   const list = cps(chat), at = msgs.indexOf(msg) + 1, id = msg.id;
   let cp = list.find(c => c.msgId === id);
-  if (cp) cp.name = name || cp.name; else { cp = { id: uid(), name: name || `체크포인트 ${list.length + 1}`, msgId: id, at, ts: now() }; list.push(cp); }
+  if (cp) cp.name = name || cp.name; else { cp = { id: uid(), name: name || t('flow.cp.defaultName', { n: list.length + 1 }), msgId: id, at, ts: now() }; list.push(cp); }
   await saveChat(chat); decorate(); emit('checkpoints:changed', chat); return cp;
 }
 export async function removeCheckpoint(cp: Checkpoint) { const { chat } = cur(); if (!chat) return; chat.checkpoints = cps(chat).filter(c => c !== cp && c.id !== cp.id); await saveChat(chat); decorate(); emit('checkpoints:changed', chat); }
@@ -126,14 +127,14 @@ export const findCheckpoint = (key: unknown) => { const { chat } = cur(); const 
 export async function showMessage(id: string) {
   for (let i = 0; i < 60 && !document.querySelector(`.msgs [data-id="${id}"]`); i++) { const more = document.querySelector<HTMLElement>('.msgs > .more-btn'); if (!more) break; more.click(); await sleep(0); }
   const el = document.querySelector(`.msgs [data-id="${id}"]`);
-  if (!el) return toast('그 메시지를 찾지 못했어요. 지워졌을 수 있어요.');
+  if (!el) return toast(t('flow.cp.msgMissing'));
   chatApi.scrollTo(id);
   el.classList.add('cp-flash'); setTimeout(() => el.classList.remove('cp-flash'), 1600);
 }
 /** idx 번째 메시지까지를 담은 새 방을 만든다 (대화 화면의 "여기서 분기"와 같은 방식) */
 export async function branchAt(chat: ChatX, msgs: Msg[], idx: number, name?: string) {
   const n = S.chats.filter(x => x.parent?.id === chat.id).length + 1;
-  const fresh = newChat({ ...copy(chat), id: uid(), name: name || `${chatApi.roomName(chat)} · 분기 ${n}`, createdAt: now(), src: '', pinned: false, unread: 0, parent: { id: chat.id, at: idx + 1 },
+  const fresh = newChat({ ...copy(chat), id: uid(), name: name || t('flow.branch.name', { room: chatApi.roomName(chat), n }), createdAt: now(), src: '', pinned: false, unread: 0, parent: { id: chat.id, at: idx + 1 },
     diary: copy((chat.diary || []).filter(d => (d.to || 0) <= idx + 1)), diaryAt: Math.min((chat.diaryAt as number) || 0, idx + 1), checkpoints: copy(cps(chat).filter(c => { const p = posOf(c, msgs); return p >= 0 && p <= idx; })) });
   const list = copy(msgs.slice(0, idx + 1));
   const pics = new Map((await DB.byOwner('chat:' + chat.id)).filter(a => a.kind === 'illust').map(a => [a.id, a]));   // 삽화는 대화방마다 따로 보관한다
@@ -143,22 +144,22 @@ export async function branchAt(chat: ChatX, msgs: Msg[], idx: number, name?: str
   return fresh;
 }
 export async function branchFromCheckpoint(cp: Checkpoint, open = true) {
-  const { chat, msgs } = cur(), i = chat ? posOf(cp, msgs) : -1; if (!chat || i < 0) throw new Error('그 지점의 메시지가 지워져서 갈래를 열 수 없어요');
+  const { chat, msgs } = cur(), i = chat ? posOf(cp, msgs) : -1; if (!chat || i < 0) throw new Error(t('flow.cp.cantBranch'));
   const fresh = await branchAt(chat, msgs, i, `${chatApi.roomName(chat)} · ${cp.name}`);
-  toast(`"${cp.name}" 지점에서 새 방을 열었어요`, 'ok'); if (open) go('chat', fresh.id); return fresh;
+  toast(t('flow.cp.branched', { name: cp.name }), 'ok'); if (open) go('chat', fresh.id); return fresh;
 }
 /** 지금 방을 그 지점으로 되돌린다. 되돌리기 전 상태는 갈래 방으로 남긴다 */
 export async function rewindTo(cp: Checkpoint) {
-  const { chat, msgs, busy } = cur(); if (!chat) return; const i = posOf(cp, msgs); if (busy) return toast('생성이 끝난 뒤에 해 주세요');
-  if (i < 0) throw new Error('그 지점의 메시지가 지워져서 되돌릴 수 없어요');
-  const cut = msgs.length - 1 - i; if (!cut) return toast('이미 그 지점이에요');
-  if (!(await confirmBox(`"${cp.name}" 뒤의 메시지 ${cut}개를 이 방에서 걷어 낼까요? 지금 상태는 "되돌리기 전" 방으로 따로 남겨 둡니다.`, '되돌리기'))) return;
-  const d = new Date(), keep = await branchAt(chat, msgs, msgs.length - 1, `${chatApi.roomName(chat)} · 되돌리기 전 ${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+  const { chat, msgs, busy } = cur(); if (!chat) return; const i = posOf(cp, msgs); if (busy) return toast(t('flow.busy'));
+  if (i < 0) throw new Error(t('flow.cp.cantRewind'));
+  const cut = msgs.length - 1 - i; if (!cut) return toast(t('flow.cp.already'));
+  if (!(await confirmBox(t('flow.cp.rewindAsk', { name: cp.name, count: cut }), t('flow.cp.rewindOk')))) return;
+  const d = new Date(), keep = await branchAt(chat, msgs, msgs.length - 1, t('flow.cp.beforeName', { room: chatApi.roomName(chat), m: d.getMonth() + 1, d: d.getDate(), hh: String(d.getHours()).padStart(2, '0'), mm: String(d.getMinutes()).padStart(2, '0') }));
   const alive = new Set(msgs.slice(0, i + 1).map(m => m.id));
   msgs.splice(i + 1); chat.checkpoints = cps(chat).filter(c => alive.has(c.msgId));
   if ((chat.summaryAt || 0) > msgs.length) chat.summaryAt = msgs.length;
   await chatApi.save(); go('chat', chat.id);
-  toast(`"${cp.name}"(으)로 되돌렸어요. 걷어 낸 뒤쪽은 "${keep.name}" 방에 있습니다.`, 'ok');
+  toast(t('flow.cp.rewound', { name: cp.name, keep: keep.name }), 'ok');
 }
 
 // ════════ 화면에 덧붙이는 표시: 연출 꼬리표 · 체크포인트 깃발 (남이 그린 대화 화면 위에 얹는다) ════════
@@ -166,9 +167,9 @@ const svgIcon = (name: string, size: number) => { const s = document.createEleme
 const fail = (e: unknown) => toast(e instanceof Error ? e.message : String(e), 'err');
 /** 체크포인트 깃발 · 목록에서 여는 메뉴 */
 export const checkpointMenu = (anchor: Element, c: Checkpoint) => menu(anchor, [
-  { label: '이 지점에서 새 방 열기', ic: 'branch', onclick: () => { branchFromCheckpoint(c).catch(fail); } },
-  { label: '이 방을 여기로 되돌리기', ic: 'refresh', hint: '뒤쪽은 따로 보관', onclick: () => { rewindTo(c).catch(fail); } },
-  '-', { label: '체크포인트 지우기', ic: 'trash', danger: true, onclick: () => { void removeCheckpoint(c); } }]);
+  { label: t('flow.cp.menuBranch'), ic: 'branch', onclick: () => { branchFromCheckpoint(c).catch(fail); } },
+  { label: t('flow.cp.menuRewind'), ic: 'refresh', hint: t('flow.cp.menuRewindHint'), onclick: () => { rewindTo(c).catch(fail); } },
+  '-', { label: t('flow.cp.menuDelete'), ic: 'trash', danger: true, onclick: () => { void removeCheckpoint(c); } }]);
 let decoQueued = false;
 export function decorate() {
   if (decoQueued) return; decoQueued = true;
@@ -180,10 +181,10 @@ export function decorate() {
       const m = byId.get(el.dataset.id || ''), head = el.querySelector('.msg-head'); if (!m || !head) continue;
       el.classList.toggle('is-direct', !!m.direct);
       const tag = head.querySelector('.direct-tag');
-      if (m.direct && !tag) { const t = document.createElement('em'); t.className = 'badge direct-tag'; t.title = '대사가 아니라 연출 지시로 보낸 글'; t.textContent = '연출 지시'; head.append(t); } else if (!m.direct && tag) tag.remove();
+      if (m.direct && !tag) { const tg = document.createElement('em'); tg.className = 'badge direct-tag'; tg.title = t('flow.direct.tagTitle'); tg.textContent = t('flow.direct.tag'); head.append(tg); } else if (!m.direct && tag) tag.remove();
       const cp = marks.get(m.id), flag = head.querySelector('.cp-flag');
       if (cp && !flag) {
-        const b = document.createElement('button'); b.className = 'cp-flag'; b.title = '체크포인트 — 눌러서 할 일 고르기';
+        const b = document.createElement('button'); b.className = 'cp-flag'; b.title = t('flow.cp.flagTitle');
         b.addEventListener('click', () => { const now_ = cur().chat, c = marks.get(m.id) || (now_ ? cps(now_).find(x => x.msgId === m.id) : undefined); if (c) checkpointMenu(b, c); });
         const name = document.createElement('span'); name.textContent = cp.name; b.append(svgIcon('star', 12), name); head.append(b);
       } else if (cp && flag?.lastChild) flag.lastChild.textContent = cp.name; else if (!cp && flag) flag.remove();
@@ -201,7 +202,7 @@ export const TPL = () => Object.keys(adv().KINDS);
 export const findProfile = (key: unknown) => { const k = String(key || '').trim().toLowerCase(); return profiles().find(p => p.id === key || p.name.toLowerCase() === k) || null; };
 export function snapshot(name: string): Profile {
   const F = adv().AF(), conn = S.conn();
-  return { id: uid(), name: name || '새 프로필', connId: (S.settings.activeConn as string) || '', model: conn?.model || '', presetId: (S.settings.activePreset as string) || '', tpl: Object.fromEntries(TPL().map(k => [k, (F as unknown as Record<string, { name?: string } | undefined>)[k]?.name || ''])), instructOn: !!F.instruct?.enabled };
+  return { id: uid(), name: name || t('flow.prof.defaultName'), connId: (S.settings.activeConn as string) || '', model: conn?.model || '', presetId: (S.settings.activePreset as string) || '', tpl: Object.fromEntries(TPL().map(k => [k, (F as unknown as Record<string, { name?: string } | undefined>)[k]?.name || ''])), instructOn: !!F.instruct?.enabled };
 }
 export const matches = (p: Profile) => {
   const F = adv().AF(), conn = S.get('conns', p.connId);
@@ -210,18 +211,18 @@ export const matches = (p: Profile) => {
 };
 export const describe = (p: Profile) => {
   const conn = S.get('conns', p.connId), pre = S.get('presets', p.presetId);
-  return [p.connId ? (conn ? `${conn.name}${p.model ? ' · ' + p.model : ''}` : '지워진 연결') : '', p.presetId ? (pre ? pre.name : '지워진 프리셋') : '', ...TPL().filter(k => p.tpl?.[k]).map(k => p.tpl[k])].filter(Boolean).join(' / ') || '바꾸는 것 없음';
+  return [p.connId ? (conn ? `${conn.name}${p.model ? ' · ' + p.model : ''}` : t('flow.prof.connGone')) : '', p.presetId ? (pre ? pre.name : t('flow.prof.presetGone')) : '', ...TPL().filter(k => p.tpl?.[k]).map(k => p.tpl[k])].filter(Boolean).join(' / ') || t('flow.prof.nothing');
 };
 /** 프로필을 지금 설정에 적용한다. 빠진 것(지워진 연결 등)을 글로 돌려준다 */
 export async function applyProfile(p: Profile, quiet = false): Promise<string[]> {
   const { AF, KINDS, tplGet, tplApply } = adv(), miss: string[] = [], patch: Record<string, unknown> = {}, F = AF(); let touched: Conn | null = null;
-  if (p.connId) { const conn = S.get('conns', p.connId); if (!conn) miss.push('연결'); else { patch.activeConn = conn.id; if (p.model && conn.model !== p.model) { conn.model = p.model; touched = conn; } } }
-  if (p.presetId) { if (S.get('presets', p.presetId)) patch.activePreset = p.presetId; else miss.push('프리셋'); }
+  if (p.connId) { const conn = S.get('conns', p.connId); if (!conn) miss.push(t('flow.prof.conn')); else { patch.activeConn = conn.id; if (p.model && conn.model !== p.model) { conn.model = p.model; touched = conn; } } }
+  if (p.presetId) { if (S.get('presets', p.presetId)) patch.activePreset = p.presetId; else miss.push(t('flow.prof.preset')); }
   for (const k of TPL()) if (p.tpl?.[k]) { if (tplGet(k, p.tpl[k])) { if ((F as unknown as Record<string, { name?: string } | undefined>)[k]?.name !== p.tpl[k]) tplApply(k, p.tpl[k]); } else miss.push(KINDS[k]); }
   if (p.instructOn != null && F.instruct) F.instruct.enabled = !!p.instructOn;
   S.set(patch);                                   // 여기까지는 기다림 없이 끝낸다 (대화 화면이 그려지기 전에 바뀌어 있도록)
   if (touched) await S.save('conns', touched, true);
-  if (!quiet) toast(miss.length ? `"${p.name}" 적용 — 찾지 못한 것: ${miss.join(', ')}` : `"${p.name}" 프로필을 적용했어요`, miss.length ? 'err' : 'ok');
+  if (!quiet) toast(miss.length ? t('flow.prof.appliedMiss', { name: p.name, miss: miss.join(', ') }) : t('flow.prof.applied', { name: p.name }), miss.length ? 'err' : 'ok');
   return miss;
 }
 export const boundProfile = (chat?: ChatX | null) => findProfile(chat?.profileId) || findProfile(charsOf(chat)[0]?.bind?.profileId);
@@ -263,6 +264,6 @@ export function wire() {
     if (pg !== 'chat') return;
     const chat = S.get('chats', (route.arg as string) || (S.settings.lastChat as string)) || [...S.chats].sort((a, b) => b.updatedAt - a.updatedAt)[0];
     const p = chat && boundProfile(chat); if (!p || matches(p)) return;
-    void applyProfile(p, true).then(miss => toast(`묶어 둔 프로필 "${p.name}"(으)로 바꿨어요${miss.length ? ` — 찾지 못한 것: ${miss.join(', ')}` : ''}`));
+    void applyProfile(p, true).then(miss => toast(miss.length ? t('flow.prof.boundMiss', { name: p.name, miss: miss.join(', ') }) : t('flow.prof.bound', { name: p.name })));
   });
 }

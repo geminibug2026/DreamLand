@@ -4,6 +4,7 @@ import { DEFAULT_LABELS, KO, RELATED, canonLabel, extractTag, hashStr, keywordLa
 import { DB, S, msgText, now, uid } from '../lib/core';
 import { macro, makeCtx, quickCall } from '../lib/engine';
 import { chatApi } from '../chat/actions';
+import { t } from '../i18n';
 
 // ════════ 설정 ════════
 export const TAG_PROMPT = `[Expression tag]
@@ -13,12 +14,12 @@ Write the tag only once, after everything else. Never mention or explain it — 
 export const CALL_PROMPT = `You choose a portrait for a character in a roleplay chat. Read the latest reply and pick the one label that best matches {{char}}'s facial expression or mood at the end of that reply. Judge only {{char}}, not the other people in the scene. If nothing clearly fits, answer "neutral" when it is on the list, otherwise the closest label.
 Labels: {{labels}}
 Answer with the label only: one word, exactly as written in the list.`;
-/** [값, 이름, 설명, 비용] */
-export const MODES: readonly (readonly [string, string, string, string])[] = [
-  ['off', '직접 고르기', '자동으로 판정하지 않습니다. 메시지의 ⋯ 메뉴나 /emote 로 바꿉니다.', '호출 없음'],
-  ['tag', '답변 속 숨은 태그', '답변을 쓰는 모델이 끝에 감정을 한 낱말로 적고, 화면에서는 떼어 냅니다.', '추가 호출 없음'],
-  ['call', '답변 뒤에 따로 묻기', '답변이 올 때마다 보조 연결에 감정을 한 번 더 묻습니다. 가장 정확합니다.', '답변마다 추가 호출 1회'],
-  ['key', '키워드로 추정', '답변에 든 낱말(웃었다, 눈물, 놀라 …)로 어림합니다. 틀릴 수 있어요.', '호출 없음'],
+/** [값, 이름, 설명, 비용] — 언어가 바뀌면 다시 읽도록 함수 */
+export const MODES = (): readonly (readonly [string, string, string, string])[] => [
+  ['off', t('expressions.mode.off'), t('expressions.mode.offDesc'), t('expressions.mode.noCall')],
+  ['tag', t('expressions.mode.tag'), t('expressions.mode.tagDesc'), t('expressions.mode.noExtra')],
+  ['call', t('expressions.mode.call'), t('expressions.mode.callDesc'), t('expressions.mode.perReply')],
+  ['key', t('expressions.byKeyword'), t('expressions.mode.keyDesc'), t('expressions.mode.noCall')],
 ];
 export interface ExprCfg {
   show: boolean; mode: string; tagPrompt: string; tagFallback: boolean; callPrompt: string; callContext: number; callTokens: number; onlyHave: boolean;
@@ -41,7 +42,7 @@ export const save = () => S.set({ expressions: cfg() });
 export const charCfg = (id: string) => { const c = cfg(); return (c.chars[id] ||= { n: 0, fallback: '' }); };
 export const customOf = (label: string) => cfg().custom.find(x => x.label === label);
 /** 화면에 적을 이름: 기쁨 */
-export const nameOf = (label: string) => KO[label] || customOf(label)?.name || label;
+export const nameOf = (label: string) => (KO[label] ? t('expressions.label.' + label) : '') || customOf(label)?.name || label;
 export const fullName = (label: string) => nameOf(label) === label ? label : `${nameOf(label)} · ${label}`;
 
 // ════════ 표정 그림 보관 (IndexedDB assets 스토어, kind: 'expr', owner: 'expr:캐릭터') ════════
@@ -147,7 +148,7 @@ export const byKeyword = (text: string, charId: string) => keywordLabel(text, { 
 export async function classify(chat: ChatX, msgs: Msg[], msg: Msg, { signal }: { signal?: AbortSignal } = {}): Promise<string> {
   const c = cfg(), charId = charIdOf(msg, chat), char = S.get('chars', charId);
   const labels = candidates(charId); if (!labels.length) return '';
-  const conn = S.helperConn('expr', chat); if (!conn) throw new Error('연결된 API 가 없어요');
+  const conn = S.helperConn('expr', chat); if (!conn) throw new Error(t('expressions.noConn'));
   const chars = chat.charIds.map(id => S.get('chars', id)).filter(x => !!x), ctx = makeCtx({ chat, char: char || chars[0], chars, persona: S.persona(chat), msgs });
   if (msg.name && !char) ctx.char = msg.name;
   const sys = macro(String(c.callPrompt || '').trim() || CALL_PROMPT, { ...ctx, vars: {} }).replace(/\{\{labels\}\}/gi, labels.join(', '));

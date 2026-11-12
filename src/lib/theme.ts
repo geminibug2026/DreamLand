@@ -2,6 +2,7 @@
 import { S, uid } from './core';
 import { X } from './hooks';
 import type { Theme } from './types';
+import { has, t as tr } from '../i18n';
 
 type Colors = Record<string, string>;
 const T = (id: string, name: string, tone: string, c: Colors, extra: Partial<Theme> = {}): Theme => ({ id, name, tone, builtin: true, radius: 3, pattern: 'grid', glass: 0, fx: 'none', bgImage: '', bgDim: 0.25, bgBlur: 0, css: '', ...extra, c });
@@ -29,12 +30,16 @@ export const FONTS: Record<string, FontDef> = {
   himelody: { name: '하이멜로디 (손글씨)', stack: '"Hi Melody"', css: 'https://fonts.googleapis.com/css2?family=Hi+Melody&display=swap' },
   system: { name: '기기 기본 글꼴', stack: 'system-ui' },
 };
-export const COLOR_FIELDS: [string, string][] = [['bg', '배경'], ['bg2', '배경 (아래쪽)'], ['surface', '패널 · 카드'], ['text', '글자'], ['dim', '보조 글자'], ['accent', '포인트'], ['accent2', '포인트 (보조)'],
-  ['sayBg', '상대 말풍선'], ['sayText', '상대 말풍선 글자'], ['userBg', '내 말풍선'], ['userText', '내 말풍선 글자'], ['nar', '지문 글자'], ['think', '속마음 글자']];
+/** [색 칸, 이름 키] — 이름은 그릴 때 t(키) */
+export const COLOR_FIELDS: [string, string][] = ['bg', 'bg2', 'surface', 'text', 'dim', 'accent', 'accent2', 'sayBg', 'sayText', 'userBg', 'userText', 'nar', 'think'].map(k => [k, 'theme.color.' + k]);
+/** 글꼴 표시 이름 (저장값은 FONTS 의 키) */
+export const fontName = (k: string) => has('theme.font.' + k) ? tr('theme.font.' + k) : FONTS[k]?.name || k;
+/** 테마 표시 이름: 기본 테마는 번역, 나머지는 저장된 이름 */
+export const themeName = (th: Pick<Theme, 'id' | 'name' | 'builtin'>) => th.builtin && has('theme.name.' + th.id) ? tr('theme.name.' + th.id) : th.name;
 
 export const allThemes = (): Theme[] => [...BUILTIN, ...X.themes.map(t => ({ ...t.theme, ext: t.owner })), ...(S.settings.customThemes || [])];
 export const currentTheme = () => allThemes().find(t => t.id === S.settings.theme) || BUILTIN[0];
-export const newCustomTheme = (base: Theme): Theme => ({ ...structuredClone(base), id: 'my-' + uid(), name: base.name + ' (내 테마)', builtin: false, ext: undefined });
+export const newCustomTheme = (base: Theme): Theme => ({ ...structuredClone(base), id: 'my-' + uid(), name: themeName(base) + tr('theme.mySuffix'), builtin: false, ext: undefined });
 
 let fxRun = () => { };
 export function applyTheme() {
@@ -84,7 +89,7 @@ export function fromSillyTavern(j: StTheme): Theme {
   const over = (t: ReturnType<typeof toHex>, on: string) => t && typeof t === 'object' ? mix(on, t.hex, Math.max(0.35, t.a)) : on;
   const surface = over(tint, base), quote = hexOf(j.quote_text_color) || (dark ? '#c4b0f0' : '#9d8bd6');
   return {
-    id: 'my-' + uid(), name: (j.name || '실리태번 테마') + ' (ST)', tone: dark ? 'dark' : 'light', builtin: false, radius: 14, glass: Math.min(0.5, (j.blur_strength || 0) / 30), fx: 'none', bgImage: '', bgDim: 0.25, bgBlur: 0,
+    id: 'my-' + uid(), name: (j.name || tr('theme.stDefault')) + ' (ST)', tone: dark ? 'dark' : 'light', builtin: false, radius: 14, glass: Math.min(0.5, (j.blur_strength || 0) / 30), fx: 'none', bgImage: '', bgDim: 0.25, bgBlur: 0,
     css: '', sourceCss: j.custom_css || '',
     c: { bg: mix(surface, dark ? '#000000' : '#ffffff', 0.25), bg2: surface, surface, text, dim: mix(text, surface, 0.4), accent: quote, accent2: hexOf(j.underline_text_color) || quote, sayBg: over(bot, surface), sayText: text, userBg: over(usr, surface), userText: text, nar: hexOf(j.italics_text_color) || text, think: mix(text, surface, 0.35) },
   };
@@ -97,7 +102,7 @@ export function fromMarinaraCss(css: string, name?: string): Theme | null {
   if (!bg || !text) return null;
   const surface = get('card', 'popover', 'secondary') || mix(bg, text, 0.04), accent = get('primary', 'accent', 'ring') || text;
   return {
-    id: 'my-' + uid(), name: (name || '마리나라 테마') + ' (Marinara)', tone: lum(bg) < 0.5 ? 'dark' : 'light', builtin: false, radius: parseInt(vars.radius) ? Math.min(28, parseFloat(vars.radius) * (vars.radius.includes('rem') ? 16 : 1) + 8) : 18, glass: 0, fx: 'none', bgImage: '', bgDim: 0.25, bgBlur: 0, css: '', sourceCss: css,
+    id: 'my-' + uid(), name: (name || tr('theme.marinaraDefault')) + ' (Marinara)', tone: lum(bg) < 0.5 ? 'dark' : 'light', builtin: false, radius: parseInt(vars.radius) ? Math.min(28, parseFloat(vars.radius) * (vars.radius.includes('rem') ? 16 : 1) + 8) : 18, glass: 0, fx: 'none', bgImage: '', bgDim: 0.25, bgBlur: 0, css: '', sourceCss: css,
     c: { bg, bg2: get('sidebar', 'muted') || bg, surface, text, dim: get('muted-foreground') || mix(text, bg, 0.4), accent, accent2: get('accent', 'secondary-foreground') || accent, sayBg: surface, sayText: get('card-foreground') || text, userBg: accent, userText: get('primary-foreground') || (lum(accent) > 0.6 ? '#222222' : '#ffffff'), nar: text, think: get('muted-foreground') || mix(text, bg, 0.4) },
   };
 }

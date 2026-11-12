@@ -4,6 +4,7 @@ import type { ChatM, Mem, Msg } from '../types';
 import type { PromptMsg } from './part5';
 import type { Unused } from './base';
 import { Memory } from './memory';
+import { t as tr } from '../../i18n';
 import { G, cache, visibleProse, updateTimers } from './base';
 
 /** 이벤트가 실어 오는 것 */
@@ -26,7 +27,7 @@ on<ChatM | null | undefined>('chat:open', async chat => {
     const mem = await Memory.load(chat.id), msgs = await S.msgs(chat.id);
     if (!Array.isArray(msgs) || (!msgs.length && mem.turns.length)) return;   // 메시지를 읽지 못했을 때 기록을 통째로 걷어내지 않는다
     if (Memory.reconcile(mem, msgs)) await Memory.save(mem);
-  } catch (e: any) { console.warn('[장기기억]', e); Memory.logActivity('error', `이벤트 처리 중 오류: ${e?.message || e}`); }
+  } catch (e: any) { console.warn('[장기기억]', e); Memory.logActivity('error', tr('memoria.engine.log.eventError', { why: e?.message || e })); }
 });
 // 대화 화면이 메시지를 고치거나(수정 · 스와이프 · 삭제 · 다른 기능의 갱신) 알려 올 때 — { chat, msg, msgs }. msgs 가 없으면 저장된 대화에서 찾는다
 const withMsgs = async (x: MsgEvent | undefined, fn: (chat: ChatM, msgs: Msg[], msg: Msg | null, mem: Mem) => unknown) => {
@@ -34,7 +35,7 @@ const withMsgs = async (x: MsgEvent | undefined, fn: (chat: ChatM, msgs: Msg[], 
     if (!x?.chat?.id || !Memory.cfg().enabled) return;
     const msgs = Array.isArray(x.msgs) ? x.msgs : await S.msgs(x.chat.id), msg = x.msg ? msgs.find(m => m.id === x.msg!.id) || null : null;
     await fn(x.chat, msgs, msg, await Memory.load(x.chat.id));
-  } catch (e: any) { console.warn('[장기기억]', e); Memory.logActivity('error', `이벤트 처리 중 오류: ${e?.message || e}`); }
+  } catch (e: any) { console.warn('[장기기억]', e); Memory.logActivity('error', tr('memoria.engine.log.eventError', { why: e?.message || e })); }
 };
 on<MsgEvent | undefined>('message:swiped', x => withMsgs(x, async (chat, msgs, msg, mem): Promise<Unused<typeof msgs>> => { if (msg && mem.turns.some(t => t.msgId === msg.id)) { Memory.dropTurn(mem, msg.id); await Memory.save(mem); } emit('memory:check', { chatId: chat.id, msgId: msg?.id }); }));
 on<MsgEvent | undefined>('message:edited', x => withMsgs(x, (chat, msgs, msg) => msg ? Memory.onMessageEdited(chat, msgs, msg) : null));

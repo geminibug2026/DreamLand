@@ -1,8 +1,9 @@
 // ── Dreamland 삽화: 선 장식 액자. 그림 비율에 맞춰 SVG 로 그린다 ──
 // 옛 js/scenebook-ornaments.js 를 동작 그대로 옮긴 것
+// ORNAMENTS · INKS 의 둘째 값은 번역 키다 (화면에 그릴 때 t())
 interface Box{x0:number;y0:number;x1:number;y1:number}
-export const ORNAMENTS:[string,string][]=[['sparkle','별 장식'],['notch','이중선'],['offset','겹선 별'],['scroll','덩굴 코너'],['sprig','잎 가지'],['vintage','빈티지 코너'],['nouveau','아르누보'],['crest','문양 띠']];
-export const INKS:[string,string][]=[['','글자색'],['#ffffff','흰색'],['#16130f','검정'],['#c9a45c','금색'],['#23407a','남색'],['#7a1f2b','와인'],['#d98fa3','분홍']];
+export const ORNAMENTS:[string,string][]=[['sparkle','scenebook.orn.sparkle'],['notch','scenebook.orn.notch'],['offset','scenebook.orn.offset'],['scroll','scenebook.orn.scroll'],['sprig','scenebook.orn.sprig'],['vintage','scenebook.orn.vintage'],['nouveau','scenebook.orn.nouveau'],['crest','scenebook.orn.crest']];
+export const INKS:[string,string][]=[['','scenebook.ink.text'],['#ffffff','scenebook.ink.white'],['#16130f','scenebook.ink.black'],['#c9a45c','scenebook.ink.gold'],['#23407a','scenebook.ink.navy'],['#7a1f2b','scenebook.ink.wine'],['#d98fa3','scenebook.ink.pink']];
 export const ORNAMENT_PAD=.09;
 
 const n=(v:number)=>Number(v.toFixed(1));

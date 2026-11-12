@@ -13,6 +13,7 @@ import { confirmBox, menu } from '../ui';
 import { chatApi } from '../chat/actions';
 import { cur, flat, guard, shownTitle } from './util';
 import { Illust } from './illust';
+import { t, tn } from '../i18n';
 
 /** 삽화 한 장: 액자 + 그림 + 그림 위 도구 + 아래 제목 줄. 대화 화면의 figure.illust 안에 들어간다 */
 export function Figure({ fig, m, sw, it }: { fig: HTMLElement; m: Msg; sw: Swipe; it: Slot }) {
@@ -23,13 +24,13 @@ export function Figure({ fig, m, sw, it }: { fig: HTMLElement; m: Msg; sw: Swipe
   const step = (d: number) => { Illust.select(it, it.sel + d); bump(); void chatApi.save(); };
   return <>
     <div className="sb-frame" style={lay.wrapStyle}>
-      <div className="sb-pic" style={lay.picStyle}><img ref={img} src={Illust.data(it.id)} alt={it.title || '삽화'} loading="lazy" onClick={e => { e.stopPropagation(); e.preventDefault(); slotViewer(m, sw, it); }} /></div>
+      <div className="sb-pic" style={lay.picStyle}><img ref={img} src={Illust.data(it.id)} alt={it.title || t('scenebook.illust')} loading="lazy" onClick={e => { e.stopPropagation(); e.preventDefault(); slotViewer(m, sw, it); }} /></div>
       <FrameArt lay={lay} />
-      <div className="sb-fig-actions" aria-label="삽화 도구"><IBtn ic="edit" title="장면을 고쳐서 재생성" cls="tiny" onClick={guard(() => quickEdit(m, it))} /><IBtn ic="refresh" title="새 시드로 재생성" cls="tiny" onClick={guard(() => regen(m, it, -1))} /></div>
+      <div className="sb-fig-actions" aria-label={t('scenebook.fig.tools')}><IBtn ic="edit" title={t('scenebook.fig.editRegen')} cls="tiny" onClick={guard(() => quickEdit(m, it))} /><IBtn ic="refresh" title={t('scenebook.fig.newSeed')} cls="tiny" onClick={guard(() => regen(m, it, -1))} /></div>
     </div>
     <figcaption><span className="sb-fig-title">{shownTitle(it.title)}</span>
-      {it.versions.length > 1 ? <div className="sb-ver" role="group" aria-label="삽화 버전 전환"><button type="button" title="이전 그림" aria-label="이전 그림" onClick={() => step(-1)}><Icon name="left" size={13} /></button><span className="sb-ver-count">{`${it.sel + 1}/${it.versions.length}`}</span><button type="button" title="다음 그림" aria-label="다음 그림" onClick={() => step(1)}><Icon name="right" size={13} /></button></div> : null}
-      <IBtn ic="more" title="더 보기" cls="tiny" onClick={e => menu(e.currentTarget, slotMenu(m, sw, it))} /></figcaption>
+      {it.versions.length > 1 ? <div className="sb-ver" role="group" aria-label={t('scenebook.fig.versions')}><button type="button" title={t('scenebook.fig.prev')} aria-label={t('scenebook.fig.prev')} onClick={() => step(-1)}><Icon name="left" size={13} /></button><span className="sb-ver-count">{`${it.sel + 1}/${it.versions.length}`}</span><button type="button" title={t('scenebook.fig.next')} aria-label={t('scenebook.fig.next')} onClick={() => step(1)}><Icon name="right" size={13} /></button></div> : null}
+      <IBtn ic="more" title={t('scenebook.more')} cls="tiny" onClick={e => menu(e.currentTarget, slotMenu(m, sw, it))} /></figcaption>
   </>;
 }
 
@@ -37,13 +38,13 @@ export function Figure({ fig, m, sw, it }: { fig: HTMLElement; m: Msg; sw: Swipe
 function Extras({ m, sw, pending, failed, drafts, hidden, note }: { m: Msg; sw: Swipe; pending: Job[]; failed: Job[]; drafts: Scene[]; hidden: number; note: PlanRecord | null }) {
   const cfg = Illust.cfg();
   return <>
-    {pending.length ? <div className="sb-pendings">{pending.map(j => <div key={j.id} className={`sb-pending ${j.state}`} style={{ aspectRatio: `${j.config.width} / ${j.config.height}`, maxWidth: `min(100%, ${Math.min(cfg.displayWidth || 400, 260)}px)` }}><Icon name="image" size={22} /><b>{j.state === 'running' ? '그리는 중' : '차례를 기다리는 중'}</b><span>{j.label}</span></div>)}</div> : null}
-    {failed.map(j => <div key={j.id} className="sb-note bad"><Icon name="x" size={15} /><span>{`${j.label} · ${j.error}`}</span><Btn label="다시 요청" cls="ghost" onClick={guard(() => { j.seen = true; draw(m, [j.scene], j.config, j.slot, true); })} /><IBtn ic="x" title="닫기" cls="tiny" onClick={() => { j.seen = true; schedule(); }} /></div>)}
-    {drafts.length ? <div className="sb-note draft"><Icon name="sparkle" size={15} /><span><b>{`장면 ${drafts.length}개 준비됨`}</b>{' '}{drafts.map(d => shownTitle(d.title)).filter(Boolean).join(' · ')}</span>
-      <Btn label="그리기" ic="image" cls="primary" onClick={guard(() => quickDraw(m))} /><Btn label="장면 편집" ic="edit" cls="ghost" onClick={guard(() => compose(m))} />
-      <IBtn ic="trash" title="초안 버리기" cls="tiny" onClick={async () => { if (!(await confirmBox('이 초안을 버릴까요?', '버리기', true))) return; sw.illustDraft = []; delete sw.illustDraftConfig; await chatApi.save(); schedule(); }} /></div> : null}
-    {note ? <div className="sb-note"><Icon name="image" size={15} /><span>{note.error || '삽화 지시를 읽지 못했어요.'}</span><Btn label="장면 분석" ic="sparkle" cls="ghost" onClick={guard(() => compose(m, { manual: false }))} /><Btn label="지시 기록" cls="ghost" onClick={showPlans} /><IBtn ic="x" title="닫기" cls="tiny" onClick={async () => { note.seen = true; await chatApi.save(); schedule(); }} /></div> : null}
-    {hidden ? <button type="button" className="chip sb-hidden-chip" onClick={async () => { for (const it of sw.illust || []) it.hidden = false; await chatApi.save(); chatApi.redraw(); }}>{`숨긴 삽화 ${hidden}개 다시 보기`}</button> : null}
+    {pending.length ? <div className="sb-pendings">{pending.map(j => <div key={j.id} className={`sb-pending ${j.state}`} style={{ aspectRatio: `${j.config.width} / ${j.config.height}`, maxWidth: `min(100%, ${Math.min(cfg.displayWidth || 400, 260)}px)` }}><Icon name="image" size={22} /><b>{j.state === 'running' ? t('scenebook.job.running') : t('scenebook.fig.waitingTurn')}</b><span>{j.label}</span></div>)}</div> : null}
+    {failed.map(j => <div key={j.id} className="sb-note bad"><Icon name="x" size={15} /><span>{`${j.label} · ${j.error}`}</span><Btn label={t('scenebook.retry')} cls="ghost" onClick={guard(() => { j.seen = true; draw(m, [j.scene], j.config, j.slot, true); })} /><IBtn ic="x" title={t('common.close')} cls="tiny" onClick={() => { j.seen = true; schedule(); }} /></div>)}
+    {drafts.length ? <div className="sb-note draft"><Icon name="sparkle" size={15} /><span><b>{tn('scenebook.fig.draftsReady', drafts.length)}</b>{' '}{drafts.map(d => shownTitle(d.title)).filter(Boolean).join(' · ')}</span>
+      <Btn label={t('scenebook.draw')} ic="image" cls="primary" onClick={guard(() => quickDraw(m))} /><Btn label={t('scenebook.compose')} ic="edit" cls="ghost" onClick={guard(() => compose(m))} />
+      <IBtn ic="trash" title={t('scenebook.fig.discardDraft')} cls="tiny" onClick={async () => { if (!(await confirmBox(t('scenebook.fig.discardAsk'), t('scenebook.fig.discard'), true))) return; sw.illustDraft = []; delete sw.illustDraftConfig; await chatApi.save(); schedule(); }} /></div> : null}
+    {note ? <div className="sb-note"><Icon name="image" size={15} /><span>{note.error || t('scenebook.fig.noPlan')}</span><Btn label={t('scenebook.analyze')} ic="sparkle" cls="ghost" onClick={guard(() => compose(m, { manual: false }))} /><Btn label={t('scenebook.plans')} cls="ghost" onClick={showPlans} /><IBtn ic="x" title={t('common.close')} cls="tiny" onClick={async () => { note.seen = true; await chatApi.save(); schedule(); }} /></div> : null}
+    {hidden ? <button type="button" className="chip sb-hidden-chip" onClick={async () => { for (const it of sw.illust || []) it.hidden = false; await chatApi.save(); chatApi.redraw(); }}>{tn('scenebook.fig.showHidden', hidden)}</button> : null}
   </>;
 }
 

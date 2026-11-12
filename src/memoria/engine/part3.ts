@@ -7,6 +7,7 @@ import type { CastCard, Cfg, ChatM, Mem, MemItem, Msg, Summary, SummarySrc, Turn
 import { G, NARRATOR, PUBLIC_ONLY, PAST_QUERY_RE, str, list, clip, low, cleanStr, visibleProse, sanitizeRecord, ekey, vec, cos, cueText, indexText, vecOf, cleanMultiline, normScope, sameKnowledgeScope, storyFossilWeight, grams, lexical, gramOverlap, calibrate, parseLoose, toDays, ago, dcache, dvec, normLockKind, normVisibility, overrides, pendingEmbeds, queryEmbedCache, preps } from './base';
 import * as MP from '../prompts';
 import { THREAD_KINDS, withDeadline, hasPhrase, splitClosedLine } from '../craft';
+import { t as tr } from '../../i18n';
 
 type Chat = ChatM | null | undefined;
 type Progress = (done: number, total: number) => void;
@@ -164,10 +165,10 @@ export const part3: Part3 & ThisType<MemoryApi> = {
           if (lock.manual) { lock.suggestResolved = true; lock.suggestTurn = to; continue; }   // 직접 적은 떡밥은 사서가 닫지 못한다 — "해소된 듯" 의견만 붙인다
           lock.status = 'resolved'; lock.resolvedTurn = to; lock.resolution = lock.resolution || '요약 때 정리됨'; closed++;
         }
-        if (closed) this.logActivity('summary', `풀렸거나 의미가 없어진 떡밥 ${closed}개를 닫았어요`);
+        if (closed) this.logActivity('summary', tr('memoria.engine.log.threadsClosed', { n: closed }));
       }
     } catch (e: any) { if (strict || e?.name === 'AbortError' || signal?.aborted) throw e; console.debug('[장기기억] 묶음 요약 실패, 턴 기록을 이어 붙입니다', e); }
-    if (!text) { if (strict) throw new Error(`t${from + 1}–t${to + 1} 요약 응답이 비어 있습니다`); text = cleanStr(parts.join(' / '), 2000); }
+    if (!text) { if (strict) throw new Error(tr('memoria.engine.err.emptySummary', { from: from + 1, to: to + 1 })); text = cleanStr(parts.join(' / '), 2000); }
     return text;
   },
   /**
@@ -203,7 +204,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
    * 반환: 만든 묶음 수, 중단되면 null. 실패하면 오류를 던진다
    */
   async rebuildAllSummaries(chat, mem, { signal, onProgress, stop } = {}) {
-    if (G.rebuildRunning) throw new Error('이미 다시 만드는 중입니다');
+    if (G.rebuildRunning) throw new Error(tr('memoria.engine.err.rebuilding'));
     G.rebuildRunning = true;
     try {
       return await this.enqueue(async () => {
@@ -300,7 +301,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     if (!text || (this.get(mem.id) || mem) !== mem) return false;
     const ids = new Set(folding.map(a => a.id));
     mem.arcs = [...mem.arcs.filter(a => !ids.has(a.id)), { id: 'a' + uid(), saga: true, from: folding[0].from, to: folding[folding.length - 1].to, text, src: folding.flatMap(a => (Array.isArray(a.src) && a.src.length ? a.src : [{ from: a.from, to: a.to, text: a.text }])) }];
-    this.logActivity('summary', `가장 오래된 연대기 ${folding.length}개를 '옛 이야기'로 접었어요`);
+    this.logActivity('summary', tr('memoria.engine.log.erasFolded', { n: folding.length }));
     return true;
   },
   /** 서고 정리 대상: 고정 · 수동 · 최근 기억은 건드리지 않는다. 모델 입력도 등급 · 소유자별로 나눈다 — 비밀을 본 모델이 공개 요약에 섞어 쓰지 않게 (가장 큰 묶음 하나, 120개까지) */
@@ -320,7 +321,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     const plan = parseLoose(response) as CuratorPlan | null;
     if (!plan || typeof plan !== 'object') {   // 무엇을 만져야 할지 알 수 있게 — 가장 흔한 원인(추론 모델이 사고에 출력 상한을 다 써서 응답이 잘림)을 짚어 준다
       const head = cleanStr(response, 300); console.warn('[장기기억] 서고 정리: 사서 응답을 JSON 으로 읽지 못했습니다. 응답 앞부분:', head || '(빈 응답)');
-      throw new Error(head ? '사서 응답을 JSON으로 읽지 못했습니다 (응답이 중간에 잘렸을 수 있습니다 — 설정 탭의 "사고 토큰 여유분"을 늘려 보세요)' : '사서 응답이 비어 있습니다 (추론 모델이 사고에 출력 상한을 다 썼을 수 있습니다 — 설정 탭의 "사고 토큰 여유분"을 늘려 보세요)');
+      throw new Error(head ? tr('memoria.engine.err.curatorJson') : tr('memoria.engine.err.curatorEmpty'));
     }
     const stats = { merged: 0, dropped: 0, reweighted: 0 }, removeIds = new Set<string>(), mergedKeepIds = new Set<string>(), tagOf: (t: unknown) => MemItem | undefined = t => idMap.get(String(t || '').trim());
     for (const mg of list(plan.merge).slice(0, 20) as CuratorMerge[]) {
@@ -352,7 +353,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
       const draft = { ...mem, memories: mem.memories.map(m => ({ ...m })) };
       const stats = await this.runConsolidation(chat, draft, signal);
       if (stats && (stats.merged || stats.dropped || stats.reweighted)) {
-        if ((this.get(mem.id) || mem) !== mem || sig() !== baseline) throw new Error('정리하는 동안 서고가 바뀌었습니다. 다음 주기에 다시 정리합니다.');
+        if ((this.get(mem.id) || mem) !== mem || sig() !== baseline) throw new Error(tr('memoria.engine.err.archiveChanged'));
         await this.checkpoint(mem, '자동 서고 정리 전').catch(() => { });
         mem.memories = draft.memories;
         console.info(`[장기기억] 서고 정리: 병합 ${stats.merged} · 정리 ${stats.dropped} · 재조정 ${stats.reweighted}`);
@@ -364,7 +365,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
   },
   /** 서사 시계 재계산 — 다시 색인하지 않고, 기록된 턴을 처음부터 이어 읽으며 이야기 속 흐른 시간을 다시 잰다. 반환 { before, after, failed(실패한 묶음 수) }, 재계산할 턴이 없으면 null */
   async recalClock(chat, mem, { signal, onProgress } = {}) {
-    if (G.clockRecalBusy) throw new Error('서사 시계를 이미 재계산하는 중입니다.');
+    if (G.clockRecalBusy) throw new Error(tr('memoria.engine.err.clockBusy'));
     const turns = mem.turns.map((t, i) => ({ t, i })).filter(x => x.t.digest); if (turns.length < 2) return null;
     G.clockRecalBusy = true;
     try {
@@ -377,7 +378,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
         try { const j = parseLoose(await this.call(chat, MP.CLOCK_RECAL_PROMPT, lines, 4000, signal)); if (!j) { failed++; continue; } for (const [k, v] of Object.entries(j)) { const m = /^t(\d+)$/.exec(str(k)); if (m) up.set(+m[1] - 1, toDays(v)); } }
         catch (e: any) { if (e.name === 'AbortError' || signal?.aborted) throw e; failed++; console.error('[장기기억] 서사 시계 재계산 배치 실패:', e); }
       }
-      if (!up.size) throw new Error('서사 시계 재계산에 실패했습니다. (모델 응답 오류)');
+      if (!up.size) throw new Error(tr('memoria.engine.err.clockFailed'));
       mem.turns.forEach((t, i) => { if (up.has(i)) t.days = up.get(i); });   // 응답에 없는 턴은 기존 값을 유지한다 (0 으로 밀어 버리지 않는다)
       mem.clockDays = mem.turns.reduce((a, t) => a + (t.days || 0), 0);
       await this.save(mem);
@@ -409,7 +410,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
   vecOk(avm) { const sig = this.embedSig(), raw = String(this.cfg().embed.model || '').trim(); return !!avm && (avm === sig || (!!raw && avm === raw)); },
   async embedCall(texts, signal, { timeoutMs = 0, query = false } = {}) {
     const e = this.cfg().embed, conn = S.get('conns', e.connId);
-    if (!conn) throw new Error('임베딩에 쓸 연결을 골라 주세요.');
+    if (!conn) throw new Error(tr('embed.err.noConn'));
     return embedTexts(texts, { conn, model: e.model, kind: e.kind || 'auto', signal, timeoutMs, query });   // 소스별 요청 모양은 embed.js 가 맡는다
   },
   /**
@@ -585,8 +586,8 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     for (const m of active) {
       if (m.visibility !== 'public' && !this.knowsMemory(m, auth)) { out.hidden++; continue; }
       eligible.push(m);
-      if (m.pinned) { out.pinned.push(m); out.trace.set(m.id, { reason: '고정 기억', mode: 'pinned' }); continue; }
-      if (m.trigger) { try { if (new RegExp(m.trigger, 'i').test(ql)) { out.triggered.push(m); out.trace.set(m.id, { reason: '입력의 트리거 일치', mode: 'trigger' }); continue; } } catch { /* 잘못된 정규식은 무시 */ } }
+      if (m.pinned) { out.pinned.push(m); out.trace.set(m.id, { reason: tr('memoria.engine.why.pinned'), mode: 'pinned' }); continue; }
+      if (m.trigger) { try { if (new RegExp(m.trigger, 'i').test(ql)) { out.triggered.push(m); out.trace.set(m.id, { reason: tr('memoria.engine.why.trigger'), mode: 'trigger' }); continue; } } catch { /* 잘못된 정규식은 무시 */ } }
       const v = vecOf(m); let c = cos(qv, v.sum);
       for (const a of auxV) c = Math.max(c, cos(a, v.sum) * 0.92);
       if (sv) c = Math.max(c, cos(sv, v.sum) * 0.85);
@@ -615,7 +616,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
       const score = 0.62 * Math.max(0, c) + 0.18 * lex + 0.12 * (m.importance || 0) + 0.08 * rec + bonus;
       if (score < cfg.minScore) continue;
       cands.push({ m, score, v: v.sum });
-      out.trace.set(m.id, { mode: 'direct', score, parts: { cos: Math.max(0, c), lex, imp: m.importance || 0, rec, bonus, sem }, reason: [entityHit && '인물 일치', hintHit && '검색 힌트', presenceHit && '현재 장면의 인물', lex >= 0.035 && '어휘 일치', c >= cfg.minCosine && '문맥 유사도'].filter(Boolean).join(' · ') || '관련성 점수' });
+      out.trace.set(m.id, { mode: 'direct', score, parts: { cos: Math.max(0, c), lex, imp: m.importance || 0, rec, bonus, sem }, reason: [entityHit && tr('memoria.engine.why.entity'), hintHit && tr('memoria.engine.why.hint'), presenceHit && tr('memoria.engine.why.present'), lex >= 0.035 && tr('memoria.engine.why.lexical'), c >= cfg.minCosine && tr('memoria.engine.why.context')].filter(Boolean).join(' · ') || tr('memoria.engine.why.score') });
     }
     cands.sort((a, b) => b.score - a.score);
     if (cfg.associative !== false) {
@@ -624,7 +625,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
         if (out.triggered.some(m => m.id === link.m.id)) continue;
         const ex = cands.find(c => c.m.id === link.m.id); if (ex && ex.score >= link.score) continue;
         if (ex) ex.score = link.score; else cands.push({ m: link.m, score: link.score, v: vecOf(link.m).sum });
-        out.trace.set(link.m.id, { reason: `연결 단서: ${link.cues.join(', ')}`, mode: 'association', via: link.via, score: link.score });
+        out.trace.set(link.m.id, { reason: tr('memoria.engine.why.link', { cues: link.cues.join(', ') }), mode: 'association', via: link.via, score: link.score });
       }
       cands.sort((a, b) => b.score - a.score);
     }

@@ -8,6 +8,7 @@ import { confirmBox, toast } from '../ui';
 import { quickCall } from '../lib/engine';
 import { X } from '../lib/hooks';
 import { chatApi } from '../chat/actions';
+import { t as tt } from '../i18n';
 
 export interface TrPreset { id: string; name: string; content: string; filter?: boolean }
 export interface TrCfg {
@@ -65,7 +66,7 @@ export async function translate(text: string, language?: string, { chat, context
   let out = await quickCall(SYSTEM, prompt, { maxTokens: clamp(+(c.maxTokens ?? 0) || 20000, 256, 200000), signal, conn: conn || S.helperConn('translate', chat) });
   if (p.filter !== false) { const m = out.match(FENCE); if (m) out = m[1]; }
   out = out.trim();
-  if (!out) throw new Error('번역 결과가 비어 있어요');
+  if (!out) throw new Error(tt('translate.err.empty'));
   return out;
 }
 
@@ -83,11 +84,11 @@ export const persist = async (chat: ChatX, msgs: Msg[]) => { if (chatApi.current
 export async function translateMsg(m: Msg | undefined, again = false): Promise<void> {
   const { chat, msgs, busy: generating } = chatApi.current(); const s = m?.swipes?.[m.sw];
   if (!chat || !m || !s) return;
-  if (busy.has(m.id)) return toast('이 메시지는 이미 번역하고 있어요');
+  if (busy.has(m.id)) return toast(tt('translate.msg.busy'));
   if (s.tr && !again) { s.showTr = !s.showTr; return persist(chat, msgs); }
-  if (generating && msgs[msgs.length - 1] === m) return toast('답변이 다 써진 뒤에 번역할 수 있어요');
+  if (generating && msgs[msgs.length - 1] === m) return toast(tt('translate.msg.wait'));
   const src = strip(s.text || '').trim();
-  if (!src) return toast('번역할 내용이 없어요');
+  if (!src) return toast(tt('translate.msg.empty'));
   busy.add(m.id); markBusy(m.id);
   try {
     const who = m.role === 'user' ? S.persona(chat)?.name : (m.name || S.get('chars', m.charId)?.name);
@@ -98,11 +99,11 @@ export async function translateMsg(m: Msg | undefined, again = false): Promise<v
     const live = !here || now.msgs.includes(m) ? m : now.msgs.find(x => x.id === m.id);
     const t = live === m ? s : live?.swipes?.[m.swipes.indexOf(s)];
     const same = (x?: { text?: string }) => !!x && (strip(x.text || '').trim() === src || (x.text || '').trim() === src);
-    if (!t || !same(t) || !same(s)) { busy.delete(m.id); markBusy(m.id); return toast('번역하는 동안 원문이 바뀌어 번역을 버렸어요'); }
+    if (!t || !same(t) || !same(s)) { busy.delete(m.id); markBusy(m.id); return toast(tt('translate.msg.changed')); }
     if (!here && !S.get('chats', chat.id)) return;   // 그 사이 지워진 대화
     t.tr = tr; t.showTr = true;
     busy.delete(m.id); await persist(here ? now.chat! : chat, here ? now.msgs : msgs);
-  } catch (e) { if (!isAbort(e)) toast('번역 실패: ' + errMsg(e), 'err'); }
+  } catch (e) { if (!isAbort(e)) toast(tt('chat.translate.fail', { err: errMsg(e) }), 'err'); }
   finally { busy.delete(m.id); markBusy(m.id); }
 }
 
@@ -110,20 +111,20 @@ export async function translateMsg(m: Msg | undefined, again = false): Promise<v
 export const translatedCount = (msgs: Msg[]) => msgs.filter(m => m.swipes?.some(s => s.tr)).length;
 export async function deleteRange(from: string | null, to: string | null, all: boolean): Promise<true | void> {
   const { chat, msgs } = chatApi.current();
-  if (!chat || !msgs.length) return toast('열린 대화에 메시지가 없어요');
+  if (!chat || !msgs.length) return toast(tt('translate.clear.noMsgs'));
   let a = 1, b = msgs.length;
   if (!all) {
     a = parseInt(from ?? '', 10); b = parseInt(to ?? '', 10);
-    if (isNaN(a) || isNaN(b)) return toast('시작과 끝 번호를 모두 적어 주세요');
+    if (isNaN(a) || isNaN(b)) return toast(tt('translate.clear.needRange'));
     if (a > b) [a, b] = [b, a];
     a = clamp(a, 1, msgs.length); b = clamp(b, 1, msgs.length);
   }
   const hit = msgs.slice(a - 1, b).filter(m => m.swipes?.some(s => s.tr));
-  if (!hit.length) return toast('그 범위에는 번역이 없어요');
-  if (!(await confirmBox(all ? `이 대화의 번역 ${hit.length}개를 모두 지울까요?` : `${a}번 ~ ${b}번 메시지의 번역 ${hit.length}개를 지울까요?`, '지우기', true))) return;
+  if (!hit.length) return toast(tt('translate.clear.noneInRange'));
+  if (!(await confirmBox(all ? tt('translate.clear.confirmAll', { count: hit.length }) : tt('translate.clear.confirmRange', { a, b, count: hit.length }), tt('chat.illust.remove'), true))) return;
   for (const m of hit) for (const s of m.swipes) { delete s.tr; s.showTr = false; }
   await persist(chat, msgs);
-  toast(`번역 ${hit.length}개를 지웠어요`, 'ok');
+  toast(tt('translate.clear.done', { count: hit.length }), 'ok');
   return true;
 }
 

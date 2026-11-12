@@ -9,6 +9,7 @@ import { G, Scope, applySet, everything, regexScopeHooks, scOwner, setAllow, set
 import { scopedRegex } from '../lib/cards';
 import { chatApi } from '../chat/actions';
 import type { Chat } from '../lib/types';
+import { t, tn } from '../i18n';
 
 type AllowMap = Record<string, Record<string, boolean | 'ask'> | undefined>;
 const redrawChat = () => { try { if (route.page === 'chat' && !chatApi.current().busy) chatApi.redraw(); } catch { /* 대화 화면이 아직 없으면 그대로 둔다 */ } };
@@ -20,11 +21,11 @@ function askEmbedded(chat?: Chat | null) {
   const cid = arr(chat.charIds).find(id => a.chars?.[id] === 'ask' && scopedRegex(id).length), p = S.presetFor(chat);
   const sc: Sc | null = cid ? { kind: 'char', id: cid } : (p && a.presets?.[p.id] === 'ask' && arr(p.regex).length ? { kind: 'preset', id: p.id } : null);
   if (!sc) return;
-  const n = Scope.list(sc).length, what = sc.kind === 'char' ? '캐릭터' : '프리셋'; let answered = false;
-  const m = openModal({ title: `${scOwner(sc)} ${what}에 정규식 ${n}개가 함께 들어 있어요`,
-    body: <div className="col"><p>{`사용하면 이 ${what}${sc.kind === 'char' ? '와의 대화' : '을 쓰는 대화'}에서 글을 바꾸거나 꾸밉니다. 믿을 수 있는 곳에서 받은 것만 켜세요.`}</p><small className="hint">{`나중에 메뉴 › 정규식 › ${what} 탭에서 바꿀 수 있어요.`}</small></div>,
+  const n = Scope.list(sc).length, ch = sc.kind === 'char'; let answered = false;
+  const m = openModal({ title: tn(ch ? 'regex.ask.titleChar' : 'regex.ask.titlePreset', n, { name: scOwner(sc) }),
+    body: <div className="col"><p>{t(ch ? 'regex.ask.bodyChar' : 'regex.ask.bodyPreset')}</p><small className="hint">{t(ch ? 'regex.ask.laterChar' : 'regex.ask.laterPreset')}</small></div>,
     onClose: () => { if (!answered) setAllow(sc, false); setTimeout(() => askEmbedded(chatApi.current().chat), 250); },
-    actions: [{ label: '쓰지 않기', onclick: () => { answered = true; setAllow(sc, false); } }, { label: '내용 보기', onclick: () => { answered = true; setAllow(sc, false); go('regex', `${sc.kind}:${sc.id}`); } }, { label: '사용', cls: 'primary', onclick: () => { answered = true; setAllow(sc, true); redrawChat(); } }] });
+    actions: [{ label: t('regex.ask.no'), onclick: () => { answered = true; setAllow(sc, false); } }, { label: t('regex.ask.view'), onclick: () => { answered = true; setAllow(sc, false); go('regex', `${sc.kind}:${sc.id}`); } }, { label: t('regex.ask.yes'), cls: 'primary', onclick: () => { answered = true; setAllow(sc, true); redrawChat(); } }] });
   m.el.classList.add('rx-ask');
 }
 
@@ -36,19 +37,19 @@ function setup() {
   if (!document.querySelector('link[href$="css/regex.css"]')) { const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = 'css/regex.css'; document.head.append(link); }
   if (!wired) { wired = true; on('chat:open', chat => { setTimeout(() => askEmbedded(chat as Chat | null), 400); }); }
 
-  X.commands.set('/regex-toggle', { owner: 'regex', args: '이름 [on|off]', help: '정규식 스크립트를 켜거나 끕니다 — /regex-toggle 상태창 off', run: async arg => {
+  X.commands.set('/regex-toggle', { owner: 'regex', get args() { return t('regex.cmd.toggleArgs'); }, get help() { return t('regex.cmd.toggleHelp'); }, run: async arg => {
     const m = String(arg || '').trim().match(/^([\s\S]*?)(?:\s+(on|off|켜기|끄기))?$/i), name = (m?.[1] || '').trim().toLowerCase(), word = (m?.[2] || '').toLowerCase();
-    if (!name) return toast('정규식 이름을 적어 주세요', 'err');
+    if (!name) return toast(t('regex.cmd.needName'), 'err');
     const hit = inScope().find(e => String(e.r.name).toLowerCase() === name) || everything().find(e => String(e.r.name).toLowerCase() === name);
-    if (!hit) return toast(`"${name}" 정규식을 찾지 못했어요`, 'err');
+    if (!hit) return toast(t('regex.cmd.notFound', { name }), 'err');
     hit.r.enabled = word ? (word === 'on' || word === '켜기') : !hit.r.enabled;
     await Scope.save(hit.sc, hit.r); redrawChat();
-    toast(`"${hit.r.name}" 정규식을 ${hit.r.enabled ? '켰어요' : '껐어요'}`, 'ok');
+    toast(t(hit.r.enabled ? 'regex.cmd.turnedOn' : 'regex.cmd.turnedOff', { name: hit.r.name }), 'ok');
   } });
-  X.commands.set('/regex-set', { owner: 'regex', args: '묶음 이름', help: '저장해 둔 정규식 켜짐 묶음을 적용합니다', run: async arg => {
+  X.commands.set('/regex-set', { owner: 'regex', get args() { return t('regex.sets.name'); }, get help() { return t('regex.cmd.setHelp'); }, run: async arg => {
     const name = String(arg || '').trim().toLowerCase(), set = sets().find(s => s.name.toLowerCase() === name || s.id === name);
-    if (!set) return toast(name ? `"${name}" 묶음을 찾지 못했어요` : `묶음 이름을 적어 주세요${sets().length ? ' — ' + sets().map(s => s.name).join(', ') : ''}`, 'err');
-    await applySet(set); toast(`"${set.name}" 묶음을 적용했어요`, 'ok');
+    if (!set) return toast(name ? t('regex.cmd.setNotFound', { name }) : sets().length ? t('regex.cmd.setNeedNameList', { list: sets().map(s => s.name).join(', ') }) : t('regex.cmd.setNeedName'), 'err');
+    await applySet(set); toast(t('regex.cmd.setApplied', { name: set.name }), 'ok');
   } });
 }
 

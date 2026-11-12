@@ -20,6 +20,7 @@ export type Kind = 'lore' | 'regex';
 export type { Asset } from '../lib/types';
 import { Modules } from './logic';
 import { chatApi } from '../chat/actions';
+import { t, tn } from '../i18n';
 export { Modules, MOD_ASSET_PROMPT } from './logic';
 export { Assets } from '../lib/assets';
 
@@ -40,16 +41,18 @@ export function ownItems(m: Module) {
   return { lore: booksOf(m).filter(b => b.mod === m.id && !used('lore', b.id)), regex: regexOf(m).filter(r => r.mod === m.id && !used('regex', r.id)) };
 }
 
-export const SCOPES: [Scope, string][] = [['global', '전역'], ['char', '캐릭터'], ['chat', '대화방']];
-export const MODE_LABEL: Record<string, string> = { store: '원문 변경', display: '화면만', prompt: '전송만', both: '화면+전송' };
+/** [범위, 글자 키] — 그릴 때 t() */
+export const SCOPES: [Scope, string][] = [['global', 'modules.scope.global'], ['char', 'modules.scope.char'], ['chat', 'modules.scope.chat']];
+const MODE_LABEL: Record<string, string> = { store: 'modules.mode.store', display: 'modules.mode.display', prompt: 'modules.mode.prompt', both: 'modules.mode.both' };
+export const modeLabel = (mode: string) => MODE_LABEL[mode] ? t(MODE_LABEL[mode]) : mode;
 export function scopeLabel(m: Module) {
-  if (m.scope === 'global') return '전역 · 모든 대화';
-  if (m.scope === 'char') { const cs = m.charIds.map(i => S.get('chars', i)).filter((c): c is Char => !!c); return cs.length ? `캐릭터 · ${cs[0].name}${cs.length > 1 ? ` 외 ${cs.length - 1}명` : ''}` : '캐릭터 · 아직 고르지 않음'; }
-  const n = m.chatIds.filter(i => S.get('chats', i)).length; return n ? `대화방 ${n}곳` : '대화방 · 아직 고르지 않음';
+  if (m.scope === 'global') return t('modules.scopeLabel.global');
+  if (m.scope === 'char') { const cs = m.charIds.map(i => S.get('chars', i)).filter((c): c is Char => !!c); return cs.length ? (cs.length > 1 ? tn('modules.scopeLabel.charMany', cs.length - 1, { name: cs[0].name }) : t('modules.scopeLabel.charOne', { name: cs[0].name })) : t('modules.scopeLabel.charNone'); }
+  const n = m.chatIds.filter(i => S.get('chats', i)).length; return n ? tn('modules.scopeLabel.chats', n) : t('modules.scopeLabel.chatNone');
 }
 export function roomNote(m: Module) {
   const v = Object.entries(m.rooms).filter(([i]) => S.get('chats', i)), a = v.filter(([, on]) => on).length, b = v.length - a;
-  return [a && `따로 켠 방 ${a}곳`, b && `따로 끈 방 ${b}곳`].filter(Boolean).join(' · ');
+  return [a && tn('modules.roomNote.on', a), b && tn('modules.roomNote.off', b)].filter(Boolean).join(' · ');
 }
 export const roomTitle = (c: ChatX) => `${chatApi.groupTitle(c)} · ${chatApi.roomName(c)}`;
 export const verLabel = (v: string) => 'v' + v.replace(/^v/i, '');
