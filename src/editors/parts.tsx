@@ -1,7 +1,8 @@
 // 편집 화면 공통 부품
 import { useLayoutEffect, useMemo, useReducer, useRef } from 'react';
+import { L } from '../legacy';
 import type { LibApi } from '../ui';
-import { core } from './bridge';
+import { core, store, type Coll } from './bridge';
 
 export const useBump = () => useReducer((x: number) => x + 1, 0)[1];
 /** 한 번 만들어 계속 쓰는 지연 호출 (옛 debounce). 늘 가장 새 함수를 부르고, 떠난 뒤에도 기다리던 것은 불린다 */
@@ -18,5 +19,6 @@ export function Host({ node }: { node: Node | null | undefined }) {
   return <span style={{ display: 'contents' }} ref={ref} />;
 }
 
-export interface EditorApi extends LibApi { /** 편집기를 통째로 새로 만든다 (옛 refresh 자리). 지운 뒤에 부르면 빈 자리가 된다 */ refresh(): void }
-export const editorApi = (api: LibApi, id: string): EditorApi => ({ ...api, refresh: () => api.reselect(id) });
+export interface EditorApi extends LibApi { /** 편집기를 통째로 새로 만든다 (옛 refresh 자리) */ refresh(): void }
+/** refresh 는 화면을 처음 열 때처럼 다시 고른다: 주소에 적힌 항목(고르거나 새로 만든 것), 없으면 목록의 첫 항목. 그래서 지운 뒤에는 빈 자리가 되거나(골라 들어온 항목) 다음 항목이 열린다(처음부터 열려 있던 첫 항목) */
+export const editorApi = (api: LibApi, coll: Coll): EditorApi => ({ ...api, refresh: () => api.reselect((typeof L.ui.route.arg === 'string' && L.ui.route.arg) || store()[coll][0]?.id || '') });

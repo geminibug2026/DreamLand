@@ -87,9 +87,15 @@ export async function translateMsg(m: Msg | undefined, again = false): Promise<v
     const who = m.role === 'user' ? B.S.persona(chat)?.name : (m.name || B.S.get('chars', m.charId)?.name);
     const run = B.X.translate || translate;
     const tr = await run(src, cfg().lang, { chat, context: contextOf(chat, msgs, m), name: who || '' });
-    if (strip(s.text || '').trim() !== String(src).trim() && (s.text || '').trim() !== String(src).trim()) { busy.delete(m.id); markBusy(m.id); return toast('번역하는 동안 원문이 바뀌어 번역을 버렸어요'); }
-    s.tr = tr; s.showTr = true;
-    busy.delete(m.id); await persist(chat, msgs);
+    // 기다리는 사이 대화를 다시 열었으면 메시지 객체가 새로 읽혔을 수 있다: 지금 살아 있는 것에 적는다. 메시지가 사라졌거나 원문이 바뀌었으면 버린다
+    const now = B.chat.current(), here = now.chat?.id === chat.id;
+    const live = !here || now.msgs.includes(m) ? m : now.msgs.find(x => x.id === m.id);
+    const t = live === m ? s : live?.swipes?.[m.swipes.indexOf(s)];
+    const same = (x?: { text?: string }) => !!x && (strip(x.text || '').trim() === src || (x.text || '').trim() === src);
+    if (!t || !same(t) || !same(s)) { busy.delete(m.id); markBusy(m.id); return toast('번역하는 동안 원문이 바뀌어 번역을 버렸어요'); }
+    if (!here && !B.S.get('chats', chat.id)) return;   // 그 사이 지워진 대화
+    t.tr = tr; t.showTr = true;
+    busy.delete(m.id); await persist(here ? now.chat! : chat, here ? now.msgs : msgs);
   } catch (e) { if (!isAbort(e)) toast('번역 실패: ' + errMsg(e), 'err'); }
   finally { busy.delete(m.id); markBusy(m.id); }
 }

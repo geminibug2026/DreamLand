@@ -6,7 +6,8 @@ import { menu, openModal, toast } from '../ui';
 import { B } from './bridge';
 import { cur, ui, useCh } from './store';
 import { DiceCard } from './Dice';
-import { bodyHtml, branch, commitEdit, delFrom, delMsg, drawScene, editTranslation, generate, msgClock, removeIllust, showMore, speak, swipe, toggleHidden, translate } from './actions';
+import { bodyHtml, branch, commitEdit, redraw, delFrom, delMsg, drawScene, editTranslation, generate, msgClock, removeIllust, showMore, speak, swipe, toggleHidden, translate } from './actions';
+import { ux } from '../features/usersettings';
 import type { IllustItem, Msg, SceneSpec, Swipe } from './types';
 
 const dayFmt = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
@@ -75,7 +76,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
   if (m.role === 'system' && m.dice) return art(<><DiceCard m={m} /><div className="msg-tools">{del}</div></>);
 
   const streaming = cur.paint.has(m.id);
-  const body = editing ? <EditBox m={m} close={() => setEditing(false)} /> : <div className="msg-body" dangerouslySetInnerHTML={{ __html: cur.paint.get(m.id) ?? bodyHtml(m) }} />;
+  const body = editing ? <EditBox m={m} close={() => redraw(m)} /> : <div className="msg-body" dangerouslySetInnerHTML={{ __html: cur.paint.get(m.id) ?? bodyHtml(m) }} />;
   if (m.role === 'system') return art(<div className="sys-line">{body}<div className="msg-tools"><IconBtn ic="edit" title="수정" onClick={() => setEditing(true)} />{del}</div></div>);
 
   const canSwipe = m.role === 'assistant' && (m.swipes.length > 1 || last);
@@ -93,7 +94,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
     { label: '여기부터 아래 모두 삭제', ic: 'trash', danger: true, onclick: () => void delFrom(m) },
   ]);
   const clock = msgClock(m, s);
-  const meta = S.settings.showMeta ? [clock, s.model, s.ms ? (s.ms / 1000).toFixed(1) + '초' : '', s.text ? `≈${B.engine.tokens(s.text)}토큰` : ''].filter(Boolean).join(' · ') : clock;
+  const U = ux(), meta = [U.metaTime && clock, ...(S.settings.showMeta ? [U.metaModel && s.model, U.metaTimer && s.ms ? (s.ms / 1000).toFixed(1) + '초' : '', U.metaTokens && s.text ? `≈${B.engine.tokens(s.text)}토큰` : ''] : [])].filter(Boolean).join(' · ');
   const why = m.why && B.live.mo('showWhy') !== false ? B.sched.motiveLabel(m.why) : '';
   return art(<>
     <Avatar o={who} cls={S.settings.avatarShape === 'tall' ? 'tall' : ''} />

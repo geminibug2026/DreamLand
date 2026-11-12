@@ -122,7 +122,7 @@ export const Assets = {
     let n = 0;   // 같은 메시지를 다시 그려도 그림이 바뀌지 않게, 메시지와 자리로 고른다
     return text.replace(/\{\{img::([^}]+)\}\}/gi, (m, name) => {
       const a = this.resolve(owners, name, seed && seed + '#' + n++); if (!a) return '';
-      return '<span class="asset-frame as-' + style + '"' + (max ? ' style="--as-max:' + max + 'px"' : '') + '><img class="asset-img" alt="' + esc(a.name) + '" src="' + a.data + '"' + (st.lazy === false ? '' : ' loading="lazy"') + '></span>';
+      return '<span class="asset-frame as-' + style + '"' + (max ? ' style="--as-max:' + max + 'px"' : '') + '><img class="asset-img" alt="' + esc(a.name) + '" src="' + esc(a.data) + '"' + (st.lazy === false ? '' : ' loading="lazy"') + '></span>';
     });
   },
 };

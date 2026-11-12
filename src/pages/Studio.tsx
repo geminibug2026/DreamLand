@@ -11,6 +11,7 @@ interface StudioSettings { illust: { backend: string } }
 
 // 화면을 떠났다 돌아와도 남는 탭
 let tab = '번역';
+const TAB_ORDER = ['번역', '삽화', '에셋', '보조 연결', '일정', '표정', '벡터 검색', '장기기억'];
 
 export const page = { name: 'studio', Component: Studio, needs: ['illust', 'assets', 'hooks'] };
 
@@ -69,7 +70,9 @@ function Studio() {
   };
   // 기능 모듈이 등록한 탭이 같은 이름의 기본 탭을 대신한다
   for (const t of mod<HooksMod>('hooks').X.studio) views[t.title] = () => <ExtTab render={() => t.render()} />;
-  const names = Object.keys(views);
+  // 탭 순서는 옛 판과 같게 (기능이 등록되는 순서가 달라져도). 여기에 없는 탭은 등록된 순서대로 뒤에 온다
+  const rank = (t: string) => { const i = TAB_ORDER.indexOf(t); return i < 0 ? TAB_ORDER.length : i; };
+  const names = Object.keys(views).map((t, i) => [t, i] as const).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(x => x[0]);
   if (!views[tab]) tab = names[0];
 
   return <section className="pagebox"><PageHead eyebrow="features" title="기능" />

@@ -14,5 +14,5 @@ function LorePage({ arg }: { arg?: unknown }) {
     trail={(b, redraw) => <LoreSwitch b={b} after={redraw} />}
     empty="세계관과 설정을 키워드로 불러오는 로어북을 만들어 보세요."
     actions={[{ ic: 'sliders', title: '로어북 전체 설정', onclick: () => loreSettingsDialog() }, { ic: 'import', title: '로어북 가져오기 (JSON · 실리태번 월드 인포)', onclick: draw => void importDialog('.json', draw) }]}
-    editor={(b, api) => <LoreEditor b={b} api={editorApi(api, b.id)} />} />;
+    editor={(b, api) => <LoreEditor b={b} api={editorApi(api, 'lore')} />} />;
 }

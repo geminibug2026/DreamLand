@@ -38,7 +38,7 @@ function setup() {
     if (changed && shown()) chatApi().redraw();
   });
   on('message:received', data => {
-    const msg = (data as { msg?: Msg } | undefined)?.msg, plan = Illust().takePlan(), c = Illust().cfg(), sw = msg?.swipes?.[msg.sw];
+    const d = data as { msg?: Msg; chat?: { id?: string } } | undefined, msg = d?.msg, plan = Illust().takePlan(), c = Illust().cfg(), sw = msg?.swipes?.[msg.sw];
     if (plan && sw && (plan.found || (plan.asked && c.auto))) {
       const queued = Illust().queue().some(j => j.sw === sw && j.state !== 'cancelled');
       sw.illustPlan = !plan.found ? { status: 'missing', error: 'AI 답변에 삽화 지시가 없어 그림을 만들지 않았어요.', ts: now() }
@@ -47,7 +47,8 @@ function setup() {
       if (sw.illustPlan.status === 'missing' || plan.error) U().toast(sw.illustPlan.error + ' 답변 아래에서 장면 분석을 누르거나 지시 기록을 확인해 주세요.');
       else if (sw.illustPlan.status === 'ready') U().toast(`장면 ${sw.illustDraft?.length}개를 초안으로 저장했어요 · 답변 아래에서 확인`);
       flow.note = sw.illustPlan.error || ({ queued: '삽화 지시를 읽어 그리기를 요청했어요', ready: `장면 ${sw.illustDraft?.length || 0}개 준비됨 · 답변 아래에서 확인` } as Record<string, string>)[sw.illustPlan.status || ''] || flow.note;
-      void chatApi().save();
+      // 답변이 속한 방이 열려 있을 때만 여기서 저장한다. 다른 방의 답변은 생성 쪽이 이 알림 바로 뒤에 그 방에 저장한다
+      if (!d?.chat || cur().chat?.id === d.chat.id) void chatApi().save();
     }
     schedule();
   });

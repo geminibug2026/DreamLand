@@ -141,5 +141,5 @@ function ConnsPage({ arg }: { arg?: unknown }) {
     sub={c => `${PROVIDERS[c.provider]?.name || c.provider}${c.model ? ' · ' + c.model : ''}${c.id === S.settings.activeConn ? ' · 사용 중' : ''}`}
     empty="모델에 연결하려면 오른쪽 위의 + 를 눌러 연결을 추가하세요."
     actions={[{ ic: 'folder', title: '연결 프로필 (연결 · 프리셋 · 포맷팅 템플릿 묶음)', onclick: () => L.ui.go('quick', 'profiles') }]}
-    editor={(c, api) => <ConnEditor c={c} api={editorApi(api, c.id)} />} />;
+    editor={(c, api) => <ConnEditor c={c} api={editorApi(api, 'conns')} />} />;
 }

@@ -190,7 +190,9 @@ export function defaultPreset() {
 
 export const defaultSettings = () => ({
   id: 'settings', theme: 'moonpress', customThemes: [], font: 'pretendard', fontCustom: '', fontSize: 16, lineHeight: 1.8, chatWidth: 780, bubbles: true, motion: true, avatarShape: 'round', exts: {},
-  enterSend: true, autoScroll: true, showMeta: true, customCss: '', userNameFallback: '나',
+  enterSend: 'auto', autoScroll: true, showMeta: true, customCss: '', userNameFallback: '나',   // enterSend: true(항상) · false(끔) · 'auto'(휴대폰에서는 줄바꿈)
+  // 사용자 설정 (src/features/usersettings.tsx): 알림음 · 넘기기 · 삭제 확인 · 시작할 때 마지막 대화 · 쓰던 글 되살리기 · 메시지 표시
+  ux: { sound: false, soundVolume: 60, soundUnfocused: false, swipes: true, gestures: false, confirmDelete: true, autoLoadChat: true, restoreInput: true, clickEdit: false, mdKeys: false, logPrompts: false, toastPos: 'bottom', showIds: true, showAvatars: true, metaTime: true, metaModel: true, metaTimer: true, metaTokens: true },
   activeConn: '', activePreset: '', activePersona: '', activeLore: [],
   summary: { enabled: false, every: 20, keep: 6, trim: true, prompt: 'Summarize the roleplay so far in a compact, factual way (events, relationships, current situation, unresolved threads). Merge it with the existing summary and write the result in the same language as the roleplay. Output only the summary.' },
   tracker: { enabled: false, inject: true, mode: 'call', hud: true, fields: '시간: 작중 현재 날짜와 시각\n장소: 현재 위치\n날씨: 현재 날씨\n분위기: 장면의 분위기 한 줄\n{{char}}의 기분: 현재 감정 상태' },
@@ -415,7 +417,11 @@ export const S = {
   bindOf(chat) { return this.get('chars', chat?.charIds?.[0])?.bind || {}; },
   connFor(chat) { return this.get('conns', this.bindOf(chat).connId) || this.conn(); },
   presetFor(chat) { return this.get('presets', this.bindOf(chat).presetId) || this.preset(); },
-  persona(chat) { return this.get('personas', chat?.personaId) || this.get('personas', this.bindOf(chat).personaId) || this.get('personas', this.settings.activePersona) || this.personas[0]; },
+  /** 이 대화에서 말할 페르소나. 대화에서 직접 고른 것(personaAuto === false)이 가장 먼저, 그다음 캐릭터에 연결한 것, 방을 열 때 저절로 적어 둔 것, 기본 페르소나 순 */
+  persona(chat) {
+    const own = this.get('personas', chat?.personaId), bound = this.get('personas', this.bindOf(chat).personaId);
+    return (own && chat.personaAuto === false ? own : bound || own) || this.get('personas', this.settings.activePersona) || this.personas[0];
+  },
   async exportAll() {
     const out = { app: 'dreamland', version: 1, exportedAt: new Date().toISOString() };
     for (const c of STORES) out[c] = await DB.all(c);

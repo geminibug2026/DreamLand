@@ -99,5 +99,7 @@ export function redecorate() {
 let queued = false;
 /** 대화 화면이 다시 그려질 때마다 단추를 단다 */
 export function watchChat() {
-  new MutationObserver(() => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; try { decorate(); } catch (e) { console.warn('[번역 단추]', e); } }); }).observe(document.documentElement, { childList: true, subtree: true });
+  // 다음 그림 때 한 번. 그림이 멈춘 창(뒤에 숨은 탭)에서도 단추가 빠지지 않게 잠깐 뒤에도 한 번 본다
+  const run = () => { if (!queued) return; queued = false; try { decorate(); } catch (e) { console.warn('[번역 단추]', e); } };
+  new MutationObserver(() => { if (queued) return; queued = true; requestAnimationFrame(run); setTimeout(run, 100); }).observe(document.documentElement, { childList: true, subtree: true });
 }

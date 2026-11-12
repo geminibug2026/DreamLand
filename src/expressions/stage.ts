@@ -114,7 +114,7 @@ export function schedule() { if (!raf) raf = requestAnimationFrame(() => { raf =
 export function sync() {
   if (syncing) return; syncing = true;
   try {
-    const layout = document.querySelector('#page > .chat-layout'); if (!layout) return;
+    const layout = document.querySelector('#page .chat-layout'); if (!layout) return;
     document.documentElement.dataset.exsAv = cfg().avatarFit === 'cover' ? 'cover' : 'contain';
     const { chat, msgs } = B.chat.current(); if (!chat || !layout.querySelector('.msgs')) return;
     if (chat.charIds.some(id => !Sprites.has(id))) { Sprites.load(chat.charIds).then(schedule).catch(e => console.warn('[표정]', e)); return; }
@@ -132,7 +132,7 @@ export function watchStage() {
   bus.sync = sync; bus.schedule = schedule;
   // 대화 화면이 다시 그려지면(메시지 · 초상 영역 · 본문 틀) 표정을 다시 얹는다. 글자가 흘러나오는 동안의 본문 변화는 건너뛴다
   const watcher = new MutationObserver(recs => {
-    for (const r of recs) { const t = r.target as Element, cl = t.classList; if (t.id === 'page' || (cl && (cl.contains('msgs') || cl.contains('dossier') || cl.contains('chat-main')))) return sync(); }
+    for (const r of recs) { const t = r.target as Element, cl = t.classList; if (t.id === 'page' || t.parentElement?.id === 'page' || (cl && (cl.contains('msgs') || cl.contains('dossier') || cl.contains('chat-main')))) return sync(); }
   });
   const page = document.getElementById('page'); if (page) watcher.observe(page, { childList: true, subtree: true });
   B.core.on('settings', p => { if (p && typeof p === 'object' && 'expressions' in p) schedule(); });

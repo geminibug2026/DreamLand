@@ -162,6 +162,7 @@
 .sb-frame { position: relative; display: block; } .sb-pic { display: block; line-height: 0; }
 .illust:is([data-frame="none"], [data-frame="art"], [data-frame="image"]) { border: 0; background: none; } .illust:is([data-frame="none"], [data-frame="art"], [data-frame="image"])::before { content: none; }
 .illust:is([data-frame="none"], [data-frame="art"], [data-frame="image"]) figcaption { border-top: 0; }
+.illust.illust::before { content: none; }   /* 삽화에는 모서리 표식을 두지 않는다 (기본 · 라인 포함) */
 .illust[data-frame="line"] .sb-frame { padding: 7px; }
 .sb-ornament { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; color: var(--sb-ink, var(--text)); }
 .illust[data-frame="image"] .sb-pic { -webkit-mask-size: 100% 100%; mask-size: 100% 100%; -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; }

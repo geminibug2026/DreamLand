@@ -2,6 +2,7 @@
 import { confirmBox, openModal, promptBox, toast } from '../ui';
 import { B, moN, type AutoPlan, type ChatApi } from './bridge';
 import { bump, cur, flush, ui } from './store';
+import { ux } from '../features/usersettings';
 import type { Cast, CmdItem, GenOpt, GenType, Motive, Msg, Room, SceneSpec, Swipe } from './types';
 
 // ── 방 · 이름 ──
@@ -123,7 +124,7 @@ function syncScene(chat: Room, list: Msg[]) {
 }
 async function afterDelete() { const sc = syncScene(cur.chat!, cur.msgs); rewindState(); await save(); B.core.emit('message:deleted', { chat: cur.chat, msgs: cur.msgs }); if (sc) drawMain(); else drawMsgs(); drawSide(); }
 export async function delMsg(m: Msg) {
-  if (cur.msgs.indexOf(m) < 0 || !(await confirmBox('이 메시지를 삭제할까요?', '삭제', true))) return;
+  if (cur.msgs.indexOf(m) < 0 || (ux().confirmDelete && !(await confirmBox('이 메시지를 삭제할까요?', '삭제', true)))) return;
   const i = cur.msgs.indexOf(m); if (i < 0) return; cur.msgs.splice(i, 1); await afterDelete();
 }
 export async function delFrom(m: Msg) {
@@ -614,7 +615,14 @@ export const chatApi: ChatApi = {
   insert: text => { const inp = ui.input; if (inp) { inp.value += text; inp.dispatchEvent(new Event('input')); inp.focus(); } },
   addSystemMessage: text => command('/sys ' + text),
   save: () => cur.chat && save(),
-  redraw: () => { if (cur.chat && ui.msgs) { drawMsgs(); if (cur.drawer) drawDrawer(); } },
+  // 삽화 · 번역처럼 뒤에서 끝난 일이 목록을 다시 그려도 보던 자리를 지킨다 (맨 아래를 보고 있었으면 맨 아래에 머문다)
+  redraw: () => {
+    if (!cur.chat || !ui.msgs) return;
+    const sc = ui.scroll, stick = nearBottom(), gap = sc ? sc.scrollHeight - sc.scrollTop : 0;
+    drawMsgs();
+    if (sc) { const keep = () => { if (sc.isConnected) sc.scrollTop = stick ? sc.scrollHeight : sc.scrollHeight - gap; }; keep(); requestAnimationFrame(keep); if (stick) pinBottom(1200); }
+    if (cur.drawer) drawDrawer();
+  },
   setStatus: t => setStatus(t),
   scrollTo: id => { unpin(); ui.msgs?.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }); },
   openDrawer: () => setDrawer(true),

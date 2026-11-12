@@ -66,7 +66,7 @@ registerPage('chat', async (root, arg) => {
   cur.chat = chat; cur.msgs = list; cur.shown = 60; cur.lastPrompt = null; cur.openedAt = now(); cur.chimeRun = 0;
   if (!S.get('personas', chat.personaId)) {   // 정해 둔 페르소나가 없으면 이 방에서 마지막으로 쓴 이름, 그것도 없으면 지금 기본 페르소나로
     const last = [...list].reverse().find(m => m.role === 'user' && m.name), p = (last && S.personas.find(x => x.name === last.name)) || S.persona(chat);
-    if (p) { chat.personaId = p.id; S.save('chats', chat, true).catch(e => console.warn(e)); }
+    if (p) { chat.personaId = p.id; chat.personaAuto = true; S.save('chats', chat, true).catch(e => console.warn(e)); }
   }
   route.arg = chat.id; S.set({ lastChat: chat.id });
   // 에셋 · 기억 · 삽화를 기다리지 않고 먼저 그린다. 처음 여는 방이라 아직 읽지 못한 것은 읽는 대로 채워 넣는다
@@ -914,7 +914,7 @@ function drawDrawer() {
   const scene = sec('연결과 화자', 'plug', true,
     sel('API 연결', S.settings.activeConn, S.conns.length ? S.conns.map(x => [x.id, `${x.name}${x.model ? ' · ' + x.model : ''}`]) : [['', '연결 없음']], v => { S.set({ activeConn: v }); drawTop(); }),
     sel('프리셋', S.settings.activePreset, S.presets.map(x => [x.id, x.name]), v => { S.set({ activePreset: v }); drawGauge(); }),
-    sel('이 대화의 페르소나', S.persona(c)?.id || '', S.personas.map(x => [x.id, x.name]), v => { c.personaId = v; saveChat(); drawMsgs(); }));
+    sel('이 대화의 페르소나', S.persona(c)?.id || '', S.personas.map(x => [x.id, x.name]), v => { c.personaId = v; c.personaAuto = false; saveChat(); drawMsgs(); }));
 
   const group = sec('등장인물', 'users', chars.length > 1,
     h('div.members', chars.map(ch => h(`div.member${(c.muted || []).includes(ch.id) ? '.muted' : ''}`, avatar(ch, 'xs'), h('span', ch.name), chars.length > 1 && iconBtn((c.muted || []).includes(ch.id) ? 'eyeoff' : 'eye', '잠시 쉬게 하기 / 다시 부르기', () => { const mu = new Set(c.muted || []); mu.has(ch.id) ? mu.delete(ch.id) : mu.add(ch.id); c.muted = [...mu]; saveChat(); drawDrawer(); }), chars.length > 1 && iconBtn('x', '대화에서 빼기', async () => { c.charIds = c.charIds.filter(i => i !== ch.id); await S.save('chats', c, true); drawMain(); drawDrawer(); drawSide(); })))),

@@ -82,5 +82,5 @@ function PresetsPage({ arg }: { arg?: unknown }) {
       } catch (e) { toast(errMsg(e), 'err'); }
       draw();
     } }]}
-    editor={(p, api) => <PresetEditor p={p} api={editorApi(api, p.id)} />} />;
+    editor={(p, api) => <PresetEditor p={p} api={editorApi(api, 'presets')} />} />;
 }

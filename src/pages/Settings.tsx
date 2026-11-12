@@ -5,6 +5,7 @@ import { Btn, Icon } from '../kit';
 import { Form, PageHead, confirmBox, promptBox, toast } from '../ui';
 import { NEEDS, adv, core, engine, errMsg, store, theme } from '../editors/bridge';
 import { useBump } from '../editors/parts';
+import { playChime, ux } from '../features/usersettings';
 
 export const page = { name: 'settings', Component: SettingsPage, needs: NEEDS };
 
@@ -25,8 +26,29 @@ function SettingsPage() {
       { k: 'modes.scenes', label: '대화 모드: 만나거나 일이 벌어지면 장면으로 넘어가기 (캐릭터가 스스로 열 수 있음)', type: 'check' }, { k: 'modes.sceneStart', label: '대화 모드: 장면이 열리면 캐릭터가 바로 첫 장면을 쓰기', type: 'check' },
       { k: 'modes.later', label: '대화 모드: "이따 연락할게" 같은 약속을 기억했다가 그 시간에 먼저 연락하기', type: 'check' }, { k: 'modes.away', label: '대화 모드: 오래 자리를 비우면 그 사이에 온 연락 남겨 두기', type: 'check' }, { k: 'modes.notify', label: '대화 모드: 화면을 안 보고 있을 때 온 연락을 알림으로 받기', type: 'check' },
       { k: 'modes.auto', label: '대화 모드: 내가 조용하면 캐릭터가 먼저 말 걸기', type: 'check' }, { k: 'modes.autoMinutes', label: '몇 분 조용하면 (연달아 걸 때마다 두 배)', type: 'num', min: 1, half: true },
-      { k: 'enterSend', label: 'Enter 로 보내기 (Shift+Enter 줄바꿈)', type: 'check' }, { k: 'autoScroll', label: '답변을 따라 자동 스크롤', type: 'check' }]} onChange={apply} />
+      { k: 'autoScroll', label: '답변을 따라 자동 스크롤', type: 'check' }]} onChange={apply} />
       <p className="hint">색·글꼴·말풍선 같은 겉모습은 <a href="#" onClick={e => { e.preventDefault(); L.ui.go('themes'); }}>꾸미기</a> 화면에서 바꿉니다.</p></div>
+    <div className="card"><Form obj={st} defs={[{ section: '입력과 전송' },
+      { el: <label className="field"><span className="field-label">Enter 키로 보내기</span>
+        <select className="inp" defaultValue={st.enterSend === 'auto' ? 'auto' : st.enterSend ? 'on' : 'off'} onChange={e => { const v = e.target.value; S.set({ enterSend: v === 'auto' ? 'auto' : v === 'on' }); }}>
+          <option value="auto">자동 — PC 에서는 Enter 로 보내고, 휴대폰에서는 줄바꿈</option><option value="on">항상 Enter 로 보내기 (Shift+Enter 줄바꿈)</option><option value="off">끄기 — Enter 는 줄바꿈, Ctrl+Enter 나 보내기 버튼으로 보내기</option></select></label> },
+      { k: 'ux.restoreInput', label: '보내지 않고 남겨 둔 글을 새로 고친 뒤에도 입력창에 되살리기', type: 'check' },
+      { k: 'ux.mdKeys', label: '서식 단축키 (입력창 · 메시지 수정에서 Ctrl+B 굵게, Ctrl+I 기울임, Ctrl+U 밑줄)', type: 'check' }]} onChange={apply} /></div>
+    <div className="card"><Form obj={st} defs={[{ section: '메시지 표시와 동작' },
+      { k: 'ux.metaTime', label: '메시지에 보낸 시각 표시', type: 'check' }, { k: 'ux.showIds', label: '메시지 번호 표시', type: 'check' }, { k: 'ux.showAvatars', label: '메시지 옆에 초상 표시', type: 'check' },
+      { k: 'ux.metaModel', label: '모델 이름 표시', type: 'check', hint: '모델 · 걸린 시간 · 토큰 수는 위의 "메시지에 모델·시간·토큰 표시" 가 켜져 있을 때만 보입니다.' }, { k: 'ux.metaTimer', label: '답변에 걸린 시간 표시', type: 'check' }, { k: 'ux.metaTokens', label: '메시지 토큰 수 표시', type: 'check' },
+      { k: 'ux.swipes', label: '답변 넘기기 (◀ ▶ 버튼과 방향키로 다른 답변 보기 · 새로 만들기)', type: 'check' },
+      { k: 'ux.gestures', label: '휴대폰에서 마지막 답변을 옆으로 밀어 넘기기', type: 'check', hint: '왼쪽으로 밀면 다음 답변, 오른쪽으로 밀면 이전 답변입니다. 마지막 답변에서 더 넘기면 새 답변을 만듭니다.' },
+      { k: 'ux.clickEdit', label: '메시지 본문을 누르면 바로 고치기', type: 'check' },
+      { k: 'ux.confirmDelete', label: '메시지를 지우기 전에 물어보기', type: 'check' }]} onChange={apply} /></div>
+    <div className="card"><Form obj={st} defs={[{ section: '소리와 알림' },
+      { k: 'ux.sound', label: '답변이 오면 소리 내기', type: 'check' }, { k: 'ux.soundUnfocused', label: '이 창을 보고 있지 않을 때만 소리 내기', type: 'check' },
+      { k: 'ux.soundVolume', label: '알림음 크기', type: 'range', min: 0, max: 100, step: 5, half: true },
+      { k: 'ux.toastPos', label: '알림 글이 뜨는 자리', type: 'select', half: true, opts: [['bottom', '아래 가운데'], ['bottom-left', '아래 왼쪽'], ['bottom-right', '아래 오른쪽'], ['top', '위 가운데'], ['top-left', '위 왼쪽'], ['top-right', '위 오른쪽']] }]} onChange={apply} />
+      <div className="row wrap"><Btn label="알림음 들어 보기" ic="volume" cls="ghost" onClick={() => { if (!playChime(ux().soundVolume)) toast('소리 크기가 0 이거나 이 브라우저에서 소리를 낼 수 없어요', 'err'); }} /></div></div>
+    <div className="card"><Form obj={st} defs={[{ section: '시작과 진단' },
+      { k: 'ux.autoLoadChat', label: '앱을 열 때 마지막으로 하던 대화 바로 열기', type: 'check' },
+      { k: 'ux.logPrompts', label: '모델에 보내는 프롬프트를 브라우저 콘솔에 기록하기', type: 'check' }]} onChange={apply} /></div>
     <div className="card"><h3 className="form-sec">고급 포맷팅</h3><p className="hint">컨텍스트 템플릿(스토리 스트링) · 인스트럭트 템플릿 · 시스템 프롬프트 · 추론 서식 · 중단 문자열 · 응답 시작 문구는 한 화면에 모여 있습니다.</p>
       <div className="row wrap"><Btn label="고급 포맷팅 열기" ic="sliders" cls="primary" onClick={() => L.ui.go('format')} /><small className="hint">{`컨텍스트 ${F.context.name || '직접 설정'} · 인스트럭트 ${F.instruct.enabled ? F.instruct.name || '직접 설정' : '꺼짐'} · 추론 ${F.reasoning.name || '직접 설정'}`}</small></div></div>
     <div className="card"><Form obj={st} defs={[{ section: '상태 트래커' }, { k: 'tracker.enabled', label: '상태창 켜기 — 대화 위에 지금 상태를 띄웁니다', type: 'check' }, { k: 'tracker.mode', label: '상태를 갱신하는 방법', type: 'select', opts: [['call', '답변 뒤에 따로 묻기 (추가 호출 1회, 안정적)'], ['inline', '답변에 함께 적게 하기 (추가 호출 없음)']] }, { k: 'tracker.hud', label: '대화 화면 위에 상태창 보이기', type: 'check' }, { k: 'tracker.inject', label: '추적한 상태를 프롬프트에 넣기', type: 'check' }, { k: 'tracker.fields', label: '추적 항목', type: 'area', rows: 5, hint: '한 줄에 하나씩 "이름: 설명" 으로 적습니다. "호감도 (0-100): 설명" 처럼 범위를 적으면 막대로 보입니다.' }]} onChange={apply} /></div>

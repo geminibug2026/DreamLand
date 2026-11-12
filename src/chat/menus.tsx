@@ -85,7 +85,7 @@ function ClockDlg({ chat }: { chat: Room }) {
       <div className="clock-jump">{([['+1시간', 60], ['+6시간', 360], ['다음 날 아침', 0], ['+1주', 10080]] as const).map(([l, min]) => <button type="button" className="chip" key={l} onClick={() => jump(min)}>{l}</button>)}</div>
       <label className="field"><span className="field-label">시간이 흐르는 방식</span><select className="inp" value={c.flow || 'real'} onChange={e => void set({ at: Clock.ms(chat), setAt: Date.now(), flow: e.target.value as ClockCfg['flow'] })}>
         <option value="real">현실처럼 흐름 — 1분에 1분씩</option><option value="step">메시지마다 조금씩</option><option value="hold">멈춰 둠 — 직접 옮길 때만</option></select></label>
-      {c.flow === 'step' ? <label className="field"><span className="field-label">메시지 하나에 몇 분</span><input className="inp" type="number" min={0} max={1440} defaultValue={c.step ?? 5} onBlur={e => { const v = Math.max(0, +e.target.value || 0); if (v !== (c.step ?? 5)) void set({ step: v }); }} /></label> : null}
+      {c.flow === 'step' ? <label className="field"><span className="field-label">메시지 하나에 몇 분</span><input className="inp" type="number" min={0} max={1440} defaultValue={c.step ?? 5} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} onBlur={e => { const v = Math.max(0, +e.target.value || 0); if (v !== (c.step ?? 5)) void set({ step: v }); }} /></label> : null}
       <label className="check"><input type="checkbox" checked={!!c.ai} onChange={e => void set({ ai: e.target.checked })} /><i /><span>캐릭터가 시간을 넘길 수 있게 하기</span><small>잠들었다 깨거나 장면이 건너뛸 때 캐릭터가 스스로 시계를 옮깁니다. 추가 호출은 없습니다.</small></label>
       <small className="hint">입력창에서 /time 22:30 · /time +2시간 · /time 2024-03-02 08:00 으로도 옮길 수 있어요. 캐릭터의 일정과 상태도 이 시각을 따릅니다.</small>
     </div> : null}

@@ -40,7 +40,7 @@ function Body({ c }: { c: Room }) {
     <Sec title="연결과 화자" ic="plug" open>
       <Sel label="API 연결" value={S.settings.activeConn || ''} opts={S.conns.length ? S.conns.map((x): [string, string] => [x.id, `${x.name}${x.model ? ' · ' + x.model : ''}`]) : [['', '연결 없음']]} onChange={v => { S.set({ activeConn: v }); drawTop(); }} />
       <Sel label="프리셋" value={S.settings.activePreset || ''} opts={S.presets.map((x): [string, string] => [x.id, x.name])} onChange={v => { S.set({ activePreset: v }); drawGauge(); }} />
-      <Sel label="이 대화의 페르소나" value={S.persona(c)?.id || ''} opts={S.personas.map((x): [string, string] => [x.id, x.name])} onChange={v => { c.personaId = v; saveChat(); drawMsgs(); }} />
+      <Sel label="이 대화의 페르소나" value={S.persona(c)?.id || ''} opts={S.personas.map((x): [string, string] => [x.id, x.name])} onChange={v => { c.personaId = v; c.personaAuto = false; saveChat(); drawMsgs(); }} />
     </Sec>
     {modeOf(c) === 'talk' ? <Sec title="상태" ic="heart" open={false}>{chars.map(presRow)}<small className="hint">일정이 있으면 지금 시각의 칸이 상태가 됩니다. 캐릭터가 답장에서 스스로 바꾸면 그 칸이 끝날 때까지만 앞섭니다.</small><Btn label="먼저 오는 연락 · 일정 · 상태 설정" ic="sliders" cls="ghost" onClick={() => liveSettings('auto', c)} /></Sec> : null}
     <Sec title="등장인물" ic="users" open={chars.length > 1}>

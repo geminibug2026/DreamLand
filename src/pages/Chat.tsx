@@ -3,7 +3,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { L } from '../legacy';
 import { Btn, Icon } from '../kit';
-import { B, NEEDS } from '../chat/bridge';
+import { B, NEEDS, orderHooks } from '../chat/bridge';
 import { cur, ui, useCh } from '../chat/store';
 import { armAuto, assetOwners, catchUp, charsOf, drawDrawer, drawMain, drawSide, fillLate, modeOf } from '../chat/actions';
 import { Side, sideRef } from '../chat/Side';
@@ -28,7 +28,7 @@ function Main() {
 }
 
 function ChatPage({ arg }: { arg?: unknown }) {
-  useState(() => { cur.sideOpen = false; });   // 방을 열 때마다 목록은 닫힌 채로 시작한다
+  useState(() => { cur.sideOpen = false; orderHooks(); });   // 방을 열 때마다 목록은 닫힌 채로 시작한다 · 다른 기능이 꽂은 칸의 차례를 맞춘다
   useCh('layout');
   const [st, setSt] = useState<'wait' | 'none' | 'ready'>('wait');
   const layout = useRef<HTMLElement>(null);
@@ -48,7 +48,7 @@ function ChatPage({ arg }: { arg?: unknown }) {
       cur.head = list.length; cur.from = 0; cur.revs.clear(); cur.fresh.clear();
       if (!S.get('personas', chat.personaId)) {   // 정해 둔 페르소나가 없으면 이 방에서 마지막으로 쓴 이름, 그것도 없으면 지금 기본 페르소나로
         const last = [...list].reverse().find(m => m.role === 'user' && m.name), p = (last && S.personas.find(x => x.name === last.name)) || S.persona(chat);
-        if (p) { chat.personaId = p.id; S.save('chats', chat, true).catch(e => console.warn(e)); }
+        if (p) { chat.personaId = p.id; chat.personaAuto = true; S.save('chats', chat, true).catch(e => console.warn(e)); }
       }
       B.ui.route.arg = chat.id; S.set({ lastChat: chat.id });
       // 에셋 · 기억 · 삽화를 기다리지 않고 먼저 그린다. 처음 여는 방이라 아직 읽지 못한 것은 읽는 대로 채워 넣는다

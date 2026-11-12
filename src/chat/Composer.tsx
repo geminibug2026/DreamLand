@@ -6,6 +6,7 @@ import { B } from './bridge';
 import { bump, cur, ui, useCh } from './store';
 import { charsOf, closeScene, command, commandList, generate, modeOf, openScene, send, translateInput } from './actions';
 import type { CmdItem } from './types';
+import { enterSends } from '../features/usersettings';
 
 /**
  * 입력창에 / 를 치면 뜨는 명령어 목록. attach 는 반드시 보내기 단축키보다 먼저 붙여야 한다 —
@@ -76,7 +77,7 @@ export function Composer() {
     ui.input = el;
     el.addEventListener('input', fit);
     const offSlash = slash.attach(el);   // 보내기 단축키보다 먼저 붙인다
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Enter' && !e.isComposing && ((B.S.settings.enterSend && !e.shiftKey) || e.ctrlKey || e.metaKey)) { e.preventDefault(); void send(); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Enter' && !e.isComposing && ((enterSends() && !e.shiftKey) || e.ctrlKey || e.metaKey)) { e.preventDefault(); void send(); } };
     const onPaste = (e: ClipboardEvent) => { const fs = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/')); if (fs.length) { e.preventDefault(); void addImages(fs); } };
     el.addEventListener('keydown', onKey); el.addEventListener('paste', onPaste);
     return () => { el.removeEventListener('input', fit); offSlash(); el.removeEventListener('keydown', onKey); el.removeEventListener('paste', onPaste); if (ui.input === el) ui.input = null; };

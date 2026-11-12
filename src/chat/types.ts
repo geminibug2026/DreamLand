@@ -26,7 +26,7 @@ export interface Diff { from: string; d?: number | null; at: number }
 
 /** 대화방: 공용 Chat 에 대화 화면이 읽고 쓰는 칸을 더한 것 */
 export interface Room extends Chat {
-  mode?: 'rp' | 'talk'; personaId?: string; count?: number; pinned?: boolean; unread?: number; src?: string;
+  mode?: 'rp' | 'talk'; personaId?: string; personaAuto?: boolean; count?: number; pinned?: boolean; unread?: number; src?: string;
   scene?: { on: boolean; title?: string; place?: string; at?: number }; scenes?: number;
   parent?: { id: string; at: number }; diary?: { to?: number }[]; diaryAt?: number;
   bg?: string; muted?: string[]; groupOrder?: string; loreIds?: string[];

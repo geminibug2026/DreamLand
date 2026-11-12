@@ -128,7 +128,9 @@ function setup() {
   } });
   // ── 화면: 태그는 언제나 가린다. 생성 중이면 읽은 감정을 바로 초상에 반영 ──
   X.filters = X.filters.filter(f => f.owner !== 'expr');
-  X.filters.push({ owner: 'expr', fn: (text, info) => {
+  // 옛 판과 같은 차례: 모듈의 표시 필터보다 먼저 태그를 걷어 낸다
+  const exprAt = X.filters.findIndex(f => f.owner === 'modules');
+  X.filters.splice(exprAt < 0 ? X.filters.length : exprAt, 0, { owner: 'expr', fn: (text, info) => {
     if (!text || text.indexOf('<') < 0) return text;
     const busy = B.chat.current().busy, ex = extractTag(text);
     if (ex.found && busy && info?.msg && info.role === 'assistant' && ex.label) {

@@ -1,4 +1,4 @@
-// 정규식 화면이 쓰는 자료 꼴과 다리. 실행 규칙(engine) · 진단(regex-lint) · 범위 저장과 멈춤 방지 작업자(f-regex 의 RegexUI)는 옛 모듈을 그대로 부른다
+// 정규식 화면이 쓰는 자료 꼴과 다리. 실행 규칙(engine) · 진단(regex-lint) · 진단(regex-lint)은 옛 모듈을 그대로 부르고, 범위 저장 · 켜짐 묶음 · 멈춤 방지 작업자는 여기 있다
 import { L, mod } from '../legacy';
 import type { Char, Chat } from '../types';
 import { S, arr, core, type Msg, type Obj, type Preset, type Regex } from '../studio/bridge';
@@ -34,18 +34,17 @@ interface CardsMod {
   regexToSt(r: Regex): Obj; regexFromJson(j: unknown, scope?: string): Regex[]; scopedRegex(charId?: string): Regex[];
   presetToSt(p: Preset): Obj; stPresetWithRegex(j: Obj, scripts: Regex[]): Obj;
 }
-interface RegexUi {
+export interface RegexUi {
   Scope: { list(sc: Sc): Regex[]; save(sc: Sc, r: Regex): Promise<void>; reorder(sc: Sc, list: Regex[]): Promise<void>; add(sc: Sc, r: Regex): Promise<Regex>; remove(sc: Sc, r: Regex): Promise<void> };
   everything(): Entry[]; moveScripts(items: Entry[], to: Sc): Promise<number>; applySet(set: RegexSet): Promise<number>;
   probe(source: string, flags: string, text: string, ms?: number): Promise<{ ok: boolean }>; findScript(id: string): Entry | null;
 }
 interface ChatApi { current(): { chat: Chat | null; msgs: Msg[]; busy: boolean }; groupTitle(c: Chat): string; roomName(c: Chat): string; redraw(): void }
 
-export const needs = ['f-regex', 'engine', 'cards', 'regex-lint', 'chat'];
+export const needs = ['engine', 'cards', 'regex-lint', 'chat'];
 export const E = () => mod<EngineMod>('engine');
 export const Lint = () => mod<LintMod>('regex-lint');
 export const Cards = () => mod<CardsMod>('cards');
-export const RX = () => mod<{ RegexUI: RegexUi }>('f-regex').RegexUI;
 export const chatApi = () => mod<{ chatApi: ChatApi }>('chat').chatApi;
 
 // ── 범위 ──
@@ -65,6 +64,88 @@ export function setAllow(sc: Sc, v: boolean) {
   S().set({ regexAllow: { ...a, [k]: { ...(a[k] || {}), [sc.id || '']: v } } });
 }
 export const redrawChat = () => { try { if (L.ui.route.page === 'chat' && !chatApi().current().busy) chatApi().redraw(); } catch { /* 대화 화면이 아직 없으면 그대로 둔다 */ } };
+
+// ── 범위별 저장 ──
+const byOrder = (list: Regex[]) => list.map((r, i) => [r, i] as const).sort((a, b) => (+(a[0].order ?? 0) || 0) - (+(b[0].order ?? 0) || 0) || a[1] - b[1]).map(x => x[0]);
+const presetOf = (sc: Sc) => S().get<Preset>('presets', sc.id);
+export const Scope: RegexUi['Scope'] = {
+  list(sc) { return sc.kind === 'global' ? byOrder(S().regex.filter(isGlobal)) : sc.kind === 'char' ? Cards().scopedRegex(sc.id) : arr(presetOf(sc)?.regex).filter(r => r && typeof r === 'object'); },
+  async save(sc, r) { if (sc.kind === 'preset') { const p = presetOf(sc); if (p) await S().save('presets', p, true); } else await S().save('regex', r, true); },
+  /** 목록을 이 순서로 굳힌다 */
+  async reorder(sc, list) {
+    if (sc.kind === 'preset') { const p = presetOf(sc); if (!p) return; list.forEach((r, i) => { r.order = i; }); p.regex = list; await S().save('presets', p, true); return; }
+    for (let i = 0; i < list.length; i++) if (list[i].order !== i) { list[i].order = i; await S().save('regex', list[i], true); }
+  },
+  async add(sc, r) {
+    const list = Scope.list(sc);
+    r.scope = sc.kind === 'global' ? 'global' : sc.kind === 'char' ? sc.id : 'preset';
+    r.order = list.reduce((m, x) => Math.max(m, +(x.order ?? 0) || 0), -1) + 1;
+    if (sc.kind === 'preset') {
+      const p = presetOf(sc); if (!p) throw new Error('프리셋을 찾지 못했어요');
+      if (list.some(x => x.id === r.id)) r.id = L.core.uid();
+      p.regex = [...list, r]; await S().save('presets', p, true);
+    } else { const hit = S().get<Regex>('regex', r.id); if (hit && hit !== r) r.id = L.core.uid(); await S().save('regex', r, true); }
+    return r;
+  },
+  async remove(sc, r) {
+    if (sc.kind === 'preset') { const p = presetOf(sc); if (!p) return; p.regex = arr(p.regex).filter(x => x !== r); await S().save('presets', p, true); }
+    else await S().remove('regex', r.id);
+  },
+};
+/** 모든 범위의 스크립트 — 전역, 프리셋들, 캐릭터들 순 */
+export function everything(): Entry[] {
+  const out: Entry[] = Scope.list(G).map(r => ({ r, sc: G }));
+  for (const p of S().presets) { const sc: Sc = { kind: 'preset', id: p.id }; for (const r of Scope.list(sc)) out.push({ r, sc }); }
+  for (const id of [...new Set(S().regex.filter(r => !isGlobal(r)).map(r => r.scope))]) { const sc: Sc = { kind: 'char', id }; for (const r of Scope.list(sc)) out.push({ r, sc }); }
+  return out;
+}
+export const findScript = (id: string): Entry | null => everything().find(e => e.r.id === id) || null;
+/** 스크립트를 다른 범위로 옮긴다. 옮겨 간 범위는 바로 쓸 수 있게 허용해 둔다 (직접 옮긴 것이니 다시 묻지 않는다) */
+export async function moveScripts(items: Entry[], to: Sc) {
+  let n = 0;
+  for (const { r, sc } of items) {
+    if (scKey(sc) === scKey(to)) continue;
+    await Scope.remove(sc, r);
+    await Scope.add(to, r); n++;
+  }
+  if (n && !isAllowed(to)) setAllow(to, true);
+  return n;
+}
+/** 켜짐 묶음을 적용한다 → 바뀐 개수 */
+export async function applySet(set: RegexSet) {
+  const on = new Set(set.on), known = new Set(set.known), presets = new Set<string>(); let n = 0;
+  for (const { r, sc } of everything()) {
+    if (!known.has(r.id)) continue;
+    const want = on.has(r.id); if (!!r.enabled === want) continue;
+    r.enabled = want; n++;
+    if (sc.kind === 'preset') presets.add(sc.id || ''); else await S().save('regex', r, true);
+  }
+  for (const id of presets) { const p = S().get<Preset>('presets', id); if (p) await S().save('presets', p, true); }
+  S().set({ regexSet: set.id }); redrawChat();
+  return n;
+}
+
+// ── 멈춤 방지: 정규식을 따로 떨어진 작업자에서 먼저 돌려 본다 ──
+const PROBE = 'onmessage = e => { const d = e.data; try { const re = new RegExp(d.source, d.flags); let n = 0; d.text.replace(re, () => { n++; return ""; }); postMessage({ id: d.id, ok: true, n }); } catch (err) { postMessage({ id: d.id, ok: true, n: 0 }); } };';
+type Probed = { ok: boolean; hang?: boolean; unguarded?: boolean };
+let worker: Worker | null = null, probeSeq = 0, probeQueue: Promise<Probed> = Promise.resolve({ ok: true });
+function probeOnce(source: string, flags: string, text: string, ms: number) {
+  return new Promise<Probed>(res => {
+    if (typeof Worker === 'undefined') return res({ ok: true, unguarded: true });
+    try { worker ||= new Worker(URL.createObjectURL(new Blob([PROBE], { type: 'text/javascript' }))); } catch { return res({ ok: true, unguarded: true }); }
+    const id = ++probeSeq, w = worker;
+    const done = (v: Probed) => { clearTimeout(timer); w.removeEventListener('message', onMsg); w.removeEventListener('error', onErr); res(v); };
+    const onMsg = (e: MessageEvent<{ id?: number }>) => { if (e.data?.id === id) done({ ok: true }); };
+    const onErr = () => { worker = null; done({ ok: true, unguarded: true }); };
+    const timer = setTimeout(() => { try { w.terminate(); } catch { /* 이미 끝났다 */ } if (worker === w) worker = null; done({ ok: false, hang: true }); }, ms);
+    w.addEventListener('message', onMsg); w.addEventListener('error', onErr);
+    w.postMessage({ id, source, flags, text });
+  });
+}
+/** 이 정규식이 이 글에서 제때 끝나는가. 끝나지 않으면 { ok: false, hang: true } — 화면이 얼지 않게 본 실행 전에 확인한다 */
+export const probe = (source: string, flags: string, text: string, ms = 1500) => (probeQueue = probeQueue.then(() => probeOnce(source, flags, text, ms)));
+const UI: RegexUi = { Scope, everything, findScript, moveScripts, applySet, probe };
+export const RX = () => UI;
 
 // ── 표시용 짧은 글 ──
 export type WhoKey = 'onUser' | 'onAI' | 'onSlash' | 'onLore' | 'onReason';

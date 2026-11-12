@@ -9,7 +9,7 @@ export interface XChar extends Char {
   depthPrompt?: { prompt: string; depth: number; role: string }; ext?: Record<string, unknown>; more?: Record<string, unknown>;
   loreIds?: string[]; bind?: Bind; src?: string;
 }
-export interface XChat extends Chat { personaId?: string; loreIds?: string[]; count?: number; mode?: string; pvars?: Record<string, Record<string, unknown>> }
+export interface XChat extends Chat { personaId?: string; personaAuto?: boolean; loreIds?: string[]; count?: number; mode?: string; pvars?: Record<string, Record<string, unknown>> }
 export interface Persona { id: string; name: string; avatar?: string; description: string; loreIds?: string[]; [k: string]: unknown }
 export interface Entry {
   id: string; name?: string; keys?: string[]; keys2?: string[]; logic?: number | string; content?: string; constant?: boolean; enabled?: boolean;

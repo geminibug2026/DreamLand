@@ -1,5 +1,5 @@
 // 고급 포맷팅: 컨텍스트 템플릿 · 인스트럭트 템플릿 · 시스템 프롬프트 · 추론 · 그 밖의 설정 (프롬프트 조립은 옛 advanced.js 가 맡는다)
-import { useState, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { mod } from '../legacy';
 import { Btn, IconBtn } from '../kit';
 import { LForm, PageHead, S, confirmBox, core, errMsg, promptBox, toast, type Conn, type FormDef, type FormDefs, type Obj, type Opt } from '../studio/bridge';
@@ -77,7 +77,7 @@ function Format() {
   const redraw = () => setEpoch(n => n + 1);                       // 폼까지 새로 만든다 (옛 refresh)
   const ch = () => { S().set({}); setTick(n => n + 1); };           // 저장하고 상태 줄 · 저장 안 됨 표시만 다시
   const form = (obj: object, defs: FormDefs) => <LForm obj={obj} defs={defs} onChange={ch} />;
-  const card = (cls: string, ...kids: ReactNode[]) => <div className={`card af-card ${cls}${!textConn && conn && cls.includes('af-tc') ? ' af-dim' : ''}`.replace(/\s+/g, ' ').trim()}>{kids.map((k, i) => <span key={i} style={{ display: 'contents' }}>{k}</span>)}</div>;
+  const card = (cls: string, ...kids: ReactNode[]) => <div className={`card af-card ${cls}${!textConn && conn && cls.includes('af-tc') ? ' af-dim' : ''}`.replace(/\s+/g, ' ').trim()}>{kids.map((k, i) => <Fragment key={i}>{k}</Fragment>)}</div>;
   const bar = (kind: Kind) => <TplBar kind={kind} redraw={redraw} />;
 
   let status: ReactNode;

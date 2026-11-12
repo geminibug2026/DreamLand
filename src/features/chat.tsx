@@ -1,7 +1,10 @@
 // 대화 화면이 옛 모듈과 만나는 자리: 옛 chat.js 가 내보낸 chatApi 와 Live 의 연결 고리를 React 판으로 바꿔 끼운다
-import { B, NEEDS } from '../chat/bridge';
+import { B, NEEDS, orderHooks } from '../chat/bridge';
 import { cur, ui } from '../chat/store';
 import { armAuto, autoPlan, chatApi, drawDrawer, drawHud, drawMsgs, drawTop, modeOf, onKey, onVisible, poke, watchPresence } from '../chat/actions';
+
+import { liveSettings } from '../chat/LiveSettings';
+import { editState } from '../chat/Hud';
 
 const shown = () => B.ui.route.page === 'chat' && !!cur.chat && !!ui.scroll;
 
@@ -15,6 +18,8 @@ export const feature = {
     Live.onUser = () => { if (!shown()) return; drawTop(); armAuto(); };
     Live.planOf = chat => (cur.chat === chat && modeOf(chat) === 'talk' ? autoPlan(chat) : null);
     Live.poke = poke;
+    Live.settings = liveSettings; Live.editState = editState;   // 옛 모듈이 여는 설정 창 · 고치기 창도 새 것으로
+    B.core.on('route', orderHooks);   // 기능이 모두 뜬 뒤(첫 화면을 그릴 때)부터 화면을 옮길 때마다 차례를 맞춘다
     B.core.on('clock', c => { if (c === cur.chat && shown()) { drawTop(); drawMsgs(); if (cur.drawer) drawDrawer(); armAuto(); } });
     B.core.on('clock:tick', c => { if (c === cur.chat && shown()) drawTop(); });
     B.core.on('settings', p => { const o = (p || {}) as object; if (shown() && ('bubbles' in o || 'showMeta' in o || 'avatarShape' in o)) drawMsgs(); });
