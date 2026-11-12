@@ -1,5 +1,5 @@
 // 쪽 나누기: const pg = usePaged(rows, { id: 'presets', resetKey: q + sort, focusIndex }); pg.rows 를 그리고 {pg.pager} 를 아래에 둔다
-// · 쪽 번호(지금 근처 + 처음 · 끝 · 생략표) · 이전 · 다음 · 한 쪽 개수 고르기(설정 pageSizes[id] 에 기억)
+// · 실리태번 캐릭터 목록과 같은 꼴: 처음 · 이전 · "1–50 / 400" · 다음 · 끝 · 한 쪽 개수(10 · 25 · 50 · 100 · 250 · 500 · 1000, 기본 50, 설정 pageSizes[id] 에 기억)
 // · resetKey 가 바뀌면 1쪽 · 지워서 쪽이 비면 앞쪽 · 쪽을 넘기면 목록(listRef) 맨 위로
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../kit';
@@ -32,7 +32,7 @@ export function pageList(page: number, pages: number): (number | '…')[] {
   return out;
 }
 
-export function usePaged<T>(list: T[], { id, perPage: base = 30, sizes = [12, 30, 60, 120], resetKey, focusIndex, unit = 1, reserve = 0 }: PagedOpts = {}): Paged<T> {
+export function usePaged<T>(list: T[], { id, perPage: base = 50, sizes = [10, 25, 50, 100, 250, 500, 1000], resetKey, focusIndex, unit = 1, reserve = 0 }: PagedOpts = {}): Paged<T> {
   const [size, setSize] = useState(() => saved(id) || base);
   const fit = Math.max(1, unit > 1 ? Math.max(1, Math.round((size + reserve) / unit)) * unit - reserve : size);
   const pages = Math.max(1, Math.ceil(list.length / fit));
@@ -51,14 +51,15 @@ export function usePaged<T>(list: T[], { id, perPage: base = 30, sizes = [12, 30
   const listRef = useCallback((x: HTMLElement | null) => { el.current = x; }, []);
   const start = pg * fit, rows = list.slice(start, start + fit);
   const opts = [...new Set([...sizes, size])].sort((a, b) => a - b);
+  const end = Math.min(list.length, start + fit), dbl = (ic: string) => <span className="pg-dbl"><Icon name={ic} size={14} /><Icon name={ic} size={14} /></span>;
   const pager = list.length > Math.min(fit, ...sizes) || pages > 1 ? <nav className="pager" aria-label="쪽 이동">
+    <button type="button" className="pg-step" disabled={pg === 0} title="첫 쪽" aria-label="첫 쪽" onClick={() => setPage(0)}>{dbl('left')}</button>
     <button type="button" className="pg-step" disabled={pg === 0} title="앞 쪽" aria-label="앞 쪽" onClick={() => setPage(pg - 1)}><Icon name="left" size={16} /></button>
-    <span className="pg-nums">{pageList(pg, pages).map((n, i) => n === '…' ? <i key={'g' + i} className="pg-gap">…</i>
-      : <button key={n} type="button" className={'pg-num' + (n === pg ? ' on' : '')} aria-current={n === pg ? 'page' : undefined} onClick={() => setPage(n)}>{n + 1}</button>)}</span>
+    <small className="pg-info" title={`${pg + 1} / ${pages}쪽`}>{`${start + 1}–${end} / ${list.length}`}</small>
     <button type="button" className="pg-step" disabled={pg >= pages - 1} title="다음 쪽" aria-label="다음 쪽" onClick={() => setPage(pg + 1)}><Icon name="right" size={16} /></button>
+    <button type="button" className="pg-step" disabled={pg >= pages - 1} title="마지막 쪽" aria-label="마지막 쪽" onClick={() => setPage(pages - 1)}>{dbl('right')}</button>
     <select className="inp pg-size" aria-label="한 쪽에 보일 수" title="한 쪽에 보일 수" value={size} onChange={e => { const n = +e.target.value; setSize(n); if (id) remember(id, n); setPage(0); }}>
       {opts.map(n => <option key={n} value={n}>{`${unit > 1 ? Math.max(1, Math.round((n + reserve) / unit)) * unit - reserve : n}개씩`}</option>)}</select>
-    <small className="pg-info">{`${start + 1}–${Math.min(list.length, start + fit)} / ${list.length}`}</small>
   </nav> : null;
   return { rows, start, page: pg, pages, perPage: fit, setPage, pager, listRef };
 }

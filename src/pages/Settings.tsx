@@ -25,7 +25,7 @@ function SettingsPage() {
   const kept = Object.values(Secrets.items).reduce((n, f) => n + Object.keys(f).length, 0);
   return <section className="pagebox">
     <PageHead eyebrow="settings" title="설정" />
-    <div className="card"><Form obj={st} defs={[{ section: '대화 화면' }, { k: 'showMeta', label: '메시지에 모델·시간·토큰 표시', type: 'check' }, { k: 'defaultMode', label: '새 대화의 기본 모드', type: 'select', opts: [['rp', 'RP 모드 (소설처럼)'], ['talk', '대화 모드 (메신저처럼)']], half: true }, { k: 'modes.talkTokens', label: '대화 모드 최대 응답 토큰', type: 'num', half: true },
+    <div className="card"><Form obj={st} defs={[{ section: '대화 화면' }, { k: 'showMeta', label: '메시지에 모델·시간·토큰 표시', type: 'check' }, { k: 'chatTruncation', label: '처음 불러올 메시지 수 (0 = 전부)', type: 'num', min: 0, max: 1000, step: 5, ph: '100', nullable: true, half: true, hint: '방을 열 때 끝에서부터 이만큼 그리고, 「이전 메시지 더 보기」도 한 번에 이만큼씩 더 불러옵니다.' }, { k: 'defaultMode', label: '새 대화의 기본 모드', type: 'select', opts: [['rp', 'RP 모드 (소설처럼)'], ['talk', '대화 모드 (메신저처럼)']], half: true }, { k: 'modes.talkTokens', label: '대화 모드 최대 응답 토큰', type: 'num', half: true },
       { k: 'modes.talkPrompt', label: '대화 모드 지시문', type: 'area', rows: 4, ph: engine.TALK_DEFAULT, hint: '비워 두면 기본 지시문을 씁니다. 대화 모드는 프리셋의 프롬프트 블록 대신 이 지시문과 캐릭터 카드, 시각이 찍힌 기록으로 조립됩니다.' },
       { k: 'modes.stagger', label: '대화 모드: 말풍선을 한 줄씩 차례로 보여 주기', type: 'check' }, { k: 'modes.commands', label: '대화 모드: 캐릭터가 반응 · 상태 변경 · 셀카 · 기억 명령을 쓸 수 있게 하기', type: 'check' },
       { k: 'modes.presenceDelay', label: '대화 모드: 상태에 따라 답장을 늦추기 (자리 비움·방해 금지는 늦게, 오프라인은 답장 없음)', type: 'check' },

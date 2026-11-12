@@ -71,8 +71,10 @@ export function drawMsgs({ lazy = false } = {}) {
   };
   requestAnimationFrame(() => whenIdle(step));
 }
+/** 처음 그릴 메시지 수 = "더 보기" 한 번에 더 그리는 수 (실리태번 chat_truncation, 기본 100, 0 이면 전부) */
+export function truncation() { const n = (S.settings as unknown as { chatTruncation?: number | null }).chatTruncation; return n == null || n < 0 ? 100 : n > 0 ? Math.round(n) : Infinity; }
 /** 이전 메시지 더 보기: 보던 자리를 지킨다 */
-export function showMore() { const sc = ui.scroll, hgt = sc?.scrollHeight || 0; cur.shown += 80; drawMsgs(); if (sc) sc.scrollTop = sc.scrollHeight - hgt; }
+export function showMore() { const sc = ui.scroll, hgt = sc?.scrollHeight || 0; cur.shown += truncation(); drawMsgs(); if (sc) sc.scrollTop = sc.scrollHeight - hgt; }
 /** 보던 자리를 적어 둔다. 돌려받은 함수를 다시 그린 뒤 부르면 그 자리로 되돌린다.
  *  기준은 고친 메시지(id), 없으면 화면 맨 위에 걸친 메시지. 맨 아래를 보고 있었으면 맨 아래에 남는다 */
 export function holdView(id?: string): () => void {

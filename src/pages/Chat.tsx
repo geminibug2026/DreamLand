@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom';
 import { Btn, Icon } from '../kit';
 import { orderHooks } from '../chat/order';
 import { cur, ui, useCh } from '../chat/store';
-import { armAuto, assetOwners, catchUp, charsOf, drawDrawer, drawMain, drawSide, fillLate, modeOf } from '../chat/actions';
+import { armAuto, assetOwners, catchUp, charsOf, drawDrawer, drawMain, drawSide, fillLate, modeOf, truncation } from '../chat/actions';
 import { Side, sideRef } from '../chat/Side';
 import { Dossier, Top } from '../chat/Top';
 import { Hud } from '../chat/Hud';
@@ -49,7 +49,7 @@ function ChatPage({ arg }: { arg?: unknown }) {
       if (!chat) { setSt('none'); return; }
       const list = cur.gen?.chat === chat ? cur.gen.msgs : await S.msgsFast(chat.id);
       if (!live) return;   // 읽는 사이 다른 화면으로 넘어갔다
-      cur.chat = chat; cur.msgs = list; cur.shown = 60; cur.lastPrompt = null; cur.openedAt = Date.now(); cur.chimeRun = 0;
+      cur.chat = chat; cur.msgs = list; cur.shown = truncation(); cur.lastPrompt = null; cur.openedAt = Date.now(); cur.chimeRun = 0;
       cur.head = list.length; cur.from = 0; cur.revs.clear(); cur.fresh.clear();
       if (!S.get('personas', chat.personaId)) {   // 정해 둔 페르소나가 없으면 이 방에서 마지막으로 쓴 이름, 그것도 없으면 지금 기본 페르소나로
         const last = [...list].reverse().find(m => m.role === 'user' && m.name), p = (last && S.personas.find(x => x.name === last.name)) || S.persona(chat);
