@@ -43,7 +43,7 @@
 .thread { box-shadow: 0 12px 18px -16px var(--shade); } .thread .arch.sm { box-shadow: 3px 3px 0 var(--plate); }
 .arch-card .arch { box-shadow: 5px 5px 0 var(--plate); transition: transform .35s var(--ease), box-shadow .35s var(--ease); }
 .arch-card:hover .arch { transform: translate(-2px, -4px); box-shadow: 8px 9px 0 var(--plate); }
-.arch-card.add .arch { box-shadow: none; } .arch-card b::before { background: var(--tk); }
+.arch-card.add .arch { box-shadow: none; } .arch-card b::before { display: none; }
 .arch-grid.cols-4 .arch-card .arch { box-shadow: 3px 3px 0 var(--plate); }
 
 /* 캐릭터 시트 */
