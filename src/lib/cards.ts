@@ -74,19 +74,46 @@ function* pngChunks(u: Uint8Array): Generator<Chunk> {
     p += 12 + len;
   }
 }
+/** 그림 파일에 든 캐릭터 카드. PNG 는 tEXt · iTXt 의 chara / ccv3, 그 밖의 그림(WEBP · JPG 등)은 EXIF · XMP 따위에 실린 같은 값을 찾는다 */
 export function readPngCard(bytes: Uint8Array | ArrayBuffer | ArrayLike<number>): Card | null {
   const u = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes as ArrayBuffer);
-  if (u[0] !== 0x89 || u[1] !== 0x50) return null;
-  const found: Record<string, string> = {};
-  for (const c of pngChunks(u)) {
-    if (c.type !== 'tEXt') continue;
-    const z = c.data.indexOf(0); if (z < 0) continue;
-    const key = String.fromCharCode(...c.data.subarray(0, z)).toLowerCase();
-    if (key === 'chara' || key === 'ccv3') { let s = ''; const d = c.data.subarray(z + 1); for (let i = 0; i < d.length; i += 0x8000) s += fromCodes(d.subarray(i, i + 0x8000)); found[key] = s; }
+  if (u[0] === 0x89 && u[1] === 0x50) {
+    const found: Record<string, string> = {};
+    for (const c of pngChunks(u)) {
+      if (c.type !== 'tEXt' && c.type !== 'iTXt') continue;
+      const z = c.data.indexOf(0); if (z < 0) continue;
+      const key = String.fromCharCode(...c.data.subarray(0, z)).toLowerCase();
+      if (key !== 'chara' && key !== 'ccv3') continue;
+      let d = c.data.subarray(z + 1);
+      if (c.type === 'iTXt') {   // 압축 표시 · 방식 · 언어\0 · 번역된 키\0 · 글 (압축된 것은 읽지 않는다)
+        if (d[0] !== 0) continue;
+        const a = d.indexOf(0, 2); if (a < 0) continue; const b = d.indexOf(0, a + 1); if (b < 0) continue;
+        d = d.subarray(b + 1);
+      }
+      let s = ''; for (let i = 0; i < d.length; i += 0x8000) s += fromCodes(d.subarray(i, i + 0x8000)); found[key] = s.trim();
+    }
+    for (const raw of [found.ccv3, found.chara]) if (raw) { const c = parseCardText(raw); if (c) return c; }
+    return null;
   }
-  const raw = found.ccv3 || found.chara;
-  if (!raw) return null;
-  try { return JSON.parse(b64ToUtf8(raw)); } catch { return null; }
+  return scanCard(u);
+}
+/** base64 또는 JSON 글자 → 카드 (카드 모양이 아니면 null) */
+function parseCardText(raw: string): Card | null {
+  const looks = (j: unknown): j is Card => !!j && typeof j === 'object' && (typeof (j as Card).spec === 'string' || typeof (j as Card).data === 'object' || typeof (j as Card).name === 'string');
+  for (const f of [() => JSON.parse(b64ToUtf8(raw)), () => JSON.parse(raw)]) { try { const j: unknown = f(); if (looks(j)) return j; } catch { /* 다음 방법 */ } }
+  return null;
+}
+/** PNG 가 아닌 그림: 파일 안에서 "chara"/"ccv3" 뒤의 base64, 또는 카드 JSON 을 찾는다. 새 판(ccv3)을 먼저 */
+function scanCard(u: Uint8Array): Card | null {
+  let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += fromCodes(u.subarray(i, i + 0x8000));
+  for (const key of ['ccv3', 'chara']) {
+    const re = new RegExp(key + '[^A-Za-z0-9+/={]{0,24}([A-Za-z0-9+/]{40,}={0,2})', 'gi');
+    for (const m of s.matchAll(re)) { const c = parseCardText(m[1]); if (c) return c; }
+  }
+  for (const m of s.matchAll(/eyJ[A-Za-z0-9+/]{60,}={0,2}/g)) { const c = parseCardText(m[0]); if (c && (c.spec || c.data)) return c; }   // 이름표 없이 실린 base64 JSON
+  const at = s.search(/\{\s*"spec"\s*:\s*"chara_card_v[23]"/);
+  if (at >= 0) { const txt = new TextDecoder().decode(u.subarray(at)); let tries = 0; for (let end = txt.lastIndexOf('}'); end > 0 && tries++ < 400; end = txt.lastIndexOf('}', end - 1)) { try { return JSON.parse(txt.slice(0, end + 1)); } catch { /* 더 짧게 */ } } }
+  return null;
 }
 export function writePngCard(pngBytes: Uint8Array, card: unknown, v3: unknown = null): Uint8Array {
   const parts: Uint8Array[] = []; let iend: Uint8Array | null = null;
@@ -194,7 +221,7 @@ export function loreToCardBook(book: LoreBook) {
         extensions: {
           position: posNum(e.position), depth: e.depth ?? 4, role: Math.max(0, ROLE.indexOf(e.role as string)), probability: e.probability ?? 100, useProbability: true, selectiveLogic: +(e.logic as number) || 0, display_index: i,
           outlet_name: e.outlet || '', group: e.group || '', group_weight: e.groupWeight ?? 100, scan_depth: numOrNull(e.scanDepth), case_sensitive: tri(e.caseSensitive), match_whole_words: tri(e.wholeWord), use_group_scoring: tri(e.useGroupScoring),
-          automation_id: e.automationId || '', vectorized: !!e.more?.vectorized, sticky: +(e.sticky as number) || 0, cooldown: +(e.cooldown as number) || 0, delay: +(e.delay as number) || 0, delay_until_recursion: +(e.delayUntilRecursion as number) || 0,
+          automation_id: e.automationId || '', vectorized: !!(e.vectorized || e.more?.vectorized), sticky: +(e.sticky as number) || 0, cooldown: +(e.cooldown as number) || 0, delay: +(e.delay as number) || 0, delay_until_recursion: +(e.delayUntilRecursion as number) || 0,
           character_filter: { isExclude: !!cf.exclude, names: cf.names || [], tags: cf.tags || [] }, triggers: e.triggers || [],
           ...Object.fromEntries(WI_FLAGS.map(([mine, , cb]) => [cb, mine === 'groupOverride' ? !!(e.groupOverride ?? true) : !!e[mine]])),
         },
@@ -325,14 +352,33 @@ export interface StPreset {
   stream_openai?: boolean; squash_system_messages?: boolean; assistant_prefill?: string; reasoning_effort?: string; prompts?: StPrompt[]; prompt_order?: { character_id?: number; order?: StOrder[] }[];
   personality_format?: string; scenario_format?: string; wi_format?: string; extensions?: { regex_scripts?: unknown; [k: string]: unknown }; [k: string]: unknown;
 }
+/** 정하지 않은 값을 파일에 적을 때 쓰는 값 (presetToSt 와 같아야 한다) */
+const UNSET_AS: Record<string, unknown> = { topP: 1, freqPen: 0, presPen: 0, topK: 0, minP: 0, topA: 0, repPen: 1, seed: -1 };
+/** 드림랜드가 직접 다루는 프리셋 키. 그 밖의 키(모델 선택 · 다른 지시문 등)는 preset.st.cc 에 그대로 두었다가 내보낼 때 되돌린다 */
+const CC_OWN = new Set(['name', 'temperature', 'top_p', 'top_k', 'openai_max_tokens', 'openai_max_context', 'frequency_penalty', 'presence_penalty', 'min_p', 'top_a', 'repetition_penalty', 'seed', 'stream_openai', 'squash_system_messages', 'assistant_prefill', 'reasoning_effort', 'continue_nudge_prompt', 'impersonation_prompt', 'group_nudge_prompt', 'prompts', 'prompt_order', 'personality_format', 'scenario_format', 'wi_format', 'extensions']);
+/** 보관하지 않는 키: 접속 주소 · 비밀번호 */
+const CC_SECRET = new Set(['reverse_proxy', 'proxy_password']);
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+/** [드림랜드 프리셋 값, 프리셋 파일 키] — 비어 있으면 드림랜드 기본 문구를 쓴다 */
+const NUDGES: [string, string][] = [['continueNudge', 'continue_nudge_prompt'], ['impersonatePrompt', 'impersonation_prompt'], ['groupNudge', 'group_nudge_prompt']];
+const num = (v: unknown) => typeof v === 'number' && isFinite(v) ? v : null;
 export function stPresetToPreset(j: StPreset, name?: string): { preset: DPreset; regex: DRegex[] } {
   const p = K.defaultPreset(); p.name = name || j.name || '가져온 프리셋';
   const pick = <T,>(v: T | null | undefined, d: T) => (v === undefined || v === null ? d : v);
   Object.assign(p.params, {
     temperature: pick(j.temperature, 1), topP: pick(j.top_p, null), topK: j.top_k ? j.top_k : null, maxTokens: pick(j.openai_max_tokens, 4096), contextSize: pick(j.openai_max_context, 128000),
     freqPen: j.frequency_penalty || null, presPen: j.presence_penalty || null, stream: pick(j.stream_openai, true), squash: pick(j.squash_system_messages, true),
-    prefill: j.assistant_prefill || '', effort: ['low', 'medium', 'high'].includes(j.reasoning_effort as string) ? j.reasoning_effort : '',
+    minP: num(j.min_p) || null, topA: num(j.top_a) || null, repPen: num(j.repetition_penalty) && j.repetition_penalty !== 1 ? j.repetition_penalty : null, seed: num(j.seed) !== null && j.seed !== -1 ? j.seed : null,
+    prefill: j.assistant_prefill || '', effort: EFFORTS.includes(j.reasoning_effort as string) ? j.reasoning_effort : '',
   });
+  for (const [mine, theirs] of NUDGES) if (typeof j[theirs] === 'string' && j[theirs]) (p.params as Record<string, unknown>)[mine] = j[theirs];
+  // 드림랜드에서 내보낼 때 "정하지 않음"이던 값은 파일에 기본값으로 적혀 있다. 그 값이 그대로면 다시 "정하지 않음"으로
+  const dl = j.extensions?.dreamland as { unset?: unknown } | undefined, unset = K.arr<string>(dl?.unset);
+  const asWritten: Record<string, unknown> = { topP: j.top_p, freqPen: j.frequency_penalty, presPen: j.presence_penalty, topK: j.top_k, minP: j.min_p, topA: j.top_a, repPen: j.repetition_penalty, seed: j.seed };
+  for (const k of unset) if (k in asWritten && asWritten[k] === UNSET_AS[k]) (p.params as Record<string, unknown>)[k] = null;
+  const keep = Object.fromEntries(Object.entries(j).filter(([k]) => !CC_OWN.has(k) && !CC_SECRET.has(k)));
+  const extOther = Object.fromEntries(Object.entries(j.extensions || {}).filter(([k]) => k !== 'regex_scripts' && k !== 'dreamland'));
+  if (Object.keys(extOther).length) keep.extensions = extOther;
   const prompts = new Map(K.arr<StPrompt>(j.prompts).map(x => [x.identifier, x]));
   const orders = K.arr<{ character_id?: number; order?: StOrder[] }>(j.prompt_order);
   const order: StOrder[] = (orders.find(o => o.character_id === 100001) || orders[orders.length - 1])?.order || K.arr<StPrompt>(j.prompts).map(x => ({ identifier: x.identifier, enabled: x.enabled !== false }));
@@ -348,22 +394,27 @@ export function stPresetToPreset(j: StPreset, name?: string): { preset: DPreset;
     else if (kind === 'worldInfoBefore' || kind === 'worldInfoAfter') content = fmt(j.wi_format, 'x');
     else if (kind !== 'text' && kind !== 'main' && kind !== 'jailbreak') content = '';
     if (kind === 'chatHistory' && !blocks.some(b => b.kind === 'summary')) blocks.push({ id: K.uid(), kind: 'summary', name: K.MARKERS.summary, role: 'system', content: '{{slot}}', enabled: true, depth: null });
-    blocks.push({ id: K.uid(), kind, name: kind === 'text' ? (x.name || ST_NAME[o.identifier] || o.identifier) : K.MARKERS[kind], role: x.role || 'system', content, enabled: o.enabled !== false, depth: x.injection_position === 1 ? (x.injection_depth ?? 4) : null });
+    blocks.push({ id: K.uid(), kind, name: kind === 'text' ? (x.name || ST_NAME[o.identifier] || o.identifier) : K.MARKERS[kind], role: x.role || 'system', content, enabled: o.enabled !== false, depth: x.injection_position === 1 ? (x.injection_depth ?? 4) : null, ...(kind === 'text' ? { stId: o.identifier } : {}) });
   }
   if (!blocks.some(b => b.kind === 'chatHistory')) blocks.push({ id: K.uid(), kind: 'chatHistory', name: K.MARKERS.chatHistory, role: 'system', content: '', enabled: true, depth: null });
   p.blocks = blocks;
+  // 순서에 없는 프롬프트 · 다른 캐릭터용 순서는 쓰지 않지만 보관했다가 그대로 내보낸다
+  const inOrder = new Set(order.map(o => o.identifier));
+  const unused = K.arr<StPrompt>(j.prompts).filter(x => !inOrder.has(x.identifier));
+  const otherOrders = orders.filter(o => o.order !== order);
+  p.st = { cc: keep, ...(unused.length ? { prompts: unused } : {}), ...(otherOrders.length ? { orders: otherOrders } : {}) };
   p.regex = K.arr<unknown>(j.extensions?.regex_scripts).filter((r): r is StRegex => !!r && typeof r === 'object').map((r, i) => ({ ...stRegexToRegex(r, 'preset'), order: i }));   // 프리셋에 실린 정규식은 프리셋과 함께 다닌다
   return { preset: p, regex: [] };
 }
 /** 드림랜드 프리셋 → Chat Completion 프리셋 JSON. 프리셋에 실린 정규식은 extensions.regex_scripts 로 함께 나간다 */
 export function presetToSt(p: DPreset) {
-  const P = (p.params || {}) as { temperature?: number; freqPen?: number; presPen?: number; topP?: number; topK?: number; contextSize?: number; maxTokens?: number; stream?: boolean; squash?: boolean; prefill?: string; effort?: string };
+  const P = (p.params || {}) as { temperature?: number; freqPen?: number; presPen?: number; topP?: number; topK?: number; minP?: number; topA?: number; repPen?: number; seed?: number; contextSize?: number; maxTokens?: number; stream?: boolean; squash?: boolean; prefill?: string; effort?: string };
   const prompts: O[] = [], order: StOrder[] = [], seen = new Set<string>();
   const fmtOf = (kind: string, key: string) => { const c = (p.blocks || []).find(b => b.kind === kind)?.content || ''; return c.includes('{{slot}}') ? c.replace(/\{\{slot\}\}/g, () => key) : key; };
   for (const b of p.blocks || []) {
     const text = b.kind === 'text' || b.kind === 'main' || b.kind === 'jailbreak';
     if (!text && !ST_KIND[b.kind]) continue;                       // 장기기억 자리처럼 드림랜드에만 있는 칸
-    const identifier = b.kind === 'text' ? String(b.id) : b.kind;
+    const identifier = b.kind === 'text' ? String(b.stId || b.id) : b.kind;
     if (seen.has(identifier)) continue; seen.add(identifier);
     const depth = b.depth != null && b.depth !== '' && !isNaN(+b.depth) ? +b.depth : null;
     prompts.push(text
@@ -371,15 +422,41 @@ export function presetToSt(p: DPreset) {
       : { identifier, name: b.name || identifier, system_prompt: true, marker: true });
     order.push({ identifier, enabled: b.enabled !== false });
   }
+  const st = (p.st || {}) as { cc?: O; prompts?: StPrompt[]; orders?: { character_id?: number; order?: StOrder[] }[] };
+  for (const x of st.prompts || []) if (!seen.has(x.identifier)) { seen.add(x.identifier); prompts.push(x); }
+  const keep = (st.cc || {}) as O, keepExt = (keep.extensions && typeof keep.extensions === 'object' ? keep.extensions : {}) as O;
   const out: O = {
+    ...keep,
     temperature: P.temperature ?? 1, frequency_penalty: P.freqPen ?? 0, presence_penalty: P.presPen ?? 0, top_p: P.topP ?? 1, top_k: P.topK ?? 0,
+    min_p: P.minP ?? 0, top_a: P.topA ?? 0, repetition_penalty: P.repPen ?? 1, seed: P.seed ?? -1,
     openai_max_context: P.contextSize ?? 128000, openai_max_tokens: P.maxTokens ?? 4096, stream_openai: P.stream !== false, squash_system_messages: P.squash !== false,
     assistant_prefill: P.prefill || '', personality_format: fmtOf('charPersonality', '{{personality}}'), scenario_format: fmtOf('scenario', '{{scenario}}'), wi_format: fmtOf('worldInfoBefore', '{0}'),
-    prompts, prompt_order: [{ character_id: 100001, order }],
-    extensions: { regex_scripts: K.arr<DRegex>(p.regex).map(regexToSt) },
+    prompts, prompt_order: [...(st.orders || []), { character_id: 100001, order }],
+    extensions: { ...keepExt, regex_scripts: K.arr<DRegex>(p.regex).map(regexToSt), dreamland: { unset: Object.keys(UNSET_AS).filter(k => (P as Record<string, unknown>)[k] == null) } },
   };
-  if (['low', 'medium', 'high'].includes(P.effort as string)) out.reasoning_effort = P.effort;
+  if (EFFORTS.includes(P.effort as string)) out.reasoning_effort = P.effort;
+  for (const [mine, theirs] of NUDGES) { const v = (P as Record<string, unknown>)[mine]; if (typeof v === 'string' && v) out[theirs] = v; }
   return out;
+}
+/** 텍스트 완성형 프리셋(KoboldAI · Text Generation WebUI 계열)인가 */
+export const isStTcPreset = (j: unknown): j is O => !!j && typeof j === 'object' && !Array.isArray(j) && 'temp' in j && ('rep_pen' in j || 'genamt' in j || 'sampler_order' in j || 'sampler_priority' in j) && !('prompts' in j);
+/** [드림랜드 값, 파일 키, 정하지 않았을 때 파일에 적는 값] */
+const TC_MAP: [string, string, unknown][] = [['temperature', 'temp', 1], ['topP', 'top_p', 1], ['topK', 'top_k', 0], ['topA', 'top_a', 0], ['minP', 'min_p', 0], ['repPen', 'rep_pen', 1], ['freqPen', 'freq_pen', 0], ['presPen', 'presence_pen', 0], ['seed', 'seed', -1]];
+/** 텍스트 완성형 프리셋 → 드림랜드 프리셋. 드림랜드가 쓰지 않는 샘플러 값은 preset.st.tc 에 그대로 두었다가 내보낼 때 되돌린다 */
+export function stTcToPreset(j: O, name?: string): DPreset {
+  const p = K.defaultPreset(); p.name = name || (j.name as string) || '가져온 프리셋';
+  const P = p.params as Record<string, unknown>;
+  for (const [mine, theirs, unset] of TC_MAP) { const v = num(j[theirs]); P[mine] = v === null || v === unset ? (mine === 'temperature' ? v : null) : v; }
+  if (num(j.genamt)) P.maxTokens = j.genamt; if (num(j.max_length)) P.contextSize = j.max_length;
+  p.st = { tc: structuredClone(j) };
+  return p;
+}
+/** 드림랜드 프리셋 → 텍스트 완성형 프리셋. 텍스트 완성형에서 온 프리셋이면 원래 파일의 나머지 값을 그대로 살린다 */
+export function presetToStTc(p: DPreset): O {
+  const P = (p.params || {}) as Record<string, unknown>, base = { ...(((p.st || {}) as { tc?: O }).tc || {}) };
+  for (const [mine, theirs, unset] of TC_MAP) if (P[mine] != null || theirs in base || theirs !== 'seed') base[theirs] = P[mine] ?? unset;
+  if ('genamt' in base || !p.st) base.genamt = P.maxTokens; if ('max_length' in base || !p.st) base.max_length = P.contextSize;
+  return base;
 }
 /** 이미 가진 프리셋 JSON 에 정규식만 갈아 끼운다 (다른 설정은 그대로) */
 export const stPresetWithRegex = (j: O, scripts: unknown) => ({ ...j, extensions: { ...(j.extensions && typeof j.extensions === 'object' && !Array.isArray(j.extensions) ? j.extensions : {}), regex_scripts: K.arr<DRegex>(scripts).map(regexToSt) } });
@@ -410,15 +487,35 @@ export function stChatToChat(text: string, { charIds, name, resolve }: { charIds
     if (r.extra?.model) swipes[sw].model = r.extra.model;
     const m = K.newMsg(role, r.mes, { swipes, sw, ts, name: r.name || '', hidden: !!r.is_system && !narrator });
     if (role === 'assistant') m.charId = resolve ? resolve(r) : charIds[0];
+    // 드림랜드가 쓰지 않는 값(그림 · 생성 시각 · 확장 기록 등)은 그대로 두었다가 내보낼 때 되돌린다
+    const rest = Object.fromEntries(Object.entries(r).filter(([k]) => !ROW_OWN.has(k)));
+    const extra = Object.fromEntries(Object.entries(r.extra || {}).filter(([k]) => k !== 'reasoning' && k !== 'model'));
+    if (Object.keys(extra).length) rest.extra = extra;
+    if (Array.isArray(r.swipe_info)) rest.swipe_info = r.swipe_info;
+    if (Object.keys(rest).length) m.stRow = rest;
     msgs.push(m);
   }
   if (msgs.length) chat.updatedAt = msgs[msgs.length - 1].ts;
+  if (meta.note_role != null || Object.keys(meta).some(k => !META_OWN.has(k))) chat.stMeta = Object.fromEntries(Object.entries(meta).filter(([k]) => !META_OWN.has(k) || k === 'note_role'));
   return { chat, msgs };
 }
+/** 줄에서 드림랜드가 직접 읽는 키 */
+const ROW_OWN = new Set(['mes', 'name', 'is_user', 'is_system', 'send_date', 'swipes', 'swipe_id', 'swipe_info', 'extra']);
+const META_OWN = new Set(['note_prompt', 'note_depth', 'note_role', 'variables']);
 export function chatToStJsonl(chat: Chat, msgs: Msg[], userName: string, charName: string): string {
   const stamp = (t: number) => new Date(t).toISOString();
-  const lines = [JSON.stringify({ user_name: userName, character_name: charName, create_date: stamp(chat.createdAt), chat_metadata: { note_prompt: chat.note?.text || '', note_depth: chat.note?.depth ?? 4, variables: chat.vars || {} } })];
-  for (const m of msgs) lines.push(JSON.stringify({ name: m.role === 'user' ? userName : (m.name || charName), is_user: m.role === 'user', is_system: m.role === 'system' || !!m.hidden, send_date: stamp(m.ts), mes: m.swipes[m.sw].text, swipes: m.role === 'assistant' ? m.swipes.map(s => s.text) : undefined, swipe_id: m.role === 'assistant' ? m.sw : undefined, extra: m.role === 'system' ? { type: 'narrator' } : {} }));
+  const kept = (chat.stMeta || {}) as O;
+  const role = Math.max(0, ROLE.indexOf(chat.note?.role as string));
+  const lines = [JSON.stringify({ user_name: userName, character_name: charName, create_date: stamp(chat.createdAt), chat_metadata: { ...kept, note_prompt: chat.note?.text || '', note_depth: chat.note?.depth ?? 4, note_role: chat.note?.text || 'note_role' in kept ? role : undefined, variables: chat.vars || {} } })];
+  for (const m of msgs) {
+    const rest = (m.stRow || {}) as O & { extra?: O; swipe_info?: O[] }, cur = m.swipes[m.sw];
+    const extra: O = { ...(rest.extra || {}), ...(m.role === 'system' ? { type: 'narrator' } : {}) };
+    if (cur?.reasoning) extra.reasoning = cur.reasoning; if (cur?.model) extra.model = cur.model;
+    const many = m.role === 'assistant';
+    const info = many ? m.swipes.map((s, i) => { const o: O = { ...(rest.swipe_info?.[i] || {}) }; const x: O = { ...((o.extra as O) || {}) }; if (s.reasoning) x.reasoning = s.reasoning; else delete x.reasoning; if (s.model) x.model = s.model; o.extra = x; o.send_date ??= stamp(s.ts || m.ts); return o; }) : undefined;
+    const { extra: _e, swipe_info: _s, ...other } = rest; void _e; void _s;
+    lines.push(JSON.stringify({ ...other, name: m.role === 'user' ? userName : (m.name || charName), is_user: m.role === 'user', is_system: m.role === 'system' || !!m.hidden, send_date: stamp(m.ts), mes: cur.text, swipes: many ? m.swipes.map(s => s.text) : undefined, swipe_id: many ? m.sw : undefined, swipe_info: info, extra }));
+  }
   return lines.join('\n');
 }
 
@@ -683,6 +780,15 @@ export async function importST(src: Source, want: Want, progress: Progress = () 
     });
   }
 
+  // 텍스트 완성형 프리셋 (KoboldAI · TextGen 폴더)
+  if (want.presets) for (const dir of ['KoboldAI Settings', 'TextGen Settings']) {
+    let files: string[] = []; try { files = (await src.list(dir)).filter(x => !x.dir && /\.json$/i.test(x.name)).map(x => x.name); } catch { /* 폴더가 없다 */ }
+    for (const f of files) await safe(T, `${dir}/${f}`, async () => {
+      const j: unknown = JSON.parse(await src.text(`${dir}/${f}`)); if (!isStTcPreset(j)) return;
+      await upsert('presets', stTcToPreset(j, f.replace(/\.json$/i, '')), tag(`tc/${dir}/${f}`)); T.presets++;
+    });
+  }
+
   if (want.personas) {
     const pu = settings.power_user || {};
     for (const [file, name] of Object.entries(pu.personas || {})) {
@@ -866,10 +972,11 @@ export async function importFiles(files: File[], progress: Progress = () => { })
         if (preset.regex.length) askRegexLater('presets', preset.id);
         return;
       }
+      if (isStTcPreset(j)) { await St.save('presets', stTcToPreset(j, base), true); T.presets++; return; }   // 텍스트 완성형 프리셋
       const rs: unknown[] = Array.isArray(j) ? j : [j];
       if (rs.length && rs.every(r => r && ((r as StRegex).findRegex !== undefined || (r as { find?: unknown }).find !== undefined))) { let n = St.regex.reduce((m, r) => Math.max(m, +(r.order as number) || 0), 0); for (const r of regexFromJson(rs)) { r.order = ++n; await St.save('regex', r, true); T.regex++; } return; }
       if (tplKind(j) || Object.keys(KINDS).some(k => tplKind(j[k]) === k)) { T.templates += tplImport(j, base).length; return; }   // 고급 포맷팅 템플릿 (낱개 · 전체 내보내기)
-      if (Array.isArray(j.qrList)) { T.quick += qrAddSet(stQrToSet(j, base)); return; }   // Quick Reply 세트
+      if (Array.isArray(j.qrList) || Array.isArray(j.quickReplySlots)) { T.quick += qrAddSet(stQrToSet(j, base)); return; }   // Quick Reply 세트
       throw new Error(t('cards.err.unknown'));
     });
   }

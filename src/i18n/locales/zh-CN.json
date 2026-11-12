@@ -5282,5 +5282,6 @@
   "datafolder.err.offline": "离线 — 重新连接后发送",
   "datafolder.err.save": "保存失败",
   "datafolder.err.unreachable": "无法连接服务器",
-  "datafolder.err.status": "服务器响应 {status}"
+  "datafolder.err.status": "服务器响应 {status}",
+  "presets.exportSt": "导出为 SillyTavern 格式"
 }

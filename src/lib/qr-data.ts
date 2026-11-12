@@ -11,7 +11,10 @@ export interface QrSet { id: string; name: string; scope: 'global' | 'char' | 'c
 export interface QrStore { v: number; sets: QrSet[]; bar: boolean; migrated?: boolean }
 /** Quick Reply 세트 파일의 한 버튼 */
 interface StQr { label?: string; title?: string; message?: string; isHidden?: boolean; icon?: string; automationId?: string; executeOnStartup?: boolean; executeOnChatChange?: boolean; executeOnNewChat?: boolean; executeOnUser?: boolean; executeOnAi?: boolean; executeBeforeGeneration?: boolean }
-export interface StQrSet { name?: string; disableSend?: boolean; qrList?: StQr[] | StQr | null }
+/** 옛 형식(퀵 리플라이 v1)의 칸 */
+interface StQrSlot { mes?: string; label?: string; title?: string; enabled?: boolean; hidden?: boolean; autoExecute_appStartup?: boolean; autoExecute_chatLoad?: boolean; autoExecute_userMessage?: boolean; autoExecute_botMessage?: boolean; [k: string]: unknown }
+export interface StQrSet { name?: string; disableSend?: boolean; qrList?: StQr[] | StQr | null; quickReplySlots?: StQrSlot[]; AutoInputInject?: boolean }
+const fromSlot = (s: StQrSlot): StQr => ({ label: s.label, title: s.title, message: s.mes, isHidden: s.hidden === true || s.enabled === false, executeOnStartup: s.autoExecute_appStartup, executeOnChatChange: s.autoExecute_chatLoad, executeOnUser: s.autoExecute_userMessage, executeOnAi: s.autoExecute_botMessage });
 interface Loose { label?: string; text?: string }
 interface QChat { id?: string; charIds?: string[]; qrOff?: string[] }
 interface QStore { settings: { qr?: QrStore; [k: string]: unknown }; set(patch: object): void; saveSettings?: () => void }
@@ -51,9 +54,10 @@ export const qrFind = (key: unknown, chat?: QChat | null) => { const k = String(
 /** Quick Reply 세트(.json) → 세트 */
 export function stQrToSet(j: StQrSet, name?: string): QrSet {
   const noSend = !!j.disableSend;
+  const list = j.qrList != null ? toArr(j.qrList) : toArr(j.quickReplySlots).map(fromSlot);
   return newQrSet({
     name: j.name || name || t('qr.importedSet'), src: 'st',
-    items: toArr(j.qrList).filter(x => x && (x.message || x.label)).map(x => newQrItem({
+    items: list.filter(x => x && (x.message || x.label)).map(x => newQrItem({
       label: String(x.label || x.title || t('qr.button')), title: x.title || '', text: x.message || '', kind: /^\s*\//.test(x.message || '') ? 'script' : (noSend ? 'insert' : 'send'), hidden: !!x.isHidden,
       auto: { start: !!x.executeOnStartup, open: !!x.executeOnChatChange, newChat: !!x.executeOnNewChat, user: !!x.executeOnUser, ai: !!x.executeOnAi, gen: !!x.executeBeforeGeneration },
       automationId: x.automationId || '', stIcon: x.icon || '',

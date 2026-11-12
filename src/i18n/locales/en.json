@@ -5342,5 +5342,6 @@
   "datafolder.err.offline": "Offline — will send when reconnected",
   "datafolder.err.save": "Save failed",
   "datafolder.err.unreachable": "Server unreachable",
-  "datafolder.err.status": "Server responded {status}"
+  "datafolder.err.status": "Server responded {status}",
+  "presets.exportSt": "Export in SillyTavern format"
 }

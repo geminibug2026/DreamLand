@@ -5282,5 +5282,6 @@
   "datafolder.err.offline": "오프라인 — 다시 연결되면 보냅니다",
   "datafolder.err.save": "저장 실패",
   "datafolder.err.unreachable": "서버에 닿지 않음",
-  "datafolder.err.status": "서버 응답 {status}"
+  "datafolder.err.status": "서버 응답 {status}",
+  "presets.exportSt": "실리태번 형식으로 내보내기"
 }

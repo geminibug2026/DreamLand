@@ -40,6 +40,7 @@ function PresetEditor({ p, api }: { p: Preset; api: EditorApi }) {
       <IconBtn ic="copy" title={t('common.duplicate')} onClick={async () => { await S.save('presets', { ...stripShelf(structuredClone(p)), id: uid(), name: p.name + ' (사본)', src: '', folder: p.folder }, true); api.refresh(); }} />
       <IconBtn ic="code" title={t('presets.regex', { n: (p.regex || []).length })} onClick={() => go('regex', 'preset:' + p.id)} />
       <IconBtn ic="import" title={t('common.export')} onClick={() => download(`${p.name}.dreamland-preset.json`, JSON.stringify(stripShelf(p), null, 2))} />
+      <IconBtn ic="upload" title={t('presets.exportSt')} onClick={() => { const P = p as unknown as cards.DPreset, tc = !!(P.st as { tc?: unknown } | undefined)?.tc; download(`${p.name}.json`, JSON.stringify(tc ? cards.presetToStTc(P) : cards.presetToSt(P), null, 4)); }} />
       <IconBtn ic="trash" title={t('common.delete')} onClick={async () => { if (S.presets.length < 2) return toast(t('presets.lastOne')); if (await confirmBox(t('presets.confirmDelete', { name: p.name }), t('common.delete'), true)) { await S.remove('presets', p.id); if (active) S.set({ activePreset: S.presets[0].id }); api.refresh(); } }} />
     </div></header>
     <Form obj={p} defs={[{ k: 'name', label: t('common.name') },

@@ -149,7 +149,7 @@ export function tplImport(json: unknown, fileName = ''): Imported[] {
   else if (isObj(json)) {
     for (const kind in KINDS) if (tplKind(json[kind]) === kind) { one(kind, json[kind] as Tpl); tplApply(kind, out[out.length - 1].name); }
     const srw = json.srw as { value?: string; show?: unknown } | undefined;
-    if (srw && 'value' in srw) { F.startReplyWith = srw.value || ''; F.showBias = !!srw.show; out.push({ kind: 'srw', name: tr('advanced.srw') }); }
+    if (isObj(srw) && 'value' in srw) { F.startReplyWith = srw.value || ''; F.showBias = !!srw.show; out.push({ kind: 'srw', name: tr('advanced.srw') }); }
     St.set({});
   }
   if (!out.length) throw new Error(tr('advanced.err.notTpl'));
