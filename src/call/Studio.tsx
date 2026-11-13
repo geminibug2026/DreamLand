@@ -73,6 +73,7 @@ export function CallStudio() {
         <Field label={tt('call.set.tokens')}>{num('tokens', 40)}</Field>
       </div>
       <Check label={tt('call.set.voicemail')} on={c.voicemail} onChange={v => set('voicemail', v)} />
+      <Check label={tt('call.set.afterText')} on={c.afterText} onChange={v => set('afterText', v)} />
       <div className="call-row">
         <Field label={tt('call.set.inPrompt')}><Select value={c.inPrompt} opts={(['raw', 'summary', 'none'] as const).map(k => [k, tt('call.set.inPrompt.' + k)] as const)} onChange={v => set('inPrompt', v as CallCfg['inPrompt'])} /></Field>
         {c.inPrompt === 'raw' ? <Field label={tt('call.set.rawMax')}>{num('rawMax', 200)}</Field> : null}

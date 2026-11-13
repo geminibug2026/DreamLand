@@ -1,1 +1,0 @@
-export{t as go}from"./router-WSPYnd5q.js";
