@@ -101,6 +101,45 @@ function paragraph(line: string, style: string): string {
   return out;
 }
 
+// ── 코드블럭 HTML → 격리된 iframe ──
+// sandbox 에 allow-same-origin 을 주지 않으므로 안의 스크립트는 앱 저장소 · 쿠키 · 키에 닿지 못한다
+const noFrames = () => !!(S.settings as { security?: { noFrames?: boolean } }).security?.noFrames;
+function isPage(lang: string, code: string) {
+  if (noFrames() || (lang && !/^(html?|xml|)$/i.test(lang))) return false;
+  return /<(!doctype|html|body|head|script)\b/i.test(code) || (/<style[\s>]/i.test(code) && /<(div|section|main|table)\b/i.test(code));
+}
+const frameSrc = new Map<string, string>();
+const hashOf = (s: string) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return h.toString(36) + s.length.toString(36); };
+function framePlaceholder(code: string) {
+  const id = hashOf(code); frameSrc.set(id, code); watchFrames();
+  return `<div class="dl-frame" data-frame="${id}"></div>`;
+}
+let watching = false;
+function watchFrames() {
+  if (watching || typeof document === 'undefined') return; watching = true;
+  window.addEventListener('message', e => {
+    const d = e.data as { dlFrame?: unknown; dlFrameReady?: unknown; h?: number } | null; if (!d || (d.dlFrame == null && d.dlFrameReady == null)) return;
+    for (const f of document.querySelectorAll<HTMLIFrameElement>('iframe.dl-frame-el')) {
+      if (f.contentWindow !== e.source) continue;
+      if (d.dlFrameReady != null) { const src = frameSrc.get(f.dataset.frame || ''); if (src != null) f.contentWindow?.postMessage({ dlHtml: src }, '*'); }
+      else f.style.height = Math.min(Math.max(40, Number(d.h) || 0), 4000) + 'px';
+    }
+  });
+  const hydrate = () => {
+    for (const el of document.querySelectorAll<HTMLElement>('.dl-frame:not([data-on])')) {
+      if (frameSrc.get(el.dataset.frame || '') == null) continue;
+      el.dataset.on = '1';
+      const f = document.createElement('iframe');
+      f.className = 'dl-frame-el'; f.dataset.frame = el.dataset.frame;
+      f.setAttribute('sandbox', 'allow-scripts allow-popups allow-forms'); f.setAttribute('referrerpolicy', 'no-referrer');
+      f.src = '/frame';
+      el.append(f);
+    }
+  };
+  new MutationObserver(hydrate).observe(document.body, { childList: true, subtree: true });
+  setTimeout(hydrate, 0);
+}
+
 export interface RenderOpts { bubbles?: boolean; style?: string; prose?: boolean }
 export function render(text: unknown, { bubbles = true, style, prose = true }: RenderOpts = {}): string {
   style ||= bubbles ? 'bubbles' : 'plain'; chatProse = prose;
@@ -114,7 +153,10 @@ export function render(text: unknown, { bubbles = true, style, prose = true }: R
       const lang = line.trim().slice(3).trim(); const buf: string[] = []; i++;
       while (i < lines.length && !/^\s*```/.test(lines[i])) buf.push(lines[i++]);
       i++;
-      html += `<pre><code${lang ? ` data-lang="${esc(lang)}"` : ''}>${esc(buf.join('\n'))}</code></pre>`; continue;
+      const code = buf.join('\n');
+      // 실리태번 JS 러너처럼: 코드블럭 안의 HTML 문서는 격리된 화면(iframe)으로 그린다
+      if (isPage(lang, code)) { html += framePlaceholder(code); continue; }
+      html += `<pre><code${lang ? ` data-lang="${esc(lang)}"` : ''}>${esc(code)}</code></pre>`; continue;
     }
     if (!line.trim()) { i++; continue; }
     if (HTML_BLOCK.test(line)) { // HTML 블록은 빈 줄까지 그대로

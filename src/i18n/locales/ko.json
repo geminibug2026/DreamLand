@@ -6721,5 +6721,13 @@
   "qr.ux.copied": "버튼 {n}개를 '{name}'에 복사했어요",
   "qr.ux.show": "보이기",
   "qr.ux.hide": "숨기기",
-  "qr.ux.deleteMany.other": "버튼 {count}개를 지울까요?"
+  "qr.ux.deleteMany.other": "버튼 {count}개를 지울까요?",
+  "settings.security.noFrames": "코드블럭 속 HTML을 화면으로 그리지 않기",
+  "settings.security.noFramesHint": "모델이나 정규식이 ```html 코드블럭에 넣은 HTML 문서는 실리태번 JS 러너처럼 격리된 화면(iframe)으로 그립니다. 안의 스크립트는 앱의 저장소 · API 키에 닿지 못합니다. 켜면 코드 그대로 보여 줍니다.",
+  "settings.term.section": "터미널 로그",
+  "settings.term.label": "서버 터미널(Termux 등)에 남길 기록",
+  "settings.term.off": "끄기",
+  "settings.term.brief": "한 줄 요약",
+  "settings.term.full": "프롬프트 · 응답 전체",
+  "settings.term.hint": "모델을 부를 때마다 서버를 켠 터미널에 기록을 남깁니다. 한 줄 요약은 모델 · 시간 · 길이 · 오류만, 전체는 보낸 프롬프트와 받은 응답까지 찍습니다."
 }

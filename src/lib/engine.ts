@@ -1074,7 +1074,35 @@ export interface StreamOpts { signal?: AbortSignal; onText?: (t: string) => void
 export interface StreamResult { text: string; think: string; finish: string | undefined; usage: unknown }
 
 /** 스트리밍 채팅. onText(delta), onThink(delta) */
-export async function streamChat(conn: Conn | null | undefined, Pin: Params, messages: PromptList, { signal, onText = () => { }, onThink = () => { } }: StreamOpts = {}): Promise<StreamResult> {
+/** 모델 호출. 서버 터미널에도 한 줄씩 남긴다 (설정 › 터미널 로그) */
+export async function streamChat(conn: Conn | null | undefined, P: Params, messages: PromptList, opts: StreamOpts = {}): Promise<StreamResult> {
+  const t0 = Date.now(), who = conn ? `${conn.name || defOf(conn).kind} · ${conn.model || '?'}` : '?';
+  const chars = messages.reduce((n, m) => n + String(m.content ?? '').length, 0);
+  termLog('call', `▶ ${who} · ${messages.length} msgs · ~${Math.round(chars / 3)} tok in · max ${P.maxTokens ?? '-'}`, messages);
+  try {
+    const r = await streamChatRaw(conn, P, messages, opts);
+    termLog('done', `✓ ${who} · ${((Date.now() - t0) / 1000).toFixed(1)}s · ${r.text.length} chars out · finish=${r.finish || '-'}`, undefined, r.text);
+    return r;
+  } catch (e) {
+    const abort = e instanceof Error && e.name === 'AbortError';
+    termLog(abort ? 'done' : 'err', `${abort ? '■ stopped' : '✗ error'} · ${who} · ${((Date.now() - t0) / 1000).toFixed(1)}s${abort ? '' : ' · ' + String((e as Error)?.message || e).slice(0, 400)}`);
+    throw e;
+  }
+}
+type TermMode = 'off' | 'brief' | 'full';
+/** 브라우저에서 일어난 일을 서버 터미널(Termux 등)에 찍는다. 실패해도 조용히 넘어간다 */
+export function termLog(kind: 'call' | 'done' | 'err' | 'info', line: string, prompt?: PromptList, out?: string) {
+  const mode = ((S.settings as { termLog?: TermMode }).termLog || 'brief') as TermMode;
+  if (mode === 'off' || typeof fetch === 'undefined') return;
+  const body: { kind: string; line: string; prompt?: string; out?: string } = { kind, line };
+  if (mode === 'full') {
+    if (prompt) body.prompt = prompt.map(m => `[${m.role}] ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`).join('\n\n').slice(0, 200000);
+    if (out) body.out = out.slice(0, 50000);
+  }
+  void fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Dreamland': '1' }, body: JSON.stringify(body) }).catch(() => { });
+}
+
+async function streamChatRaw(conn: Conn | null | undefined, Pin: Params, messages: PromptList, { signal, onText = () => { }, onThink = () => { } }: StreamOpts = {}): Promise<StreamResult> {
   if (!conn) throw new Error(tr('engine.err.noConn'));
   let P = Pin;
   const def = defOf(conn), kind = def.kind, model = conn.model as string;

@@ -6721,5 +6721,13 @@
   "qr.ux.copied": "已将 {n} 个按钮复制到“{name}”",
   "qr.ux.show": "显示",
   "qr.ux.hide": "隐藏",
-  "qr.ux.deleteMany.other": "删除 {count} 个按钮？"
+  "qr.ux.deleteMany.other": "删除 {count} 个按钮？",
+  "settings.security.noFrames": "不把代码块中的 HTML 渲染为画面",
+  "settings.security.noFramesHint": "模型或正则放进 ```html 代码块的 HTML 文档，会像 SillyTavern JS 运行器那样以隔离画面（iframe）显示。其中的脚本无法访问应用的存储和 API 密钥。开启后显示原始代码。",
+  "settings.term.section": "终端日志",
+  "settings.term.label": "在服务器终端（Termux 等）记录的内容",
+  "settings.term.off": "关闭",
+  "settings.term.brief": "一行摘要",
+  "settings.term.full": "完整提示词和回复",
+  "settings.term.hint": "每次调用模型都会在运行服务器的终端留下记录。摘要只显示模型、耗时、长度和错误；完整模式还会打印发送的提示词和收到的回复。"
 }

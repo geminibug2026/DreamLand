@@ -6801,5 +6801,13 @@
   "qr.ux.show": "Show",
   "qr.ux.hide": "Hide",
   "qr.ux.deleteMany.one": "Delete {count} button?",
-  "qr.ux.deleteMany.other": "Delete {count} buttons?"
+  "qr.ux.deleteMany.other": "Delete {count} buttons?",
+  "settings.security.noFrames": "Don't render HTML in code blocks",
+  "settings.security.noFramesHint": "HTML documents that the model or a regex puts in an ```html code block are drawn as an isolated frame (iframe), like the SillyTavern JS runner. Scripts inside cannot reach the app's storage or API keys. Turn this on to show the raw code instead.",
+  "settings.term.section": "Terminal log",
+  "settings.term.label": "What to log in the server terminal (Termux, etc.)",
+  "settings.term.off": "Off",
+  "settings.term.brief": "One-line summary",
+  "settings.term.full": "Full prompt and reply",
+  "settings.term.hint": "Each model call is logged in the terminal running the server. Summary shows model, time, length and errors; full also prints the prompt sent and the reply."
 }

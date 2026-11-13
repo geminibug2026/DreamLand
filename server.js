@@ -536,6 +536,15 @@ async function api(req, res, url) {
     return send(res, 200, { access_token: j.access_token, expires_in: j.expires_in });
   }
 
+  // 브라우저가 보내는 기록(모델 호출 · 오류)을 이 터미널에 찍는다
+  if (url.pathname === '/api/log') {
+    const tm = new Date().toTimeString().slice(0, 8), c = { call: '\x1b[36m', done: '\x1b[32m', err: '\x1b[31m', info: '\x1b[90m' }[body.kind] || '';
+    console.log(`${c}[${tm}] ${String(body.line || '').slice(0, 2000)}\x1b[0m`);
+    if (body.prompt) console.log(`\x1b[90m──── prompt ────\x1b[0m\n${String(body.prompt)}\n\x1b[90m────────────────\x1b[0m`);
+    if (body.out) console.log(`\x1b[90m──── output ────\x1b[0m\n${String(body.out)}\n\x1b[90m────────────────\x1b[0m`);
+    return send(res, 200, { ok: true });
+  }
+
   if (url.pathname === '/api/proxy') {
     let target, pHeaders, pBody;
     try {
@@ -573,6 +582,14 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${HOST}:${PORT}`);
     if (!hostOk(req.headers.host)) return send(res, 403, 'forbidden host', 'text/plain');
     if (req.headers['x-dl-proxied']) return send(res, 403, 'forbidden', 'text/plain');   // 프록시를 거쳐 되돌아온 요청 ("이 PC 에서만" 제한을 우회하지 못하게)
+    // 메시지 속 HTML 화면을 그리는 빈 틀. 자료는 하나도 없고, 앱이 sandbox(다른 출처) iframe 으로 열어 내용을 postMessage 로 넣는다
+    if (url.pathname === '/frame') {
+      const html = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;background:transparent}</style><script>addEventListener("message",function(e){if(e.source!==parent||!e.data||typeof e.data.dlHtml!=="string")return;var h=e.data.dlHtml,r=\'<script>(function(){var s=function(){parent.postMessage({dlFrame:1,h:Math.max(document.documentElement.scrollHeight,document.body?document.body.scrollHeight:0)},"*")};addEventListener("load",s);try{new ResizeObserver(s).observe(document.documentElement)}catch(x){}setInterval(s,1500);s()})()<\\/script>\';document.open();document.write(/<\\/body>/i.test(h)?h.replace(/<\\/body>/i,r+"</body>"):h+r);document.close()},{once:true});parent.postMessage({dlFrameReady:1},"*")</script>';
+      const buf = Buffer.from(html);
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': buf.length, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
+        'Content-Security-Policy': "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'; frame-ancestors 'self'" });
+      return res.end(buf);
+    }
     if (LAN && !isLocal(req)) {   // 다른 기기에서 올 때는 접속 키가 있어야 한다
       const cookie = String(req.headers.cookie || '').match(/(?:^|;\s*)dl_key=([0-9a-f]+)/)?.[1];
       const ip = req.socket.remoteAddress;

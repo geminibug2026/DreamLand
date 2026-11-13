@@ -21,6 +21,7 @@ const STORES = ['chars', 'chats', 'msgs', 'personas', 'lore', 'presets', 'conns'
 function SettingsPage() {
   useLang();
   const { Vault, Secrets, DB, download, pickFiles } = core, st = S.settings, F = adv.AF();
+  (st as { termLog?: string }).termLog ||= 'brief';
   const refresh = useBump(), timer = useRef(0);
   useEffect(() => () => clearTimeout(timer.current), []);
   const apply = () => { S.set({}); theme.applyTheme(); };
@@ -79,8 +80,10 @@ function SettingsPage() {
       {Secrets.ok ? <div className="row wrap">{Secrets.on
         ? <Btn label={t('settings.security.restore')} cls="ghost" onClick={async () => { if (!(await confirmBox(t('settings.security.restoreConfirm'), t('settings.security.restoreOk'), true))) return; try { await Secrets.restore(); st.security = { ...st.security, serverKeys: false }; S.set({}); toast(t('settings.security.restored')); refresh(); } catch (e) { toast(errMsg(e), 'err'); } }} />
         : <Btn label={t('settings.security.serverEnable')} ic="check" cls="primary" onClick={() => { st.security = { ...st.security, serverKeys: true }; S.set({}); toast(t('settings.security.serverMoving'), 'ok'); timer.current = window.setTimeout(refresh, 1500); }} />}</div> : null}
-      <Form obj={st} defs={[{ k: 'security.blockRemoteImages', label: t('settings.security.blockRemoteImages'), type: 'check' }]} onChange={apply} />
+      <Form obj={st} defs={[{ k: 'security.blockRemoteImages', label: t('settings.security.blockRemoteImages'), type: 'check' }, { k: 'security.noFrames', label: t('settings.security.noFrames'), type: 'check', hint: t('settings.security.noFramesHint') }]} onChange={apply} />
       <p className="hint">{t('settings.security.htmlHint')}</p></div>
+    <div className="card"><h3 className="form-sec">{t('settings.term.section')}</h3>
+      <Form obj={st} defs={[{ k: 'termLog', label: t('settings.term.label'), type: 'select', opts: [['off', t('settings.term.off')], ['brief', t('settings.term.brief')], ['full', t('settings.term.full')]], hint: t('settings.term.hint') }]} onChange={apply} /></div>
     <div className="card"><h3 className="form-sec">{t('settings.data.section')}</h3><p className="hint">{t('settings.data.hint')}</p>
       <div className="row wrap">
         <Btn label={t('settings.data.export')} ic="import" onClick={async () => download(`dreamland-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(await S.exportAll()))} />
