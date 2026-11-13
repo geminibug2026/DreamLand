@@ -1,4 +1,5 @@
 // ── Dreamland (React) 시작 ──
+import { termLog } from './lib/engine';
 import type { ComponentType } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
@@ -42,3 +43,5 @@ await start({
     });
   },
 });
+// 서버 터미널에 이 브라우저가 붙었다고 한 줄 남긴다 (새 버전이 열렸는지 확인용)
+termLog('info', `● app opened · ${/Mobi|Android/i.test(navigator.userAgent) ? 'mobile' : 'desktop'} · ${location.host}`);

@@ -620,6 +620,9 @@ const server = http.createServer(async (req, res) => {
 async function staleBuild() {
   const built = await fsp.stat(path.join(ROOT, 'dist', 'index.html')).catch(() => null);
   if (!built) return '  dist/ 가 없습니다 — npm install 뒤 npm run build 를 실행해 주세요.\n';
+  // git 으로 받은 폴더면 파일 시간이 받은 순서로 뒤섞이므로, src 를 직접 고쳤는지만 본다
+  const git = await new Promise(res => require('child_process').execFile('git', ['status', '--porcelain', '--', 'src'], { cwd: ROOT, timeout: 5000 }, (e, out) => res(e ? null : String(out))));
+  if (git !== null) return git.trim() ? '  src/ 를 고쳤습니다 — 고친 것을 보려면 npm run build 를 실행해 주세요.\n' : '';
   let newest = 0;
   const walk = async dir => { for (const d of await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])) { const f = path.join(dir, d.name); if (d.isDirectory()) await walk(f); else newest = Math.max(newest, (await fsp.stat(f)).mtimeMs); } };
   await walk(path.join(ROOT, 'src'));
