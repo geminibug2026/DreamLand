@@ -92,7 +92,7 @@ export interface Part3 {
   vecOk(avm: string | null | undefined): boolean;
   embedCall(texts: string[], signal?: AbortSignal, opts?: { timeoutMs?: number; query?: boolean }): Promise<Float32Array[]>;
   embedMemories(chat: Chat, mem: Mem, opts?: { all?: boolean; signal?: AbortSignal; onProgress?: Progress | null }): Promise<number>;
-  embedQueriesViaApi(texts: string[]): Promise<(Float32Array | null)[] | null>;
+  embedQueriesViaApi(texts: string[], signal?: AbortSignal): Promise<(Float32Array | null)[] | null>;
   queryVec(text: string): Float32Array | null;
   recallQueryTexts(inp: RecallInputs): string[];
   embedQuery(chat: ChatM, msgs: Msg[], signal?: AbortSignal): Promise<void>;
@@ -433,11 +433,11 @@ export const part3: Part3 & ThisType<MemoryApi> = {
    * 질의 임베딩 (같은 글은 다시 부르지 않는다). 응답 생성을 붙잡고 기다리게 하는 경로라 오래 매달리지 않는다 — 8초 · 재시도 없음, 실패하면 null (내장 검색으로 진행).
    * 결과는 캐시에 남아, 대기 상한을 넘겨 늦게 도착해도 다음 턴부터 쓰인다
    */
-  async embedQueriesViaApi(texts) {
+  async embedQueriesViaApi(texts, signal) {
     const e = this.cfg().embed; if (e.mode !== 'api') return null;
     const key: (t: string) => string = t => `${e.model}\u0001${t}`, misses = [...new Set(texts.filter(t => !queryEmbedCache.has(key(t)) && !pendingEmbeds.has(key(t))))];
     if (misses.length) {
-      const job = this.embedCall(misses, undefined, { timeoutMs: 8000, query: true }).then(vecs => {
+      const job = this.embedCall(misses, signal, { timeoutMs: 8000, query: true }).then(vecs => {
         misses.forEach((t, i) => queryEmbedCache.set(key(t), vecs[i]));
         if (queryEmbedCache.size > 60) for (const k of [...queryEmbedCache.keys()].slice(0, 30)) queryEmbedCache.delete(k);
         return true;
@@ -459,7 +459,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
   async embedQuery(chat, msgs, signal): Promise<Keep<typeof signal, void>> {
     if (this.cfg().embed.mode !== 'api') return;
     const mem = await this.load(chat.id), texts = this.recallQueryTexts(this.recallInputs(mem, null, { msgs })); if (!texts.length) return;
-    await this.embedQueriesViaApi(texts);
+    await this.embedQueriesViaApi(texts, signal);
   },
   /**
    * 답변 전 준비. 장부는 프롬프트를 조립할 때 기다림 없이 지어야 하므로, 임베딩 왕복(질의 임베딩 · 옛 묶음 요약의 벡터 채우기)은 여기서 미리 한다.

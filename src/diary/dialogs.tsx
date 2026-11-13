@@ -144,7 +144,13 @@ export async function bindDialog(chat: DChat) {
     body: <div className="col"><p className="hint">{tr('diary.bind.hint')}</p>
       <Form obj={o} defs={defs} />
       <small className="hint">{tr('diary.bind.summary', { msgs: count, pics: nPics, diary: (chat.diary || []).length, dreams: (chat.dreams || []).length, letters: (chat.letters || []).length, keeps: (chat.keepsakes || []).filter(x => !x.gone).length })}</small></div>,
-    actions: [{ label: tr('common.close') }, { label: tr('diary.bind.print'), ic: 'eye', onclick: () => { const url = URL.createObjectURL(new Blob([make()], { type: 'text/html' })); if (!window.open(url, '_blank')) toast(tr('diary.bind.blocked'), 'err'); setTimeout(() => URL.revokeObjectURL(url), 120000); return false; } },
+    actions: [{ label: tr('common.close') }, { label: tr('diary.bind.print'), ic: 'eye', onclick: () => {
+      // 새 창(blob)은 앱의 CSP(script-src 'self' blob:)를 물려받아 글 안의 onclick 이 막힌다 — 인쇄 버튼은 blob 스크립트로 단다
+      const js = URL.createObjectURL(new Blob(["document.querySelector('[data-print]')?.addEventListener('click', () => print());"], { type: 'text/javascript' }));
+      const url = URL.createObjectURL(new Blob([make().replace('</body>', `<script src="${js}"></script></body>`)], { type: 'text/html' }));
+      if (!window.open(url, '_blank')) toast(tr('diary.bind.blocked'), 'err');
+      setTimeout(() => { URL.revokeObjectURL(url); URL.revokeObjectURL(js); }, 120000); return false;
+    } },
       { label: tr('diary.bind.save'), ic: 'import', cls: 'primary', onclick: () => { const html = make(); core.download(`${`${w.char}-${o.title}`.replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 80)}.html`, html, 'text/html'); toast(tr('diary.bind.done', { size: (html.length / 1048576).toFixed(1) })); return false; } }] });
 }
 

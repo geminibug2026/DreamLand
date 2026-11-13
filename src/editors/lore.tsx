@@ -122,7 +122,7 @@ export const LorePicker = ({ holder, save, hint = '' }: { holder: { loreIds?: st
 
 type Pred = (e: Entry) => boolean;
 const FILTERS: Record<string, Pred> = { all: () => true, on: e => e.enabled !== false, off: e => e.enabled === false, constant: e => !!e.constant, keyed: e => !e.constant, grouped: e => !!e.group, timed: e => !!(e.sticky || e.cooldown || e.delay), filtered: e => !!(e.charFilter?.names?.length || e.charFilter?.tags?.length || e.triggers?.length) };
-const SORTS: Record<string, ((a: Entry, c: Entry) => number) | null> = { list: null, order: (a, c) => (c.order ?? 100) - (a.order ?? 100), name: (a, c) => titleOf(a).localeCompare(titleOf(c), 'ko'), tok: (a, c) => tok(c) - tok(a) };
+const SORTS: Record<string, ((a: Entry, c: Entry) => number) | null> = { list: null, order: (a, c) => engine.ordOf(c.order) - engine.ordOf(a.order), name: (a, c) => titleOf(a).localeCompare(titleOf(c), 'ko'), tok: (a, c) => tok(c) - tok(a) };
 const hay = (e: Entry) => [e.name, ...(e.keys || []), ...(e.keys2 || []), e.group, e.outlet, e.automationId, e.content].join('\n').toLowerCase();
 const FILTER_OPTS = ['all', 'on', 'off', 'constant', 'keyed', 'grouped', 'timed', 'filtered'];
 const SORT_OPTS = ['list', 'order', 'name', 'tok'];

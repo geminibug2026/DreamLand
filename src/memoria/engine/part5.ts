@@ -6,6 +6,7 @@ import type { CastInput } from './part2';
 import type { Mem, MemItem, Msg, ChatM, Plan, Relation, Bond, BondStep, CastNote, CanonRow, StatusRow } from '../types';
 import { KINDS, LOCKS, VIS, SCOPES, NARRATOR, PUBLIC_ONLY, SHELVES, SHELF_LABELS, DOSSIER_MAX, CHARACTER_LINES_MAX, CHARACTER_GROWTH_MAX, empty, clamp01, str, list, snake, clip, low, cleanStr, toSnake, canonSlot, copy, cleanRecord, visibleProse, prose, ekey, cleanMultiline, parseLoose, fmtDays, ago, normKind, normLockKind, normVisibility, overrides, audits, lasts, freezes, PACKET_HEADER, PACKET_FOOTER } from './base';
 import * as MP from '../prompts';
+import { t as tr } from '../../i18n';
 import { stripPhrases } from '../craft';
 
 /** AI 에게 보내는 메시지 한 줄 (글 또는 조각 목록) */
@@ -135,12 +136,12 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     // 새로 쓸 때는 연대기 · 묶음을 빠짐없이 보여준다 (평소에는 최근 묶음 3개까지만 싣는다)
     P.summaries = [...mem.arcs.filter(x => x.carried).map(x => ({ ...x, level: 'arc' })), ...[...mem.arcs.filter(x => !x.carried).map(x => ({ ...x, level: 'arc' })), ...mem.chunks.map(x => ({ ...x, level: 'chunk' }))].sort((a, b) => a.from - b.from)];
     const lines = String(this.renderPacket(P, {})).split('\n').filter((l: string) => l !== PACKET_HEADER && l !== PACKET_FOOTER), firstSection = lines.findIndex((l: string) => l.startsWith('## '));
-    if (firstSection < 0) throw new Error('새로 쓸 기록이 아직 없습니다');
+    if (firstSection < 0) throw new Error(tr('memoria.engine.err.nothingToRewrite'));
     const rules = lines.slice(0, firstSection), body = lines.slice(firstSection).filter((l: string) => !l.startsWith('(End of archive.')).join('\n');
     const reply = await this.call(chat, `${this.packetRewritePrompt(P.narratorMode)}\n\n${this.languageDirective()}`, `Archive:\n${body}`, 6000, signal);
-    if ((this.get(chat.id) || mem) !== mem || this.perspective(mem) !== perspective || this.cfg().authorizePrivate !== privateAllowed) throw new Error('채팅 또는 기억·서술 방식이 바뀌어 이전 초안을 버렸습니다. 다시 새로 써 주세요.');
+    if ((this.get(chat.id) || mem) !== mem || this.perspective(mem) !== perspective || this.cfg().authorizePrivate !== privateAllowed) throw new Error(tr('memoria.engine.err.draftStale'));
     const rewritten = cleanRecord(reply).replace(/<\/?memoria_\w+>/gi, '').trim();
-    if (!rewritten || !/^##\s/m.test(rewritten)) throw new Error('사서 응답이 장부 형식이 아닙니다');
+    if (!rewritten || !/^##\s/m.test(rewritten)) throw new Error(tr('memoria.engine.err.notLedger'));
     return [PACKET_HEADER, ...rules, rewritten, PACKET_FOOTER].join('\n');
   },
   rewritePacket(chat, history, signal, opts) { return this.rewritePacketWithLibrarian(chat, history, signal, opts); },
@@ -219,11 +220,11 @@ export const part5: Part5 & ThisType<MemoryApi> = {
   },
   /** 서고에 질문 — 저장된 기억 · 요약 · 캐논만 근거로 이야기에 대한 질문에 답한다. "우리 처음 만난 게 언제였지?" 같은 질문에 턴 번호를 인용해 답한다. opt.msgs: 대화 메시지 (없으면 저장된 것을 읽는다) */
   async ask(chat, question, signal, { msgs = null } = {}) {
-    const q = String(question || '').trim(); if (!q) throw new Error('질문이 비어 있습니다'); if (!chat) throw new Error('열린 대화가 없습니다');
+    const q = String(question || '').trim(); if (!q) throw new Error(tr('memoria.engine.err.emptyQuestion')); if (!chat) throw new Error(tr('memoria.engine.err.noOpenChat'));
     const mem = await this.load(chat.id); if (!Array.isArray(msgs)) msgs = await Promise.resolve(S.msgs(chat.id)).catch(() => null);
     const context = this.renderPacket(this.buildPacketSections(chat, mem, null, this.archiveQueryOpt(mem, q, msgs)), { recallLimit: 14, protectedLimit: 5 });
     const answer = cleanRecord(await this.call(chat, MP.ASK_LIBRARIAN_PROMPT, `Archive records:\n${context}\n\nPlayer's question: ${q}`, 4000, signal));
-    if (!answer) throw new Error('빈 응답');
+    if (!answer) throw new Error(tr('memoria.engine.err.emptyReply'));
     return answer;
   },
   askLibrarian(chat, question, signal, opt) { return this.ask(chat, question, signal, opt); },
@@ -252,12 +253,12 @@ export const part5: Part5 & ThisType<MemoryApi> = {
    * log: 앞선 대화 [{ role: 'user' | 'assistant', text, ops? }] — 최근 3왕복만 쓴다. opt.msgs: 대화 메시지 (없으면 저장된 것을 읽는다)
    */
   async propose(chat, request, log = [], signal, { msgs = null } = {}) {
-    const text = String(request || '').trim(); if (!text) throw new Error('요청이 비어 있습니다'); if (!chat) throw new Error('열린 대화가 없습니다');
+    const text = String(request || '').trim(); if (!text) throw new Error(tr('memoria.engine.err.emptyRequest')); if (!chat) throw new Error(tr('memoria.engine.err.noOpenChat'));
     const mem = await this.load(chat.id); if (!Array.isArray(msgs)) msgs = await Promise.resolve(S.msgs(chat.id)).catch(() => null);
     const archive = this.buildEditorArchiveText(chat, mem, text, msgs), hist = list(log).filter(l => l && (l.text || l.content)).slice(-6);
     const historyBlock = hist.length ? `Recent conversation (for context only, e.g. "취소해" refers to the last message):\n${hist.map(l => `${l.role === 'user' ? 'User' : 'Archivist'}: ${l.text ?? l.content}${l.role !== 'user' && l.ops?.length ? ` (변경 ${l.ops.length}건 제안)` : ''}`).join('\n')}\n\n` : '';
     const parsed = await this.callJson(chat, `${MP.EDITOR_PROMPT}\n\n${this.languageDirective()}`, `Archive:\n${archive}\n\n${historyBlock}User's correction request: ${text}`, 3000, signal) as { reply?: unknown; ops?: EditorOp[] } | null;
-    if (!parsed || typeof parsed.reply !== 'string') throw new Error('사서 응답을 이해하지 못했습니다');
+    if (!parsed || typeof parsed.reply !== 'string') throw new Error(tr('memoria.engine.err.badReply'));
     return { reply: String(parsed.reply).trim(), ops: list(parsed.ops).filter(o => o && typeof o === 'object' && typeof o.op === 'string') };
   },
   proposeEditorTurn(chat, request, log, signal, opt) { return this.propose(chat, request, log, signal, opt); },
@@ -390,15 +391,15 @@ export const part5: Part5 & ThisType<MemoryApi> = {
   async checkpointData(chatId, id) { const p = ((await DB.get('kv', 'memcp:' + chatId) as CheckpointRow | undefined)?.list || []).find(x => x.id === id); return p ? this.normalize(JSON.parse(p.data), chatId) : null; },
   /** 불러온 서고를 이 대화의 서고 모양으로 */
   normalize(data, chatId) {
-    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('서고 파일의 형식이 올바르지 않아요.');
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error(tr('memoria.engine.err.badFile'));
     const m: Mem = { ...empty(chatId), ...data, id: chatId };
-    if (m.perspective != null && typeof m.perspective !== 'string') throw new Error('기억 시점의 형식이 올바르지 않습니다.');
-    if (m.perspectiveScope != null && !['default', 'chat'].includes(m.perspectiveScope)) throw new Error('기억·서술 방식의 적용 범위가 올바르지 않습니다.');
-    if (m.perspectiveScope === 'chat' && typeof m.perspective !== 'string') throw new Error('이 대화에 적용할 기억·서술 방식이 없습니다.');
+    if (m.perspective != null && typeof m.perspective !== 'string') throw new Error(tr('memoria.engine.err.badPerspective'));
+    if (m.perspectiveScope != null && !['default', 'chat'].includes(m.perspectiveScope)) throw new Error(tr('memoria.engine.err.badScope'));
+    if (m.perspectiveScope === 'chat' && typeof m.perspective !== 'string') throw new Error(tr('memoria.engine.err.noChatPerspective'));
     if (typeof m.perspective === 'string' && !m.perspectiveScope) m.perspectiveScope = 'chat';   // 옛 서고: 글이 적혀 있으면 이 대화만의 방식이었다
-    if (m.packetPin != null && typeof m.packetPin?.text !== 'string') throw new Error('고정 장부의 형식이 올바르지 않습니다.');
-    if (!Array.isArray(m.turns) || m.turns.some(t => !t || typeof t !== 'object' || typeof t.msgId !== 'string')) throw new Error('서고의 턴 기록 목록이 올바르지 않아요.');
-    for (const k of SHELVES) { if (!Array.isArray(m[k]) || m[k].some(x => !x || typeof x !== 'object')) throw new Error(`서고의 ${SHELF_LABELS[k]} 목록이 올바르지 않아요.`); }
+    if (m.packetPin != null && typeof m.packetPin?.text !== 'string') throw new Error(tr('memoria.engine.err.badPin'));
+    if (!Array.isArray(m.turns) || m.turns.some(t => !t || typeof t !== 'object' || typeof t.msgId !== 'string')) throw new Error(tr('memoria.engine.err.badTurns'));
+    for (const k of SHELVES) { if (!Array.isArray(m[k]) || m[k].some(x => !x || typeof x !== 'object')) throw new Error(tr('memoria.engine.err.badShelf', { shelf: SHELF_LABELS[k] })); }
     for (const k of ['memories', 'canon', 'status', 'cast', 'bonds', 'items', 'milestones', 'dossier', 'chunks', 'arcs'] as const) for (const x of m[k]) { if (!x.id) x.id = uid(); delete x.av; delete x.acv; }
     m.memories = m.memories.filter(x => typeof x.summary === 'string'); m.cast = m.cast.filter(x => typeof x.name === 'string'); m.dossier = m.dossier.filter(x => Array.isArray(x.chunks));
     for (const x of m.memories) if (x.knowers != null && !Array.isArray(x.knowers)) x.knowers = [];
@@ -461,7 +462,7 @@ export const part5: Part5 & ThisType<MemoryApi> = {
         dossier: arr(st.dossier).filter(d => d?.title && Array.isArray(d.chunks)).map(d => ({ id: uid(), title: str(d.title), chunks: d.chunks.map(String), disabled: !!d.disabled })) } };
     }
     const store: Partial<Mem> | null | undefined = payload?.type === 'dreamland-memoria' ? payload.store as Partial<Mem> : payload as Partial<Mem> | null | undefined;
-    if (!store || !Array.isArray(store.turns) || !Array.isArray(store.memories)) throw new Error('장기기억 파일이 아니에요.');
+    if (!store || !Array.isArray(store.turns) || !Array.isArray(store.memories)) throw new Error(tr('memoria.engine.err.notMemoriaFile'));
     return { foreign: false, label: payload!.chatName || payload!.chatId || '이전 대화', store: this.normalize(store, store.id || 'import') };
   },
   /**

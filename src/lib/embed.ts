@@ -7,7 +7,7 @@ import { t } from '../i18n';
 /** 임베딩 방식. auto 는 연결의 종류를 보고 고른다 */
 export const EMBED_KINDS = {
   get auto() { return t('embed.kind.auto'); },
-  openai: 'OpenAI 호환 — /embeddings (OpenAI · OpenRouter · Mistral · Together · Voyage · llama.cpp · vLLM · LM Studio …)',
+  get openai() { return t('embed.kind.openai'); },
   google: 'Google Gemini — batchEmbedContents',
   ollama: 'Ollama — /api/embed',
   cohere: 'Cohere — /v2/embed',

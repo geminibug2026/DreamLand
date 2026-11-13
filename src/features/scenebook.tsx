@@ -24,7 +24,7 @@ function setup() {
 
   // ════════ 등록 ════════ (옛 모듈이 남긴 것이 있으면 걷어 내고 한 번만)
   x.studio = x.studio.filter(t => t.owner !== OWNER); x.actions = x.actions.filter(a => a.owner !== OWNER); x.composer = x.composer.filter(a => a.owner !== OWNER); x.panels = x.panels.filter(p => p.owner !== OWNER);
-  x.studio.push({ owner: OWNER, title: '삽화', render: () => mountNode(make('div', 'card sb-studio'), <Studio />) });
+  x.studio.push({ owner: OWNER, get title() { return t('scenebook.illust'); }, render: () => mountNode(make('div', 'card sb-studio'), <Studio />) });
   x.actions.push(
     { owner: OWNER, id: 'sb-draw', get label() { return t('scenebook.action.autoDraw'); }, icon: 'image', run: guard(async (m: Msg) => { if (m.role !== 'assistant') throw new Error(t('scenebook.err.notReply')); await quickDraw(m); }) },
     { owner: OWNER, id: 'sb-analyze', get label() { return t('scenebook.analyze'); }, icon: 'sparkle', run: guard((m: Msg) => compose(m, { manual: false })) },

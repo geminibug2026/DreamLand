@@ -346,9 +346,12 @@ export const Vault = {
     const v = S.settings.vault as { salt: string; check: string }; const key = await this.derive(pass, b64d(v.salt));
     try { if (await this.dec(v.check, key) !== 'dreamland') return false; } catch { return false; }
     this.key = key;
-    for (const c of S.conns) if (c.sec) { try { Object.assign(c, JSON.parse(await this.dec(c.sec))); } catch { } }
-    if (S.settings.illustSec) { try { S.settings.illust.naiKey = await this.dec(S.settings.illustSec); } catch { } }
-    emit('vault'); return true;
+    // 잠긴 동안 새로 적은 키는 그대로 두고, 비어 있는 칸만 보관해 둔 값으로 채운다. 그다음 지금 값을 다시 잠가 저장한다
+    // (잠긴 채로는 키를 저장할 수 없어서, 그동안 적은 키는 메모리에만 있었다)
+    for (const c of S.conns) if (c.sec) { try { const old = JSON.parse(await this.dec(c.sec)) as Record<string, string>; for (const [k, v] of Object.entries(old)) if (!(c as unknown as Record<string, unknown>)[k]) (c as unknown as Record<string, unknown>)[k] = v; } catch { } }
+    if (S.settings.illustSec && !S.settings.illust.naiKey) { try { S.settings.illust.naiKey = await this.dec(S.settings.illustSec); } catch { } }
+    await this.resave();
+    return true;
   },
   async disable() { if (this.locked) throw new Error(tr('core.vaultUnlockFirst')); delete S.settings.vault; delete S.settings.illustSec; this.key = null; await this.resave(); },
   async resave() { for (const c of S.conns) await S.save('conns', c, true); await DB.put('kv', await this.packSettings()); emit('vault'); },

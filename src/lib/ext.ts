@@ -74,7 +74,8 @@ async function load(item: CatalogItem) {
 }
 export function unload(id: string) {
   const rec = loaded.get(id); if (!rec) return;
-  for (const fn of rec.cleanup.reverse()) { try { fn(); } catch (e) { console.warn(e); } }
+  for (const fn of [...rec.cleanup].reverse())   // 원래 배열은 그대로 둔다
+  { try { fn(); } catch (e) { console.warn(e); } }
   dropOwner(id); loaded.delete(id); applyTheme(); emit('ext:changed');
 }
 

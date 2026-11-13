@@ -207,7 +207,7 @@ ${(c.blocks || []).map(block).join('\n')}${(c.extras || []).map(x => extra(x, si
   return `<!DOCTYPE html>
 <html lang="${esc(getLang())}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(B.title || B.charName)}</title>${handLink}<style>${css}</style></head>
 <body${handVars}><svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><pattern id="ht" width="1.6" height="1.6" patternUnits="userSpaceOnUse"><circle cx=".8" cy=".8" r=".34" fill="currentColor"/></pattern></defs></svg>
-<div class="bar"><span>${esc(t('bind.barHint', { title: B.title || B.charName, page: A4 ? 'A4' : 'A5' }))}</span><button type="button" onclick="window.print()">${esc(t('bind.print'))}</button></div>
+<div class="bar"><span>${esc(t('bind.barHint', { title: B.title || B.charName, page: A4 ? 'A4' : 'A5' }))}</span><button type="button" data-print>${esc(t('bind.print'))}</button></div>
 <main class="book">
 ${out.join('\n')}
 </main></body></html>`;

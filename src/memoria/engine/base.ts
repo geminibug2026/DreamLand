@@ -1,6 +1,7 @@
 // memory.js 1–372 줄(작은 도구 · 태그 처리 · 내장 검색 · 모듈 상태)을 그대로 옮긴 것. 본문은 고치지 않고 타입만 붙인다
 import { uid, msgText, on } from '../../lib/core';
 import { tokens } from '../../lib/engine';
+import { t as tr } from '../../i18n';
 import type { Cfg, Mem, MemItem, Msg, RowHistory, Turn } from '../types';
 import type { PrepResult } from './part3';
 import type { Freeze, PacketResult, StableOpts } from './part4';
@@ -340,7 +341,7 @@ export const dcache = new Map<string, Float32Array>();
 export const dvec = (id: string, i: number, text: string): Float32Array => { const k = `${id}:${i}:${text.length}`; if (!dcache.has(k)) { if (dcache.size > 4000) dcache.clear(); dcache.set(k, vec(text)); } return dcache.get(k)!; };
 /** 장부 글을 구역별로 나눠 토큰 수를 센다 */
 export function packetSections(text: unknown): { name: string; tokens: number }[] {
-  const out = []; let cur = { name: '안내 · 지식 경계', text: '' };
+  const out = []; let cur = { name: tr('memoria.overview.sec.intro'), text: '' };
   for (const line of String(text).split('\n')) {
     if (/^<\/?memoria_/.test(line)) continue;
     if (line.startsWith('## ')) { out.push(cur); cur = { name: line.slice(3).split(' (')[0].split(' —')[0], text: '' }; }

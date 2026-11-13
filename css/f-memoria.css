@@ -324,3 +324,9 @@
 
 .mm-cast > .mm-empty, .mm-board > .mm-empty { grid-column: 1 / -1; }
 .mm-pickbox { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; } .mm-pickbox small { font: 600 .68em var(--display); letter-spacing: .08em; color: var(--dim); white-space: nowrap; } .mm-pickbox .mm-pick { max-width: min(320px, 70vw); }
+
+/* 좁은 화면: 긴 글 · 고르기 칸이 창을 밀어 넓히지 않게 (375px 에서 527px 로 넘치던 문제) */
+.mm-wrap > .mm-frame { max-width: 100%; min-width: 0; }
+.mm-frame > *, .mm-scroll > *, .mm > * { min-width: 0; }
+.mm pre, .mm code, .mm .mm-pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
+.mm select, .mm .inp { max-width: 100%; }

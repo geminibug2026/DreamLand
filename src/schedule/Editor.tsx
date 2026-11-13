@@ -59,7 +59,7 @@ function Editor({ ch, job }: { ch: CharX; job: Job }) {
   const copyTo = (anchor: Element) => menu(anchor, ([[tr('schedule.copy.weekdays'), [0, 1, 2, 3, 4]], [tr('schedule.copy.weekend'), [5, 6]], [tr('schedule.copy.all'), [0, 1, 2, 3, 4, 5, 6]], ...Array.from({ length: 7 }, (_, i) => [dayFull(i), [i]])] as [string, number[]][])
     .filter(([, to]) => to.some(i => i !== day)).map(([label, to]) => ({ label, onclick: () => { const src = cur.current.days[day]; commit({ days: cur.current.days.map((d, i) => to.includes(i) ? src.map(b => ({ ...b })) : d) }); toast(tr('schedule.toast.copied')); } })));
   const [tick, setTick] = useState(0);   // 못 읽은 시각을 적었을 때 칸을 저장된 값으로 되돌린다
-  const list = sched.days[day], At = hasBlocks(sched) ? blockAt(sched) : null, off = sched.on === false, now = new Date();
+  const list = sched.days[day], At = hasBlocks(sched) ? blockAt(sched) : null, off = sched.on === false, now = clock();   // blockAt 과 같은 시계 (그 방의 이야기 시각)
   const blockRow = (b: Block, i: number): ReactNode => <div key={i} className={`sched-row st-${b.status}`}>
     <i className="sched-mark" title={STATUS[b.status]} />
     <div className="sched-when"><Committed key={`${day}:${b.from}:${tick}`} className="inp sched-time" type="time" defaultValue={fmtMin(b.from)} disabled={i === 0} title={i === 0 ? tr('schedule.row.firstStart') : tr('schedule.row.start')} onCommit={val => {

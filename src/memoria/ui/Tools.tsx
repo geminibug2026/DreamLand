@@ -46,35 +46,36 @@ export async function backfill(chat: ChatM, { from = 0, to = Infinity, includeHi
 /** 스토리 바이블 — 지금까지의 서고 전체를 사람이 읽는 마크다운 문서로. 모델을 부르지 않는다 */
 export function bible(chat: ChatM, m: Mem): string {
   const M = Memory, { fmtDays, LOCKS, KINDS } = memMod;
-  const md = [`# 스토리 바이블 — ${chatTitle(chat)}`, `> 장기기억 서고가 정리한 이 이야기의 기록입니다. (${new Date().toLocaleString('ko-KR')} · ${m.turns.length}턴 · 기억 ${m.memories.length}개)`], sc = M.scene(m);
-  if (sc.any) md.push(`\n**현재 장면** — ${[sc.location, sc.date, sc.time].filter(Boolean).join(' · ')}`);
-  const total = m.turns.reduce((a, t) => a + (t.days || 0), 0); if (total >= 1) md.push(`\n**서사 시계** — 이야기 시작 후 약 ${fmtDays(total)} 경과`);
+  const L = (k: string, v?: Record<string, unknown>) => t('memoria.tools.bible.' + k, v);
+  const md = [`# ${L('docTitle', { name: chatTitle(chat) })}`, `> ${L('intro', { date: new Date().toLocaleString(locale()), turns: m.turns.length, memories: m.memories.length })}`], sc = M.scene(m);
+  if (sc.any) md.push(`\n**${L('scene')}** — ${[sc.location, sc.date, sc.time].filter(Boolean).join(' · ')}`);
+  const total = m.turns.reduce((a, x) => a + (x.days || 0), 0); if (total >= 1) md.push(`\n**${L('clock')}** — ${L('clockText', { days: fmtDays(total) })}`);
   const cast = m.cast.filter(c => !c.disabled);
   if (cast.length) {
-    md.push('\n## 등장인물');
+    md.push(`\n## ${L('cast')}`);
     for (const c of cast) {
       const hd = [c.role, c.age, c.occupation].filter(Boolean).join(' · ');
-      md.push(`\n### ${c.name}${c.provisional ? ' (미확인 — 아직 이름이 밝혀지지 않음)' : ''}${hd ? ` (${hd})` : ''}`); if (c.aka?.length) md.push(`- 별칭: ${c.aka.join(', ')}`); if (c.appearance) md.push(`- 외모: ${c.appearance}`); if (c.core) md.push(`- 바탕: ${c.core}`); if (c.voice) md.push(`- 말투: ${c.voice}`); if (c.traits?.length) md.push(`- 특성: ${c.traits.join(', ')}`);
-      for (const g of c.growth || []) md.push(`- 달라진 점: ${g.text}`); for (const l of c.lines || []) md.push(`- 대사: "${l.text}"`); for (const r of c.relationships || []) md.push(`- 관계 → ${r.target}: ${r.relation}`);
+      md.push(`\n### ${c.name}${c.provisional ? ` (${L('provisional')})` : ''}${hd ? ` (${hd})` : ''}`); if (c.aka?.length) md.push(`- ${L('aka')}: ${c.aka.join(', ')}`); if (c.appearance) md.push(`- ${L('appearance')}: ${c.appearance}`); if (c.core) md.push(`- ${L('core')}: ${c.core}`); if (c.voice) md.push(`- ${L('voice')}: ${c.voice}`); if (c.traits?.length) md.push(`- ${L('traits')}: ${c.traits.join(', ')}`);
+      for (const g of c.growth || []) md.push(`- ${L('growth')}: ${g.text}`); for (const l of c.lines || []) md.push(`- ${L('line')}: "${l.text}"`); for (const r of c.relationships || []) md.push(`- ${L('rel')} → ${r.target}: ${r.relation}`);
     }
   }
   const now = (b: Bond) => M.bondNow ? M.bondNow(b) : b.log?.[b.log.length - 1] || null, bonds = (m.bonds || []).filter(b => !b.disabled && now(b));
   if (bonds.length) {
-    md.push('\n## 관계선');
+    md.push(`\n## ${L('bonds')}`);
     for (const b of bonds) {
       const n = now(b)!, path: string[] = []; for (const e of b.log) if (path[path.length - 1] !== e.stage) path.push(e.stage);
-      md.push(`\n### ${b.from} → ${b.to}: ${n.stage}`); if (n.basis) md.push(`- 근거: ${n.basis}`); if (n.calls) md.push(`- 부르는 말: ${n.calls}`); if (n.unsaid) md.push(`- 말하지 못한 것: ${n.unsaid}`); if (path.length > 1) md.push(`- 지나온 길: ${path.join(' → ')}`);
+      md.push(`\n### ${b.from} → ${b.to}: ${n.stage}`); if (n.basis) md.push(`- ${L('basis')}: ${n.basis}`); if (n.calls) md.push(`- ${L('calls')}: ${n.calls}`); if (n.unsaid) md.push(`- ${L('unsaid')}: ${n.unsaid}`); if (path.length > 1) md.push(`- ${L('path')}: ${path.join(' → ')}`);
     }
   }
-  if (m.canon.length) { md.push('\n## 캐논 (세계 설정)'); for (const r of m.canon) md.push(`- **${r.key}** = ${r.value} _(${r.scope}${r.scopeName ? `:${r.scopeName}` : ''})_`); }
-  const act = m.pledges.filter(p => p.status === 'active'); if (act.length) { md.push('\n## 서약 (지켜지는 중)'); for (const l of act) md.push(`- [${LOCKS[l.kind] || l.kind}] ${l.summary}`); }
-  if (m.status.length) { md.push('\n## 상태 보드'); for (const s of m.status) md.push(`- ${s.entity} · ${s.slot} = ${s.value}${s.claim === 'belief' ? ' (믿음)' : ''}`); }
-  if (m.milestones.length) { md.push('\n## 주요 사건 연표'); for (const e of [...m.milestones].sort((a, b) => (a.turn || 0) - (b.turn || 0))) md.push(`- **t${e.turn != null ? e.turn + 1 : '?'} · ${e.title}**${e.summary ? ` — ${e.summary}` : ''}${(e.participants || []).length ? ` _(${(e.participants || []).join(', ')})_` : ''}`); }
-  const items = m.items.filter(i => !i.disabled); if (items.length) { md.push('\n## 주요 아이템'); for (const it of items) md.push(`- **${it.name}**${it.holder ? ` (소유: ${it.holder})` : ''}${it.meaning ? ` — ${it.meaning}` : ''}${it.status ? ` [${it.status}]` : ''}`); }
+  if (m.canon.length) { md.push(`\n## ${L('canon')}`); for (const r of m.canon) md.push(`- **${r.key}** = ${r.value} _(${r.scope}${r.scopeName ? `:${r.scopeName}` : ''})_`); }
+  const act = m.pledges.filter(p => p.status === 'active'); if (act.length) { md.push(`\n## ${L('pledges')}`); for (const l of act) md.push(`- [${LOCKS[l.kind] || l.kind}] ${l.summary}`); }
+  if (m.status.length) { md.push(`\n## ${L('status')}`); for (const s of m.status) md.push(`- ${s.entity} · ${s.slot} = ${s.value}${s.claim === 'belief' ? ` (${L('belief')})` : ''}`); }
+  if (m.milestones.length) { md.push(`\n## ${L('milestones')}`); for (const e of [...m.milestones].sort((a, b) => (a.turn || 0) - (b.turn || 0))) md.push(`- **t${e.turn != null ? e.turn + 1 : '?'} · ${e.title}**${e.summary ? ` — ${e.summary}` : ''}${(e.participants || []).length ? ` _(${(e.participants || []).join(', ')})_` : ''}`); }
+  const items = m.items.filter(i => !i.disabled); if (items.length) { md.push(`\n## ${L('items')}`); for (const it of items) md.push(`- **${it.name}**${it.holder ? ` (${L('holder')}: ${it.holder})` : ''}${it.meaning ? ` — ${it.meaning}` : ''}${it.status ? ` [${it.status}]` : ''}`); }
   const sums = [...m.arcs.filter(a => a.carried), ...[...m.arcs.filter(a => !a.carried), ...m.chunks].sort((a, b) => a.from - b.from)];
-  if (sums.length) { md.push('\n## 지금까지의 이야기'); for (const s of sums) { md.push(`\n**${s.carried ? `이전 대화 (${s.carriedFrom || '인계'})` : `t${s.from + 1}–t${s.to + 1}`}**`); md.push(s.text); } }
-  const dg = m.turns.map((t, i) => t.digest && `- **t${i + 1}** — ${t.digest}`).filter((x): x is string => !!x); if (dg.length) md.push('\n## 타임라인 (턴별 기록)', ...dg);
-  const pins = m.memories.filter(x => x.pinned && !x.disabled); if (pins.length) { md.push('\n## 고정된 기억'); for (const x of pins) md.push(`- (${KINDS[x.kind] || x.kind}${x.turn != null && !x.manual ? `, t${x.turn + 1}` : ''}) ${x.summary}`); }
+  if (sums.length) { md.push(`\n## ${L('story')}`); for (const s of sums) { md.push(`\n**${s.carried ? L('carried', { from: s.carriedFrom || L('carriedDefault') }) : `t${s.from + 1}–t${s.to + 1}`}**`); md.push(s.text); } }
+  const dg = m.turns.map((x, i) => x.digest && `- **t${i + 1}** — ${x.digest}`).filter((x): x is string => !!x); if (dg.length) md.push(`\n## ${L('timeline')}`, ...dg);
+  const pins = m.memories.filter(x => x.pinned && !x.disabled); if (pins.length) { md.push(`\n## ${L('pinned')}`); for (const x of pins) md.push(`- (${KINDS[x.kind] || x.kind}${x.turn != null && !x.manual ? `, t${x.turn + 1}` : ''}) ${x.summary}`); }
   return md.join('\n');
 }
 

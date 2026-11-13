@@ -97,6 +97,10 @@ export function roll(expr: unknown): Roll | null {
 }
 
 // ── 매크로 ──
+/** 순서 값: 없거나 수가 아니면 100 (로어북 기본값) — 정렬이 NaN 으로 뒤섞이지 않게 */
+export const ordOf = (v: unknown) => { const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN; return Number.isFinite(n) ? n : 100; };
+/** 그 객체 자신의 값만 (프로토타입의 constructor · toString 따위는 없는 것으로) */
+const own = <T,>(o: Record<string, T> | null | undefined, k: string | undefined): T | undefined => o && k != null && Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined;
 export function macro(textIn: string | null | undefined, c: Ctx = {}): string {
   let text = textIn as string;
   if (!text || (text.indexOf('{{') < 0 && text.indexOf('<') < 0)) return text || '';
@@ -119,7 +123,7 @@ export function macro(textIn: string | null | undefined, c: Ctx = {}): string {
     const [nameRaw, ...rest] = raw.split(sep);
     const name = nameRaw.trim().toLowerCase();
     const args = rest.map(x => x.trim());
-    if (name in simple && !rest.length) return String(simple[name] ?? '');   // 옛 판처럼 'constructor' 같은 이름도 여기로 들어온다
+    if (own(simple, name) !== undefined && !rest.length) return String(simple[name] ?? '');   // 자기 값만 ({{constructor}} 같은 이름이 Object 의 것을 내보내지 않게)
     switch (name) {
       case 'random': case 'pick': {
         const o = args.length > 1 ? args : (args[0] || '').split(','); if (!o.length) return '';
@@ -131,21 +135,21 @@ export function macro(textIn: string | null | undefined, c: Ctx = {}): string {
         return o[(h >>> 0) % o.length].trim();
       }
       case 'roll': { const r = roll(/d/i.test(args[0] || '') ? args[0] : 'd' + args[0]); return r ? String(r.total) : ''; }
-      case 'getvar': return String(vars[args[0]] ?? '');
+      case 'getvar': return String(own(vars, args[0]) ?? '');
       case 'setvar': vars[args[0]] = args.slice(1).join(sep); return '';
-      case 'addvar': { const a = Number(vars[args[0]]), b = Number(args[1]); vars[args[0]] = isNaN(a) || isNaN(b) ? String(vars[args[0]] ?? '') + (args[1] ?? '') : a + b; return ''; }
-      case 'incvar': vars[args[0]] = (Number(vars[args[0]]) || 0) + 1; return String(vars[args[0]]);
-      case 'decvar': vars[args[0]] = (Number(vars[args[0]]) || 0) - 1; return String(vars[args[0]]);
-      case 'getglobalvar': return String(g[args[0]] ?? '');
+      case 'addvar': { const a = Number(own(vars, args[0])), b = Number(args[1]); vars[args[0]] = isNaN(a) || isNaN(b) ? String(own(vars, args[0]) ?? '') + (args[1] ?? '') : a + b; return ''; }
+      case 'incvar': vars[args[0]] = (Number(own(vars, args[0])) || 0) + 1; return String(vars[args[0]]);
+      case 'decvar': vars[args[0]] = (Number(own(vars, args[0])) || 0) - 1; return String(vars[args[0]]);
+      case 'getglobalvar': return String(own(g, args[0]) ?? '');
       case 'setglobalvar': g[args[0]] = args.slice(1).join(sep); S.saveSettings(); return '';
-      case 'outlet': return (c.outlets?.[args[0]] || []).join('\n');
+      case 'outlet': return ((c.outlets && own(c.outlets, args[0])) || []).join('\n');
       case 'original': return c.original ?? '';
       case 'var': case 'pvar': {   // 프리셋 변수 (명령 스크립트 안에서는 /let 으로 만든 값이 먼저)
-        const k = args[0] ?? ''; if (c.scope && k in c.scope) return String(c.scope[k] ?? '');
-        const p = c.pv?.[k]; return p ? (args[1] === 'label' ? p.label : args[1] === 'raw' ? String(p.raw) : p.text) : String(vars[k] ?? '');
+        const k = args[0] ?? ''; if (c.scope && own(c.scope, k) !== undefined) return String(c.scope[k] ?? '');
+        const p = c.pv && own(c.pv, k); return p ? (args[1] === 'label' ? p.label : args[1] === 'raw' ? String(p.raw) : p.text) : String(own(vars, k) ?? '');
       }
       case 'pipe': return String(c.pipe ?? '');
-      default: { const ext = X.macros.get(name); if (!ext && !rest.length && c.pv?.[nameRaw.trim()]) return c.pv[nameRaw.trim()].text;   // {{이름}} 만 써도 프리셋 변수로 읽는다
+      default: { const ext = X.macros.get(name); if (!ext && !rest.length && c.pv && own(c.pv, nameRaw.trim())) return c.pv[nameRaw.trim()].text;   // {{이름}} 만 써도 프리셋 변수로 읽는다
         if (!ext) return null; try { return String(ext.fn(args, c) ?? ''); } catch (e) { console.warn('[확장 매크로]', name, e); return ''; } }
     }
   };
@@ -368,7 +372,7 @@ export function scanLore(books: LoreBook[], history: { content?: string | null }
 
   const all: Item[] = [];
   for (const book of books) for (const e of book.entries || []) if (e.enabled !== false && (e.content || '').trim()) all.push({ e, book });
-  all.sort((a, b) => (+!!b.e.constant - +!!a.e.constant) || (+(b.e.order ?? 100) - +(a.e.order ?? 100)));
+  all.sort((a, b) => (+!!b.e.constant - +!!a.e.constant) || (ordOf(b.e.order) - ordOf(a.e.order)));
   if (!all.length) { if (commit) lastLore = []; return []; }
 
   const flagsOf = (it: Item): KeyFlags => ({ cs: it.e.caseSensitive ?? it.book.caseSensitive ?? false, ww: it.e.wholeWord ?? it.book.wholeWord ?? false, rx: !!it.e.useRegex, mx: mxk });
@@ -466,7 +470,7 @@ export function scanLore(books: LoreBook[], history: { content?: string | null }
   }
 
   if (commit) for (const { it: { e } } of activated.values()) if (!isSticky(e) && (e.sticky || e.cooldown)) state[e.id] = { sticky: e.sticky ? count + +e.sticky : 0, cool: e.cooldown ? count + (+(e.sticky as Num) || 0) + +e.cooldown : 0 };
-  const out: LoreHit[] = [...activated.values()].map(a => ({ ...a.it.e, text: a.text, book: a.it.book.name, bookId: a.it.book.id, tok: a.tok })).sort((a, b) => +(a.order ?? 100) - +(b.order ?? 100));
+  const out: LoreHit[] = [...activated.values()].map(a => ({ ...a.it.e, text: a.text, book: a.it.book.name, bookId: a.it.book.id, tok: a.tok })).sort((a, b) => ordOf(a.order) - ordOf(b.order));
   if (commit) lastLore = out;
   return out;
 }
@@ -695,7 +699,7 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
     let used = 0, start = history.length;
     for (let i = history.length - 1; i >= 0; i--) { const t = cost(history[i]); if (used + t > budget && start < history.length) break; used += t; start = i; }
     const hist = history.slice(start), cont = type === 'continue' && hist[hist.length - 1]?.role === 'assistant';
-    for (const j of inject.sort((a, b) => +b.depth - +a.depth || +a.order - +b.order)) {
+    for (const j of inject.sort((a, b) => +b.depth - +a.depth || ordOf(a.order) - ordOf(b.order))) {
       const d = cont && j.depth === 0 ? 1 : j.depth;
       hist.splice(Math.max(0, hist.length - +d), 0, { role: j.role, content: j.content, name: j.role === 'user' ? ctx.user : j.role === 'assistant' ? ctx.char : '', src: j.src });
     }
@@ -751,7 +755,7 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
   }
   const hist = history.slice(start);
   if (F.ccChatStart && hist.length) hist.unshift({ role: 'system', content: mx(F.ccChatStart), src: '대화 시작 표시' });
-  for (const j of inject.sort((a, b) => +b.depth - +a.depth || +a.order - +b.order)) {
+  for (const j of inject.sort((a, b) => +b.depth - +a.depth || ordOf(a.order) - ordOf(b.order))) {
     const idx = Math.max(0, hist.length - +j.depth);
     hist.splice(idx, 0, { role: j.role, content: j.content, src: j.src });
   }
@@ -1084,7 +1088,7 @@ export async function streamChat(conn: Conn | null | undefined, Pin: Params, mes
 
   if (kind === 'mock') {
     const lastUser = [...messages].reverse().find(m => m.role === 'user')?.content || '';
-    const reply = `창밖으로 별빛이 천천히 흘러내렸다.\n\n"${lastUser.replace(/["“”]/g, '').slice(0, 60) || '안녕'}… 라고 했지?" 그녀가 고개를 기울이며 웃었다.\n\n'연습용 연결이라 같은 말만 되돌려 주는 거, 들키면 안 되는데.'\n\n"진짜 대화를 하려면 API 연결을 추가해 줘."`;
+    const reply = tr('engine.mock.reply', { text: lastUser.replace(/["“”]/g, '').slice(0, 60) || tr('engine.mock.hello') });
     for (const ch of reply.match(/[\s\S]{1,3}/g) as RegExpMatchArray) {
       if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
       put(ch); await new Promise(r => setTimeout(r, 12));

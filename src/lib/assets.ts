@@ -127,7 +127,7 @@ export const Assets = {
   grouped(owners: Owner[]) {
     const groups = new Map<string, string[]>();
     for (const o of owners) for (const a of this.active(o)) { const b = baseOf(a.name), g = groups.get(b) || groups.set(b, []).get(b) as string[]; if (a.name !== b) { const v = a.name.slice(b.length + 1); if (v && !g.includes(v)) g.push(v); } }
-    return [...groups].sort((x, y) => x[0].localeCompare(y[0])).map(([b, vs]) => vs.length ? b + '_[' + vs.sort((x, y) => (x as unknown as number) - (y as unknown as number)).join(', ') + ']' : b).join(', ');
+    return [...groups].sort((x, y) => x[0].localeCompare(y[0])).map(([b, vs]) => vs.length ? b + '_[' + vs.sort((x, y) => x.localeCompare(y, undefined, { numeric: true })).join(', ') + ']' : b).join(', ');
   },
   count(owners: Owner[]) { let n = 0; for (const o of owners) n += this.active(o).length; return n; },
   /** 모델에게 알려 줄 이름 목록: 묶음 모드면 angry, happy / 아니면 angry_[1, 2], happy */

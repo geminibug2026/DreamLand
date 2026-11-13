@@ -470,6 +470,7 @@ export const Illust = {
   async review(id: string, scene: Bag | null | undefined, chat: IChat | null | undefined, signal?: AbortSignal) {
     const rec = await db().get('assets', id), image = rec?.data || cache.get(id);
     if (!String(image || '').startsWith('data:image/')) throw new Error(t('illust.review.noImage'));
+    // 22MB 는 base64 글자 길이 — 그림으로는 약 16MB (안내 문구의 16MB 와 같은 한도)
     if ((image as string).length > 22 * 1024 * 1024) throw new Error(t('illust.review.tooBig'));
     const S = SS(), conn = (S.get('conns', S.settings.helpers?.illust) || S.get('conns', S.settings.helpers?.all) || (chat ? S.connFor(chat) : S.conn())) as Conn | undefined;
     if (!conn) throw new Error(t('illust.review.noConn'));

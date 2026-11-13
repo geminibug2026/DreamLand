@@ -225,7 +225,7 @@ export const Live = {
   // ──── 상태: 캐릭터 ────
   /** 지금 이 캐릭터의 상태. 임시로 바꾼 상태([status: …] · 직접 고름)가 살아 있으면 그것, 아니면 일정, 아니면 온라인 */
   presence(chat: LiveChat | null | undefined, ch: LiveChar | null | undefined) {
-    const o = chat?.presenceBy?.[ch?.id as string] || chat?.presence, sched = scheduleOf(ch), B = sched ? blockAt(sched) : null;
+    const o = chat?.presenceBy?.[ch?.id as string] || chat?.presence, sched = scheduleOf(ch), B = sched ? blockAt(sched, Clock.now(chat as Chat | null | undefined)) : null;   // 그 방의 시계로 (지금 열린 방이 아니라)
     const alive = o && (STATUS as Record<string, string>)[o.status] && !(o.until && o.until < now()) && (o.until || o.hold || !sched) && !(o.status === 'online' && !o.activity && !o.until && !o.hold);
     if (alive) return { status: o.status, activity: o.activity || '', until: o.until || 0, from: 'override', block: B?.cur || null };
     if (B?.cur) return { status: B.cur.status as string, activity: B.cur.activity || '', until: now() + B.left * 60000, from: 'schedule', block: B.cur };
@@ -233,7 +233,7 @@ export const Live = {
   },
   /** 상태를 임시로 바꾼다. 기간이 없으면 일정의 지금 칸이 끝날 때까지 (일정이 없으면 계속) */
   setPresence(chat: LiveChat, ch: LiveChar | null | undefined, { status, activity = '', durMs = 0, hold = false }: { status: string; activity?: string; durMs?: number; hold?: boolean }) {
-    const sched = scheduleOf(ch), B = sched ? blockAt(sched) : null;
+    const sched = scheduleOf(ch), B = sched ? blockAt(sched, Clock.now(chat as Chat)) : null;
     const p: PresenceRec = { status: (STATUS as Record<string, string>)[status] ? status : 'online', activity: String(activity || '').slice(0, 80), until: durMs > 0 ? now() + durMs : hold ? 0 : B?.cur ? now() + Math.max(1, B.left) * 60000 : 0, ...(hold ? { hold: true } : {}) };
     if ((chat.charIds || []).length > 1 && ch?.id) (chat.presenceBy ||= {})[ch.id] = p; else chat.presence = p;
     return p;

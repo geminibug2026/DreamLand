@@ -10,7 +10,7 @@ import { go, route } from '../../lib/router';
 import { Memory } from '../../lib/memory';
 import { S } from '../../lib/core';
 import { chatApi } from '../../chat/actions';
-import { t } from '../../i18n';
+import { t, has as hasKey } from '../../i18n';
 import * as memMod from '../../lib/memory';
 import * as core from '../../lib/core';
 
@@ -92,7 +92,7 @@ export function Sec({ title, desc, tools, children }: { title: ReactNode; desc?:
 }
 export const None = ({ text }: { text: ReactNode }) => <div className="mm-empty"><i className="mm-star">✦</i><span>{text}</span></div>;
 export const Chip = ({ text, cls = '' }: { text: ReactNode; cls?: string }) => <span className={('mm-chip ' + cls).trim()}>{text}</span>;
-export const KindBadge = ({ k }: { k?: string }) => <em className={`mm-kind k-${safe(k)}`}>{memMod.KINDS[k || ''] || String(k || '')}</em>;
+export const KindBadge = ({ k }: { k?: string }) => <em className={`mm-kind k-${safe(k)}`}>{(k && memMod.KINDS[k] && hasKey('memoria.kindName.' + k)) ? t('memoria.kindName.' + k) : memMod.KINDS[k || ''] || String(k || '')}</em>;
 export const Meter = ({ v, max, cls = '' }: { v: number; max: number; cls?: string }) => <div className={('mm-meter ' + cls).trim()} title={`${Math.round(v)} / ${Math.round(max)}`}><i style={{ width: Math.min(100, max ? v / max * 100 : 0) + '%' }} /></div>;
 export const VIS_IC: Record<string, string> = { public: 'globe', private: 'lock', secret: 'mask' };
 

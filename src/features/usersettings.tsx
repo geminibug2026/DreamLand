@@ -2,6 +2,7 @@
 // 화면(src/pages/Settings.tsx)은 S.settings.ux 와 S.settings.enterSend 만 고치고, 실제 동작은 전부 여기서 알림(event)과 문서 이벤트로 붙인다
 import { route } from '../lib/router';
 import { S, on } from '../lib/core';
+import { t as tr } from '../i18n';
 
 export interface Ux {
   sound: boolean; soundVolume: number; soundUnfocused: boolean;
@@ -152,7 +153,7 @@ export const feature = {
     document.addEventListener('click', e => {
       if (!ux().clickEdit || String(getSelection())) return;
       const t = e.target instanceof Element ? e.target : null; if (!t || t.closest('a, button, summary, img, input, textarea, details')) return;
-      t.closest('.msgs .msg-body')?.closest('.msg')?.querySelector<HTMLButtonElement>('.msg-tools button[title="수정"]')?.click();
+      t.closest('.msgs .msg-body')?.closest('.msg')?.querySelector<HTMLButtonElement>(`.msg-tools button[title="${window.CSS.escape(tr('chat.msg.edit'))}"]`)?.click();
     });
   },
 };

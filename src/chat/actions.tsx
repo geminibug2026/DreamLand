@@ -286,9 +286,12 @@ export function commandList(): CmdItem[] {
   // STscript 명령 (실리태번과 같은 이름). 같은 정의를 가리키는 별칭은 한 줄로
   const byDef = new Map<object, string[]>();
   for (const [k, d] of ST_COMMANDS) if (!seen.has('/' + k)) { const l = byDef.get(d) || []; l.push('/' + k); byDef.set(d, l); }
+  // 설명 키는 그 정의의 이름 가운데 키가 있는 것으로 (목록에 남은 이름이 별칭뿐일 때도 — 예: /getvar 는 드림랜드 명령이라 /getchatvar 만 남는다)
+  const allNames = new Map<object, string[]>(); for (const [k, d] of ST_COMMANDS) { const l = allNames.get(d) || []; l.push(k); allNames.set(d, l); }
+  const keyOf = (d: object, kind: 'cmd' | 'args') => (allNames.get(d) || []).find(n => hasKey(`st.${kind}.${n}`));
   const st = [...byDef].map(([d, names]) => {
-    const D = d as { help?: string; args?: string }, k = names[0].slice(1);
-    return { cmd: names[0], alias: names.slice(1), args: hasKey('st.args.' + k) ? t('st.args.' + k) : D.args || '', help: (hasKey('st.cmd.' + k) ? t('st.cmd.' + k) : D.help || '') + ' · STscript' };
+    const D = d as { help?: string; args?: string }, hk = keyOf(d, 'cmd'), ak = keyOf(d, 'args');
+    return { cmd: names[0], alias: names.slice(1), args: ak ? t('st.args.' + ak) : D.args || '', help: (hk ? t('st.cmd.' + hk) : D.help || '') + ' · STscript' };
   });
   return [...base, ...[...ext, ...st].sort((x, y) => x.cmd.localeCompare(y.cmd))];
 }

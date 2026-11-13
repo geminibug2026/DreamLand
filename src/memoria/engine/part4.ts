@@ -6,6 +6,7 @@ import type { DossierExcerpt, HistoryMsg, LatestStatus, RecallOpts, RecallTrace,
 import type { Bond, CanonRow, CastCard, ChatM, Item, Mem, MemItem, Milestone, Plan, Pledge, StatusRow, Summary } from '../types';
 import { G, NARRATOR, VOLATILE, list, low, getStringHash, canonSlot, ekey, cleanMultiline, overlap, ago, packetSections, normLockKind, overrides, audits, lasts, freezes, preps, PACKET_HEADER, PACKET_FOOTER, NOW_HEADER, NOW_FOOTER, STABLE_OPT_KEYS } from './base';
 import * as MP from '../prompts';
+import { t as tr } from '../../i18n';
 import { statusOneLine } from '../scene';
 import { hasPhrase, stripPhrases, diffStableEntries, shouldRefreeze, pickPledges, stripOpenLines } from '../craft';
 import type { FreezeMark, StableEntry as StableLine } from '../craft';
@@ -329,8 +330,8 @@ export const part4: Part4 & ThisType<MemoryApi> = {
         freeze = { chatId, key, level, opts: this.stableOptsOf(opts), turn: P.turnNow || 0, entries: collect, text, tokens: tokens(text) }; delta = [];
         if (commit) {
           freezes.set(chatId, freeze);
-          const reason = { new: '새로 뜸', budget: '예산에 맞춰 줄임', removed: '지워진 항목 반영', drift: '달라진 줄이 많아짐', age: '정해 둔 턴 수가 지남' }[why] || why;
-          this.logActivity('ledger', `고정 장부를 새로 떴어요 (${reason}) — 이번 턴은 캐시가 새로 잡혀요`);
+          const reason = ['new', 'budget', 'removed', 'drift', 'age'].includes(why) ? tr(`memoria.engine.ledger.why.${why}`) : why;
+          this.logActivity('ledger', tr('memoria.engine.log.ledgerRefrozen', { reason }));
         }
       }
       const now = [NOW_HEADER, MP.NOW_GUIDE];
@@ -399,13 +400,13 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     if (!w.text) return null;
     const inc = fallback ? [] : [...P.publicRecall.slice(0, L.recallLimit ?? Infinity), ...P.protectedRecall.slice(0, L.protectedLimit ?? Infinity)], ids = new Set(inc.map(m => m.id)), elig = new Set([...P.publicRecall, ...P.protectedRecall].map(m => m.id));
     const diag = { sections: packetSections(w.text), hidden: P.hiddenProtected, fallback, narrator: P.narratorMode, narratorMode: P.narratorMode, direction: !!P.supervisorPlan, budget, split,
-      rows: P.recallCandidates.map(m => ({ id: m.id, summary: m.summary, kind: m.kind, turn: m.turn, ...P.trace.get(m.id), included: ids.has(m.id), excluded: ids.has(m.id) ? '' : elig.has(m.id) ? '토큰 예산' : '최근 원문 또는 전환점과 중복' })) };
+      rows: P.recallCandidates.map(m => ({ id: m.id, summary: m.summary, kind: m.kind, turn: m.turn, ...P.trace.get(m.id), included: ids.has(m.id), excluded: ids.has(m.id) ? '' : elig.has(m.id) ? tr('memoria.engine.excluded.budget') : tr('memoria.engine.excluded.dup') })) };
     const out = { ...w, picked: inc, tokens: used, trim, diag, fixed: '' };
     if (!opts.preview) {
       audits.set(chat.id, { ids: [...ids], at: now() }); lasts.set(chat.id, out);   // 실제 실린 기억만 학습한다
       const prep = preps.get(chat.id), fresh = prep && Date.now() - prep.at! < 60000 ? prep : null; preps.delete(chat.id);
       const took = ((Date.now() - began + (fresh?.took || 0)) / 1000).toFixed(1);
-      this.logActivity('recall', fresh?.timedOut ? `회상 ${ids.size}개 · ${took}초 — 임베딩 응답이 ${fresh.waitSec}초를 넘겨 내장 검색으로 진행했어요` : `회상 ${ids.size}개 · 장부 ${used}토큰 · ${took}초`);
+      this.logActivity('recall', fresh?.timedOut ? tr('memoria.engine.log.recallTimeout', { count: ids.size, sec: took, wait: fresh.waitSec }) : tr('memoria.engine.log.recall', { count: ids.size, tokens: used, sec: took }));
     }
     return out;
   },
