@@ -47,7 +47,7 @@ function Phone() {
         {s.calls ? <small className="call-used">{tt('call.used', { count: s.calls })}</small> : null}
       </div>
       {live || (ended && s.lines.length) ? <div className="call-lines" ref={box}>{s.lines.flatMap((l, i) => {
-        const parts = l.text ? l.text.split('\n').filter(Boolean) : [s.talking && i === s.lines.length - 1 ? '…' : ''];
+        const parts = l.text ? l.text.split('\n').filter(Boolean) : [s.talking && l.who === 'c' ? '…' : ''];   // 답을 준비하는 중 (그사이 내가 보낸 말이 뒤에 있어도)
         return parts.map((p, j) => <p key={`${i}-${j}`} className={l.who === 'u' ? 'me' : 'them'}>{p}{l.cut && j === parts.length - 1 ? <em>—</em> : null}</p>);
       })}</div> : <div className="call-space"><i className="call-star" /></div>}
       {live && s.keypad ? <div className="call-pad">{keys.map(k => <button key={k} type="button" onClick={() => { C.press(k); setText(x => x + k); }}>{k}</button>)}</div> : null}

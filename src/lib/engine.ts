@@ -543,6 +543,8 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
   const P: Params = preset.params || {}, M = S.settings.modes || {};
   const ctx = makeCtx({ chat, char, chars, persona, msgs }); ctx.type = type;
   const mx = (t?: string) => macro(t || '', ctx);
+  // 통화 중(src/call 이 기록 끝에 'Phone call started' 를 넣는다)에는 전화 걸기 안내를 주지 않는다
+  const inCall = msgs.some(m => m.role === 'system' && msgText(m) === 'Phone call started');
   const isGroup = chars.length > 1, clockMode = Clock.mode(chat), today = Clock.now(chat).toDateString();
   let source = msgs.filter(m => !m.hidden);
   if (type === 'regen' || type === 'swipe') source = source.slice(0, -1);
@@ -580,7 +582,7 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
     type === 'continue' && 'Continue your last message from exactly where it stopped. Do not restart it or repeat what is already written.',
     type === 'impersonate' && `Write ${ctx.user}'s next text message, in the voice and length their earlier messages show. Output only that message, as plain lines.`,
   ].filter(Boolean).join('\n');
-  const tail: PromptMsg = { role: 'user', src: '지금 상황 · 명령 안내', content: `<context>\n${situation}\n</context>${M.commands === false || type === 'impersonate' ? '' : '\n\n' + mx(TALK_COMMANDS.replace('{{clock_command}}', Clock.command(chat) ? '\n' + Clock.command(chat) : '').replace('{{call_command}}', !isGroup && (S.settings as { call?: { aiCall?: boolean } }).call?.aiCall !== false ? TALK_CALL_COMMAND : ''))}` };
+  const tail: PromptMsg = { role: 'user', src: '지금 상황 · 명령 안내', content: `<context>\n${situation}\n</context>${M.commands === false || type === 'impersonate' ? '' : '\n\n' + mx(TALK_COMMANDS.replace('{{clock_command}}', Clock.command(chat) ? '\n' + Clock.command(chat) : '').replace('{{call_command}}', !isGroup && !inCall && (S.settings as { call?: { aiCall?: boolean } }).call?.aiCall !== false ? TALK_CALL_COMMAND : ''))}` };
   const fixed = [...before, ...late, tail].reduce((n, m) => n + tokens(m.content) + 4, 0);
   const budget = Math.max(500, (P.contextSize || 128000) - (M.talkTokens || 400) - fixed - (S.settings.format?.tokenPadding || 0));
   let used = 0, start = history.length;

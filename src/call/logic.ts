@@ -48,6 +48,7 @@ export const fmtDur = (ms: number) => { const s = Math.max(0, Math.round(ms / 10
 // ════════ 시작 ════════
 function begin(chat: Chat, dir: Dir, reason = ''): Session | null {
   if (S0 && S0.phase !== 'ended') { toast(tt('call.err.busy'), 'err'); return null; }
+  queued = false;
   const ch = charOf(chat); if (!ch) { toast(tt('call.err.noChar'), 'err'); return null; }
   if (!callConn(chat)) { toast(tt('call.err.noConn'), 'err'); return null; }
   const p = Live.presence(chat, ch);
@@ -99,10 +100,13 @@ async function connect() {
 /** 내가 한 말 */
 export async function userSays(text: string) {
   const s = S0; if (!s || s.phase !== 'connected' || s.muted || s.hold || !text.trim()) return;
-  if (gen) stopTalking(true);
   s.lines.push({ who: 'u', text: text.trim(), at: now() }); changed();
+  // 캐릭터가 말하는 중(또는 답을 준비하는 중)이면 끊지 않는다: 하던 말을 마친 뒤, 그사이 보낸 말까지 보고 이어서 답한다
+  if (gen) { queued = true; return; }
   await say('reply');
 }
+/** 캐릭터가 말하는 동안 내가 보낸 말이 있다 (말을 마치면 이어서 답한다) */
+let queued = false;
 
 const pendText = (p: Pending) => prompt(p.kind).replace(/\{\{last\}\}/g, p.last || '').replace(/\{\{activity\}\}/g, p.activity || 'busy');
 let active: { chat: Chat; kind: 'open' | 'reply' | 'voicemail' } | null = null;
@@ -121,7 +125,7 @@ export function promptPieces(chat: Chat): PromptPiece[] {
 
 const strip = (raw: string, name: string) => {
   let t = E.splitThink(raw).text.replace(/<think(ing)?>[\s\S]*$/i, '');
-  t = t.replace(/\[(react|status|schedule_update|selfie|memory|time|later|scene|scene_end)\b[^\]]*\]?/gi, '').replace(/\[hangup\]?/gi, '');
+  t = t.replace(/\[(react|status|schedule_update|selfie|memory|time|later|scene|scene_end|call)\b[^\]]*\]?/gi, '').replace(/\[hangup\]?/gi, '');
   t = t.replace(new RegExp('^\\s*' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*:\\s*'), '').replace(/\[$|\[[a-z_]*$/i, '').replace(/<\/?[a-z]*$/i, '');
   // 따옴표로 감싼 말은 벗긴다
   t = t.replace(/^"([\s\S]*)"$/, '$1');
@@ -167,13 +171,17 @@ async function say(kind: 'open' | 'reply' | 'voicemail'): Promise<string> {
     if (!(e instanceof Error && e.name === 'AbortError')) { console.error(e); toast(String((e as Error)?.message || e), 'err'); }
   } finally {
     if (gen === g) gen = null;
-    s.talking = false;
+    s.talking = !!gen;   // 뒤이어 시작한 답이 있으면 그 "말하는 중" 표시는 그대로 둔다
     const text = (built.talk ? E.parseTalk(strip(g.acc, ch.name)).text : strip(g.acc, ch.name)).trim();
     if (!line.cut) line.text = text;
     if (!line.text && kind !== 'voicemail') { const i = s.lines.indexOf(line); if (i >= 0) s.lines.splice(i, 1); }
     changed();
   }
-  if (hung && S0 === s && s.phase === 'connected') { await speech?.done; void finish('answered', 'char'); }
+  if (hung && S0 === s && s.phase === 'connected') { queued = false; await speech?.done; void finish('answered', 'char'); }
+  else if (kind !== 'voicemail' && queued && S0 === s && s.phase === 'connected' && !gen) {
+    // 말하는 사이 내가 보낸 말에 이어서 답한다 (읽던 목소리는 다 읽고 나서)
+    queued = false; void (async () => { await speech?.done.catch(() => { }); if (S0 === s && s.phase === 'connected' && !gen) await say('reply'); })();
+  }
   return kind === 'voicemail' ? strip(g.acc, ch.name).trim() : line.text;
 }
 
