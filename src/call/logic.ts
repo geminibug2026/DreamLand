@@ -263,7 +263,7 @@ async function finish(result: Result, by: 'user' | 'char' = 'user', gaveUp = fal
       if (idx < 0) continue;
       const short = txt.slice(0, idx) + '\n(omitted)';
       total -= txt.length - short.length;
-      const sw = msg.swipes[msg.sw]; if (sw) { sw.msg = short; trimmed = true; }
+      const sw = msg.swipes[msg.sw]; if (sw) { sw.text = short; trimmed = true; }
     }
     if (trimmed) await S.saveMsgs(chat, allMsgs);
   }

@@ -1,0 +1,16 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;background:transparent}</style>
+<script>
+// 메시지 속 HTML 화면의 빈 틀. 앱이 내용(dlHtml)과 시작 자료(init)를 보내면 그 앞에 jQuery · lodash · 실리태번 도우미를 깔고 문서를 쓴다
+addEventListener("message", function (e) {
+  if (e.source !== parent || !e.data || typeof e.data.dlHtml !== "string") return;
+  var h = e.data.dlHtml, init = JSON.stringify(e.data.init || {}).replace(/</g, "\\u003c");
+  var pre = '<script>window.__dlInit=' + init + '<\/script><script src="/vendor/jquery.min.js"><\/script><script src="/vendor/lodash.min.js"><\/script><script src="/vendor/th-shim.js"><\/script>';
+  var post = '<script src="/vendor/th-size.js"><\/script>';
+  var m = h.match(/<head[^>]*>/i) || h.match(/<html[^>]*>/i) || h.match(/<!doctype[^>]*>/i);
+  h = m ? h.replace(m[0], function () { return m[0] + pre; }) : pre + h;
+  var i = h.toLowerCase().lastIndexOf("</body>");
+  h = i >= 0 ? h.slice(0, i) + post + h.slice(i) : h + post;
+  document.open(); document.write(h); document.close();
+}, { once: true });
+parent.postMessage({ dlFrameReady: 1 }, "*");
+</script>

@@ -109,6 +109,10 @@ function isPage(lang: string, code: string) {
   return /<(!doctype|html|body|head|script)\b/i.test(code) || (/<style[\s>]/i.test(code) && /<(div|section|main|table)\b/i.test(code));
 }
 const frameSrc = new Map<string, string>();
+/** 화면(iframe)의 시작 자료와 도우미 호출을 채팅 쪽이 채운다 (src/chat/frameBridge) */
+export const frameHooks: { init?: (f: HTMLIFrameElement) => unknown; call?: (f: HTMLIFrameElement, fn: string, args: unknown[]) => unknown } = {};
+/** 열려 있는 모든 화면에 알린다 */
+export function framePost(data: unknown) { for (const f of document.querySelectorAll<HTMLIFrameElement>('iframe.dl-frame-el')) f.contentWindow?.postMessage(data, '*'); }
 const hashOf = (s: string) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return h.toString(36) + s.length.toString(36); };
 function framePlaceholder(code: string) {
   const id = hashOf(code); frameSrc.set(id, code); watchFrames();
@@ -118,11 +122,19 @@ let watching = false;
 function watchFrames() {
   if (watching || typeof document === 'undefined') return; watching = true;
   window.addEventListener('message', e => {
-    const d = e.data as { dlFrame?: unknown; dlFrameReady?: unknown; h?: number } | null; if (!d || (d.dlFrame == null && d.dlFrameReady == null)) return;
+    const d = e.data as { dlFrame?: unknown; dlFrameReady?: unknown; h?: number; dlCall?: number; fn?: string; args?: unknown[] } | null;
+    if (!d || (d.dlFrame == null && d.dlFrameReady == null && d.dlCall == null)) return;
     for (const f of document.querySelectorAll<HTMLIFrameElement>('iframe.dl-frame-el')) {
-      if (f.contentWindow !== e.source) continue;
-      if (d.dlFrameReady != null) { const src = frameSrc.get(f.dataset.frame || ''); if (src != null) f.contentWindow?.postMessage({ dlHtml: src }, '*'); }
-      else f.style.height = Math.min(Math.max(40, Number(d.h) || 0), 4000) + 'px';
+      const w = f.contentWindow; if (!w || w !== e.source) continue;
+      if (d.dlFrameReady != null) {
+        const src = frameSrc.get(f.dataset.frame || ''); if (src == null) return;
+        void Promise.resolve(frameHooks.init?.(f)).catch(() => ({})).then(init => w.postMessage({ dlHtml: src, init: init || {} }, '*'));
+      } else if (d.dlCall != null) {
+        const id = d.dlCall;
+        void Promise.resolve().then(() => { if (!frameHooks.call) throw new Error('not available'); return frameHooks.call(f, String(d.fn), Array.isArray(d.args) ? d.args : []); })
+          .then(val => w.postMessage({ dlRet: id, ok: true, val: val === undefined ? null : val }, '*'), err => w.postMessage({ dlRet: id, ok: false, err: String((err as Error)?.message || err) }, '*'));
+      } else f.style.height = Math.min(Math.max(40, Number(d.h) || 0), 6000) + 'px';
+      return;
     }
   });
   const hydrate = () => {
@@ -131,7 +143,7 @@ function watchFrames() {
       el.dataset.on = '1';
       const f = document.createElement('iframe');
       f.className = 'dl-frame-el'; f.dataset.frame = el.dataset.frame;
-      f.setAttribute('sandbox', 'allow-scripts allow-popups allow-forms'); f.setAttribute('referrerpolicy', 'no-referrer');
+      f.setAttribute('sandbox', 'allow-scripts allow-popups allow-forms allow-modals'); f.setAttribute('referrerpolicy', 'no-referrer');
       f.src = '/frame';
       el.append(f);
     }

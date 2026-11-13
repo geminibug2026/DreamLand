@@ -584,13 +584,12 @@ const server = http.createServer(async (req, res) => {
     if (req.headers['x-dl-proxied']) return send(res, 403, 'forbidden', 'text/plain');   // 프록시를 거쳐 되돌아온 요청 ("이 PC 에서만" 제한을 우회하지 못하게)
     // 메시지 속 HTML 화면을 그리는 빈 틀. 자료는 하나도 없고, 앱이 sandbox(다른 출처) iframe 으로 열어 내용을 postMessage 로 넣는다
     if (url.pathname === '/frame') {
-      const html = '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;background:transparent}</style><script>addEventListener("message",function(e){if(e.source!==parent||!e.data||typeof e.data.dlHtml!=="string")return;var h=e.data.dlHtml,r=\'<script>(function(){var s=function(){parent.postMessage({dlFrame:1,h:Math.max(document.documentElement.scrollHeight,document.body?document.body.scrollHeight:0)},"*")};addEventListener("load",s);try{new ResizeObserver(s).observe(document.documentElement)}catch(x){}setInterval(s,1500);s()})()<\\/script>\';document.open();document.write(/<\\/body>/i.test(h)?h.replace(/<\\/body>/i,r+"</body>"):h+r);document.close()},{once:true});parent.postMessage({dlFrameReady:1},"*")</script>';
-      const buf = Buffer.from(html);
+      const buf = await fsp.readFile(path.join(ROOT, 'vendor', 'frame.html'));
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': buf.length, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
         'Content-Security-Policy': "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'; frame-ancestors 'self'" });
       return res.end(buf);
     }
-    if (LAN && !isLocal(req)) {   // 다른 기기에서 올 때는 접속 키가 있어야 한다
+    if (LAN && !isLocal(req) && !url.pathname.startsWith('/vendor/')) {   // 다른 기기에서 올 때는 접속 키가 있어야 한다 (공개 라이브러리 /vendor 는 빼고)
       const cookie = String(req.headers.cookie || '').match(/(?:^|;\s*)dl_key=([0-9a-f]+)/)?.[1];
       const ip = req.socket.remoteAddress;
       if (blocked(ip)) return send(res, 429, '접속 키를 여러 번 틀렸습니다. 10분 뒤에 다시 시도해 주세요.', 'text/plain; charset=utf-8');

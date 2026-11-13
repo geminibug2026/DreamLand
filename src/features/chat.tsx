@@ -4,6 +4,7 @@ import { cur, ui } from '../chat/store';
 import { armAuto, autoPlan, drawDrawer, drawHud, drawMsgs, drawTop, modeOf, onKey, onVisible, poke, watchPresence } from '../chat/actions';
 
 import { liveSettings } from '../chat/LiveSettings';
+import '../chat/frameBridge';
 import { editState } from '../chat/Hud';
 import { on } from '../lib/core';
 import { route } from '../lib/router';
