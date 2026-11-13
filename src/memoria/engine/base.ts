@@ -48,9 +48,12 @@ export const NARRATOR = '__narrator__', PUBLIC_ONLY = '__public__';
 export const LANGS: Record<string, string> = { auto: '자동 (대화 언어)', ko: '한국어', en: '영어', ja: '일본어', hybrid: '하이브리드 (영어 서술 + 대사 원문)' };
 export const LANG_DIRECTIVES: Record<string, string> = MP.LANG_DIRECTIVES;
 /** 설정 기본값 (S.settings.memory 에 없는 키는 여기서 채운다) */
+/** 이 방의 요약 주기(턴): 대화 모드 방은 따로 정한 값이 있으면 그것 (대화 모드는 한 턴이 짧다) */
+export const chunkTurnsOf = (cfg: Pick<Cfg, 'chunkTurns' | 'chunkTurnsTalk'>, chat?: { mode?: string } | null) =>
+  Math.max(3, +(chat?.mode === 'talk' && +cfg.chunkTurnsTalk > 0 ? cfg.chunkTurnsTalk : cfg.chunkTurns) || 8);
 export const MEMORY_DEFAULTS: Cfg = {
   enabled: false, auto: true, recordDelay: 0, tokenBudget: 8000, topK: 10, minScore: 0.12, minCosine: 0.08, mmrLambda: 0.74, maxPerKind: 3, maxPerTurn: 2, multiQueryRecent: 3,
-  chunkTurns: 8, arcMergeAt: 6, consolidateEvery: 30, arcConsolidateEvery: 100, maxMemories: 400, responseTokens: 24000, summaryContextCount: 3, fossil: { settling: 12, fossilized: 40, deep: 120 }, language: 'auto',
+  chunkTurns: 8, chunkTurnsTalk: 0, arcMergeAt: 6, consolidateEvery: 30, arcConsolidateEvery: 100, maxMemories: 400, responseTokens: 24000, summaryContextCount: 3, fossil: { settling: 12, fossilized: 40, deep: 120 }, language: 'auto',
   cast: true, lockEdited: true, items: false, milestones: false, storyClock: true, refProfile: true, refLore: false,
   trim: false, keepRecent: 20, autoHide: false, preserveRecent: 6,
   supervisor: false, associative: true, authorizePrivate: true, perspective: '', audit: true, reasoningHeadroom: 8000,

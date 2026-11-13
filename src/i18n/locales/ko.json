@@ -2711,6 +2711,8 @@
   "memoria.config.inject.chunkTurns.title": "몇 턴마다 자동 요약할지",
   "memoria.config.inject.maxMemories.label": "최대 기억 수",
   "memoria.config.inject.maxMemories.title": "초과 시 중요도 낮은 오래된 기억부터 정리 (고정/수동 제외)",
+  "memoria.config.inject.chunkTurnsTalk.label": "대화 모드 요약 주기(턴)",
+  "memoria.config.inject.chunkTurnsTalk.title": "대화 모드 방에서만 쓰는 요약 주기. 대화 모드는 한 턴이 짧으니 더 길게 잡아도 돼요. 0이면 위의 요약 주기를 그대로 씁니다.",
   "memoria.config.inject.consolidateEvery.label": "서고 정리 주기(턴)",
   "memoria.config.inject.consolidateEvery.title": "N턴마다 사서가 서고를 훑어 중복 기억 병합·소음 제거·중요도 재조정을 합니다. 0 = 끔. 고정·수동 기억은 건드리지 않습니다. 이때 청크들도 같은 사건끼리 재그룹핑돼 아크로 병합됩니다.",
   "memoria.config.inject.arcConsolidateEvery.label": "아크 정리 주기(턴)",

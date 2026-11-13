@@ -6,6 +6,7 @@ import type { StatusBar } from './part1';
 import type { CastCard, Cfg, ChatM, Mem, MemItem, Msg, Summary, SummarySrc, Turn } from '../types';
 import { G, NARRATOR, PUBLIC_ONLY, PAST_QUERY_RE, str, list, clip, low, cleanStr, visibleProse, sanitizeRecord, ekey, vec, cos, cueText, indexText, vecOf, cleanMultiline, normScope, sameKnowledgeScope, storyFossilWeight, grams, lexical, gramOverlap, calibrate, parseLoose, toDays, ago, dcache, dvec, normLockKind, normVisibility, overrides, pendingEmbeds, queryEmbedCache, preps } from './base';
 import * as MP from '../prompts';
+import { chunkTurnsOf } from './base';
 import { THREAD_KINDS, withDeadline, hasPhrase, splitClosedLine } from '../craft';
 import { t as tr } from '../../i18n';
 
@@ -177,7 +178,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
    * 미요약 범위가 크게 밀렸어도(일괄 색인 · 기록 실패 구간) 한 덩이로 삼키지 않고 n턴 창 단위로 나눈다. 턴 기록이 없어 건너뛴 창도 "지나갔다"고 기억한다(mem.chunked)
    */
   async maybeSummarizeChunk(chat, mem, { signal, flushAll = false, onProgress = null, shouldStop = null, strict = false } = {}) {
-    const cfg = this.cfg(), n = Math.max(3, +cfg.chunkTurns || 8);
+    const cfg = this.cfg(), n = chunkTurnsOf(cfg, chat);
     let covered = this.summaryCoveredTurn(mem), made = 0, done = 0;
     const pending = mem.turns.length - covered, total = pending <= 0 ? 0 : (flushAll ? Math.ceil(pending / n) : Math.floor(pending / n));
     while (flushAll ? mem.turns.length > covered : mem.turns.length - covered >= n) {

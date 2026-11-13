@@ -10,6 +10,7 @@ import type { Milestone, Summary, Turn } from '../types';
 import { Del, Ib, None, Sec, busyBtn, confirmList, editBox, pct, useBump, type StOpen } from './parts';
 import { MANUAL_MAX, Mx, bondViewRows, cut, cutLines, koDuration, noMap, onJump, sceneSlot, storeOf, storyState } from './viewsShared';
 import * as memMod from '../../lib/memory';
+import { chunkTurnsOf } from '../engine/base';
 import * as core from '../../lib/core';
 import { t } from '../../i18n';
 
@@ -51,7 +52,7 @@ export function Story({ st }: { st: StOpen }) {
   const rebuild = async () => {
     if (v.busy) { v.busy.stop = true; return say(t('memoria.story.stopping')); }
     if (!mem.turns.some(x => x.digest)) return toast(t('memoria.story.noDigests'), 'err');
-    const calls = Math.ceil(T / Math.max(3, +cfg.chunkTurns || 8));
+    const calls = Math.ceil(T / chunkTurnsOf(cfg, chat));
     if (!(await confirmList(t('memoria.story.rebuildConfirm', { n: T }), [t('memoria.story.rebuildCalls', { n: calls }), t('memoria.story.rebuildRevert'), t('memoria.story.rebuildCarried')], t('memoria.story.rebuildOk')))) return;
     const job = v.busy = { stop: false }; drawView(); say(t('memoria.story.preparing'));
     try {

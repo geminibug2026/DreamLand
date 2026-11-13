@@ -170,6 +170,7 @@ export function Config({ st }: { st: St }) {
       <Num k="depth" label={t('memoria.config.inject.depth.label')} title={t('memoria.config.inject.depth.title')} min={0} max={10000} step={1} />
       <Num k="topK" label={t('memoria.config.inject.topK.label')} title={t('memoria.config.inject.topK.title')} min={1} max={30} step={1} />
       <Num k="chunkTurns" label={t('memoria.config.inject.chunkTurns.label')} title={t('memoria.config.inject.chunkTurns.title')} min={3} max={40} step={1} />
+      <Num k="chunkTurnsTalk" label={t('memoria.config.inject.chunkTurnsTalk.label')} title={t('memoria.config.inject.chunkTurnsTalk.title')} min={0} max={100} step={1} />
       <Num k="maxMemories" label={t('memoria.config.inject.maxMemories.label')} title={t('memoria.config.inject.maxMemories.title')} min={50} max={2000} step={50} />
       <Num k="consolidateEvery" label={t('memoria.config.inject.consolidateEvery.label')} title={t('memoria.config.inject.consolidateEvery.title')} min={0} max={200} step={5} />
       <Num k="arcConsolidateEvery" label={t('memoria.config.inject.arcConsolidateEvery.label')} title={t('memoria.config.inject.arcConsolidateEvery.title')} min={0} max={500} step={10} /></Grid>
