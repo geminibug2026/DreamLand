@@ -1,1 +1,0 @@
-export{t as go}from"./router-Cvo4aRkD.js";

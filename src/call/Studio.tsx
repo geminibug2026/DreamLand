@@ -20,7 +20,7 @@ export function CallStudio() {
   useLang();
   const redraw = useRedraw(), c = cfg();
   const set = <K extends keyof CallCfg>(k: K, v: CallCfg[K]) => { c[k] = v; saveCfg(); redraw(); };
-  const num = (k: 'daily' | 'gapHours' | 'chance' | 'ringSec' | 'tokens' | 'rawMax', min = 0) => <Num value={c[k]} min={min} onCommit={v => set(k, v)} />;
+  const num = (k: 'daily' | 'gapHours' | 'chance' | 'ringSec' | 'tokens' | 'rawMax' | 'rawTotal', min = 0) => <Num value={c[k]} min={min} onCommit={v => set(k, v)} />;
   const logs = S.chats.flatMap(ch => ((ch as { callLog?: Log[] }).callLog || []).map(l => ({ ...l, chat: ch }))).sort((a, b) => b.at - a.at).slice(0, 40);
   return <div className="call-studio form">
     <section className="card">
@@ -40,6 +40,7 @@ export function CallStudio() {
       <div className="call-row">
         <Field label={tt('call.set.inPrompt')}><Select value={c.inPrompt} opts={(['raw', 'summary', 'none'] as const).map(k => [k, tt('call.set.inPrompt.' + k)] as const)} onChange={v => set('inPrompt', v as CallCfg['inPrompt'])} /></Field>
         {c.inPrompt === 'raw' ? <Field label={tt('call.set.rawMax')}>{num('rawMax', 200)}</Field> : null}
+        {c.inPrompt === 'raw' ? <Field label={tt('call.set.rawTotal')}>{num('rawTotal', 500)}</Field> : null}
       </div>
       <Check label={tt('call.set.rec')} on={c.rec} onChange={v => set('rec', v)} />
       <Check label={tt('call.set.recAudio')} on={c.recAudio} onChange={v => set('recAudio', v)} />

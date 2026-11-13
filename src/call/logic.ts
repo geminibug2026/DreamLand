@@ -231,7 +231,7 @@ async function finish(result: Result, by: 'user' | 'char' = 'user', gaveUp = fal
   const raw = s.lines.map(l => `${l.who === 'u' ? u : ch.name}: ${l.text}${l.cut ? ' —(cut off)' : ''}`).join('\n');
   if (result === 'answered' && raw) {
     const mode = cfg().inPrompt;
-    if (mode === 'raw') { const max = Math.max(200, +cfg().rawMax || 6000); body = '\n' + (raw.length > max ? '…' + raw.slice(-max) : raw); }
+    if (mode === 'raw') { const maxChars = Math.max(200, (+cfg().rawMax || 2000) * 3); body = '\n' + (raw.length > maxChars ? '…' + raw.slice(-maxChars) : raw); }
     else if (mode === 'summary') {
       try { s.calls++; changed(); const sum = await E.quickCall(prompt('summary').replace(/\{\{char\}\}/g, ch.name).replace(/\{\{user\}\}/g, u), raw, { maxTokens: 300, conn: S.connFor(chat) }); body = sum ? '\nSummary: ' + sum : ''; } catch (e) { console.warn('[call summary]', e); body = '\n' + raw.slice(-800); }
     }
@@ -251,6 +251,22 @@ async function finish(result: Result, by: 'user' | 'char' = 'user', gaveUp = fal
   (c.callLog ||= []).unshift({ at: now(), dir: s.dir, result, dur, msgId: m.id, charId: ch.id }); c.callLog.length = Math.min(c.callLog.length, 30);
   if (cur.chat === chat && chatApi.push) await chatApi.push(m);
   else { const list = s.msgs.length ? s.msgs : await S.msgs(chat.id); list.push(m); await S.saveMsgs(chat, list); }
+  // 전체 통화 토큰 한도: 오래된 통화 카드의 원문을 축약
+  if (cfg().inPrompt === 'raw') {
+    const maxTotal = Math.max(500, (+cfg().rawTotal || 8000) * 3);
+    const allMsgs = cur.chat === chat ? cur.msgs : s.msgs;
+    const callMsgs = allMsgs.filter(msg => msg.call && msgText(msg).includes('\n'));
+    let total = callMsgs.reduce((n, msg) => n + msgText(msg).length, 0);
+    let trimmed = false;
+    for (let i = 0; i < callMsgs.length - 1 && total > maxTotal; i++) {
+      const msg = callMsgs[i], txt = msgText(msg), idx = txt.indexOf('\n');
+      if (idx < 0) continue;
+      const short = txt.slice(0, idx) + '\n(omitted)';
+      total -= txt.length - short.length;
+      const sw = msg.swipes[msg.sw]; if (sw) { sw.msg = short; trimmed = true; }
+    }
+    if (trimmed) await S.saveMsgs(chat, allMsgs);
+  }
   await S.save('chats', chat, true);
   emit('call:end', { chat, msg: m });
   if (result !== 'answered') setTimeout(() => { if (S0 === s) close(); }, 1600);

@@ -31,10 +31,10 @@ export const PROMPT_DEFAULTS: Record<PromptKey, string> = { style: P_STYLE, inco
 
 export interface CallCfg {
   auto: boolean; daily: number; gapHours: number; chance: number; night: boolean; ringSec: number; voicemail: boolean;
-  tokens: number; inPrompt: 'raw' | 'summary' | 'none'; rawMax: number; rec: boolean; recAudio: boolean; tones: boolean; ambient: 'off' | 'auto' | 'cafe' | 'rain' | 'street';
+  tokens: number; inPrompt: 'raw' | 'summary' | 'none'; rawMax: number; rawTotal: number; rec: boolean; recAudio: boolean; tones: boolean; ambient: 'off' | 'auto' | 'cafe' | 'rain' | 'street';
   prompts: Partial<Record<PromptKey, string>>;
 }
-export const DEFAULTS: CallCfg = { auto: false, daily: 1, gapHours: 6, chance: 8, night: false, ringSec: 25, voicemail: false, tokens: 500, inPrompt: 'raw', rawMax: 6000, rec: false, recAudio: false, tones: true, ambient: 'off', prompts: {} };
+export const DEFAULTS: CallCfg = { auto: false, daily: 1, gapHours: 6, chance: 8, night: false, ringSec: 25, voicemail: false, tokens: 500, inPrompt: 'raw', rawMax: 2000, rawTotal: 8000, rec: false, recAudio: false, tones: true, ambient: 'off', prompts: {} };
 
 type WithCall = { call?: Partial<CallCfg> };
 /** 설정 (빠진 칸은 기본값으로 채운다) */
@@ -44,7 +44,7 @@ export function cfg(): CallCfg {
   for (const [k, v] of Object.entries(DEFAULTS)) if ((c as unknown as Record<string, unknown>)[k] === undefined) (c as unknown as Record<string, unknown>)[k] = typeof v === 'object' ? { ...v } : v;
   // 예전 기본값(말 길이 160 · 원문 1500)이 그대로 남아 있으면 새 기본값으로
   if (c.tokens === 160) c.tokens = DEFAULTS.tokens;
-  if (c.rawMax === 1500) c.rawMax = DEFAULTS.rawMax;
+  if (c.rawMax === 1500 || c.rawMax === 6000) c.rawMax = DEFAULTS.rawMax;
   return c;
 }
 export const prompt = (k: PromptKey) => String(cfg().prompts[k] || '').trim() || PROMPT_DEFAULTS[k];
