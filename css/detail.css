@@ -178,6 +178,8 @@
 .mode-talk .msg.ai:not(.in-scene) .dl-frame { margin-left: calc(-1 * var(--bleed)); }
 .mode-talk .msg.user:not(.in-scene) .dl-frame { margin-right: calc(-1 * var(--bleed)); }
 .mode-talk .msg.user .msg-body:has(.dl-frame) { max-width: 100%; }
+/* 답변이 화면으로 바로 시작하면 아바타(38px) 아래에서 시작한다 (이름 줄 24px + 사이 4px 를 빼고 8px 띄운다) */
+.mode-talk .msg:not(.in-scene) .msg-body > .dl-frame:first-child { margin-top: 18px; }
 @media (max-width: 820px) { .mode-talk .msg { --bleed: 48px; } }
 
 /* 큰 달: 오늘의 실제 위상 */
