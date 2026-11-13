@@ -4696,7 +4696,7 @@
   "settings.security.blockRemoteImages": "Don't load external images in messages automatically (tracking protection)",
   "settings.security.htmlHint": "HTML in messages and cards is shown after removing scripts, event attributes and forms. Extensions can access all data, so only enable ones you trust. Connecting from another device (start-lan.bat) requires the access key shown in the server window.",
   "settings.data.section": "Data",
-  "settings.data.hint": "All data is stored in this browser's storage. Download a backup now and then.",
+  "settings.data.hint": "Characters, chats and settings are saved in the data folder inside your Dreamland folder, with an automatic backup once a day. You can also download a backup file here.",
   "settings.data.export": "Export backup",
   "settings.data.restore": "Restore from backup",
   "settings.data.restored": "Restored. Reloading.",

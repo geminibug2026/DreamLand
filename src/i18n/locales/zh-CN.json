@@ -4644,7 +4644,7 @@
   "settings.security.blockRemoteImages": "不自动加载消息中的外部图片（防追踪）",
   "settings.security.htmlHint": "消息和角色卡中的 HTML 会在过滤脚本·事件属性·表单后显示。扩展可以访问所有数据，请只启用可信的扩展。从其他设备访问（start-lan.bat）时需要运行窗口中显示的访问密钥。",
   "settings.data.section": "数据",
-  "settings.data.hint": "所有数据都保存在此浏览器的存储中。请不时下载备份文件。",
+  "settings.data.hint": "角色、对话和设置保存在 Dreamland 文件夹内的 data 文件夹中，每天自动备份一次。也可以在这里下载备份文件。",
   "settings.data.export": "导出备份",
   "settings.data.restore": "从备份恢复",
   "settings.data.restored": "已恢复。正在重新打开页面。",

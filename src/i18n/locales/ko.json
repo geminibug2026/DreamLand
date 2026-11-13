@@ -4644,7 +4644,7 @@
   "settings.security.blockRemoteImages": "메시지 속 외부 이미지를 자동으로 불러오지 않기 (추적 방지)",
   "settings.security.htmlHint": "메시지와 카드에 든 HTML 은 스크립트·이벤트 속성·폼을 걸러 낸 뒤 보여 줍니다. 확장은 모든 데이터에 접근할 수 있으니 믿을 수 있는 것만 켜세요. 다른 기기에서 접속(start-lan.bat)할 때는 실행 창에 표시되는 접속 키가 필요합니다.",
   "settings.data.section": "데이터",
-  "settings.data.hint": "모든 데이터는 이 브라우저의 저장소에 보관됩니다. 가끔 백업 파일을 받아 두세요.",
+  "settings.data.hint": "캐릭터 · 대화 · 설정은 드림랜드 폴더 안의 data 폴더에 저장되고, 하루 한 번 자동으로 백업됩니다. 따로 백업 파일을 받아 둘 수도 있어요.",
   "settings.data.export": "백업 내보내기",
   "settings.data.restore": "백업에서 복원",
   "settings.data.restored": "복원했어요. 화면을 새로 엽니다.",
