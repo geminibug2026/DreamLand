@@ -1,5 +1,8 @@
 // 기능 화면 › 전화: 설정 · 호출 수 안내 · 프롬프트 · 최근 통화
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { toast } from '../ui';
+import * as A from './audio';
+import { SOUND_KINDS, customSound, setCustomSound, type SoundKind } from './audio';
 import { Check, Field, Select, useRedraw } from '../addons/parts';
 import { S } from '../lib/core';
 import { go } from '../lib/router';
@@ -14,6 +17,39 @@ type Log = { at: number; dir: Dir; result: Result; dur: number; charId: string }
 function Num({ value, min, onCommit }: { value: number; min: number; onCommit: (v: number) => void }) {
   const [d, setD] = useState<string | null>(null);
   return <input className="inp" type="number" min={min} value={d ?? value} onChange={e => { setD(e.target.value); if (e.target.value !== '' && +e.target.value >= min) onCommit(+e.target.value); }} onBlur={() => { if (d !== null) { onCommit(Math.max(min, +d || 0)); setD(null); } }} />;
+}
+
+/** 벨 · 배경 소리를 내 파일로 바꾸기 */
+function SoundFiles() {
+  const [names, setNames] = useState<Partial<Record<SoundKind, string>> | null>(null);
+  const [busy, setBusy] = useState('');
+  const refresh = () => void Promise.all(SOUND_KINDS.map(async k => [k, (await customSound(k))?.name || ''] as const)).then(l => setNames(Object.fromEntries(l)));
+  useEffect(refresh, []);
+  const stopRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopRef.current?.(), []);
+  const pick = async (k: SoundKind, f: File | null) => {
+    if (f && f.size > 15 * 1024 * 1024) return toast(tt('call.snd.tooBig'), 'err');
+    setBusy(k);
+    try { await setCustomSound(k, f); refresh(); } catch (e) { toast(String((e as Error)?.message || e), 'err'); } finally { setBusy(''); }
+  };
+  const preview = (k: SoundKind) => {
+    if (stopRef.current) { stopRef.current(); stopRef.current = null; setBusy(''); return; }
+    const stop = k === 'ring' ? A.ringtone() : A.ambient(k);
+    stopRef.current = stop; setBusy('play:' + k);
+    window.setTimeout(() => { if (stopRef.current === stop) { stop(); stopRef.current = null; setBusy(''); } }, 6000);
+  };
+  return <section className="card">
+    <b className="call-sec">{tt('call.snd.title')}</b>
+    {SOUND_KINDS.map(k => <div key={k} className="call-snd">
+      <span className="call-snd-name">{tt('call.snd.' + k)}</span>
+      <small className="call-snd-file">{names?.[k] || tt(k === 'ring' ? 'call.snd.synth' : 'call.snd.default')}</small>
+      <span className="call-snd-btns">
+        <button type="button" className="btn ghost" onClick={() => preview(k)}>{busy === 'play:' + k ? tt('call.snd.stop') : tt('call.snd.play')}</button>
+        <label className="btn ghost">{tt('call.snd.pick')}<input type="file" accept="audio/*" hidden disabled={busy === k} onChange={e => { const f = e.target.files?.[0] || null; e.target.value = ''; if (f) void pick(k, f); }} /></label>
+        {names?.[k] ? <button type="button" className="btn ghost" onClick={() => void pick(k, null)}>{tt('call.set.reset')}</button> : null}
+      </span>
+    </div>)}
+  </section>;
 }
 
 export function CallStudio() {
@@ -47,6 +83,7 @@ export function CallStudio() {
       <Check label={tt('call.set.tones')} on={c.tones} onChange={v => set('tones', v)} />
       <Field label={tt('call.set.ambient')}><Select value={c.ambient} opts={(['off', 'auto', 'cafe', 'rain', 'street'] as const).map(k => [k, tt('call.amb.' + k)] as const)} onChange={v => set('ambient', v as CallCfg['ambient'])} /></Field>
     </section>
+    <SoundFiles />
     <section className="card">
       <b className="call-sec">{tt('call.set.prompts')}</b>
       {PROMPT_KEYS.map(k => <Field key={k} label={<>{tt('call.p.' + k)}{c.prompts[k] ? <button type="button" className="btn ghost call-reset" onClick={() => { delete c.prompts[k]; saveCfg(); redraw(); }}>{tt('call.set.reset')}</button> : null}</>}>
