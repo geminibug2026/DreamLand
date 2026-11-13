@@ -23,10 +23,11 @@ export const P_MISSED = `A while ago you phoned {{user}} and they did not pick u
 export const P_HUNGUP = `Your last phone call with {{user}} ended when they hung up. If you two had already said goodbye, it was a normal ending — do not make anything of it. If it ended abruptly, without a goodbye, you noticed; react to that once, in character.`;
 export const P_CUT = `Your last phone call with {{user}} was cut off while you were still talking — you were in the middle of saying: "{{last}}". You know you did not get to finish. React to that, and you may finish the thought.`;
 export const P_NOANSWER = `{{user}} called you while you were {{activity}}, and you could not pick up. You know about the missed call now. Mention it naturally, the way {{char}} would.`;
+export const P_CHARBYE = `You just finished a phone call with {{user}} — you were the one who said goodbye and hung up. Send a short follow-up text naturally, the way {{char}} would after ending a call (a quick message about what you discussed, or something you forgot to say, or just a casual sign-off). Keep it brief.`;
 
-export const PROMPT_KEYS = ['style', 'incoming', 'pickup', 'voicemail', 'summary', 'record', 'declined', 'missed', 'hungUp', 'cut', 'noAnswer'] as const;
+export const PROMPT_KEYS = ['style', 'incoming', 'pickup', 'voicemail', 'summary', 'record', 'declined', 'missed', 'hungUp', 'cut', 'noAnswer', 'charBye'] as const;
 export type PromptKey = typeof PROMPT_KEYS[number];
-export const PROMPT_DEFAULTS: Record<PromptKey, string> = { style: P_STYLE, incoming: P_INCOMING, pickup: P_PICKUP, voicemail: P_VOICEMAIL, summary: P_SUMMARY, record: P_RECORD, declined: P_DECLINED, missed: P_MISSED, hungUp: P_HUNGUP, cut: P_CUT, noAnswer: P_NOANSWER };
+export const PROMPT_DEFAULTS: Record<PromptKey, string> = { style: P_STYLE, incoming: P_INCOMING, pickup: P_PICKUP, voicemail: P_VOICEMAIL, summary: P_SUMMARY, record: P_RECORD, declined: P_DECLINED, missed: P_MISSED, hungUp: P_HUNGUP, cut: P_CUT, noAnswer: P_NOANSWER, charBye: P_CHARBYE };
 
 export interface CallCfg {
   auto: boolean; daily: number; gapHours: number; chance: number; night: boolean; ringSec: number; voicemail: boolean;

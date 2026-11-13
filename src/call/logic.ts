@@ -19,7 +19,7 @@ export interface Line { who: 'u' | 'c'; text: string; cut?: boolean; at: number 
 /** 대화 기록에 남는 통화 카드 (Msg.call) */
 export interface CallRec { dir: Dir; result: Result; dur: number; rec: boolean; cut?: boolean; endedBy?: 'user' | 'char'; lines?: Line[]; voicemail?: string; audio?: string; missedN?: number; calls: number }
 /** 다음 대화에서 캐릭터가 알아차릴 일 (Chat.callPending) */
-export interface Pending { kind: 'declined' | 'missed' | 'hungUp' | 'cut' | 'noAnswer'; at: number; last?: string; activity?: string }
+export interface Pending { kind: 'declined' | 'missed' | 'hungUp' | 'cut' | 'noAnswer' | 'charBye'; at: number; last?: string; activity?: string }
 type CallChat = Chat & { callPending?: Pending; callLog?: { at: number; dir: Dir; result: Result; dur: number; msgId: string; charId: string }[]; callAuto?: { day: string; count: number; lastAt: number }; callMissed?: number };
 
 export interface Session {
@@ -246,7 +246,7 @@ async function finish(result: Result, by: 'user' | 'char' = 'user', gaveUp = fal
   const c = chat as CallChat;
   const pend: Pending | null = result === 'declined' ? { kind: 'declined', at: now() } : result === 'missed' ? { kind: 'missed', at: now() }
     : result === 'unanswered' && !gaveUp ? { kind: 'noAnswer', at: now(), activity: s.activity || s.status }
-      : result === 'answered' && cut ? { kind: 'cut', at: now(), last: cutLine?.text.slice(-200) } : result === 'answered' && by === 'user' && s.lines.length ? { kind: 'hungUp', at: now() } : null;
+      : result === 'answered' && cut ? { kind: 'cut', at: now(), last: cutLine?.text.slice(-200) } : result === 'answered' && by === 'user' && s.lines.length ? { kind: 'hungUp', at: now() } : result === 'answered' && by === 'char' && s.lines.length ? { kind: 'charBye', at: now() } : null;
   if (pend) c.callPending = pend; else delete c.callPending;
   (c.callLog ||= []).unshift({ at: now(), dir: s.dir, result, dur, msgId: m.id, charId: ch.id }); c.callLog.length = Math.min(c.callLog.length, 30);
   if (cur.chat === chat && chatApi.push) await chatApi.push(m);
