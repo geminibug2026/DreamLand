@@ -7,17 +7,17 @@ import { useCss } from '../addons/parts';
 import { qrActive, qrStore, type QrAuto, type QrItem } from '../lib/qr-data';
 import { chatApi } from '../chat/actions';
 import type { Chat } from '../lib/types';
-import { runQrScript, runItem } from '../stscript/host';
+import { runItem } from '../stscript/host';
 
 const OWNER = 'qr';
 let running = 0;
-/** 이 대화(없으면 전역)에서 켜진 세트 가운데 when 에 맞는 단추를 차례로 돈다 */
+/** 이 대화(없으면 전역)에서 켜진 세트 가운데 when 에 맞는 버튼을 차례로 돈다 */
 async function fire(when: keyof QrAuto, chat?: Chat | null) {
   if (running) return;   // 자동 실행이 또 자동 실행을 부르지 않게
   const items: QrItem[] = (chat ? qrActive(chat) : qrStore().sets.filter(s => s.on !== false && s.scope === 'global')).flatMap(s => s.items.filter(i => i.auto?.[when]));
   if (!items.length) return;
   running++;
-  try { for (const it of items) await (it.kind === 'script' || /^\s*\//.test(it.text) ? runQrScript(it.text) : runItem(it)); }
+  try { for (const it of items) await runItem(it, { auto: true }); }
   finally { running--; }
 }
 

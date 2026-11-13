@@ -111,6 +111,7 @@ export function macro(textIn: string | null | undefined, c: Ctx = {}): string {
     weekday: d.toLocaleDateString('ko-KR', { weekday: 'long' }), isotime: d.toTimeString().slice(0, 5), isodate: d.toISOString().slice(0, 10),
     newline: '\n', noop: '', trim: '\u0000TRIM\u0000',
   };
+  const pickSeen: Record<string, number> = {};   // 한 글 안에서 같은 {{pick}} 이 여러 번 나오면 차례로 다른 자리
   const one = (body: string): string | null => {
     const raw = body.trim();
     if (raw.startsWith('//')) return '';
@@ -120,7 +121,15 @@ export function macro(textIn: string | null | undefined, c: Ctx = {}): string {
     const args = rest.map(x => x.trim());
     if (name in simple && !rest.length) return String(simple[name] ?? '');   // 옛 판처럼 'constructor' 같은 이름도 여기로 들어온다
     switch (name) {
-      case 'random': case 'pick': { const o = args.length > 1 ? args : (args[0] || '').split(','); return o.length ? o[Math.floor(Math.random() * o.length)].trim() : ''; }
+      case 'random': case 'pick': {
+        const o = args.length > 1 ? args : (args[0] || '').split(','); if (!o.length) return '';
+        if (name === 'random') return o[Math.floor(Math.random() * o.length)].trim();
+        // {{pick}}: 같은 대화 · 같은 자리에서는 늘 같은 것 (실리태번과 같다). /reroll-pick 이 시드를 바꾼다
+        const seen = (pickSeen[raw] = (pickSeen[raw] || 0) + 1);
+        const key = `${c.chat?.id || ''}:${(c.chat as { pickSeed?: number } | undefined)?.pickSeed || 0}:${raw}:${seen}`;
+        let h = 2166136261; for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 16777619); }
+        return o[(h >>> 0) % o.length].trim();
+      }
       case 'roll': { const r = roll(/d/i.test(args[0] || '') ? args[0] : 'd' + args[0]); return r ? String(r.total) : ''; }
       case 'getvar': return String(vars[args[0]] ?? '');
       case 'setvar': vars[args[0]] = args.slice(1).join(sep); return '';
@@ -551,7 +560,7 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
   for (const p of X.prompt) {
     if (p.owner === 'mode' || p.owner === 'illust') continue;
     let parts: PromptPart[] = []; try { parts = p.fn({ chat, char, chars, persona, history, msgs, type, commit, ctx }) || []; } catch (e) { console.warn('[프롬프트 조각]', p.owner, e); }
-    for (const part of parts) if (part?.content) (part.where === 'before' ? before : late).push({ role: 'system', content: part.content, src: part.src || p.owner });
+    for (const part of parts) if (part?.content) (part.where === 'top' ? before : part.where === 'before' ? before : late).push({ role: 'system', content: part.content, src: part.src || p.owner });
   }
   if (chat.note?.text) late.push({ role: 'system', content: mx(chat.note.text), src: '작가 노트' });
   // 지금 상황: 상태 · 시각 · 먼저 말 거는 경우의 안내
@@ -637,7 +646,7 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
   for (const e of lore) if (e.position === 'outlet') (ctx.outlets[(e.outlet || e.name) as string] ||= []).push(e.text);
 
   // 3) 깊이 삽입: 로어북 · 작가 노트 · 캐릭터 노트 · 트래커 · 확장이 덧붙이는 조각
-  const inject: Inj[] = [], extBefore: (PromptMsg & { own: string })[] = [], tail: PromptMsg[] = [];
+  const inject: Inj[] = [], extBefore: (PromptMsg & { own: string })[] = [], extTop: PromptMsg[] = [], tail: PromptMsg[] = [];
   for (const e of lore) if (e.position === 'depth') inject.push({ role: e.role || 'system', content: e.text, depth: e.depth ?? 4, order: e.order as Num, src: '로어북: ' + (e.name || e.book) });
   const noteParts = [at('an_top'), mx(chat.note?.text), at('an_bottom')].filter(Boolean);
   if (noteParts.length) inject.push({ role: chat.note?.role || 'system', content: noteParts.join('\n'), depth: chat.note?.depth ?? 4, order: 200, src: '작가 노트' });
@@ -648,7 +657,7 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
   }
   for (const p of X.prompt) {
     let parts: PromptPart[] = []; try { parts = p.fn({ chat, char, chars, persona, history, msgs, type, commit, ctx }) || []; } catch (e) { console.warn('[프롬프트 조각]', p.owner, e); }
-    for (const part of parts) { if (!part?.content) continue; const item = { role: part.role || 'system', content: part.content, src: part.src || p.owner }; if (part.where === 'before') extBefore.push({ ...item, own: p.owner }); else if (part.where === 'end') tail.push(item); else inject.push({ ...item, depth: part.depth ?? 1, order: part.order ?? 100 }); }
+    for (const part of parts) { if (!part?.content) continue; const item = { role: part.role || 'system', content: part.content, src: part.src || p.owner }; if (part.where === 'top') extTop.push(item); else if (part.where === 'before') extBefore.push({ ...item, own: p.owner }); else if (part.where === 'end') tail.push(item); else inject.push({ ...item, depth: part.depth ?? 1, order: part.order ?? 100 }); }
   }
 
   const over = P.cardOverrides !== false;
@@ -729,6 +738,7 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
     else (seenHistory ? after : before).push(item);
   }
   before.push(...extBefore.filter(p => !(memSlot && p.own === 'memoria')).map(({ own: _own, ...p }) => p));
+  before.unshift(...extTop);   // 맨 앞 조각 (/inject position=before 등)
 
   // 5) 컨텍스트 예산에 맞춰 오래된 기록부터 제외
   const fixed = [...before, ...after, ...inject].reduce((n, m) => n + tokens(m.content) + 4, 0);

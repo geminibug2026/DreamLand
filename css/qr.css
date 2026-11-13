@@ -31,3 +31,17 @@
   .qr-item .qr-kind, .qr-head .qr-scope { flex: 1 1 0; width: auto; min-width: 108px; padding-right: 24px; }
   .qr-item .grow, .qr-head .grow { display: none; }
 }
+.quick .qr-chip.has-ctx { text-decoration: underline dotted; text-underline-offset: 3px; }
+.qr-opts { gap: 4px 14px; }
+.qr-ctx { display: flex; flex-direction: column; gap: 6px; }
+.qr-ctx .row { gap: 8px; align-items: center; }
+.qr-ctx select { flex: 1 1 auto; min-width: 0; }
+.qr-debug { display: flex; flex-direction: column; gap: 8px; }
+.qr-vars { width: 100%; border-collapse: collapse; font-size: .9em; }
+.qr-vars th, .qr-vars td { text-align: left; vertical-align: top; padding: 4px 8px; border-bottom: 1px solid var(--line); word-break: break-word; }
+.qr-vars th { width: 30%; font-weight: 600; }
+.vec-bank { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.vec-bank-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.vec-bank-list li { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+.vec-bank-list li.off { opacity: .55; }
+.vec-bank-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

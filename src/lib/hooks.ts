@@ -27,7 +27,8 @@ export interface FilterInfo { role?: string; msg?: Msg; chat?: Chat | null }
 export interface Filter extends Owned { fn(text: string, info?: FilterInfo): unknown }
 export interface ThemeReg extends Owned { theme: Theme }
 export interface Composer extends Owned { id?: string; label?: string; icon?: string; run(input: unknown): unknown; [k: string]: unknown }
-export interface PromptPiece { where: 'before' | 'depth' | 'end'; role?: string; content: string; depth?: number; order?: number; src?: string }
+/** where: 'top' = 프롬프트 맨 앞(메인 프롬프트보다 앞) · 'before' = 대화 기록 바로 앞 · 'depth' = 기록 사이 · 'end' = 맨 끝 */
+export interface PromptPiece { where: 'top' | 'before' | 'depth' | 'end'; role?: string; content: string; depth?: number; order?: number; src?: string }
 /** 프롬프트 조각을 만들 때 받는 것 (engine.buildPrompt 가 넘긴다) */
 export interface PromptInfo { chat: Chat; char: Char; chars: Char[]; persona: Persona; history: { role: string; content: string }[]; msgs: Msg[]; type: string; commit?: boolean; ctx: Ctx }
 export interface PromptHook extends Owned { fn(info: PromptInfo): PromptPiece[] | null | undefined | void }

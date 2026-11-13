@@ -11,6 +11,7 @@ import { Sprites, bus, byKeyword, candidates, cfg as xcfg, classify, currentOf, 
 import { canonLabel, cleanLabel, keywordLabel } from '../../expressions/pure';
 import { catalog, enabled as extOn, readCatalog, setEnabled } from '../../lib/ext';
 import { chatApi } from '../../chat/actions';
+import { X } from '../../lib/hooks';
 import type { Char, Chat, Lore, LoreEntry, Msg } from '../../lib/types';
 import { callClosure, def, isBound, runScript, str, type Args, type Bound, type Ctx, type Val } from '../run';
 
@@ -503,3 +504,36 @@ def('extension-toggle', { run: extSet('toggle') });
 def('extension-state', { run: async (a, c) => { const it = await extFind(U(a)); if (!it) return warn(c, 'noExt', { name: U(a) }); return String(extOn(it.id)); } });
 def('extension-exists', { alias: ['extension-installed'], run: async a => String(!!(await extFind(U(a)))) });
 def('reload-page', { run: () => { location.reload(); return ''; } });
+
+// ════════ 데이터 뱅크 → 프롬프트 ════════
+// 실리태번처럼 벡터 검색의 "파일" 이 켜져 있을 때만: 생성 직전에 최근 대화로 데이터 뱅크를 찾아, 가까운 조각을 프롬프트에 넣는다
+const BANK_OWNER = 'stscript-databank';
+const found = new Map<string, string>();
+X.before = X.before.filter(b => b.owner !== BANK_OWNER);
+X.before.push({ owner: BANK_OWNER, fn: async ({ chat, msgs }) => {
+  found.delete(chat.id);
+  const vc = vcfg() as unknown as { files?: boolean; connId?: string; query?: number; threshold?: number };
+  if (!(vc as { enabled?: boolean }).enabled || !vc.files || !S.get('conns', vc.connId)) return;
+  const files = allFiles('', false); if (!files.length) return;
+  const q = msgs.filter(m => !m.hidden && m.role !== 'system').slice(-(+(vc.query || 2))).map(m => msgText(m)).join('\n').trim(); if (!q) return;
+  try {
+    const pieces = piecesOf(files), st = await loadStore(DB_STORE, sigOf(vcfg()));
+    await vsync(st, pieces, vcfg(), { prune: true });
+    const [qv] = await embed().embedTexts([q], embedOpt(vcfg(), { query: true, timeoutMs: 20000 }));
+    const top = pieces.map(p => ({ p, s: embed().cosine(qv, st.items[p.key]) })).filter(x => x.s >= +(vc.threshold ?? 0.25)).sort((x, y) => y.s - x.s).slice(0, 5);
+    if (top.length) found.set(chat.id, top.map(x => x.p.text).join('\n\n'));
+  } catch (e) { console.warn('[데이터 뱅크]', e); }
+} });
+X.prompt = X.prompt.filter(p => p.owner !== BANK_OWNER);
+X.prompt.push({ owner: BANK_OWNER, fn: ({ chat }) => {
+  const text = found.get(chat.id); if (!text) return [];
+  return [{ where: 'depth' as const, role: 'system', depth: 2, content: `Related information:\n${text}`, src: tx('dbPromptSrc') }];
+} });
+
+/** 화면(벡터 검색 설정)에서 쓰는 데이터 뱅크 다루기 */
+export const dataBank = {
+  list: () => allFiles('').map(({ f, s }) => ({ ...f, src: s })),
+  async add(src: Src, name: string, text: string) { const b = bank(src); if (!b) throw new Error(tx('dbNoSource', { source: src })); b.files.push({ url: `databank/${src}/${uid()}.txt`, name, text, created: Date.now() }); await b.save(); },
+  async toggle(url: string) { const x = findFile('', url); if (!x) return; x.f.disabled = !x.f.disabled; await saveSrc(x.s); },
+  async remove(url: string) { const x = findFile('', url); if (!x) return; const b = bank(x.s)!; b.files.splice(b.files.indexOf(x.f), 1); await b.save(); },
+};

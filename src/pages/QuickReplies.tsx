@@ -57,6 +57,11 @@ function SetCard({ set, index, redraw }: { set: QrSet; index: number; redraw: ()
       <IconBtn ic="trash" title={t('common.delete')} onClick={async () => { if (await confirmBox(t('qr.page.deleteSet', { name: set.name }), t('common.delete'), true)) { q.sets = q.sets.filter(x => x !== set); qrSave(); } }} />
     </div>
     {set.scope === 'chat' ? <p className="hint">{t('qr.page.chatScopeHint')}</p> : null}
+    <div className="row wrap qr-opts">
+      <label className="check" title={t('qr.page.nosendHint')}><input type="checkbox" checked={!!set.nosend} onChange={e => { set.nosend = e.target.checked; for (const it of set.items) if (it.kind !== 'script') it.kind = set.nosend ? 'insert' : 'send'; qrSave(); }} /><i /><span>{t('qr.page.nosend')}</span></label>
+      <label className="check" title={t('qr.page.injectHint')}><input type="checkbox" checked={!!set.inject} onChange={e => { set.inject = e.target.checked; qrSave(); }} /><i /><span>{t('qr.page.inject')}</span></label>
+      <label className="check" title={t('qr.page.beforeHint')}><input type="checkbox" checked={!!set.before} disabled={!set.inject} onChange={e => { set.before = e.target.checked; qrSave(); }} /><i /><span>{t('qr.page.before')}</span></label>
+    </div>
     <button type="button" className="linkish qr-fold" onClick={() => setOpen(!open)}>{open ? t('qr.page.fold') : tn('qr.page.unfold', set.items.length)}</button>
     {open ? <>
       {set.items.map((it, i) => <ItemRow key={it.id} set={set} it={it} index={i} redraw={redraw} />)}
@@ -89,7 +94,26 @@ function ItemRow({ set, it, index, redraw }: { set: QrSet; it: QrItem; index: nu
       <label className="check"><input type="checkbox" checked={!!it.hidden} onChange={e => edit({ hidden: e.target.checked })} /><i /><span>{t('qr.page.hidden')}</span></label>
       <p className="hint">{t('qr.page.autoHint')}</p>
       <div className="row wrap">{AUTO_KEYS.map(k => <label key={k} className="check"><input type="checkbox" checked={!!it.auto?.[k]} onChange={e => edit({ auto: { ...(it.auto || {}), [k]: e.target.checked } })} /><i /><span>{QR_AUTO[k]}</span></label>)}</div>
+      <CtxEditor set={set} it={it} edit={edit} />
     </div> : null}
+  </div>;
+}
+
+/** 오른쪽 클릭 메뉴: 이 버튼에 이어 둘 세트들 (이어 실행이면 이 버튼 글 | 고른 버튼 글 을 함께 돌린다) */
+function CtxEditor({ set, it, edit }: { set: QrSet; it: QrItem; edit: (p: Partial<QrItem>) => void }) {
+  const list = it.contextList || [], names = qrStore().sets.map(s => s.name);
+  const put = (next: NonNullable<QrItem['contextList']>) => edit({ contextList: next });
+  return <div className="qr-ctx">
+    <p className="hint">{t('qr.page.ctxHint')}</p>
+    {list.map((cl, i) => <div className="row" key={i}>
+      <select className="inp" value={cl.set} aria-label={t('qr.page.ctxSet')} onChange={e => put(list.map((x, j) => j === i ? { ...x, set: e.target.value } : x))}>
+        {!names.includes(cl.set) ? <option value={cl.set}>{t('qr.page.ctxMissing', { name: cl.set })}</option> : null}
+        {names.map(n => <option key={n} value={n}>{n === set.name ? t('qr.page.ctxOwn', { name: n }) : n}</option>)}
+      </select>
+      <label className="check" title={t('qr.page.chainedHint')}><input type="checkbox" checked={!!cl.isChained} onChange={e => put(list.map((x, j) => j === i ? { ...x, isChained: e.target.checked } : x))} /><i /><span>{t('qr.page.chained')}</span></label>
+      <IconBtn ic="trash" title={t('common.delete')} onClick={() => put(list.filter((_x, j) => j !== i))} />
+    </div>)}
+    <Btn label={t('qr.page.ctxAdd')} ic="plus" cls="ghost" onClick={() => put([...list, { set: names.find(n => n !== set.name) || set.name, isChained: false }])} />
   </div>;
 }
 
@@ -97,12 +121,12 @@ function ItemRow({ set, it, index, redraw }: { set: QrSet; it: QrItem; index: nu
 function Console() {
   const [src, setSrc] = useState('/pass hello | /upper'), [out, setOut] = useState(''), [busy, setBusy] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
-  const run = async () => { setBusy(true); try { setOut(await runQrScript(src)); } finally { setBusy(false); } };
+  const run = async (debug = false) => { setBusy(true); try { setOut(await runQrScript(src, { debug })); } finally { setBusy(false); } };
   return <div className="card qr-console">
     <h3 className="form-sec">{t('qr.page.console')}</h3>
     <p className="hint">{t('qr.page.consoleHint')}</p>
     <textarea ref={area} className="inp code" rows={4} spellCheck={false} value={src} onChange={e => setSrc(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void run(); } }} aria-label={t('qr.page.console')} />
-    <div className="row"><Btn label={busy ? t('qr.page.running') : t('qr.page.run')} ic="play" cls="primary" onClick={() => void run()} /><Btn label={t('qr.page.saveAsItem')} ic="plus" cls="ghost" onClick={async () => {
+    <div className="row wrap"><Btn label={busy ? t('qr.page.running') : t('qr.page.run')} ic="play" cls="primary" onClick={() => void run()} /><Btn label={t('qr.page.debug')} ic="code" cls="ghost" onClick={() => void run(true)} /><Btn label={t('qr.page.saveAsItem')} ic="plus" cls="ghost" onClick={async () => {
       const q = qrStore(); let set = q.sets[0]; if (!set) { set = newQrSet(); q.sets.push(set); }
       const label = (await promptBox(t('qr.page.label'), ''))?.trim(); if (!label) return;
       set.items.push(newQrItem({ label, text: src, kind: /^\s*\//.test(src) ? 'script' : 'send' })); qrSave(); toast(t('qr.page.savedTo', { name: set.name }), 'ok');

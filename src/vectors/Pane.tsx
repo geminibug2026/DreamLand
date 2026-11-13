@@ -1,12 +1,13 @@
 // 기능 화면 › 벡터 검색 (div.card.vec-card 안)
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
-import { Btn } from '../kit';
-import { Form, type FormDefs, toast } from '../ui';
+import { Btn, IconBtn } from '../kit';
+import { Form, type FormDefs, confirmBox, promptBox, toast } from '../ui';
 import { errMsg } from '../addons/parts';
 import { useRedraw } from '../addons/parts';
 import { VEC_TEMPLATE, cfg, chatPieces, dropChat, embed, embedOpt, lastSearch, loadStore, sigOf, sync } from './logic';
 import { tokens } from '../lib/engine';
-import { S } from '../lib/core';
+import { S, pickFiles } from '../lib/core';
+import { dataBank } from '../stscript/ext/world';
 import { chatApi } from '../chat/actions';
 import { t } from '../i18n';
 
@@ -65,6 +66,8 @@ export function VectorsPane() {
     lo && { k: 'vectors.loreAll', label: t('vectors.f.loreAll'), type: 'check' },
     lo && { k: 'vectors.loreMax', label: t('vectors.f.loreMax'), type: 'num', min: 1, max: 30, third: true },
     lo && { k: 'vectors.loreThreshold', label: t('vectors.f.threshold'), type: 'num', min: 0, max: 1, step: 0.01, third: true },
+    on && { section: t('vectors.f.filesSection') },
+    on && { k: 'vectors.files', label: t('vectors.f.files'), type: 'check', live: true, hint: t('vectors.f.filesHint') },
   ];
   return <>
     <p className="hint">{t('vectors.intro')}</p>
@@ -79,5 +82,28 @@ export function VectorsPane() {
       <Btn label={t('vectors.drop')} ic="trash" cls="ghost" onClick={e => void busy(e, async () => { const { chat } = cur(); if (!chat) return; await dropChat(chat.id); toast(t('vectors.dropped')); })} />
     </div> : null}
     {on ? <div className="vec-status">{status}</div> : null}
+    <DataBank />
   </>;
+}
+
+/** 데이터 뱅크: 전역 · 이 캐릭터 · 이 대화에 붙여 둔 글. "파일 검색"이 켜져 있으면 가까운 조각이 프롬프트에 들어간다 */
+function DataBank() {
+  const redraw = useRedraw(), list = dataBank.list();
+  const SRC = [['global', t('st.x.world.src.global')], ['character', t('st.x.world.src.character')], ['chat', t('st.x.world.src.chat')]] as const;
+  const [src, setSrc] = useState<'global' | 'character' | 'chat'>('global');
+  const run = async (fn: () => Promise<unknown>) => { try { await fn(); } catch (e) { toast(errMsg(e), 'err'); } redraw(); };
+  return <div className="card vec-bank">
+    <h3 className="form-sec">{t('vectors.bank.title')}</h3>
+    <p className="hint">{t('vectors.bank.hint')}</p>
+    <div className="row wrap">
+      <select className="inp" value={src} aria-label={t('vectors.bank.where')} onChange={e => setSrc(e.target.value as typeof src)}>{SRC.map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+      <Btn label={t('vectors.bank.addFile')} ic="upload" cls="ghost" onClick={() => void run(async () => { for (const f of await pickFiles({ accept: '.txt,.md,.json,.csv,.html,.log', multiple: true })) await dataBank.add(src, f.name, await f.text()); })} />
+      <Btn label={t('vectors.bank.addText')} ic="plus" cls="ghost" onClick={() => void run(async () => { const v = await promptBox(t('vectors.bank.addText'), '', { area: true }); if (v?.trim()) await dataBank.add(src, v.trim().slice(0, 30).replace(/\s+/g, ' ') + '….txt', v); })} />
+    </div>
+    {list.length ? <ul className="vec-bank-list">{list.map(f => <li key={f.url} className={f.disabled ? 'off' : ''}>
+      <span className="badge">{SRC.find(x => x[0] === f.src)?.[1]}</span><span className="vec-bank-name">{f.name}</span><small className="hint">{t('vectors.bank.chars', { n: f.text.length })}</small>
+      <label className="check"><input type="checkbox" checked={!f.disabled} onChange={() => void run(() => dataBank.toggle(f.url))} /><i /></label>
+      <IconBtn ic="trash" title={t('common.delete')} onClick={() => void run(async () => { if (await confirmBox(t('vectors.bank.deleteAsk', { name: f.name }), t('common.delete'), true)) await dataBank.remove(f.url); })} />
+    </li>)}</ul> : <p className="dim">{t('vectors.bank.empty')}</p>}
+  </div>;
 }

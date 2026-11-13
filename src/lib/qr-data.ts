@@ -6,14 +6,14 @@ import { S, uid, arr, emit } from './core';
 import { t } from '../i18n';
 
 export interface QrAuto { start?: boolean; open?: boolean; newChat?: boolean; user?: boolean; ai?: boolean; gen?: boolean }
-export interface QrItem { id: string; label: string; icon: string; title: string; text: string; kind: 'insert' | 'send' | 'script'; hidden: boolean; auto: QrAuto; automationId: string; stIcon?: string; contextList?: { set: string; isChained: boolean }[] }
-export interface QrSet { id: string; name: string; scope: 'global' | 'char' | 'chat'; on: boolean; charIds: string[]; chatIds: string[]; items: QrItem[]; legacy?: boolean; src?: string }
+export interface QrItem { id: string; label: string; icon: string; title: string; text: string; kind: 'insert' | 'send' | 'script'; hidden: boolean; auto: QrAuto; automationId: string; stIcon?: string; showLabel?: boolean; contextList?: { set: string; isChained: boolean }[] }
+export interface QrSet { id: string; name: string; scope: 'global' | 'char' | 'chat'; on: boolean; charIds: string[]; chatIds: string[]; items: QrItem[]; /** 실리태번 세트 옵션: 보내지 않고 입력창에만 · 입력한 글 앞에 놓기 · 입력한 글과 합치기 */ nosend?: boolean; before?: boolean; inject?: boolean; legacy?: boolean; src?: string }
 export interface QrStore { v: number; sets: QrSet[]; bar: boolean; migrated?: boolean }
 /** Quick Reply 세트 파일의 한 버튼 */
-interface StQr { label?: string; title?: string; message?: string; isHidden?: boolean; icon?: string; automationId?: string; executeOnStartup?: boolean; executeOnChatChange?: boolean; executeOnNewChat?: boolean; executeOnUser?: boolean; executeOnAi?: boolean; executeBeforeGeneration?: boolean }
+interface StQr { showLabel?: boolean; contextList?: { set: string; isChained: boolean }[]; label?: string; title?: string; message?: string; isHidden?: boolean; icon?: string; automationId?: string; executeOnStartup?: boolean; executeOnChatChange?: boolean; executeOnNewChat?: boolean; executeOnUser?: boolean; executeOnAi?: boolean; executeBeforeGeneration?: boolean }
 /** 옛 형식(퀵 리플라이 v1)의 칸 */
 interface StQrSlot { mes?: string; label?: string; title?: string; enabled?: boolean; hidden?: boolean; autoExecute_appStartup?: boolean; autoExecute_chatLoad?: boolean; autoExecute_userMessage?: boolean; autoExecute_botMessage?: boolean; [k: string]: unknown }
-export interface StQrSet { name?: string; disableSend?: boolean; qrList?: StQr[] | StQr | null; quickReplySlots?: StQrSlot[]; AutoInputInject?: boolean }
+export interface StQrSet { name?: string; disableSend?: boolean; placeBeforeInput?: boolean; injectInput?: boolean; qrList?: StQr[] | StQr | null; quickReplySlots?: StQrSlot[]; AutoInputInject?: boolean }
 const fromSlot = (s: StQrSlot): StQr => ({ label: s.label, title: s.title, message: s.mes, isHidden: s.hidden === true || s.enabled === false, executeOnStartup: s.autoExecute_appStartup, executeOnChatChange: s.autoExecute_chatLoad, executeOnUser: s.autoExecute_userMessage, executeOnAi: s.autoExecute_botMessage });
 interface Loose { label?: string; text?: string }
 interface QChat { id?: string; charIds?: string[]; qrOff?: string[] }
@@ -56,19 +56,20 @@ export function stQrToSet(j: StQrSet, name?: string): QrSet {
   const noSend = !!j.disableSend;
   const list = j.qrList != null ? toArr(j.qrList) : toArr(j.quickReplySlots).map(fromSlot);
   return newQrSet({
-    name: j.name || name || t('qr.importedSet'), src: 'st',
+    name: j.name || name || t('qr.importedSet'), src: 'st', nosend: noSend, before: !!j.placeBeforeInput, inject: !!j.injectInput,
     items: list.filter(x => x && (x.message || x.label)).map(x => newQrItem({
       label: String(x.label || x.title || t('qr.button')), title: x.title || '', text: x.message || '', kind: /^\s*\//.test(x.message || '') ? 'script' : (noSend ? 'insert' : 'send'), hidden: !!x.isHidden,
       auto: { start: !!x.executeOnStartup, open: !!x.executeOnChatChange, newChat: !!x.executeOnNewChat, user: !!x.executeOnUser, ai: !!x.executeOnAi, gen: !!x.executeBeforeGeneration },
-      automationId: x.automationId || '', stIcon: x.icon || '', ...(Array.isArray((x as { contextList?: unknown }).contextList) && (x as { contextList: unknown[] }).contextList.length ? { contextList: (x as { contextList: { set: string; isChained: boolean }[] }).contextList } : {}),
+      automationId: x.automationId || '', stIcon: x.icon || '', ...(x.showLabel !== undefined ? { showLabel: !!x.showLabel } : {}),
+      ...(Array.isArray(x.contextList) && x.contextList.length ? { contextList: x.contextList.filter(c => c && c.set).map(c => ({ set: String((c.set as unknown as { name?: string }).name ?? c.set), isChained: !!c.isChained })) } : {}),
     })),
   });
 }
 /** 세트 → Quick Reply 세트(.json) */
 export function setToStQr(set: QrSet) {
   return {
-    version: 2, name: set.name, disableSend: set.items.length > 0 && set.items.every(i => i.kind !== 'send'), placeBeforeInput: false, injectInput: false, color: 'transparent', onlyBorderColor: false,
-    qrList: set.items.map((it, i) => ({ id: i + 1, icon: it.stIcon || '', showLabel: !it.stIcon, label: it.label, title: it.title || '', message: it.text || '', contextList: Array.isArray(it.contextList) ? it.contextList : [], preventAutoExecute: true, isHidden: !!it.hidden,
+    version: 2, name: set.name, disableSend: set.nosend ?? (set.items.length > 0 && set.items.every(i => i.kind !== 'send')), placeBeforeInput: !!set.before, injectInput: !!set.inject, color: 'transparent', onlyBorderColor: false,
+    qrList: set.items.map((it, i) => ({ id: i + 1, icon: it.stIcon || '', showLabel: it.showLabel ?? !it.stIcon, label: it.label, title: it.title || '', message: it.text || '', contextList: Array.isArray(it.contextList) ? it.contextList : [], preventAutoExecute: true, isHidden: !!it.hidden,
       executeOnStartup: !!it.auto?.start, executeOnUser: !!it.auto?.user, executeOnAi: !!it.auto?.ai, executeOnChatChange: !!it.auto?.open, executeOnGroupMemberDraft: false, executeOnNewChat: !!it.auto?.newChat, executeBeforeGeneration: !!it.auto?.gen, automationId: it.automationId || '' })),
     idIndex: set.items.length + 1,
   };

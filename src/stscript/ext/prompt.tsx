@@ -314,7 +314,8 @@ X.prompt.push({ owner: OWNER, fn: ({ chat }) => {
   return Object.entries(list).filter(([id, j]) => j.value && j.position !== 'none' && (!j.filter || filterOk.get(chat.id + ':' + id) !== false))
     .map(([id, j]) => j.position === 'chat'
       ? { where: 'depth' as const, role: j.role, content: j.value, depth: j.depth, order: 100, src: 'inject: ' + id }
-      : { where: 'before' as const, role: 'system', content: j.value, order: j.position === 'before' ? 0 : 100, src: 'inject: ' + id });
+      // before = 메인 프롬프트보다 앞(프롬프트 맨 앞), after = 앞쪽 설정 뒤 · 대화 기록 바로 앞 (실리태번의 두 자리)
+      : { where: j.position === 'before' ? 'top' as const : 'before' as const, role: 'system', content: j.value, order: 100, src: 'inject: ' + id });
 } });
 X.before = X.before.filter(b => b.owner !== OWNER);
 X.before.push({ owner: OWNER, fn: async ({ chat }) => {

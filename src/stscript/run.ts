@@ -33,6 +33,10 @@ export interface Host {
   echo(text: string, severity?: string): void;
   /** 사용자가 멈췄는지 */
   stopped?(): boolean;
+  /** 디버그로 돌릴 때: 멈춘 자리를 보여 주고 다음 동작을 받는다 */
+  debug?(info: DebugInfo): Promise<DebugAction>;
+  /** 디버그 상태 (runScript 가 debug 로 돌 때 넣는다) */
+  dbg?: Debug;
   [k: string]: unknown;
 }
 
@@ -82,7 +86,19 @@ export function expand(s: string, c: Ctx): string {
 export const str = (v: Val | void | null | undefined): string => v == null ? '' : isBound(v) ? v.closure.src : String(v);
 
 /** 스크립트 글 하나를 돌린다. 결과는 마지막 {{pipe}} */
-export async function runScript(src: string, host: Host, opt: { scope?: Scope; pipe?: string; args?: Record<string, string> } = {}): Promise<string> {
+/** 디버거 상태: step 이면 명령마다 멈춘다 */
+export interface Debug { step: boolean }
+/** 디버거가 보여 줄 것 */
+export interface DebugInfo { command: string; at: number; breakpoint: boolean; pipe: string; vars: Record<string, string>; depth: number }
+export type DebugAction = 'continue' | 'step' | 'stop';
+async function pause(dbg: Debug, cmd: Cmd, c: Ctx, breakpoint: boolean) {
+  const act = await (c.host.debug as (i: DebugInfo) => Promise<DebugAction>)({ command: cmd.raw.trim(), at: cmd.at, breakpoint, pipe: c.pipe, vars: c.scope.flat(), depth: c.depth });
+  if (act === 'stop') throw new Abort(true);
+  dbg.step = act === 'step';
+}
+
+export async function runScript(src: string, host: Host, opt: { scope?: Scope; pipe?: string; args?: Record<string, string>; debug?: boolean } = {}): Promise<string> {
+  if (opt.debug) host.dbg = { step: true } satisfies Debug;
   const scope = new Scope(opt.scope || null);
   for (const [k, v] of Object.entries(opt.args || {})) scope.let(k, v);
   try { return await runCmds(parse(src), { host, scope, pipe: opt.pipe ?? '', depth: 0 }); }
@@ -92,9 +108,13 @@ export async function runScript(src: string, host: Host, opt: { scope?: Scope; p
 export async function runCmds(cmds: Cmd[], c: Ctx): Promise<string> {
   if (c.depth > MAX_DEPTH) throw new Error(t('st.err.tooDeep'));
   let first = true;
+  const dbg = c.host.dbg as Debug | undefined;
   for (const cmd of cmds) {
     if (cmd.name === '#') continue;
     if (c.host.stopped?.()) throw new Abort(true);
+    // 중단점: 디버그로 돌릴 때만 멈춘다 (실리태번과 같다). 결과({{pipe}})는 그대로 둔다
+    if (cmd.name === 'breakpoint') { if (dbg && c.host.debug) await pause(dbg, cmd, c, true); continue; }
+    if (dbg?.step && c.host.debug) await pause(dbg, cmd, c, false);
     const out = await runCmd(cmd, c, first);
     first = false;
     c.pipe = out == null ? '' : str(out);   // 결과를 내지 않는 명령 뒤에는 빈 글자 (실리태번과 같다)

@@ -359,7 +359,7 @@ def('reroll-pick', {
   run: async (a, c) => {
     const { chat } = need(), x = chat as unknown as { pickSeed?: number }, v = parseInt(str(a.unnamed), 10);
     x.pickSeed = Number.isNaN(v) ? (x.pickSeed || 0) + 1 : v; await saveChat(chat);
-    warn(c, 'pickRandom');
+    void c;
     return String(x.pickSeed);
   },
 });
