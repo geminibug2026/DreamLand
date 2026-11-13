@@ -94,7 +94,7 @@ export function appHost(started = Date.now()): Host {
       const conn = S.connFor(chat); if (!conn) throw new Error(t('chat.gen.noConn'));
       const cs = chars(chat), preset = S.presetFor(chat);
       const built = E.buildPrompt({ chat, char: cs[0], chars: cs, persona: S.persona(chat), preset, msgs: [...msgs, newMsg('system', prompt)], type: 'quiet' });
-      const r = await E.streamChat(conn, { ...preset.params, stream: false, prefill: '' }, built.messages, { signal });
+      const r = await E.streamChat(conn, { ...preset.params, stream: false, prefill: '' }, built.messages, { signal, label: 'qr /gen' });
       return E.splitThink(r.text).text.trim();
     },
     messages: (spec: string, names: boolean) => { const { msgs } = cur(); return range(spec, msgs.length).map(i => msgs[i]).map((m: Msg) => names ? `${m.name || m.role}: ${msgText(m)}` : msgText(m)).join('\n\n'); },

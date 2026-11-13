@@ -33,5 +33,5 @@ export const Server = {
   /** 서버를 거쳐 req.url 로 보낸다. 응답은 대상 서버의 것이 그대로 흘러온다 (스트리밍 포함) */
   proxy: (req: ProxyReq, signal?: AbortSignal | null) => Server.post('proxy', req, { signal }),
   /** 서버를 실행한 터미널에 한 줄 남긴다 (실패해도 조용히 넘어간다) */
-  log: (body: { kind: string; line: string; prompt?: string; out?: string }) => { void Server.post('log', body).catch(() => { }); },
+  log: (body: { kind: string; line: string; [k: string]: unknown }) => { void Server.post('log', body).catch(() => { }); },
 };

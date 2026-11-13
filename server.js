@@ -440,6 +440,74 @@ async function storeApi(req, res, url) {
 }
 Object.assign(Store, { dlHash, planPrune, makeBackup, restoreBackup, listBackups, pruneBackups, fileOf, setClockShift: n => { clockShift = n; lastDaily = ''; }, serial, storeOps, STORE_DIR, BACKUP_DIR });
 
+// ── 터미널 로그 ── 브라우저가 보낸 모델 호출 기록을 읽기 좋게 찍는다 (설정 › 터미널 로그)
+const TC = { dim: '\x1b[90m', cyan: '\x1b[36m', green: '\x1b[32m', red: '\x1b[31m', yellow: '\x1b[33m', mag: '\x1b[35m', bold: '\x1b[1m', off: '\x1b[0m' };
+const ROLE_C = { system: TC.yellow, user: TC.green, assistant: TC.cyan };
+const termW = () => Math.max(50, Math.min(140, process.stdout.columns || 100));
+const isWide = ch => /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꥠ-꥿가-힣豈-﫿︰-﹏＀-｠￠-￦]/.test(ch);
+const dispW = s => { let n = 0; for (const ch of String(s)) n += isWide(ch) ? 2 : 1; return n; };
+/** 화면 칸 수(한글 · 한자는 2칸)로 자른다 */
+const fitW = (s, w) => { s = String(s); if (dispW(s) <= w) return s; let out = '', n = 0; for (const ch of s) { const d = isWide(ch) ? 2 : 1; if (n + d > w - 1) break; out += ch; n += d; } return out + '…'; };
+const padW = (s, w) => s + ' '.repeat(Math.max(0, w - dispW(s)));
+const fmtN = n => Number(n || 0).toLocaleString('en-US');
+const secs = ms => (Number(ms || 0) / 1000).toFixed(1) + 's';
+function termPrint(b) {
+  const tm = new Date().toTimeString().slice(0, 8), out = [], W = termW(), rule = ch => TC.dim + ch.repeat(W) + TC.off;
+  if (b.v !== 2 || !(b.call || b.done || b.err)) {   // 한 줄 기록 (앱 열림 · 예전 화면에서 온 기록)
+    const c = { call: TC.cyan, done: TC.green, err: TC.red, info: TC.dim }[b.kind] || '';
+    out.push(`${c}[${tm}] ${String(b.line || '').slice(0, 2000)}${TC.off}`);
+    if (b.prompt) out.push(`${TC.dim}──── prompt ────${TC.off}\n${String(b.prompt)}\n${TC.dim}────────────────${TC.off}`);
+    if (b.out) out.push(`${TC.dim}──── output ────${TC.off}\n${String(b.out)}\n${TC.dim}────────────────${TC.off}`);
+    return console.log(out.join('\n'));
+  }
+  if (b.call) {
+    const c = b.call, msgs = Array.isArray(c.msgs) ? c.msgs : [], tokIn = msgs.reduce((n, m) => n + (Number(m.tok) || 0), 0);
+    const params = [c.stream ? 'stream' : 'no stream', `max ${c.max ?? '-'}`, ...Object.entries(c.params || {}).map(([k, v]) => `${k} ${v}`)];
+    out.push(rule('━'));
+    out.push(`${TC.cyan}${TC.bold}▶ ${tm}  ${c.label || 'call'}${TC.off}  ${TC.dim}#${c.id}${TC.off}`);
+    out.push(`  ${TC.dim}model ${TC.off} ${c.model || '?'}  ${TC.dim}· ${c.conn || c.provider || ''}${c.host ? ' · ' + c.host : ''}${TC.off}`);
+    out.push(`  ${TC.dim}params${TC.off} ${params.join(' · ')}`);
+    out.push(`  ${TC.dim}prompt${TC.off} ${msgs.length} messages · ≈${fmtN(tokIn)} tokens`);
+    const head = (m, i) => { const rc = ROLE_C[m.role] || TC.mag; return `${TC.dim}${String(i + 1).padStart(3)}${TC.off} ${rc}${padW(fitW(m.role, 9), 9)}${TC.off} ${TC.dim}${fmtN(m.tok).padStart(6)}${TC.off}`; };
+    if (!c.full) {   // 요약: 메시지마다 한 줄 (길면 앞뒤만)
+      const rows = msgs.map((m, i) => [m, i]), show = rows.length > 14 ? [...rows.slice(0, 4), null, ...rows.slice(-8)] : rows;
+      for (const r of show) {
+        if (!r) { out.push(`${TC.dim}    … ${rows.length - 12} more …${TC.off}`); continue; }
+        const [m, i] = r, pre = (m.name ? `[${m.name}] ` : '') + (m.img ? `(${m.img} img) ` : '') + String(m.text || '');
+        out.push(`${head(m, i)}  ${fitW(pre, Math.max(10, W - 23))}`);
+      }
+    } else {   // 전체: 메시지마다 머리줄 + 내용
+      msgs.forEach((m, i) => {
+        const rc = ROLE_C[m.role] || TC.mag, title = `[${i + 1}] ${m.role}${m.name ? ' · ' + m.name : ''} · ${fmtN(m.tok)} tok${m.img ? ` · ${m.img} img` : ''} `;
+        out.push(`${rc}── ${title}${'─'.repeat(Math.max(3, W - 4 - dispW(title)))}${TC.off}`);
+        out.push(String(m.text || '') + (m.cut ? `\n${TC.dim}(… cut)${TC.off}` : ''));
+      });
+    }
+  }
+  if (b.done) {
+    const d = b.done;
+    if (d.stopped) out.push(`${TC.yellow}■ ${tm}  stopped after ${secs(d.ms)}${TC.off}  ${TC.dim}#${d.id}${TC.off}`);
+    else {
+      const u = d.usage || {}, rate = d.ms > 0 && d.tok ? ` · ${(d.tok / (d.ms / 1000)).toFixed(1)} tok/s` : '';
+      const bits = [secs(d.ms), `${fmtN(d.chars)} chars`, `≈${fmtN(d.tok)} tok${rate}`, `finish ${d.finish || '-'}`];
+      if (u.in || u.out) bits.push(`usage in ${fmtN(u.in)} / out ${fmtN(u.out)}`);
+      if (d.thinkTok) bits.push(`thinking ≈${fmtN(d.thinkTok)} tok`);
+      out.push(`${TC.green}${TC.bold}✓ ${tm}${TC.off}${TC.green}  ${bits.join(' · ')}${TC.off}  ${TC.dim}#${d.id}${TC.off}`);
+      if (d.think) out.push(`${TC.mag}── thinking ${'─'.repeat(Math.max(3, W - 12))}${TC.off}\n${d.think}`);
+      if (d.out && d.think) out.push(`${TC.cyan}── reply ${'─'.repeat(Math.max(3, W - 9))}${TC.off}`);
+      if (d.out) out.push(d.think || dispW(d.out) > W - 4 || /\n/.test(d.out) ? String(d.out) : `  ${d.out}`);
+    }
+    out.push(rule('━'));
+  }
+  if (b.err) {
+    const e = b.err;
+    out.push(`${TC.red}${TC.bold}✗ ${tm}  error after ${secs(e.ms)}${TC.off}  ${TC.dim}#${e.id}${TC.off}`);
+    out.push(`${TC.red}  ${String(e.msg || '').slice(0, 2000)}${TC.off}`);
+    out.push(rule('━'));
+  }
+  console.log(out.join('\n'));
+}
+
 const UNSAFE_KEY = /^(__proto__|constructor|prototype)$/;
 async function api(req, res, url) {
   // 다른 웹사이트가 이 로컬 서버를 호출하지 못하게 한다
@@ -538,10 +606,7 @@ async function api(req, res, url) {
 
   // 브라우저가 보내는 기록(모델 호출 · 오류)을 이 터미널에 찍는다
   if (url.pathname === '/api/log') {
-    const tm = new Date().toTimeString().slice(0, 8), c = { call: '\x1b[36m', done: '\x1b[32m', err: '\x1b[31m', info: '\x1b[90m' }[body.kind] || '';
-    console.log(`${c}[${tm}] ${String(body.line || '').slice(0, 2000)}\x1b[0m`);
-    if (body.prompt) console.log(`\x1b[90m──── prompt ────\x1b[0m\n${String(body.prompt)}\n\x1b[90m────────────────\x1b[0m`);
-    if (body.out) console.log(`\x1b[90m──── output ────\x1b[0m\n${String(body.out)}\n\x1b[90m────────────────\x1b[0m`);
+    try { termPrint(body); } catch (e) { console.log(String(body.line || '').slice(0, 2000)); }
     return send(res, 200, { ok: true });
   }
 

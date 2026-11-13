@@ -6807,7 +6807,7 @@
   "settings.term.section": "Terminal log",
   "settings.term.label": "What to log in the server terminal (Termux, etc.)",
   "settings.term.off": "Off",
-  "settings.term.brief": "One-line summary",
+  "settings.term.brief": "Summary (model, settings, message list, result)",
   "settings.term.full": "Full prompt and reply",
-  "settings.term.hint": "Each model call is logged in the terminal running the server. Summary shows model, time, length and errors; full also prints the prompt sent and the reply."
+  "settings.term.hint": "Each model call is logged in the terminal running the server. Summary shows the connection, model and settings, one line per message sent (role, tokens, start of the text), and the time, tokens and errors; full also prints the whole prompt and reply (including reasoning). After updating, restart the server once to get the new format."
 }

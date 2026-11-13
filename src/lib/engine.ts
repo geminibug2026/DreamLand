@@ -1071,29 +1071,62 @@ interface AnthJson { content?: { type: string; text?: string; thinking?: string 
 interface GemJson { error?: { code?: Num; message?: string }; candidates?: { content?: { parts?: { thought?: boolean; text?: string }[] }; finishReason?: string }[]; promptFeedback?: { blockReason?: string }; usageMetadata?: unknown }
 interface OaiChoice { text?: string; finish_reason?: string; message?: { content?: string; reasoning_content?: string; reasoning?: string }; delta?: { content?: unknown; reasoning_content?: string; reasoning?: string } }
 interface OaiJson { error?: { message?: string }; choices?: OaiChoice[]; usage?: unknown }
-export interface StreamOpts { signal?: AbortSignal; onText?: (t: string) => void; onThink?: (t: string) => void }
+export interface StreamOpts { signal?: AbortSignal; onText?: (t: string) => void; onThink?: (t: string) => void; /** 터미널 로그에 적을 호출 이름 */ label?: string }
 export interface StreamResult { text: string; think: string; finish: string | undefined; usage: unknown }
 
 /** 스트리밍 채팅. onText(delta), onThink(delta) */
-/** 모델 호출. 서버 터미널에도 한 줄씩 남긴다 (설정 › 터미널 로그) */
+/** 모델 호출. 서버 터미널에도 기록을 남긴다 (설정 › 터미널 로그) */
 export async function streamChat(conn: Conn | null | undefined, P: Params, messages: PromptList, opts: StreamOpts = {}): Promise<StreamResult> {
   const t0 = Date.now(), who = conn ? `${conn.name || defOf(conn).kind} · ${conn.model || '?'}` : '?';
   const chars = messages.reduce((n, m) => n + String(m.content ?? '').length, 0);
-  termLog('call', `▶ ${who} · ${messages.length} msgs · ~${Math.round(chars / 3)} tok in · max ${P.maxTokens ?? '-'}`, messages);
+  const id = ++termSeq, full = termMode() === 'full';
+  termSend('call', `▶ ${who} · ${messages.length} msgs · ~${Math.round(chars / 3)} tok in · max ${P.maxTokens ?? '-'}`, () => ({ call: termCallInfo(id, conn, P, messages, opts.label || '', full) }));
   try {
     const r = await streamChatRaw(conn, P, messages, opts);
-    termLog('done', `✓ ${who} · ${((Date.now() - t0) / 1000).toFixed(1)}s · ${r.text.length} chars out · finish=${r.finish || '-'}`, undefined, r.text);
+    termSend('done', `✓ ${who} · ${((Date.now() - t0) / 1000).toFixed(1)}s · ${r.text.length} chars out · finish=${r.finish || '-'}`, () => ({
+      done: { id, ms: Date.now() - t0, chars: r.text.length, tok: tokens(r.text), finish: r.finish || '', usage: usageOf(r.usage), thinkTok: tokens(r.think), think: full ? r.think.slice(0, 50000) : '', out: full ? r.text.slice(0, 50000) : oneLine(r.text, 300) },
+    }));
     return r;
   } catch (e) {
     const abort = e instanceof Error && e.name === 'AbortError';
-    termLog(abort ? 'done' : 'err', `${abort ? '■ stopped' : '✗ error'} · ${who} · ${((Date.now() - t0) / 1000).toFixed(1)}s${abort ? '' : ' · ' + String((e as Error)?.message || e).slice(0, 400)}`);
+    termSend(abort ? 'done' : 'err', `${abort ? '■ stopped' : '✗ error'} · ${who} · ${((Date.now() - t0) / 1000).toFixed(1)}s${abort ? '' : ' · ' + String((e as Error)?.message || e).slice(0, 400)}`,
+      () => abort ? { done: { id, ms: Date.now() - t0, stopped: true } } : { err: { id, ms: Date.now() - t0, msg: String((e as Error)?.message || e).slice(0, 2000) } });
     throw e;
   }
 }
 type TermMode = 'off' | 'brief' | 'full';
-/** 브라우저에서 일어난 일을 서버 터미널(Termux 등)에 찍는다. 실패해도 조용히 넘어간다 */
+const termMode = () => ((S.settings as { termLog?: TermMode }).termLog || 'brief') as TermMode;
+let termSeq = 0;
+const oneLine = (s: string, n: number) => s.replace(/\s+/g, ' ').trim().slice(0, n);
+const textOf = (c: unknown): string => typeof c === 'string' ? c : Array.isArray(c) ? c.map(p => typeof p === 'string' ? p : String((p as { text?: unknown })?.text ?? '')).join('') : c == null ? '' : JSON.stringify(c);
+/** 업체마다 다른 사용량 이름 → { in, out } (모르면 0) */
+function usageOf(u: unknown): { in: number; out: number } {
+  const o = (u && typeof u === 'object' ? u : {}) as Record<string, unknown>;
+  const n = (...ks: string[]) => { for (const k of ks) { const v = Number(o[k]); if (Number.isFinite(v) && v > 0) return v; } return 0; };
+  return { in: n('prompt_tokens', 'input_tokens', 'promptTokenCount'), out: n('completion_tokens', 'output_tokens', 'candidatesTokenCount') };
+}
+const TERM_PARAMS: [string, string][] = [['temperature', 'temp'], ['topP', 'top_p'], ['topK', 'top_k'], ['minP', 'min_p'], ['topA', 'top_a'], ['repPen', 'rep_pen'], ['freqPen', 'freq_pen'], ['presPen', 'pres_pen'], ['seed', 'seed'], ['effort', 'effort']];
+/** 터미널에 보일 호출 정보: 연결 · 모델 · 설정 · 메시지마다 역할과 토큰 (전체 모드면 내용까지) */
+function termCallInfo(id: number, conn: Conn | null | undefined, P: Params, messages: PromptList, label: string, full: boolean) {
+  let host = ''; try { host = conn ? new URL(String(conn.baseUrl || defOf(conn).base || '')).host : ''; } catch { /* 주소 없음 */ }
+  const params: Record<string, string | number> = {};
+  for (const [k, n] of TERM_PARAMS) { const v = (P as Record<string, unknown>)[k]; if ((typeof v === 'number' && Number.isFinite(v)) || (typeof v === 'string' && v)) params[n] = v as string | number; }
+  let budget = 300000;   // 전체 모드에서도 한 번에 보내는 글은 이만큼까지
+  const msgs = messages.map(m => {
+    const text = textOf(m.content), shown = full ? text.slice(0, Math.max(0, budget)) : oneLine(text, 160); if (full) budget -= shown.length;
+    return { role: String(m.role || ''), name: String(m.name || ''), tok: tokens(text), img: Array.isArray(m.images) ? m.images.length : 0, text: shown, cut: shown.length < (full ? text.length : 0) };
+  });
+  return { id, label, conn: conn?.name || '', provider: conn?.provider || '', model: conn?.model || '', host, stream: P.stream !== false, max: P.maxTokens ?? null, params, msgs, full };
+}
+/** 서버 터미널로 보낸다. line 은 옛 서버(새로 켜지 않은 서버)도 찍는 한 줄 요약, more 는 새 서버가 보기 좋게 그리는 자료 */
+function termSend(kind: 'call' | 'done' | 'err', line: string, more: () => Record<string, unknown>) {
+  if (termMode() === 'off' || typeof fetch === 'undefined') return;
+  let extra: Record<string, unknown> = {}; try { extra = more(); } catch (e) { console.warn('[터미널 로그]', e); }
+  Server.log({ kind, line, v: 2, ...extra });
+}
+/** 브라우저에서 일어난 일을 서버 터미널(Termux 등)에 한 줄 찍는다. 실패해도 조용히 넘어간다 */
 export function termLog(kind: 'call' | 'done' | 'err' | 'info', line: string, prompt?: PromptList, out?: string) {
-  const mode = ((S.settings as { termLog?: TermMode }).termLog || 'brief') as TermMode;
+  const mode = termMode();
   if (mode === 'off' || typeof fetch === 'undefined') return;
   const body: { kind: string; line: string; prompt?: string; out?: string } = { kind, line };
   if (mode === 'full') {
@@ -1329,6 +1362,6 @@ export async function listModels(conn: Conn): Promise<string[]> {
 /** 보조 호출(요약·트래커·번역): 스트리밍 없이 한 번에 */
 export async function quickCall(system: string, user: string, { maxTokens = 1500, signal, conn }: { maxTokens?: number; signal?: AbortSignal; conn?: Conn | null } = {}): Promise<string> {
   const P: Params = { ...S.preset().params, stream: false, maxTokens, prefill: '', stop: [] };
-  const r = await streamChat(conn || S.conn(), P, [{ role: 'system', content: system }, { role: 'user', content: user }], { signal });
+  const r = await streamChat(conn || S.conn(), P, [{ role: 'system', content: system }, { role: 'user', content: user }], { signal, label: 'helper' });
   return splitThink(r.text).text.trim();
 }

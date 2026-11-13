@@ -577,7 +577,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
   try {
     const talk = modeOf(chat) === 'talk' && !inScene && type !== 'impersonate';   // 대화 모드는 짧게 주고받는다
     const res = await E.streamChat(conn, { ...preset.params, ...(talk ? { maxTokens: Math.min(preset.params.maxTokens || 4096, (opt.proactive && +(S.settings.modes.autoTokens || 0)) || S.settings.modes.talkTokens || 400) } : {}), stop: [...(preset.params.stop || []), ...(S.settings.format?.stopStrings || [])], names: { char: speaker.name, user: persona.name, others: chars.filter(c => c.id !== speaker.id).map(c => c.name) } }, built.messages, {
-      signal: abort.signal,
+      signal: abort.signal, label: `${type === 'normal' ? (opt.proactive ? 'reply (proactive)' : opt.chime ? 'reply (chime)' : 'reply') : type} · ${speaker.name}`,
       onText: d => { acc += d; if (target && sw) { const sp = E.splitThink(base + acc); sw.text = sp.text; if (sp.think && !apiThink) sw.reasoning = sp.think; schedule(); } else if (ui.input) { ui.input.value = impersonateBase + acc; ui.input.dispatchEvent(new Event('input')); } },
       onThink: d => { if (target && sw) { apiThink = true; sw.reasoning = (sw.reasoning || '') + d; schedule(); } },
     });
