@@ -205,8 +205,18 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     if (ai.hidden && !force) return mem;      // 숨긴 메시지는 건너뛰되, 자동 숨김으로 가려진 턴의 재기록(force)은 허용
     if (this.isSideMessage(ai)) return mem;   // 막간은 이야기가 아니다
     const userMes = this.findPrecedingUserMessage(msgs, idx);
+    // 대화 모드 묶음 기록: 앞선 기록 뒤의 메시지(내 말 · 답장)를 모두 한 턴으로 기록한다
+    const batch = this.talkBatch(chat) > 1 ? msgs.slice(this.batchStart(mem, msgs, idx), idx + 1).filter(m => m && !m.hidden && !this.isSideMessage(m) && (m.role === 'user' || m.role === 'assistant') && msgText(m).trim()) : null;
+    const persona0 = S.persona(chat), nameOf = (m: Msg) => m.name || (m.role === 'user' ? persona0?.name || 'User' : S.get('chars', m.charId)?.name || 'Assistant');
     // 사서에게는 화면에 보이는 이야기만 보여준다 — 연출 계획 · 상태창 · 그림 프롬프트 · 서식 태그를 걷어 낸다
-    const userText = userMes ? visibleProse(msgText(userMes)) : '', assistantText = visibleProse(msgText(ai)), h0 = mesHashOf(ai);
+    const userText = batch ? batch.filter(m => m.role === 'user').map(m => visibleProse(msgText(m))).join('\n') : userMes ? visibleProse(msgText(userMes)) : '';
+    const assistantText = batch ? batch.filter(m => m.role === 'assistant').map(m => visibleProse(msgText(m))).join('\n') : visibleProse(msgText(ai)), h0 = mesHashOf(ai);
+    // 묶음은 차례대로 주고받은 그대로 보낸다 (길면 앞부분부터 덜어 낸다)
+    let exchange: string[] = [];
+    if (batch && batch.length > 1) {
+      let room = 16000;
+      for (const m of [...batch].reverse()) { const tag = m.role === 'user' ? 'user' : 'assistant', body = visibleProse(msgText(m)).slice(0, tag === 'user' ? 4000 : 6000); if (room - body.length < 0 && exchange.length) break; room -= body.length; exchange.unshift(`<${tag} name="${nameOf(m).replace(/"/g, "'")}">\n${body}\n</${tag}>`); }
+    }
     if (!assistantText.trim()) return mem;
     const order = new Map(msgs.map((m, i) => [m.id, i]));
     const place = () => { const a = mem.turns.findIndex(t => t.msgId === ai.id); return a >= 0 ? a : mem.turns.filter(t => (order.get(t.msgId) ?? -1) < idx).length; };   // 대화 순서에 맞는 자리
@@ -240,9 +250,14 @@ export const part2: Part2 & ThisType<MemoryApi> = {
       castLine,
       bondLines.length ? `Bonds on file (current stage — refile one only if this exchange moved it):\n${bondLines.join('\n')}\n` : '',
       recent ? `Already shelved (do not refile) — recent turn digests:\n${recent}\n` : '',
-      'The exchange to shelve:',
-      `<user name="${userLabel}">\n${userText.slice(0, 4000)}\n</user>`,
-      `<assistant name="${charLabel}">\n${assistantText.slice(0, 6000)}\n</assistant>`,
+      ...(exchange.length ? [
+        `The exchange to shelve — ${exchange.length} short messenger messages in the order they were sent. File them together as ONE turn: one digest for the whole batch.`,
+        ...exchange,
+      ] : [
+        'The exchange to shelve:',
+        `<user name="${userLabel}">\n${userText.slice(0, 4000)}\n</user>`,
+        `<assistant name="${charLabel}">\n${assistantText.slice(0, 6000)}\n</assistant>`,
+      ]),
     ].filter(Boolean).join('\n');
     let ext: Extraction | null = null, error = '', answered = false;
     try {   // 읽지 못한 답 · API 오류(순간 혼잡 · 속도 제한) 모두 간격을 두고 세 번까지 (callJson)

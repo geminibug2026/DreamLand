@@ -61,7 +61,7 @@ export interface Mem {
 /** 설정 (S.settings.memory). 기본값은 memory.js 의 MEMORY_DEFAULTS */
 export interface Cfg {
   enabled: boolean; auto: boolean; recordDelay: number; tokenBudget: number; topK: number; minScore: number; minCosine: number; mmrLambda: number; maxPerKind: number; maxPerTurn: number; multiQueryRecent: number;
-  chunkTurns: number; /** 대화 모드 방의 요약 주기 (0 = chunkTurns 그대로) */ chunkTurnsTalk: number; arcMergeAt: number; consolidateEvery: number; arcConsolidateEvery: number; maxMemories: number; responseTokens: number; summaryContextCount: number;
+  chunkTurns: number; /** 대화 모드 방의 요약 주기 (0 = chunkTurns 그대로) */ chunkTurnsTalk: number; /** 대화 모드: 답장 몇 개를 모아 한 번에 기록하나 (1 = 답장마다) */ talkBatch: number; arcMergeAt: number; consolidateEvery: number; arcConsolidateEvery: number; maxMemories: number; responseTokens: number; summaryContextCount: number;
   fossil: { settling: number; fossilized: number; deep: number }; language: string;
   cast: boolean; lockEdited: boolean; items: boolean; milestones: boolean; storyClock: boolean; refProfile: boolean; refLore: boolean;
   trim: boolean; keepRecent: number; autoHide: boolean; preserveRecent: number;

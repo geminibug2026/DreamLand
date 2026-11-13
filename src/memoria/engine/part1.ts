@@ -102,6 +102,11 @@ export interface Part1 {
   storyStepsAfter(msgs: Msg[], i: number): number;
   isSettledForRecord(msgs: Msg[], i: number): boolean;
   commitSettledTurns(chat: ChatM, mem: Mem, msgs: Msg[]): Msg[];
+  talkBatch(chat?: ChatM | null): number;
+  recordable(m?: Msg | null): boolean;
+  batchStart(mem: Mem, msgs: Msg[], i: number): number;
+  batchCount(mem: Mem, msgs: Msg[], i: number, K?: number): number;
+  batchWeight(m: Msg, K: number): number;
   commit(chat: ChatM, msgs: Msg[], ai: Msg, opts?: CommitOpts): Promise<Mem>;
   queueCommit(chat: ChatM, msgs: Msg[], ai: Msg, opts?: CommitOpts): Promise<Mem>;
   post(chat: ChatM, msgs: Msg[], signal?: AbortSignal): Promise<void>;
@@ -379,6 +384,21 @@ export const part1: Part1 & ThisType<MemoryApi> = {
   /** 아직 기록하지 않았거나 기록에 실패한 답변. 막간은 뺀다. 숨긴 메시지는 기록에 실패한 턴만 다시 시도한다 — includeHidden 이면 가려 둔 초반부도 색인한다. from / to: 메시지 번호(1부터) */
   pending(mem, msgs, { includeHidden = false, from = 0, to = Infinity } = {}) {
     const turnOf = new Map(mem.turns.map(t => [t.msgId, t]));
+    // 대화 모드 묶음 기록: 기록 하나가 앞선 기록 뒤의 답장들을 함께 덮는다. 아직 묶음을 못 채운 답장은 기다리는 중이지 빠진 게 아니다 —
+    // 묶음이 찬 자리(K번째 답장)와 실패한 기록만 돌려준다 (색인이 그 자리를 기록하면 앞의 답장까지 함께 들어간다)
+    const K = this.talkBatch(S.get('chats', mem.id) as ChatM | undefined);
+    if (K > 1) {
+      const out: Msg[] = []; let n = 0;
+      msgs.forEach((m, i) => {
+        if (!m || m.role !== 'assistant' || this.isSideMessage(m) || !msgText(m).trim()) return;
+        const t = turnOf.get(m.id), inRange = i + 1 >= from && i + 1 <= to;
+        if (m.hidden && !includeHidden) { if (t?.failed && inRange) out.push(m); if (t) n = 0; return; }
+        if (t && !t.failed && turnMatches(t, m)) { n = 0; return; }   // 이 자리까지 덮였다
+        if (t) { n = 0; if (inRange) out.push(m); return; }           // 실패했거나 본문이 바뀐 기록: 다시
+        if ((n += this.batchWeight(m, K)) >= K) { n = 0; if (inRange) out.push(m); }
+      });
+      return out;
+    }
     return msgs.filter((m, i) => {
       if (!m || m.role !== 'assistant' || i + 1 < from || i + 1 > to || this.isSideMessage(m) || !msgText(m).trim()) return false;
       const t = turnOf.get(m.id);
@@ -522,6 +542,12 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     const cfg = this.cfg(); if (!cfg.enabled || !chat || !msg) return;
     const mem = await this.load(chat.id), i = (msgs || []).indexOf(msg);
     if (msg.role === 'assistant' && !msg.hidden && cfg.auto) {
+      // 대화 모드 묶음: 기록이 없는 답장이면 그 답장을 덮고 있는 묶음 기록(뒤의 첫 기록)을 새 내용으로 다시 만든다
+      if (this.talkBatch(chat) > 1 && i >= 0 && !mem.turns.some(t => t.msgId === msg.id)) {
+        const rec = new Set(mem.turns.map(t => t.msgId)), j = msgs.findIndex((m, k) => k > i && rec.has(m.id));
+        if (j >= 0) { const end = msgs[j]; this.dropTurn(mem, end.id); await this.save(mem); if (this.isSettledForRecord(msgs, j)) await this.queueCommit(chat, msgs, end); }
+        return;
+      }
       if (mem.turns.some(t => t.msgId === msg.id)) { this.dropTurn(mem, msg.id); await this.save(mem); }
       if (i >= 0 && this.isSettledForRecord(msgs, i)) await this.queueCommit(chat, msgs, msg);
     } else if (this.reconcile(mem, msgs)) await this.save(mem);
@@ -559,8 +585,41 @@ export const part1: Part1 & ThisType<MemoryApi> = {
   storyStepsAfter(msgs, i) { let users = 0, replies = 0; for (let k = i + 1; k < msgs.length; k++) { const m = msgs[k]; if (!m) continue; if (m.role === 'user') users++; else replies++; } return Math.max(users, replies); },
   isSettledForRecord(msgs, i) { return this.storyStepsAfter(msgs, i) >= this.requiredStepsFor(msgs, i); },
   /** 막 확정된 응답들. 대화 끝에서부터 거슬러 올라가되 기록 조건을 갓 채운 구간(필요 걸음 수 + 여유 3)까지만 본다 — 그보다 오래된 미기록 턴은 색인이 맡는다. 반환: 기록할 답변(대화 순서) */
+  /** 대화 모드에서 답장 몇 개를 모아 한 번에 기록하나 (1 = 답장마다 · RP 는 늘 1) */
+  talkBatch(chat) {
+    if (!chat || chat.mode !== 'talk') return 1;
+    const n = Math.round(Number(this.cfg().talkBatch)); return Number.isFinite(n) ? Math.max(1, Math.min(20, n)) : 1;
+  },
+  /** 기록할 만한 답변인가 (숨김 · 막간 · 빈 답변이 아님) */
+  recordable(m) { return !!m && m.role === 'assistant' && !m.hidden && !this.isSideMessage(m) && !!msgText(m).trim(); },
+  /** i 번 답변의 묶음이 시작하는 자리 — 바로 앞의 기록된 답변 다음 */
+  batchStart(mem, msgs, i) {
+    const rec = new Set(mem.turns.map(t => t.msgId));
+    for (let j = i - 1; j >= 0; j--) if (msgs[j] && rec.has(msgs[j].id)) return j + 1;
+    return 0;
+  },
+  /** 묶음에서 답변 하나의 몫: 장면(소설처럼 긴 글) · 긴 답변은 혼자서 묶음 하나를 채운다 (여러 개를 모으면 사서에게 보낼 글이 너무 길어진다) */
+  batchWeight(m, K) { return m.scene || msgText(m).length > 600 ? K : 1; },
+  /** i 번 답변까지 묶음에 든 몫 (짧은 답변 1 · 긴 답변 K) */
+  batchCount(mem, msgs, i, K) {
+    K ||= Math.max(1, this.talkBatch(S.get('chats', mem.id) as ChatM | undefined)); let n = 0; for (let j = this.batchStart(mem, msgs, i); j <= i; j++) if (this.recordable(msgs[j])) n += this.batchWeight(msgs[j], K); return n;
+  },
   commitSettledTurns(chat, mem, msgs) {
     const cfg = this.cfg(), due: Seen<typeof chat, Msg[]> = []; if (!cfg.enabled || !cfg.auto) return due;
+    const K = this.talkBatch(chat);
+    if (K > 1) {   // 대화 모드 묶음: 확정된 가장 최근 답변까지 묶음이 K 개 찼으면 그 답변 하나로 묶음 전체를 기록한다
+      let users = 0, replies = 0;
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i]; if (!m) continue;
+        if (this.recordable(m) && Math.max(users, replies) >= this.requiredStepsFor(msgs, i)) {
+          const t = mem.turns.find(x => x.msgId === m.id);
+          if (t ? !turnMatches(t, m) : this.batchCount(mem, msgs, i, K) >= K) due.push(m);
+          return due;
+        }
+        if (m.role === 'user') users++; else replies++;
+      }
+      return due;
+    }
     const horizon = Math.max(1, this.recordDelayTurns()) + 3; let users = 0, replies = 0;
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i]; if (!m) continue;
@@ -583,7 +642,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
       const mem = await this.load(chat.id), i = msgs.indexOf(ai);
       this.reconcile(mem, msgs);
       if (i >= 0 && (this.tagSideMessage(chat, msgs, ai) || this.isSideMessage(ai))) return mem;   // 막간은 기록도 뒷정리도 하지 않는다
-      if (i >= 0 && this.requiredStepsFor(msgs, i) === 0) await this.commitOne(chat, msgs, ai, {});   // 지연 0 이면 응답이 도착하자마자
+      if (i >= 0 && this.talkBatch(chat) <= 1 && this.requiredStepsFor(msgs, i) === 0) await this.commitOne(chat, msgs, ai, {});   // (대화 모드 묶음은 아래에서 묶음이 찼을 때)   // 지연 0 이면 응답이 도착하자마자
       for (const m of this.commitSettledTurns(chat, mem, msgs)) await this.commitOne(chat, msgs, m, {});   // 이야기가 필요한 만큼 더 나아간 응답 (첫 인사 포함)
       await this.post(chat, msgs);
       return mem;
