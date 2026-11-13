@@ -5,6 +5,7 @@ import { Avatar, Btn, Icon, IconBtn } from '../kit';
 import { menu, openModal, toast } from '../ui';
 import { cur, ui, useCh } from './store';
 import { DiceCard } from './Dice';
+import { CallCard } from '../call/Card';
 import { bodyHtml, branch, commitEdit, holdView, redraw, delFrom, delMsg, drawScene, editTranslation, generate, msgClock, removeIllust, showMore, speak, swipe, toggleHidden, translate } from './actions';
 import { ux } from '../features/usersettings';
 import type { IllustItem, Msg, SceneSpec, Swipe } from './types';
@@ -83,6 +84,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
       <div><small>{open ? t('chat.curtain.opened') : t('chat.curtain.closed')}</small><b>{open ? (k.title || t('chat.curtain.untitled')) : (k.summary || t('chat.curtain.back'))}</b>{open && (k.place || k.time) ? <span>{[k.place, k.time].filter(Boolean).join(' · ')}</span> : null}</div>
       <div className="msg-tools">{del}</div></div>);
   }
+  if (m.role === 'system' && m.call) return art(<><CallCard m={m} /><div className="msg-tools">{del}</div></>);
   if (m.role === 'system' && m.dice) return art(<><DiceCard m={m} /><div className="msg-tools">{del}</div></>);
 
   const streaming = cur.paint.has(m.id);
@@ -96,7 +98,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
     s.tr && { label: t('chat.msgMenu.retranslate'), ic: 'refresh', onclick: () => void translate(m, { again: true }) },
     s.tr && { label: t('chat.translate.edit'), ic: 'edit', onclick: () => void editTranslation(m) },
     { label: t('chat.illustDlg.title'), ic: 'image', onclick: () => illustDialog(m) },
-    { label: t('chat.msgMenu.speak'), ic: 'volume', onclick: () => speak(s.text) },
+    { label: t('chat.msgMenu.speak'), ic: 'volume', onclick: () => speak(s.text, m.charId) },
     ...X.actions.map(a => ({ label: a.label, ic: a.icon || 'sparkle', onclick: () => { void a.run(m, cur.chat); } })),
     { label: m.hidden ? t('chat.msgMenu.unhide') : t('chat.msgMenu.hide'), ic: m.hidden ? 'eye' : 'eyeoff', onclick: () => void toggleHidden(m) },
     '-',

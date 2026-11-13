@@ -6,7 +6,7 @@ import { errMsg } from '../addons/parts';
 import { useRedraw } from '../addons/parts';
 import { VEC_TEMPLATE, cfg, chatPieces, dropChat, embed, embedOpt, lastSearch, loadStore, sigOf, sync } from './logic';
 import { tokens } from '../lib/engine';
-import { S, pickFiles } from '../lib/core';
+import { S, chatConns, pickFiles } from '../lib/core';
 import { dataBank } from '../stscript/ext/world';
 import { chatApi } from '../chat/actions';
 import { t } from '../i18n';
@@ -43,7 +43,7 @@ export function VectorsPane() {
     try { await fn(label); } catch (err) { toast(errMsg(err).slice(0, 200), 'err'); }
     el.disabled = false; label.textContent = t; drawStatus().catch(() => { });
   };
-  const conns: Opts = [['', t('vectors.pick')], ...S.conns.map(x => [x.id, x.name] as [string, string])], conn = S.get('conns', c.connId);
+  const conns: Opts = [['', t('vectors.pick')], ...chatConns().map(x => [x.id, x.name] as [string, string])], conn = S.get('conns', c.connId);
   const on = c.enabled, ch = on && c.chat, lo = on && c.lore;
   const defs: FormDefs = [
     { k: 'vectors.enabled', label: t('vectors.f.enabled'), type: 'check', live: true },

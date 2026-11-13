@@ -5,7 +5,7 @@ import type { FormDefs, Opt } from '../studio/parts';
 import * as libIllust from '../lib/illust';
 import * as libHooks from '../lib/hooks';
 import * as libAssets from '../lib/assets';
-import { S } from '../lib/core';
+import { S, chatConns } from '../lib/core';
 import { Host, LForm, PageHead, textModal } from '../studio/parts';
 import { t } from '../i18n';
 
@@ -18,7 +18,7 @@ const TAB_ORDER = ['번역', '삽화', '에셋', '보조 연결', '일정', '표
 export const page = { name: 'studio', Component: Studio };
 
 /** 탭 제목은 식별자(한국어, 확장이 같은 제목으로 기본 탭을 대신함). 화면에는 아는 제목이면 번역해서 */
-const TAB_KEYS: Record<string, string> = { '번역': 'studio.tab.translate', '삽화': 'studio.tab.illust', '에셋': 'studio.tab.assets', '보조 연결': 'studio.tab.helpers', '일정': 'studio.tab.schedule', '표정': 'studio.tab.expressions', '벡터 검색': 'studio.tab.vectors', '장기기억': 'studio.tab.memoria' };
+const TAB_KEYS: Record<string, string> = { '번역': 'studio.tab.translate', '삽화': 'studio.tab.illust', '에셋': 'studio.tab.assets', '보조 연결': 'studio.tab.helpers', '일정': 'studio.tab.schedule', '표정': 'studio.tab.expressions', '벡터 검색': 'studio.tab.vectors', '장기기억': 'studio.tab.memoria', '읽어 주기': 'studio.tab.tts' };
 const tabLabel = (title: string) => TAB_KEYS[title] ? t(TAB_KEYS[title]) : title;
 
 /** 기능 모듈이 등록한 탭: 옛 코드가 만든 DOM 을 그대로 끼운다 */
@@ -32,7 +32,7 @@ function Studio() {
   const [, setTab] = useState(tab), [epoch, setEpoch] = useState(0);
   const st = S.settings as unknown as StudioSettings, sv = () => S.set({});
   const { NAI_MODELS, PLAN_PROMPT, TRANSLATE_PROMPT } = libIllust, { ASSET_PROMPT } = libAssets;
-  const conns: Opt[] = [['', t('studio.connDefault')], ...S.conns.map(c => [c.id, `${c.name}${c.model ? ' · ' + c.model : ''}`] as const)];
+  const conns: Opt[] = [['', t('studio.connDefault')], ...chatConns().map(c => [c.id, `${c.name}${c.model ? ' · ' + c.model : ''}`] as const)];
   const il = st.illust, nai = il.backend === 'nai', api = il.backend === 'openai' || il.backend === 'gemini', sd = il.backend === 'a1111';
   const card = (defs: FormDefs, ...rest: ReactNode[]) => <div className="card"><LForm obj={st} defs={defs} onChange={sv} />{rest}</div>;
 
@@ -51,7 +51,7 @@ function Studio() {
       nai && { k: 'illust.naiKey', label: t('studio.il.naiKey'), type: 'password', half: true },
       nai && { k: 'illust.model', label: t('studio.il.model'), type: 'select', opts: NAI_MODELS, half: true },
       nai && { k: 'illust.sampler', label: t('studio.il.sampler'), type: 'select', opts: ['k_euler_ancestral', 'k_euler', 'k_dpmpp_2m', 'k_dpmpp_2m_sde', 'k_dpmpp_sde', 'k_dpmpp_2s_ancestral'], half: true },
-      api && { k: 'illust.connId', label: t('studio.il.connId'), type: 'select', opts: [['', t('studio.il.pick')], ...S.conns.map(c => [c.id, c.name] as const)], half: true },
+      api && { k: 'illust.connId', label: t('studio.il.connId'), type: 'select', opts: [['', t('studio.il.pick')], ...chatConns().map(c => [c.id, c.name] as const)], half: true },
       api && { k: 'illust.imgModel', label: t('studio.il.imgModel'), ph: il.backend === 'gemini' ? 'gemini-3.1-flash-image' : 'gpt-image-1', half: true },
       sd && { k: 'illust.a1111', label: t('studio.il.a1111'), half: true },
       { k: 'illust.width', label: t('studio.il.width'), type: 'num', step: 64, third: true }, { k: 'illust.height', label: t('studio.il.height'), type: 'num', step: 64, third: true },

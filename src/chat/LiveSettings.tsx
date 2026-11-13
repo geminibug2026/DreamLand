@@ -7,7 +7,7 @@ import { Form, openModal, toast, type FieldDef, type ModalHandle } from '../ui';
 import { charsOf } from './actions';
 import type { Room } from './types';
 import { Live, PROMPTS } from '../lib/live';
-import { S } from '../lib/core';
+import { S, chatConns } from '../lib/core';
 import * as libLive from '../lib/live';
 import { t } from '../i18n';
 
@@ -43,7 +43,7 @@ function Settings({ first, chat, close }: { first: Tab; chat?: Room; close: () =
   const prompts = (kind: string): FieldDef[] => PROMPTS[kind].map(([k, label, dflt, hint]) => ({ k, label, type: 'area', rows: 5, ph: dflt, hint: `${hint ? hint + ' ' : ''}${t('chat.live.promptHint')}` }));
   const form = (defs: (FieldDef | null)[]) => <Form obj={st} defs={defs} onChange={apply} />;
   const fold = (title: string, defs: FieldDef[]): FieldDef => ({ el: <details className="live-fold"><summary><Icon name="edit" size={14} />{title}</summary>{form(defs)}</details> });
-  const conns: [string, string][] = [['', t('chat.live.conns.same')], ...S.conns.map((c): [string, string] => [c.id, `${c.name}${c.model ? ' · ' + c.model : ''}`])];
+  const conns: [string, string][] = [['', t('chat.live.conns.same')], ...chatConns().map((c): [string, string] => [c.id, `${c.name}${c.model ? ' · ' + c.model : ''}`])];
   const chars = chat ? charsOf(chat) : [];
   // 일정 줄은 옛 화면 조각이다. 일정이 바뀔 때만 새로 만든다
   const [schedGen, bumpSched] = useReducer((x: number) => x + 1, 0);

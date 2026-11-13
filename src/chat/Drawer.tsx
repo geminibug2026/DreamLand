@@ -9,7 +9,7 @@ import { editState } from './Hud';
 import { inspector } from './Inspector';
 import { liveSettings } from './LiveSettings';
 import type { Cast, Room } from './types';
-import { S, pickFiles, readDataURL, shrinkImage } from '../lib/core';
+import { S, chatConns, pickFiles, readDataURL, shrinkImage } from '../lib/core';
 import { STATUS, scheduleOf } from '../lib/f-schedule';
 import { LoreLinker } from '../editors/lore';
 import { X } from '../lib/hooks';
@@ -44,7 +44,7 @@ function Body({ c }: { c: Room }) {
   const trackOn = !!S.settings.tracker.enabled;
   return <div className="drawer-body">
     <Sec title={t('chat.drawer.connSec')} ic="plug" open>
-      <Sel label={t('chat.drawer.conn')} value={S.settings.activeConn || ''} opts={S.conns.length ? S.conns.map((x): [string, string] => [x.id, `${x.name}${x.model ? ' · ' + x.model : ''}`]) : [['', t('chat.drawer.noConn')]]} onChange={v => { S.set({ activeConn: v }); drawTop(); }} />
+      <Sel label={t('chat.drawer.conn')} value={S.settings.activeConn || ''} opts={chatConns().length ? chatConns().map((x): [string, string] => [x.id, `${x.name}${x.model ? ' · ' + x.model : ''}`]) : [['', t('chat.drawer.noConn')]]} onChange={v => { S.set({ activeConn: v }); drawTop(); }} />
       <Sel label={t('chat.drawer.preset')} value={S.settings.activePreset || ''} opts={S.presets.map((x): [string, string] => [x.id, x.name])} onChange={v => { S.set({ activePreset: v }); drawGauge(); }} />
       <Sel label={t('chat.drawer.persona')} value={S.persona(c)?.id || ''} opts={S.personas.map((x): [string, string] => [x.id, x.name])} onChange={v => { c.personaId = v; c.personaAuto = false; saveChat(); drawMsgs(); }} />
     </Sec>

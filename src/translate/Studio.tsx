@@ -7,7 +7,7 @@ import { DEFAULT_PROMPT, LANGS, VARS, findLang, langDisplay, langLabel } from '.
 import { getLang, t } from '../i18n';
 import { cfg, deleteRange, presetOf, save, translate, translatedCount, type LangKey, type TrCfg, type TrPreset } from './logic';
 import { GLOBE, SHEET, SPIRAL, redecorate } from './chat';
-import { S, clamp } from '../lib/core';
+import { S, chatConns, clamp } from '../lib/core';
 import { confirmBox, promptBox, toast } from '../ui';
 import { go } from '../lib/router';
 import { X } from '../lib/hooks';
@@ -50,7 +50,7 @@ function Basic({ c, p, mode, draw }: { c: TrCfg; p: TrPreset; mode: Mode; draw: 
     <div className="form">
       <h3 className="form-sec">{t('translate.secConn')}</h3>
       <Field label={t('translate.conn')} hint={t('translate.connHint')}><div className="trx-row">
-        <Select value={helpers.translate} opts={[['', t('translate.connChat')], ...S.conns.map(x => [x.id, `${x.name}${x.model ? ' · ' + x.model : ''}`] as const)]} onChange={v => { helpers.translate = v; save(); draw(); }} />
+        <Select value={helpers.translate} opts={[['', t('translate.connChat')], ...chatConns().map(x => [x.id, `${x.name}${x.model ? ' · ' + x.model : ''}`] as const)]} onChange={v => { helpers.translate = v; save(); draw(); }} />
         <IconBtn ic="plug" title={t('translate.conn.toConns')} onClick={() => go('conns')} /></div></Field>
       <Field label={t('translate.auto')} hint={t('translate.autoHint')}>
         <Select value={mode} opts={[['none', t('translate.auto.none')], ['responses', t('translate.auto.responses')], ['inputs', t('translate.auto.inputs')], ['both', t('translate.auto.both')]]} onChange={v => { c.auto = v === 'responses' || v === 'both'; c.autoInput = v === 'inputs' || v === 'both'; save(); draw(); }} /></Field>

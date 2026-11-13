@@ -265,7 +265,9 @@ export const newChat = (o: Partial<Chat> = {}): Chat => ({
   id: uid(), name: '', charIds: [], personaId: '', note: { text: '', depth: 4, role: 'system' }, summary: '', summaryAt: 0, vars: {}, loreIds: [],
   tracker: {}, bg: '', mode: 'rp', diary: [], diaryAt: 0, groupOrder: 'natural', count: 0, preview: '', createdAt: now(), updatedAt: now(), ...o,
 });
-export const newMsg = (role: Role, text: string, o: Partial<Msg> = {}): Msg => ({ id: uid(), role, charId: '', name: '', swipes: [{ text, ts: now() }], sw: 0, hidden: false, ts: now(), ...o });
+/** 채팅 모델을 고르는 곳에 보일 연결 (음성 연결 'tts_…' 은 빼고 — 읽어 주기 src/tts 가 쓴다) */
+export const chatConns = (): Conn[] => S.conns.filter(c => !String(c.provider || '').startsWith('tts_'));
+export const newMsg =(role: Role, text: string, o: Partial<Msg> = {}): Msg => ({ id: uid(), role, charId: '', name: '', swipes: [{ text, ts: now() }], sw: 0, hidden: false, ts: now(), ...o });
 export const msgText = (m: Pick<Msg, 'swipes' | 'sw'>) => m.swipes[m.sw]?.text ?? '';
 
 // ── 서버 보관: 드림랜드 서버가 있으면 API 키를 서버 파일에만 두고, 여기에는 꼬리표만 남긴다 ──

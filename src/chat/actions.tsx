@@ -20,6 +20,7 @@ import { render } from '../lib/format';
 import { t, getLang, fmtDate, has as hasKey } from '../i18n';
 import { COMMANDS as ST_COMMANDS } from '../stscript/run';
 import '../stscript/commands';
+import { TTS } from '../tts/api';
 
 // ── 방 · 이름 ──
 export const charsOf = (chat: Room): Cast[] => chat.charIds.map(id => S.get('chars', id)).filter((c): c is Cast => !!c);
@@ -237,11 +238,9 @@ export async function removeIllust(m: Msg, s: Swipe, id: string) {
   const i = (s.illust || []).findIndex(x => x.id === id); if (i >= 0) s.illust!.splice(i, 1);
   await Illust.remove(id); await save(); redraw(m);
 }
-export function speak(text: string) {
-  if (!('speechSynthesis' in window)) return toast(t('chat.speak.unsupported'), 'err');
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text.replace(/[*_`#>]/g, '')); u.lang = /[가-힣]/.test(text) ? 'ko-KR' : 'en-US';
-  speechSynthesis.speak(u);
+export function speak(text: string, charId?: string) {   // 읽어 주기(src/tts) — 읽던 것은 멈추고 새로 읽는다
+  TTS.stopAll();
+  void TTS.speak(text, { charId }).catch(e => toast(errMsg(e), 'err'));
 }
 
 // ════════ 보내기 · 명령 ════════

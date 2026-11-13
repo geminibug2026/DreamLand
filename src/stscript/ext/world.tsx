@@ -11,6 +11,7 @@ import { Sprites, bus, byKeyword, candidates, cfg as xcfg, classify, currentOf, 
 import { canonLabel, cleanLabel, keywordLabel } from '../../expressions/pure';
 import { catalog, enabled as extOn, readCatalog, setEnabled } from '../../lib/ext';
 import { chatApi } from '../../chat/actions';
+import { TTS } from '../../tts/api';
 import { X } from '../../lib/hooks';
 import type { Char, Chat, Lore, LoreEntry, Msg } from '../../lib/types';
 import { callClosure, def, isBound, runScript, str, type Args, type Bound, type Ctx, type Val } from '../run';
@@ -444,13 +445,10 @@ def('translate', { run: async a => {
   return translate(text, A(a, 'target') || cfg().lang, { chat: cur().chat, conn });
 } });
 def('speak', { alias: ['narrate', 'tts'], run: (a, c) => {
-  const text = str(a.unnamed).replace(/[*_`#>]/g, '').trim(); if (!text) return '';
-  if (!('speechSynthesis' in window)) return warn(c, 'noTts');
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text), want = A(a, 'voice').trim().toLowerCase();
-  const v = want ? speechSynthesis.getVoices().find(x => x.name.toLowerCase() === want) || speechSynthesis.getVoices().find(x => x.name.toLowerCase().includes(want)) : undefined;
-  if (v) { u.voice = v; u.lang = v.lang; } else u.lang = /[가-힣]/.test(text) ? 'ko-KR' : /[一-鿿]/.test(text) ? 'zh-CN' : 'en-US';
-  speechSynthesis.speak(u); return '';
+  const text = str(a.unnamed).trim(); if (!text) return '';   // 읽어 주기(src/tts) 설정의 기본 목소리 · voice= 는 그 공급자의 목소리 이름
+  const want = A(a, 'voice').trim();
+  TTS.stopAll(); void TTS.speak(text, want ? { voice: { voice: want } } : undefined).catch(() => warn(c, 'noTts'));
+  return '';
 } });
 def('yt-script', { run: (_a, c) => warn(c, 'noYt') });
 

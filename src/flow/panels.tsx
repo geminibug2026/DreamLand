@@ -8,7 +8,7 @@ import {
   A, DIRECT_HINT, REGEN_DEFAULT, TPL, addCheckpoint, adv, applyProfile, autoStat, branchFromCheckpoint, charsOf, checkpointMenu, copy, cps, cur, decorate, describe, directOn, findProfile, matches,
   posOf, profiles, regenCfg, regenWith, removeCheckpoint, rewindTo, saveChat, setDirect, showMessage, snapshot, type Profile,
 } from './logic';
-import { S, debounce, fmtTime, uid } from '../lib/core';
+import { S, chatConns, debounce, fmtTime, uid } from '../lib/core';
 import { go } from '../lib/router';
 import { chatApi } from '../chat/actions';
 import { t } from '../i18n';
@@ -88,7 +88,7 @@ function ProfileFields({ p, sv }: { p: Profile; sv: () => void }) {
   const { KINDS, tplList } = adv(), none: [string, string][] = [['', t('flow.prof.keep')]];
   return <Form obj={p} defs={[
     { k: 'name', label: t('flow.prof.name') },
-    { k: 'connId', label: t('flow.prof.connField'), type: 'select', opts: [...none, ...S.conns.map(c => [c.id, c.name] as [string, string])], half: true }, { k: 'model', label: t('flow.prof.model'), half: true, ph: t('flow.prof.modelPh') },
+    { k: 'connId', label: t('flow.prof.connField'), type: 'select', opts: [...none, ...chatConns().map(c => [c.id, c.name] as [string, string])], half: true }, { k: 'model', label: t('flow.prof.model'), half: true, ph: t('flow.prof.modelPh') },
     { k: 'presetId', label: t('flow.prof.preset'), type: 'select', opts: [...none, ...S.presets.map(x => [x.id, x.name] as [string, string])], half: true },
     { k: 'instructOn', label: t('flow.prof.instruct'), type: 'select', opts: [...none, ['true', t('flow.prof.on')], ['false', t('flow.prof.off')]], half: true },
     ...TPL().map(k => ({ k: 'tpl.' + k, label: KINDS[k], type: 'select', opts: [...none, ...tplList(k).map(x => [x.name, x.name] as [string, string])], half: true })),

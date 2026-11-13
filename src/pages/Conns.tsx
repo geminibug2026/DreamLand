@@ -11,12 +11,13 @@ import * as engine from '../lib/engine';
 import * as core from '../lib/core';
 import * as adv from '../lib/advanced';
 import { t, tn } from '../i18n';
+import { TtsConnBody } from '../tts/ui';
 
 export const page = { name: 'conns', Component: ConnsPage };
 
 /** 제공자 묶음 (PROVIDERS 의 group 값 — 한국어 id 그대로, 그릴 때만 번역) */
-const GROUPS = ['주요', '클라우드', '모음 서비스', '내 컴퓨터', '기타'];
-const GROUP_KEYS: Record<string, string> = { '주요': 'conns.group.main', '클라우드': 'conns.group.cloud', '모음 서비스': 'conns.group.aggregator', '내 컴퓨터': 'conns.group.local', '기타': 'conns.group.other' };
+const GROUPS = ['주요', '클라우드', '모음 서비스', '내 컴퓨터', '기타', '음성'];
+const GROUP_KEYS: Record<string, string> = { '주요': 'conns.group.main', '클라우드': 'conns.group.cloud', '모음 서비스': 'conns.group.aggregator', '내 컴퓨터': 'conns.group.local', '기타': 'conns.group.other', '음성': 'conns.group.voice' };
 const groupLabel = (g: string) => GROUP_KEYS[g] ? t(GROUP_KEYS[g]) : g;
 /** 화면에 내보일 꼬리: 저장된 키는 끝 네 글자만 */
 const keyTail = (c: Conn) => core.Secrets.is(c.apiKey) ? core.Secrets.tail(c.id, 'apiKey') : (String(c.apiKey || '').length > 8 ? String(c.apiKey).slice(-4) : '');
@@ -84,14 +85,14 @@ function ConnEditor({ c, api }: { c: Conn; api: EditorApi }) {
     } catch (e) { if (!quiet) toast(errMsg(e), 'err'); }
   };
   useLayoutEffect(() => {
-    if (!S.settings.activeConn) { S.set({ activeConn: c.id }); redraw(); }
+    if (!S.settings.activeConn && def.kind !== 'tts') { S.set({ activeConn: c.id }); redraw(); }
     if (c.provider === 'vertexai' && !c.region) c.region = 'global';
     if (c.instruct && c.instruct !== 'plain' && c.instruct !== 'custom') c.instruct = instructName(c.instruct);   // 예전 값(chatml 등)을 템플릿 이름으로
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     alive.current = true;
-    if (def.kind !== 'mock' && (c.apiKey || c.serviceAccount || def.keyless) && (c.baseUrl || def.base || def.kind === 'vertex')) void load(true);   // 키가 있으면 항상 실제 목록을 받아 온다
+    if (def.kind !== 'mock' && def.kind !== 'tts' && (c.apiKey || c.serviceAccount || def.keyless) && (c.baseUrl || def.base || def.kind === 'vertex')) void load(true);   // 키가 있으면 항상 실제 목록을 받아 온다
     return () => { alive.current = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -104,13 +105,13 @@ function ConnEditor({ c, api }: { c: Conn; api: EditorApi }) {
   };
   return <div className="editor">
     <header className="editor-head"><h2>{c.name}</h2><div className="row">
-      {active ? <em className="badge on">{t('conns.inUse')}</em> : <Btn label={t('conns.use')} ic="check" cls="primary" onClick={() => { S.set({ activeConn: c.id }); api.refresh(); }} />}
+      {def.kind === 'tts' ? <em className="badge">{t('conns.group.voice')}</em> : active ? <em className="badge on">{t('conns.inUse')}</em> : <Btn label={t('conns.use')} ic="check" cls="primary" onClick={() => { S.set({ activeConn: c.id }); api.refresh(); }} />}
       <IconBtn ic="copy" title={t('common.duplicate')} onClick={async () => {
         await S.save('conns', { ...structuredClone(c), id: uid(), name: c.name + t('conns.copySuffix'), apiKey: Secrets.is(c.apiKey) ? '' : c.apiKey, serviceAccount: Secrets.is(c.serviceAccount) ? '' : c.serviceAccount }, true);
         if (Secrets.is(c.apiKey) || Secrets.is(c.serviceAccount)) toast(t('conns.copyNoKey'));
         api.refresh();
       }} />
-      <IconBtn ic="trash" title={t('common.delete')} onClick={async () => { if (await confirmBox(t('conns.deleteConfirm', { name: c.name }), t('common.delete'), true)) { await S.remove('conns', c.id); if (active) S.set({ activeConn: S.conns[0]?.id || '' }); api.refresh(); } }} />
+      <IconBtn ic="trash" title={t('common.delete')} onClick={async () => { if (await confirmBox(t('conns.deleteConfirm', { name: c.name }), t('common.delete'), true)) { await S.remove('conns', c.id); if (active) S.set({ activeConn: core.chatConns()[0]?.id || '' }); api.refresh(); } }} />
     </div></header>
     <div className="form">
       <label className="field half"><span className="field-label">{t('common.name')}</span><input className="inp" defaultValue={c.name} onChange={e => { c.name = e.target.value; sv(); }} /></label>
@@ -120,6 +121,7 @@ function ConnEditor({ c, api }: { c: Conn; api: EditorApi }) {
         await api.save(); api.refresh();
       }}>{GROUPS.map(g => <optgroup label={groupLabel(g)} key={g}>{Object.entries(PROVIDERS).filter(([, p]) => p.group === g).map(([k, p]) => <option value={k} key={k}>{p.name}</option>)}</optgroup>)}</select></label>
     </div>
+    {def.kind === 'tts' ? <TtsConnBody c={c} api={api} keyField={<KeyField c={c} def={def} api={api} />} /> : <>
     {def.note && <p className="hint">{def.note}</p>}
     {def.kind !== 'mock' && <Form obj={c} defs={[{ k: 'baseUrl', label: t('conns.url'), ph: def.base || def.ph || 'https://…/v1', hint: def.base ? t('conns.urlHint') : t('conns.urlRequired') }]} onChange={sv} />}
     <KeyField c={c} def={def} api={api} />
@@ -141,6 +143,7 @@ function ConnEditor({ c, api }: { c: Conn; api: EditorApi }) {
       { k: 'extraBody', label: t('conns.adv.extraBody'), type: 'area', rows: 3, ph: '{ "provider": { "order": ["…"] } }', hint: t('conns.adv.extraBodyHint') },
       { k: 'extraHeaders', label: t('conns.adv.extraHeaders'), type: 'area', rows: 2, ph: t('conns.adv.extraHeadersPh') }]} onChange={sv} /></details>}
     <div className="row"><Btn label={t('conns.test.run')} ic="play" onClick={() => void run()} /><div className={'test-out' + test.cls}>{test.text}</div></div>
+    </>}
   </div>;
 }
 

@@ -9,7 +9,8 @@ import { charTokens } from './CharSheet';
 import { LoreLinker } from './lore';
 import { Assets } from '../lib/assets';
 import { pageRefresh } from './refresh';
-import { S } from '../lib/core';
+import { S, chatConns } from '../lib/core';
+import { CharVoiceField } from '../tts/ui';
 import { AssetsPane } from '../studio/AssetsPane';
 import * as engine from '../lib/engine';
 import { t } from '../i18n';
@@ -73,7 +74,8 @@ function Editor({ c }: { c: XChar }) {
       { section: t('editors.char.sec.lore') },
       { el: <div className="field"><span className="field-label">{t('editors.char.f.linkedLore')}</span><LoreLinker holder={c} save={saveNow} /><small className="hint">{t('editors.char.f.linkedLoreHint')}</small></div> },
       { section: t('editors.char.sec.bind') },
-      { k: 'bind.connId', label: t('editors.char.f.conn'), type: 'select', opts: [['', t('editors.char.f.connDefault')], ...pick(S.conns)], third: true }, { k: 'bind.presetId', label: t('editors.char.f.preset'), type: 'select', opts: [['', t('editors.char.f.presetDefault')], ...pick(S.presets)], third: true }, { k: 'bind.personaId', label: t('editors.char.f.persona'), type: 'select', opts: [['', t('editors.char.f.personaDefault')], ...pick(S.personas)], third: true },
+      { k: 'bind.connId', label: t('editors.char.f.conn'), type: 'select', opts: [['', t('editors.char.f.connDefault')], ...pick(chatConns())], third: true }, { k: 'bind.presetId', label: t('editors.char.f.preset'), type: 'select', opts: [['', t('editors.char.f.presetDefault')], ...pick(S.presets)], third: true }, { k: 'bind.personaId', label: t('editors.char.f.persona'), type: 'select', opts: [['', t('editors.char.f.personaDefault')], ...pick(S.personas)], third: true },
+      { el: <CharVoiceField charId={c.id} /> },
       { section: t('editors.char.sec.rest') },
       { el: <JsonField c={c} k="ext" label={t('editors.char.f.ext')} hint={t('editors.char.f.extHint')} save={saveNow} /> },
       { el: <JsonField c={c} k="more" label={t('editors.char.f.v3')} hint={t('editors.char.f.v3Hint')} save={saveNow} /> }],

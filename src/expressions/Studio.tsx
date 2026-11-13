@@ -7,7 +7,7 @@ import { Check, Field, Select, openModal, useRedraw, type Opt } from '../addons/
 import { ALIASES, DEFAULT_LABELS, canonLabel, cleanLabel, keywordLabel, plainText } from './pure';
 import { CALL_PROMPT, MODES, Sprites, TAG_PROMPT, bus, candidates, cfg, charCfg, clip, customOf, fallbackOf, fullName, nameOf, save, tagInstruction, universe } from './store';
 import { exportZip, importFiles } from './upload';
-import { S, pickFiles } from '../lib/core';
+import { S, chatConns, pickFiles } from '../lib/core';
 import { modal } from '../ui/dom';
 import { charPicker, confirmBox, promptBox, toast } from '../ui';
 import { macro, quickCall, tokens } from '../lib/engine';
@@ -122,7 +122,7 @@ function DetectTab({ char, draw }: { char: CharX | null; draw: () => void }) {
   const testIn = useRef<HTMLTextAreaElement>(null), [out, setOut] = useState<ReactNode>(null);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const show = (n: ReactNode) => { if (alive.current) setOut(n); };
-  const conns: Opt[] = [['', t('expressions.detect.connDefault')], ...S.conns.map(x => [x.id, `${x.name}${x.model ? ' · ' + x.model : ''}`] as const)];
+  const conns: Opt[] = [['', t('expressions.detect.connDefault')], ...chatConns().map(x => [x.id, `${x.name}${x.model ? ' · ' + x.model : ''}`] as const)];
   const sample = char && Sprites.has(char.id) ? tagInstruction(char, null) : '';
   const showScore = (r: { label: string; scores: Record<string, number> }) => { const top = Object.entries(r.scores).sort((a, b) => b[1] - a[1]).slice(0, 4); show(<><b>{r.label ? fullName(r.label) : t('expressions.detect.noGuess')}</b>{top.map(([l, s]) => <span key={l} className="chip static">{`${nameOf(l)} ${s.toFixed(1)}`}</span>)}</>); };
   const helpers = (S.settings.helpers || {}) as Record<string, string>;

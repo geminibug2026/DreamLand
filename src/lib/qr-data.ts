@@ -6,8 +6,8 @@ import { S, uid, arr, emit } from './core';
 import { t } from '../i18n';
 
 export interface QrAuto { start?: boolean; open?: boolean; newChat?: boolean; user?: boolean; ai?: boolean; gen?: boolean }
-export interface QrItem { id: string; label: string; icon: string; title: string; text: string; kind: 'insert' | 'send' | 'script'; hidden: boolean; auto: QrAuto; automationId: string; stIcon?: string; showLabel?: boolean; contextList?: { set: string; isChained: boolean }[] }
-export interface QrSet { id: string; name: string; scope: 'global' | 'char' | 'chat'; on: boolean; charIds: string[]; chatIds: string[]; items: QrItem[]; /** 실리태번 세트 옵션: 보내지 않고 입력창에만 · 입력한 글 앞에 놓기 · 입력한 글과 합치기 */ nosend?: boolean; before?: boolean; inject?: boolean; legacy?: boolean; src?: string }
+export interface QrItem { id: string; label: string; icon: string; title: string; text: string; kind: 'insert' | 'send' | 'script'; hidden: boolean; auto: QrAuto; automationId: string; stIcon?: string; showLabel?: boolean; contextList?: { set: string; isChained: boolean }[]; /** 입력창 위 줄에 바로 꺼내 둔다 */ pinned?: boolean }
+export interface QrSet { id: string; name: string; scope: 'global' | 'char' | 'chat'; on: boolean; charIds: string[]; chatIds: string[]; items: QrItem[]; /** 실리태번 세트 옵션: 보내지 않고 입력창에만 · 입력한 글 앞에 놓기 · 입력한 글과 합치기 */ nosend?: boolean; before?: boolean; inject?: boolean; legacy?: boolean; src?: string; /** 줄에 버튼을 늘어놓을지 (없으면 보이는 버튼 4개 이하일 때만) */ inline?: boolean; /** 서랍에서 버튼을 누르면 서랍을 닫는다 (기본 켜짐) */ trayClose?: boolean }
 export interface QrStore { v: number; sets: QrSet[]; bar: boolean; migrated?: boolean }
 /** Quick Reply 세트 파일의 한 버튼 */
 interface StQr { showLabel?: boolean; contextList?: { set: string; isChained: boolean }[]; label?: string; title?: string; message?: string; isHidden?: boolean; icon?: string; automationId?: string; executeOnStartup?: boolean; executeOnChatChange?: boolean; executeOnNewChat?: boolean; executeOnUser?: boolean; executeOnAi?: boolean; executeBeforeGeneration?: boolean }
@@ -89,4 +89,24 @@ export function qrAddLoose(list: Loose[] | Loose | null | undefined): number {
   const fresh = add.filter(a => !have.items.some(i => i.text === a.text));
   have.items.push(...fresh.map(x => newQrItem({ label: String(x.label || t('qr.button')), text: String(x.text), kind: kindOf(x.text) })));
   qrSave(); return fresh.length;
+}
+
+/** 줄에 늘어놓는 세트인가 (따로 정하지 않았으면 보이는 버튼이 4개 이하일 때) */
+export const qrInline = (s: QrSet) => s.inline ?? s.items.filter(i => !i.hidden).length <= 4;
+/** 서랍에서 누른 뒤 닫을까 */
+export const qrTrayClose = (s: QrSet) => s.trayClose !== false;
+/** 버튼이 든 세트 */
+export const qrSetOf = (it: QrItem) => qrStore().sets.find(s => s.items.includes(it));
+/** 버튼 사본 (새 id, 이어 둔 메뉴 · 자동 실행까지 그대로) */
+export const qrClone = (it: QrItem): QrItem => ({ ...(JSON.parse(JSON.stringify(it)) as QrItem), id: mkId() });
+/** 버튼들을 다른 세트로 옮기거나(copy=false) 베낀다. 저장은 한 번 */
+export function qrTransfer(items: QrItem[], to: QrSet, copy = false): number {
+  const list = items.filter(Boolean); if (!list.length) return 0;
+  if (copy) to.items.push(...list.map(qrClone));
+  else {
+    const ids = new Set(list.map(i => i.id));
+    for (const s of qrStore().sets) if (s !== to) s.items = s.items.filter(i => !ids.has(i.id));
+    to.items.push(...list.filter(i => !to.items.includes(i)));
+  }
+  qrSave(); return list.length;
 }

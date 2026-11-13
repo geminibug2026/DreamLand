@@ -1,0 +1,29 @@
+/* ── Dreamland 읽어 주기 (TTS) ── 기능 화면 탭 · 음성 연결 · 캐릭터 목소리 */
+.tts-card .form-sec:first-child { margin-top: 0; }
+.tts-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tts-row .inp { flex: 1; min-width: 0; }
+.tts-voice { padding: 12px 0 4px; border-top: 1px solid var(--ink-line); }
+.tts-voice input[type="range"], .tts-card input[type="range"] { width: 100%; accent-color: var(--accent); }
+.tts-test { display: flex; align-items: flex-end; }
+.tts-cost { padding-left: 10px; border-left: 2px solid var(--accent); }
+
+.tts-conns, .tts-chars { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; border-top: 1px solid var(--ink-line); }
+.tts-conns li, .tts-chars li { border-bottom: 1px solid var(--ink-line); }
+.tts-conns li { display: flex; align-items: center; gap: 10px; padding: 8px 2px; min-width: 0; }
+.tts-conns small, .tts-chars small { color: var(--dim); font-size: .82em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.tts-conn-name { font-weight: 600; flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tts-conns small { flex: 1; }
+.tts-empty { color: var(--dim); font-size: .9em; }
+.tts-search { margin-bottom: 8px; }
+.tts-char-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 2px; background: none; border: 0; color: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.tts-char-head small { flex: 1; text-align: right; }
+.tts-chars li.open .tts-char-head .tts-conn-name { color: var(--accent); }
+.tts-chars li.open { padding-bottom: 8px; }
+.tts-char-voice { display: flex; flex-direction: column; gap: 6px; }
+.tts-char-voice > .tts-row { flex-wrap: wrap; }
+.tts-sum { color: var(--dim); font-size: .86em; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 560px) {
+  .tts-voice .field.half, .tts-card .field.half { flex-basis: 100%; }
+  .tts-char-head small { max-width: 40%; }
+}

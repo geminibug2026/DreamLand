@@ -1,14 +1,15 @@
 // 번역 · 에셋 · 표정 · 일정 · 벡터 화면이 함께 쓰는 작은 부품과, 옛 자리(기능 탭 · 장면 패널 · 창)에 React 를 올리는 도우미
 import { useReducer, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { openModal as uiModal, type ModalAction, type ModalHandle } from '../ui';
+import { TipBtn, openModal as uiModal, type ModalAction, type ModalHandle } from '../ui';
 
 /** 직접 그린 길(path)로 만든 아이콘 */
 export function PathIcon({ d, size = 18 }: { d: string; size?: number }) {
   return <svg viewBox="0 0 24 24" width={size} height={size} className="ic"><path d={d} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 export function Check({ label, on, onChange, hint, cls = '' }: { label: ReactNode; on: unknown; onChange: (v: boolean) => void; hint?: ReactNode; cls?: string }) {
-  return <label className={`check ${cls}`.trim()}><input type="checkbox" checked={!!on} onChange={e => onChange(e.target.checked)} /><i /><span>{label}</span>{hint ? <small>{hint}</small> : null}</label>;
+  // 설명은 옆에 붙이지 않고 "?" 안에 (설정 화면 Form 과 같다) — 좁은 화면에서 이름이 세로로 찌그러지지 않게
+  return <label className={`check ${cls}`.trim()}><input type="checkbox" checked={!!on} onChange={e => onChange(e.target.checked)} /><i /><span>{label}</span>{hint ? <TipBtn /> : null}{hint ? <small className="tip-text">{hint}</small> : null}</label>;
 }
 export type Opt = readonly [value: string, label: string];
 export function Select({ value, opts, onChange, cls = '', title, disabled }: { value: unknown; opts: readonly Opt[]; onChange: (v: string) => void; cls?: string; title?: string; disabled?: boolean }) {
