@@ -239,7 +239,7 @@ export const defaultSettings = (): Settings => ({
   qr: { v: 1, sets: [], bar: true },
   auto: { cont: { on: false, target: 400, max: 2, talk: false }, swipe: { on: false, minLen: 0, words: [], threshold: 1, max: 2 } },
   regenWhy: { ask: false, format: '', withDraft: false },
-  direct: { prompt: '', past: 'drop', pastFormat: '', v: 2 },
+  direct: { prompt: '', past: 'drop', pastFormat: '', v: 2, hide: false },
   profiles: [],
 });
 

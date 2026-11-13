@@ -11,7 +11,7 @@ export interface TtsDef extends ProviderDef { voiceStyle?: string }
 const D = (name: string, base: string, models: string[], extra: Partial<ProviderDef> = {}): ProviderDef => ({ name, group: '음성', base, models, kind: 'tts', ...extra });
 export const TTS_PROVIDERS: Record<string, ProviderDef> = {
   tts_openai: D('OpenAI TTS', 'https://api.openai.com/v1', ['gpt-4o-mini-tts', 'tts-1', 'tts-1-hd']),
-  tts_eleven: D('ElevenLabs', 'https://api.elevenlabs.io', ['eleven_multilingual_v2', 'eleven_flash_v2_5', 'eleven_turbo_v2_5', 'eleven_v3']),
+  tts_eleven: D('ElevenLabs', 'https://api.elevenlabs.io', ['eleven_multilingual_v2', 'eleven_v4', 'eleven_v3', 'eleven_flash_v2_5', 'eleven_turbo_v2_5']),
   tts_google: D('Google Cloud TTS', 'https://texttospeech.googleapis.com', []),
   tts_azure: D('Azure Speech', '', [], { ph: 'https://eastus.tts.speech.microsoft.com' }),
   tts_minimax: D('MiniMax', 'https://api.minimax.io', ['speech-2.8-hd', 'speech-2.8-turbo', 'speech-2.6-hd', 'speech-2.6-turbo', 'speech-02-hd', 'speech-02-turbo']),
@@ -73,6 +73,11 @@ export async function synth(c: Conn, v: VoicePick, text: string, speed: number, 
     }
     case 'tts_eleven': {
       if (!voice) throw new Error(t('tts.err.noVoice'));
+      if (/^eleven_v4/.test(model)) {   // v4 는 대화(Text to Dialogue) 주소로만 안내된다. 설정 이름이 similarity 이고 말 빠르기는 받지 않는다
+        const body = { inputs: [{ text, voice_id: voice }], model_id: model, settings: { stability: num(v.stability, 0.5), similarity: num(v.similarity, 0.75) } };
+        const r = await req(c, `${needBase(c)}/v1/text-to-dialogue/stream?output_format=mp3_44100_128`, { headers: { ...JH, 'xi-api-key': key, Accept: 'audio/mpeg' }, body: json(body), signal });
+        return r.blob();
+      }
       const body = { text, model_id: model || 'eleven_multilingual_v2', voice_settings: { stability: num(v.stability, 0.5), similarity_boost: num(v.similarity, 0.75), style: num(v.style, 0), speed: clamp(speed, 0.7, 1.2) } };
       const r = await req(c, `${needBase(c)}/v1/text-to-speech/${encodeURIComponent(voice)}/stream?output_format=mp3_44100_128`, { headers: { ...JH, 'xi-api-key': key, Accept: 'audio/mpeg' }, body: json(body), signal });
       return r.blob();

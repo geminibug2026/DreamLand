@@ -73,7 +73,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
   const grouped = chat.charIds.length > 1;
   const castNo = grouped && m.role === 'assistant' ? chat.charIds.indexOf(m.charId) + 1 : 0;
   const toned = grouped && m.role === 'assistant' && !!(who && 'avatar' in who && who.avatar);   // 여럿이 있는 방: 말하는 이마다 제 색
-  const cls = ['msg', m.role === 'user' ? 'user' : m.role === 'assistant' ? 'ai' : 'sys', m.hidden && 'hidden-msg', grouped && m.role !== 'system' && 'grouped', cont && 'cont', m.scene && 'in-scene',
+  const cls = ['msg', m.role === 'user' ? 'user' : m.role === 'assistant' ? 'ai' : 'sys', m.hidden && 'hidden-msg', grouped && m.role !== 'system' && 'grouped', cont && 'cont', m.scene && 'in-scene', (m as { direct?: boolean }).direct && 'is-direct',
     m.role === 'system' && m.curtain && 'curtain-msg', m.role === 'system' && m.curtain?.kind, m.role === 'system' && !m.curtain && m.dice && 'dice-msg', still && 'still', picked && 'picked'].filter(Boolean).join(' ');
   const art = (kids: ReactNode) => <article className={cls} data-id={m.id} ref={el => { if (el && toned) tint(el, S.get('chars', m.charId) ?? null); }}>{kids}</article>;
   const del = <IconBtn ic="trash" title={t('common.delete')} onClick={() => void delMsg(m)} />;

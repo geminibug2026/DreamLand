@@ -64,3 +64,6 @@
 .lib-row:not(.on):has(.lore-sw input:not(:checked)) .lib-item b { color: var(--dim); }
 .lore-power { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--ink); margin-bottom: 4px; } .lore-power .lore-sw { padding: 0; }
 .lore-power div { display: flex; flex-direction: column; min-width: 0; line-height: 1.4; } .lore-power b { font: 700 .95em var(--display); } .lore-power small { color: var(--dim); font-size: .84em; }
+
+/* 연출 지시 숨기기 */
+.hide-direct .msgs .msg.is-direct { display: none; }

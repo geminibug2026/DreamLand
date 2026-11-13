@@ -51,6 +51,7 @@ function DirectForm() {
   return <Form obj={D} onChange={() => S.set({ direct: D })} defs={[
     { k: 'prompt', label: t('flow.direct.prompt'), type: 'area', rows: 5, ph: DIRECT_HINT, hint: t('flow.direct.promptHint') },
     { k: 'past', label: t('flow.direct.past'), type: 'select', opts: [['note', t('flow.direct.pastNote')], ['drop', t('flow.direct.pastDrop')]], half: true }, { k: 'pastFormat', label: t('flow.direct.pastFormat'), half: true, ph: '[Author direction: {{direction}}]' },
+    { k: 'hide', label: t('flow.direct.hide'), type: 'check', live: true, hint: t('flow.direct.hideHint') },
   ]} />;
 }
 

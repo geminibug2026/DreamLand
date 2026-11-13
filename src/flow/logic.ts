@@ -246,6 +246,9 @@ export function wire() {
     return [{ where: 'end', role: 'system', content, src: t('flow.regen.title') }];
   } });
 
+  // 연출 지시 숨기기: 보낸 지시를 대화 화면에서 감춘다 (기록과 프롬프트에는 그대로)
+  const hideDirect = () => document.body.classList.toggle('hide-direct', !!(S.settings.direct as { hide?: boolean } | undefined)?.hide);
+  hideDirect(); on('settings', hideDirect);
   on('message:sent', d => { const { msg, chat } = d as { msg?: Msg; chat: ChatX }; if (directOn(chat) && msg && !msg.direct && msg.role === 'user') msg.direct = true; });
 
   const page = document.getElementById('page');

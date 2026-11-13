@@ -6062,6 +6062,8 @@
   "flow.direct.pastNote": "之后也保留简短标注",
   "flow.direct.pastDrop": "仅用于那一次回复（默认）",
   "flow.direct.pastFormat": "标签格式",
+  "flow.direct.hide": "在聊天中隐藏已发送的指示",
+  "flow.direct.hideHint": "指示仍保留在记录和提示词中，只是不在界面上显示。关闭后重新显示。",
   "flow.direct.mode": "作者指示模式",
   "flow.direct.modeHint": "将发送内容作为指示而非台词",
   "flow.direct.intro": "开启后，在输入框发送的内容将作为作者的指示，而不是你角色的台词。写下“突然停电了”“让他先道歉”之类的内容，角色与叙述会在故事中展开。可通过输入框 + 菜单、快速按钮栏的“指示”或 /direct 命令开关。没有额外调用。",
