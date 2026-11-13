@@ -3,6 +3,7 @@
 import { S } from './core';
 import { PROVIDERS, type Conn, type ProviderDef } from './engine';
 import { t } from '../i18n';
+import { Server } from './server';
 
 /** 임베딩 방식. auto 는 연결의 종류를 보고 고른다 */
 export const EMBED_KINDS = {
@@ -52,7 +53,7 @@ export async function embedTexts(texts: unknown[], opt: EmbedOpts = {}): Promise
   if (ac && opt.signal) opt.signal.addEventListener('abort', () => ac.abort(), { once: true });
   const signal = ac ? ac.signal : opt.signal;
   const call = async (url: string, headers: Record<string, string>, body: unknown): Promise<EmbedJson> => {
-    const res = conn.proxy ? await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dreamland': '1' }, body: JSON.stringify({ url, method: 'POST', headers, body }), signal })
+    const res = conn.proxy ? await Server.proxy({ url, method: 'POST', headers, body }, signal)
       : await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
     if (!res.ok) throw new Error(t('embed.err.api', { status: res.status, body: (await res.text().catch(() => '')).slice(0, 200) }));
     return res.json();

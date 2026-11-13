@@ -3,6 +3,7 @@
 // 원칙: 어떤 경우에도 조용히 지우지 않는다. 판단이 애매하면 둘 다 남긴다(서버의 _conflicts/).
 import { decode, keepSecrets, pack, packSync, timeOf, type Json } from './codec';
 import { t, tn } from '../i18n';
+import { Server, SERVER_HEADERS } from '../lib/server';
 
 type Fn = (...a: never[]) => unknown;
 export interface MirrorDb {
@@ -71,7 +72,8 @@ export interface MirrorOpts { base?: string; reload?: () => void; toast?: (msg: 
 
 /** DB 객체를 받아 감싼다. 서버가 없으면 감싼 채로 아무것도 보내지 않고 앱은 그대로 돈다 */
 export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
-  const api = (opts.base || '') + '/api/store/';
+  // 서버와의 통신은 Server 를 거친다. base 를 주면 (다른 주소의 서버) 그 앞에 붙여서 직접 부른다
+  const call = (p: string, init?: RequestInit) => opts.base ? fetch(opts.base + Server.url('store/' + p), init) : Server.fetch('store/' + p, init);
   const raw = { all: DB.all.bind(DB), get: DB.get.bind(DB), put: DB.put, del: DB.del, clear: DB.clear, bulk: DB.bulk };
   const st: MirrorState = { server: 'unknown', enabled: lsGet('dl-datafolder') !== 'off', phase: 'idle', pending: 0, lastSync: Number(lsGet('dl-datafolder-last')) || 0, error: '', dir: '', pulled: 0, pushed: 0, conflicts: 0 };
   let snap = { ...st }; const subs = new Set<() => void>();
@@ -108,12 +110,11 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
   })();
 
   // ── 서버와 주고받기 ──
-  const headers = { 'Content-Type': 'application/json', 'x-dreamland': '1' };
   async function getJson<T>(path: string): Promise<T> {
-    const r = await fetch(api + path, { cache: 'no-store' }); if (!r.ok || !(r.headers.get('content-type') || '').includes('json')) throw new Error(t('datafolder.err.status', { status: r.status })); return r.json() as Promise<T>;
+    const r = await call(path, { cache: 'no-store' }); if (!r.ok || !(r.headers.get('content-type') || '').includes('json')) throw new Error(t('datafolder.err.status', { status: r.status })); return r.json() as Promise<T>;
   }
   async function post<T>(path: string, body: unknown): Promise<T> {
-    const r = await fetch(api + path, { method: 'POST', headers, body: JSON.stringify(body) });
+    const r = opts.base ? await call(path, { method: 'POST', headers: { ...SERVER_HEADERS }, body: JSON.stringify(body) }) : await Server.post('store/' + path, body);
     const j = await r.json().catch(() => ({})) as T & { error?: string }; if (!r.ok) throw new Error(j.error || t('datafolder.err.status', { status: r.status })); return j;
   }
   async function ping() {
@@ -203,7 +204,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
     return out;
   }
   async function dump(): Promise<Map<string, { store: string; id: unknown; hash: string; value: Json }>> {
-    const r = await fetch(api + 'dump', { cache: 'no-store' }); if (!r.ok || !r.body) throw new Error(t('datafolder.err.dump'));
+    const r = await call('dump', { cache: 'no-store' }); if (!r.ok || !r.body) throw new Error(t('datafolder.err.dump'));
     const out = new Map<string, { store: string; id: unknown; hash: string; value: Json }>();
     const rd = r.body.pipeThrough(new TextDecoderStream()).getReader(); let buf = '';
     for (; ;) {
@@ -326,7 +327,9 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
         const p = packSync(l.store, l.val); if (size + p.str.length > 60000) continue; ops.push({ op: 'put', store: l.store, id: l.id, value: p.json, ...base }); size += p.str.length;
       } catch { /* Blob 등: 다음에 */ }
     }
-    if (ops.length) navigator.sendBeacon(api + 'beacon', new Blob([JSON.stringify({ dev, ops })], { type: 'text/plain' }));
+    if (!ops.length) return;
+    const blob = new Blob([JSON.stringify({ dev, ops })], { type: 'text/plain' });
+    if (opts.base) navigator.sendBeacon(opts.base + Server.url('store/beacon'), blob); else Server.beacon('store/beacon', blob);
   }
   addEventListener('pagehide', beacon);
   addEventListener('online', () => { st.server = 'unknown'; void flush(); });

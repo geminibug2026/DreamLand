@@ -1,5 +1,6 @@
 // ── Dreamland core: 유틸 · IndexedDB · 스토어 · 기본값 ── (옛 js/core.js 그대로)
 import { fmtDate, getLang, locale, t as tr } from '../i18n';
+import { Server } from './server';
 import type { Char, Chat, Colls, CollName, Conn, KvRow, Lore, LoreEntry, Msg, MsgsRow, Persona, Preset, PresetBlock, Regex, Role, Settings, StoreName, Asset } from './types';
 
 // replaceChildren / append 에 null·false·undefined 가 섞여 들어가면 글자로 찍히므로 걸러 낸다
@@ -281,8 +282,8 @@ export const Secrets = {
   get on() { return this.ok && S.settings.security?.serverKeys !== false; },
   tail(id: string, field: string) { return this.items[id]?.[field]?.tail || ''; },
   has(id: string, field: string) { return !!this.items[id]?.[field]; },
-  async post(path: string, body: unknown): Promise<Record<string, string>> { const r = await fetch('/api/secrets/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dreamland': '1' }, body: JSON.stringify(body) }); const j = await r.json().catch(() => ({})) as Record<string, string>; if (!r.ok) throw new Error(j.error || tr('core.secretFail')); return j; },
-  async init() { try { const r = await fetch('/api/secrets'); if (r.ok && (r.headers.get('content-type') || '').includes('json')) { this.items = await r.json(); this.ok = true; } } catch { this.ok = false; } return this.ok; },
+  async post(path: string, body: unknown): Promise<Record<string, string>> { const r = await Server.post('secrets/' + path, body); const j = await r.json().catch(() => ({})) as Record<string, string>; if (!r.ok) throw new Error(j.error || tr('core.secretFail')); return j; },
+  async init() { try { const r = await Server.get('secrets'); if (r.ok && (r.headers.get('content-type') || '').includes('json')) { this.items = await r.json(); this.ok = true; } } catch { this.ok = false; } return this.ok; },
   async put(id: string, field: string, value: string, hosts: string[], note = '') { const j = await this.post('put', { id, field, value, hosts, note }); (this.items[id] ||= {})[field] = { tail: j.tail || '', hosts, note }; return this.ref(id, field); },
   async del(id: string, field?: string) { if (!this.ok) return; await this.post('delete', { id, field }).catch(() => { }); if (field) delete this.items[id]?.[field]; else delete this.items[id]; },
   async reveal(id: string, field: string) { return (await this.post('reveal', { id, field })).value; },
@@ -316,9 +317,9 @@ if (typeof window !== 'undefined' && !window.__dlFetch) {
   const raw = window.__dlFetch = window.fetch.bind(window);
   window.fetch = (input: RequestInfo | URL, init: RequestInit = {}) => {
     try {
-      if (typeof input === 'string' && !input.startsWith('/api/')) {
+      if (typeof input === 'string' && !Server.isApi(input)) {
         const hs: Record<string, string> = init.headers instanceof Headers ? Object.fromEntries(init.headers.entries()) : { ...(init.headers as Record<string, string> || {}) }, body = typeof init.body === 'string' ? init.body : init.body instanceof URLSearchParams ? init.body.toString() : undefined;
-        if (SEC_RE.test(input) || SEC_RE.test(JSON.stringify(hs)) || (body && SEC_RE.test(body))) return raw('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dreamland': '1' }, body: JSON.stringify({ url: input, method: init.method || 'GET', headers: hs, body }), signal: init.signal });
+        if (SEC_RE.test(input) || SEC_RE.test(JSON.stringify(hs)) || (body && SEC_RE.test(body))) return Server.proxy({ url: input, method: init.method || 'GET', headers: hs, body }, init.signal);
       }
     } catch { }
     return raw(input, init);

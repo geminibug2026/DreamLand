@@ -4,6 +4,7 @@ import { Btn, Icon } from '../kit';
 import { confirmBox, toast } from '../ui';
 import { t, tn, useLang } from '../i18n';
 import { getMirror } from './instance';
+import { Server } from '../lib/server';
 import type { MirrorState } from './mirror';
 
 interface Backup { name: string; at: number; kind: string; size: number }
@@ -22,7 +23,7 @@ export function DataFolderCard() {
   const [list, setList] = useState<Backup[] | null>(null), [info, setInfo] = useState<{ bytes: number; records: number; backups: { bytes: number } } | null>(null), [busy, setBusy] = useState(false);
   const load = useCallback(async () => {
     try {
-      const [a, b] = await Promise.all([fetch('/api/store/backups', { cache: 'no-store' }), fetch('/api/store/status', { cache: 'no-store' })]);
+      const [a, b] = await Promise.all([Server.get('store/backups', { cache: 'no-store' }), Server.get('store/status', { cache: 'no-store' })]);
       if (!a.ok || !b.ok) throw new Error(); setList(await a.json() as Backup[]); setInfo(await b.json() as { bytes: number; records: number; backups: { bytes: number } });
     } catch { setList(null); setInfo(null); }
   }, []);
@@ -46,7 +47,7 @@ export function DataFolderCard() {
       {list && list.length > 0 && <ul className="dl-bk">{list.map(b => <li key={b.name}>
         <span className="dl-bk-at">{when(b.at)}</span><span className="badge">{KINDS.includes(b.kind) ? t('datafolder.kind.' + b.kind) : b.kind}</span><span className="dl-bk-size">{size(b.size)}</span>
         <span className="dl-bk-act">
-          <Btn label={t('datafolder.download')} cls="ghost" onClick={() => { const a = document.createElement('a'); a.href = '/api/store/backup-file?name=' + encodeURIComponent(b.name); a.download = 'dreamland-' + b.name; document.body.append(a); a.click(); a.remove(); }} />
+          <Btn label={t('datafolder.download')} cls="ghost" onClick={() => { const a = document.createElement('a'); a.href = Server.url('store/backup-file?name=' + encodeURIComponent(b.name)); a.download = 'dreamland-' + b.name; document.body.append(a); a.click(); a.remove(); }} />
           <Btn label={t('datafolder.restore')} cls="ghost" onClick={() => run(async () => { if (!(await confirmBox(t('datafolder.restoreConfirm', { when: when(b.at) }), t('datafolder.restore'), true))) return; await m.restore(b.name); })} />
         </span></li>)}</ul>}
       <p className="hint">{t('datafolder.help')}</p>

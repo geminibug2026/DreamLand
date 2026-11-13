@@ -4,6 +4,7 @@ import { stQrToSet, qrAddSet } from './qr-data';
 import { S, uid, now, arr, bool, parseMaybe, parseDate, bytesToDataURL, dataURLToBytes, mimeOf, shrinkImage, newChar, newPersona, newLore, newEntry, newRegex, newChat, newMsg, defaultPreset, MARKERS, emit } from './core';
 import type { Chat, Msg, Regex } from './types';
 import { t } from '../i18n';
+import { Server } from './server';
 
 // ── 자료 꼴 ──
 type O = Record<string, unknown>;
@@ -621,18 +622,16 @@ function mePresetToPreset(pr: MePreset, sections: MeSection[], groups: MeGroup[]
 }
 
 // ════════ 소스 (브리지 서버 / 선택한 폴더) ════════
-const BH = { 'Content-Type': 'application/json', 'x-dreamland': '1' };
 export const bridge = {
-  async ok(): Promise<boolean> { try { return (await (await fetch('/api/ping')).json()).bridge === true; } catch { return false; } },
-  async detect(): Promise<Found[]> { try { return await (await fetch('/api/detect')).json(); } catch { return []; } },
-  async resolve(path: string): Promise<Found[]> { const r = await fetch('/api/resolve', { method: 'POST', headers: BH, body: JSON.stringify({ path }) }); return r.ok ? r.json() : []; },
+  async ok(): Promise<boolean> { try { return (await (await Server.get('ping')).json()).bridge === true; } catch { return false; } },
+  async detect(): Promise<Found[]> { try { return await (await Server.get('detect')).json(); } catch { return []; } },
+  async resolve(path: string): Promise<Found[]> { const r = await Server.post('resolve', { path }); return r.ok ? r.json() : []; },
 };
 export function bridgeSource(root: string): Source {
-  const post = (url: string, body: O) => fetch(url, { method: 'POST', headers: BH, body: JSON.stringify(body) });
   return {
     label: root,
-    async list(sub) { const r = await post('/api/fs/list', { root, sub }); return r.ok ? r.json() : []; },
-    async bytes(rel) { const r = await post('/api/fs/read', { root, rel }); if (!r.ok) throw new Error(t('cards.err.readFailed', { file: rel })); return new Uint8Array(await r.arrayBuffer()); },
+    async list(sub) { const r = await Server.post('fs/list', { root, sub }); return r.ok ? r.json() : []; },
+    async bytes(rel) { const r = await Server.post('fs/read', { root, rel }); if (!r.ok) throw new Error(t('cards.err.readFailed', { file: rel })); return new Uint8Array(await r.arrayBuffer()); },
     async text(rel) { return new TextDecoder().decode(await this.bytes(rel)); },
   };
 }

@@ -1,6 +1,7 @@
 // ── Dreamland format: 마크다운 + RP 말풍선 렌더러 + HTML 정화 ──
 import { esc, S } from './core';
 import { t as tr } from '../i18n';
+import { Server } from './server';
 
 const BAD_TAGS = new Set(['script', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'form', 'input', 'button', 'textarea', 'select', 'frame', 'frameset', 'applet', 'title', 'head', 'html', 'body', 'noscript', 'noembed', 'noframes', 'xmp', 'plaintext', 'template', 'math', 'portal']);
 const blockRemote = () => !!(S.settings as { security?: { blockRemoteImages?: boolean } }).security?.blockRemoteImages;
@@ -144,7 +145,7 @@ function watchFrames() {
       const f = document.createElement('iframe');
       f.className = 'dl-frame-el'; f.dataset.frame = el.dataset.frame;
       f.setAttribute('sandbox', 'allow-scripts allow-popups allow-forms allow-modals'); f.setAttribute('referrerpolicy', 'no-referrer');
-      f.src = '/frame';
+      f.src = Server.frameUrl;
       el.append(f);
     }
   };

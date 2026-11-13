@@ -7,6 +7,7 @@ import { parseLoose } from './memory';
 import * as SB from '../scenebook/prompts';
 import { orientation, sizeFor, LOOKS, withLook, parsePlanText } from '../scenebook/framing';
 import { t } from '../i18n';
+import { Server } from './server';
 import type { IllustDraft, IllustDraftChar, IllustGenConfig, IllustItem, IllustScene, IllustVersion, Swipe } from './types';
 
 type Bag = Record<string, unknown>;
@@ -483,7 +484,7 @@ export const Illust = {
   },
 
   // ── NovelAI ──
-  proxy(url: string, headers: Record<string, string>, body: unknown, { method = 'POST', signal }: { method?: string; signal?: AbortSignal } = {}) { return fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dreamland': '1' }, body: JSON.stringify({ url, method, headers, body }), signal }); },
+  proxy(url: string, headers: Record<string, string>, body: unknown, { method = 'POST', signal }: { method?: string; signal?: AbortSignal } = {}) { return Server.proxy({ url, method, headers, body }, signal); },
   /** NovelAI 계정 상태 → { active, tier, anlas } */
   async account() {
     const key = this.cfg().naiKey; if (!key) throw coded(t('illust.nai.keyFirst'), 'NO_KEY');

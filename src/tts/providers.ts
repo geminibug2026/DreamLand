@@ -4,6 +4,7 @@
 import { PROVIDERS, type ProviderDef } from '../lib/engine';
 import type { Conn } from '../lib/types';
 import { t } from '../i18n';
+import { Server } from '../lib/server';
 import type { VoicePick } from './api';
 
 export interface TtsDef extends ProviderDef { voiceStyle?: string }
@@ -28,7 +29,7 @@ export const baseOf = (c: Conn) => (c.baseUrl || defOf(c).base || '').trim().rep
 
 // ── 요청: 연결의 "서버를 거쳐 연결" 설정을 따르고, 막히면 서버를 거쳐 다시 한 번 ──
 const viaProxy = (url: string, method: string, headers: Record<string, string>, body: string | undefined, signal?: AbortSignal) =>
-  fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dreamland': '1' }, body: JSON.stringify({ url, method, headers, body }), signal });
+  Server.proxy({ url, method, headers, body }, signal);
 async function req(c: Conn, url: string, o: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal } = {}): Promise<Response> {
   const method = o.method || (o.body ? 'POST' : 'GET'), headers = o.headers || {};
   let r: Response;

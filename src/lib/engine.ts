@@ -5,6 +5,7 @@ import { condBlocks, evalCond, pvResolve, type CondEnv, type PvMap } from './con
 import * as clock from './clock';
 import * as advanced from './advanced';
 import { t as tr } from '../i18n';
+import { Server } from './server';
 
 // ════════ 자료 꼴 (엔진이 읽는 만큼) ════════
 type Obj = Record<string, unknown>;
@@ -864,7 +865,7 @@ interface TokenJson { access_token?: string; expires_in?: number; error?: string
 async function vertexToken(conn: Conn): Promise<string> {
   if (Secrets.is(conn.serviceAccount)) {   // 키가 서버에 보관돼 있으면 서버가 서명한다
     const hit = tokenCache.get('ref:' + conn.id); if (hit && hit.exp > Date.now() + 60000) return hit.token;
-    const r = await fetch('/api/vertex-token', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dreamland': '1' }, body: JSON.stringify({ ref: conn.id }) });
+    const r = await Server.post('vertex-token', { ref: conn.id });
     const j: TokenJson = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || tr('engine.err.googleAuth'));
     tokenCache.set('ref:' + conn.id, { token: j.access_token as string, exp: Date.now() + (j.expires_in || 3600) * 1000 }); return j.access_token as string;
   }
@@ -874,7 +875,7 @@ async function vertexToken(conn: Conn): Promise<string> {
   let token: string | undefined, ttl = 3600;
   // 1) 드림랜드 서버가 대신 서명·교환 (CORS 와 비보안 접속 문제를 피한다)
   try {
-    const r = await fetch('/api/vertex-token', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dreamland': '1' }, body: JSON.stringify({ serviceAccount: sa }) });
+    const r = await Server.post('vertex-token', { serviceAccount: sa });
     if (r.ok) { const j: TokenJson = await r.json(); token = j.access_token; ttl = j.expires_in || ttl; }
     else if (r.status !== 404) throw new Error((await r.json().catch(() => ({})) as TokenJson).error || tr('engine.err.token'));
   } catch (e) { if (!/Failed to fetch|NetworkError|404/.test(String(errMsg(e)))) throw e; }
@@ -915,11 +916,11 @@ async function call(conn: Conn, url: string, { method = 'POST', headers = {}, bo
   headers = { ...headers, ...jsonOr<Record<string, string>>(conn.extraHeaders, {}) };
   let res: Response | null | undefined;
   try {
-    if (conn.proxy) res = await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dreamland': '1' }, body: JSON.stringify({ url, method, headers, body }), signal });
+    if (conn.proxy) res = await Server.proxy({ url, method, headers, body }, signal);
     else res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, signal });
   } catch (e) {
     if (errName(e) === 'AbortError') throw e;
-    if (!conn.proxy) { try { res = await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dreamland': '1' }, body: JSON.stringify({ url, method, headers, body }), signal }); } catch (e2) { if (errName(e2) === 'AbortError') throw e2; res = null; } }
+    if (!conn.proxy) { try { res = await Server.proxy({ url, method, headers, body }, signal); } catch (e2) { if (errName(e2) === 'AbortError') throw e2; res = null; } }
     if (!res) throw new Error(tr('engine.err.connect', { why: errMsg(e) }));
   }
   const r = res as Response;
@@ -1099,7 +1100,7 @@ export function termLog(kind: 'call' | 'done' | 'err' | 'info', line: string, pr
     if (prompt) body.prompt = prompt.map(m => `[${m.role}] ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`).join('\n\n').slice(0, 200000);
     if (out) body.out = out.slice(0, 50000);
   }
-  void fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Dreamland': '1' }, body: JSON.stringify(body) }).catch(() => { });
+  Server.log(body);
 }
 
 async function streamChatRaw(conn: Conn | null | undefined, Pin: Params, messages: PromptList, { signal, onText = () => { }, onThink = () => { } }: StreamOpts = {}): Promise<StreamResult> {

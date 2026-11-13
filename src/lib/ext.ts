@@ -11,6 +11,7 @@ import { chatApi } from '../chat/actions';
 import { toast, menu, confirmBox, promptBox } from '../ui';
 import { avatar, modal, form } from '../ui/dom';
 import { t } from '../i18n';
+import { Server } from './server';
 
 export const APP_VERSION = '1.1.0';
 export interface CatalogItem { id: string; name: string; version?: string; author?: string; description?: string; source: 'folder' | 'installed'; entry?: string; css?: string; code?: string }
@@ -80,7 +81,7 @@ export function unload(id: string) {
 }
 
 export async function readCatalog() {
-  const folder: CatalogItem[] = await fetch('/api/extensions').then(r => r.ok ? r.json() : []).catch(() => []);
+  const folder: CatalogItem[] = await Server.get('extensions').then(r => r.ok ? r.json() : []).catch(() => []);
   const installed = (await DB.all('kv')).filter(r => String(r.id).startsWith('ext:')).map(r => ({ ...(r.meta as object), id: r.extId as string, code: r.code as string, source: 'installed' } as CatalogItem));
   catalog = [...folder.map(f => ({ ...f, source: 'folder' as const })), ...installed.filter(i => !folder.some(f => f.id === i.id))];
   return catalog;
@@ -117,7 +118,7 @@ export async function installFromUrl(url: string) {
   url = url.trim().replace(/^https:\/\/github\.com\/([^/]+\/[^/]+)\/blob\//, 'https://raw.githubusercontent.com/$1/');
   let text: string;
   try { const r = await fetch(url); if (!r.ok) throw new Error(String(r.status)); text = await r.text(); }
-  catch { const r = await fetch('/api/proxy', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-dreamland': '1' }, body: JSON.stringify({ url, method: 'GET' }) }).catch(() => null); if (!r?.ok) return toast(t('ext.fetchFail'), 'err'); text = await r.text(); }
+  catch { const r = await Server.proxy({ url, method: 'GET' }).catch(() => null); if (!r?.ok) return toast(t('ext.fetchFail'), 'err'); text = await r.text(); }
   await install(text, url.split('/').pop() as string);
 }
 
