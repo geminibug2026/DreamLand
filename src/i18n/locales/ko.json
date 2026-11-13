@@ -6644,6 +6644,8 @@
   "call.set.rawMax": "통화당 최대 토큰",
   "call.set.rawTotal": "전체 통화 최대 토큰",
   "call.set.afterText": "끊으면 캐릭터가 바로 문자 보내기",
+  "call.set.conn": "통화에 쓸 모델(연결)",
+  "call.set.connSame": "대화와 같은 연결",
   "call.set.rec": "통화를 녹음하며 시작",
   "call.set.recAudio": "목소리(TTS)도 녹음 (지원하는 공급자일 때)",
   "call.set.tones": "신호음 · 연결음 · 종료음",

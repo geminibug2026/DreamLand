@@ -4,7 +4,7 @@ import { toast } from '../ui';
 import * as A from './audio';
 import { SOUND_KINDS, customSound, setCustomSound, type SoundKind } from './audio';
 import { Check, Field, Select, useRedraw } from '../addons/parts';
-import { S } from '../lib/core';
+import { S, chatConns } from '../lib/core';
 import { go } from '../lib/router';
 import { useLang } from '../i18n';
 import { cfg, saveCfg, PROMPT_DEFAULTS, PROMPT_KEYS, type CallCfg } from './cfg';
@@ -68,6 +68,7 @@ export function CallStudio() {
         <Field label={tt('call.set.chance')}>{num('chance')}</Field>
       </div> : null}
       {c.auto ? <Check label={tt('call.set.night')} on={c.night} onChange={v => set('night', v)} /> : null}
+      <Field label={tt('call.set.conn')}><Select value={c.conn} opts={[['', tt('call.set.connSame')], ...chatConns().map(x => [x.id, `${x.name}${x.model ? ' · ' + x.model : ''}`] as const)]} onChange={v => set('conn', v)} /></Field>
       <div className="call-row">
         <Field label={tt('call.set.ring')}>{num('ringSec', 5)}</Field>
         <Field label={tt('call.set.tokens')}>{num('tokens', 40)}</Field>

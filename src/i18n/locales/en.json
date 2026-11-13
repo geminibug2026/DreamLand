@@ -6720,6 +6720,8 @@
   "call.set.rawMax": "Per-call max tokens",
   "call.set.rawTotal": "All calls max tokens",
   "call.set.afterText": "Character texts right after the call ends",
+  "call.set.conn": "Model (connection) for calls",
+  "call.set.connSame": "Same as the chat",
   "call.set.rec": "Start calls recording",
   "call.set.recAudio": "Also record the voice (TTS), when the provider supports it",
   "call.set.tones": "Dial, ringback and hang-up tones",

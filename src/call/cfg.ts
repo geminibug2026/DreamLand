@@ -1,5 +1,6 @@
 // 전화 설정 (S.settings.call) 과 기본 프롬프트. 프롬프트는 모두 설정 화면에서 고칠 수 있다
 import { S } from '../lib/core';
+import type { Chat } from '../lib/types';
 
 export const P_STYLE = `<phone_call>
 You are {{char}}, on a live voice phone call with {{user}} right now. Everything after the line "[Phone call started]" was spoken aloud on this call; earlier messages are your texting history and shared past.
@@ -30,11 +31,11 @@ export type PromptKey = typeof PROMPT_KEYS[number];
 export const PROMPT_DEFAULTS: Record<PromptKey, string> = { style: P_STYLE, incoming: P_INCOMING, pickup: P_PICKUP, voicemail: P_VOICEMAIL, summary: P_SUMMARY, record: P_RECORD, declined: P_DECLINED, missed: P_MISSED, hungUp: P_HUNGUP, cut: P_CUT, noAnswer: P_NOANSWER, charBye: P_CHARBYE };
 
 export interface CallCfg {
-  auto: boolean; daily: number; gapHours: number; chance: number; night: boolean; ringSec: number; voicemail: boolean; afterText: boolean;
+  auto: boolean; daily: number; gapHours: number; chance: number; night: boolean; ringSec: number; voicemail: boolean; afterText: boolean; conn: string;
   tokens: number; inPrompt: 'raw' | 'summary' | 'none'; rawMax: number; rawTotal: number; rec: boolean; recAudio: boolean; tones: boolean; ambient: 'off' | 'auto' | 'cafe' | 'rain' | 'street';
   prompts: Partial<Record<PromptKey, string>>;
 }
-export const DEFAULTS: CallCfg = { auto: false, daily: 1, gapHours: 6, chance: 8, night: false, ringSec: 25, voicemail: false, afterText: true, tokens: 500, inPrompt: 'raw', rawMax: 2000, rawTotal: 8000, rec: false, recAudio: false, tones: true, ambient: 'off', prompts: {} };
+export const DEFAULTS: CallCfg = { auto: false, daily: 1, gapHours: 6, chance: 8, night: false, ringSec: 25, voicemail: false, afterText: true, conn: '', tokens: 500, inPrompt: 'raw', rawMax: 2000, rawTotal: 8000, rec: false, recAudio: false, tones: true, ambient: 'off', prompts: {} };
 
 type WithCall = { call?: Partial<CallCfg> };
 /** 설정 (빠진 칸은 기본값으로 채운다) */
@@ -48,4 +49,6 @@ export function cfg(): CallCfg {
   return c;
 }
 export const prompt = (k: PromptKey) => String(cfg().prompts[k] || '').trim() || PROMPT_DEFAULTS[k];
+/** 통화에 쓸 연결 (따로 고르지 않았으면 대화의 연결) */
+export const callConn = (chat: Chat) => (cfg().conn ? S.get('conns', cfg().conn) : undefined) || S.connFor(chat);
 export const saveCfg = () => S.saveSettings();

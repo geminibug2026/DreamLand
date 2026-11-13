@@ -9,7 +9,7 @@ import { TTS, type SpeechStream } from '../tts/api';
 import { cur } from '../chat/store';
 import { chatApi } from '../chat/actions';
 import { toast } from '../ui';
-import { cfg, prompt } from './cfg';
+import { callConn, cfg, prompt } from './cfg';
 import { tt } from './strings';
 import * as A from './audio';
 
@@ -49,7 +49,7 @@ export const fmtDur = (ms: number) => { const s = Math.max(0, Math.round(ms / 10
 function begin(chat: Chat, dir: Dir, reason = ''): Session | null {
   if (S0 && S0.phase !== 'ended') { toast(tt('call.err.busy'), 'err'); return null; }
   const ch = charOf(chat); if (!ch) { toast(tt('call.err.noChar'), 'err'); return null; }
-  if (!S.connFor(chat)) { toast(tt('call.err.noConn'), 'err'); return null; }
+  if (!callConn(chat)) { toast(tt('call.err.noConn'), 'err'); return null; }
   const p = Live.presence(chat, ch);
   S0 = { chat, msgs: cur.chat === chat ? cur.msgs : [], char: ch, dir, phase: dir === 'in' ? 'ringing' : 'dialing', ringAt: now(), startedAt: 0, endedAt: 0, lines: [], status: p.status, activity: p.activity,
     reason, rec: cfg().rec, muted: false, speaker: TTS.enabled(), hold: false, keypad: false, talking: false, calls: 0 };
@@ -125,7 +125,7 @@ const strip = (raw: string, name: string) => {
 /** 캐릭터가 말한다 (모델 호출 1회). 흘러나오는 대로 TTS 가 문장 단위로 읽는다 */
 async function say(kind: 'open' | 'reply' | 'voicemail'): Promise<string> {
   const s = S0; if (!s) return '';
-  const chat = s.chat, ch = s.char, conn = S.connFor(chat); if (!conn) return '';
+  const chat = s.chat, ch = s.char, conn = callConn(chat); if (!conn) return '';
   const preset = S.presetFor(chat), persona = S.persona(chat);
   const mark = newMsg('system', 'Phone call started');
   const history = kind === 'voicemail' ? [...s.msgs] : [...s.msgs, mark, ...s.lines.map(l => l.who === 'u' ? newMsg('user', l.text, { name: persona.name }) : newMsg('assistant', l.text, { charId: ch.id, name: ch.name }))];
@@ -233,7 +233,7 @@ async function finish(result: Result, by: 'user' | 'char' = 'user', gaveUp = fal
     const mode = cfg().inPrompt;
     if (mode === 'raw') { const maxChars = Math.max(200, (+cfg().rawMax || 2000) * 3); body = '\n' + (raw.length > maxChars ? '…' + raw.slice(-maxChars) : raw); }
     else if (mode === 'summary') {
-      try { s.calls++; changed(); const sum = await E.quickCall(prompt('summary').replace(/\{\{char\}\}/g, ch.name).replace(/\{\{user\}\}/g, u), raw, { maxTokens: 300, conn: S.connFor(chat) }); body = sum ? '\nSummary: ' + sum : ''; } catch (e) { console.warn('[call summary]', e); body = '\n' + raw.slice(-800); }
+      try { s.calls++; changed(); const sum = await E.quickCall(prompt('summary').replace(/\{\{char\}\}/g, ch.name).replace(/\{\{user\}\}/g, u), raw, { maxTokens: 300, conn: callConn(chat) }); body = sum ? '\nSummary: ' + sum : ''; } catch (e) { console.warn('[call summary]', e); body = '\n' + raw.slice(-800); }
     }
   }
   if (voicemail) body += `\nVoicemail from ${ch.name}: ${voicemail}`;
@@ -293,7 +293,7 @@ export function reasonFor(chat: Chat, ch: Char) {
 /** 1분마다: 켜져 있고 조건이 맞으면 확률로 걸려 온다 */
 export function tick() {
   const c = cfg(), chat = cur.chat as CallChat | null; if (!c.auto || !chat || S0 || cur.busy || document.hidden || chat.mode !== 'talk' || chat.scene?.on) return;
-  const ch = charOf(chat); if (!ch || !S.connFor(chat)) return;
+  const ch = charOf(chat); if (!ch || !callConn(chat)) return;
   if (inQuietHours() || Live.userStatus().status === 'dnd') return;
   const p = Live.presence(chat, ch); if (p.status === 'offline' || p.status === 'dnd') return;
   const hr = new Date().getHours(), night = hr >= 22 || hr < 7; if (night && !c.night) return;
