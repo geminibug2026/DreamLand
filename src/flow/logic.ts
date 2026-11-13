@@ -1,4 +1,4 @@
-// 흐름: 자동 이어쓰기 · 자동 다시 생성 · 재생성 이유 · 연출 지시 · 체크포인트 · 연결 프로필의 로직 (옛 js/f-flow.js, 아직 켜지 않은 기능)
+// 흐름: 자동 이어쓰기 · 자동 다시 생성 · 재생성 이유 · 연출 지시 · 체크포인트 · 연결 프로필의 로직 (옛 js/f-flow.js)
 // 대화 화면에는 X 등록부 · 이벤트 · chatApi 로만 닿는다.
 import type { CharX, ChatX, Conn, Msg } from '../addons/types';
 import { I } from '../lib/icons';
@@ -243,7 +243,7 @@ export function wire() {
     if (!/\{\{reason\}\}/i.test(R.format || REGEN_DEFAULT)) content += '\n' + why.text;
     if (R.withDraft && why.draft) content += '\n' + REGEN_DRAFT.replace('{{draft}}', () => why.draft);
     if (commit) { why.text = ''; why.draft = ''; }
-    return [{ where: 'end', role: 'system', content, src: '재생성 이유' }];
+    return [{ where: 'end', role: 'system', content, src: t('flow.regen.title') }];
   } });
 
   on('message:sent', d => { const { msg, chat } = d as { msg?: Msg; chat: ChatX }; if (directOn(chat) && msg && !msg.direct && msg.role === 'user') msg.direct = true; });
