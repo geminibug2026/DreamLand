@@ -270,6 +270,8 @@ async function finish(result: Result, by: 'user' | 'char' = 'user', gaveUp = fal
   await S.save('chats', chat, true);
   emit('call:end', { chat, msg: m });
   if (result !== 'answered') setTimeout(() => { if (S0 === s) close(); }, 1600);
+  // 통화한 뒤에는 캐릭터가 바로 문자를 보낸다 (작별 뒤 한마디 · 끊김에 대한 반응)
+  else if (pend && cur.chat === chat) setTimeout(() => { if (S0 === s) close(); if (cur.chat === chat && !cur.busy && c.callPending === pend) void chatApi.generate?.('normal'); }, 1800);
 }
 
 /** 캐릭터가 대답하면 "알아차릴 일"은 끝난다 */
