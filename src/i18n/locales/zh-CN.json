@@ -6728,6 +6728,6 @@
   "settings.term.label": "在服务器终端（Termux 等）记录的内容",
   "settings.term.off": "关闭",
   "settings.term.brief": "摘要（模型、设置、消息列表、结果）",
-  "settings.term.full": "完整提示词和回复",
-  "settings.term.hint": "每次调用模型都会在运行服务器的终端留下记录。摘要显示连接、模型和设置，每条发送的消息一行（角色、token、开头文字），以及耗时、token 和错误；完整模式还会打印全部提示词和回复（包括思考过程）。更新后需要重启一次服务器才会显示新格式。"
+  "settings.term.full": "完整请求和响应（同 SillyTavern）",
+  "settings.term.hint": "每次调用模型都会在运行服务器的终端留下记录。完整模式像 SillyTavern 一样原样打印发给服务商的请求（消息和设置）和收到的响应；摘要只显示连接、模型和设置、每条消息一行，以及耗时、token 和错误。不会打印 API 密钥。更新后需要重启一次服务器才会显示新格式。"
 }

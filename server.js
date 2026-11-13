@@ -453,6 +453,12 @@ const fmtN = n => Number(n || 0).toLocaleString('en-US');
 const secs = ms => (Number(ms || 0) / 1000).toFixed(1) + 's';
 function termPrint(b) {
   const tm = new Date().toTimeString().slice(0, 8), out = [], W = termW(), rule = ch => TC.dim + ch.repeat(W) + TC.off;
+  if (b.v === 2 && (b.req || b.res)) {   // 전체: 업체에 실제로 보낸 요청 · 받은 응답을 그대로 (실리태번처럼)
+    const show = v => require('util').inspect(v, { depth: null, colors: !!process.stdout.isTTY || process.platform === 'win32', maxArrayLength: null, maxStringLength: null, breakLength: W });
+    if (b.req) out.push(`${TC.cyan}request #${b.req.id}${TC.off} ${TC.dim}${b.req.method || 'POST'} ${b.req.url || ''}${TC.off}\n${show(b.req.body)}`);
+    if (b.res) out.push(`${b.res.status >= 400 ? TC.red : TC.green}response #${b.res.id}${TC.off} ${TC.dim}${b.res.status}${TC.off}\n${show(b.res.body)}`);
+    return console.log(out.join('\n'));
+  }
   if (b.v !== 2 || !(b.call || b.done || b.err)) {   // 한 줄 기록 (앱 열림 · 예전 화면에서 온 기록)
     const c = { call: TC.cyan, done: TC.green, err: TC.red, info: TC.dim }[b.kind] || '';
     out.push(`${c}[${tm}] ${String(b.line || '').slice(0, 2000)}${TC.off}`);
@@ -469,7 +475,8 @@ function termPrint(b) {
     out.push(`  ${TC.dim}params${TC.off} ${params.join(' · ')}`);
     out.push(`  ${TC.dim}prompt${TC.off} ${msgs.length} messages · ≈${fmtN(tokIn)} tokens`);
     const head = (m, i) => { const rc = ROLE_C[m.role] || TC.mag; return `${TC.dim}${String(i + 1).padStart(3)}${TC.off} ${rc}${padW(fitW(m.role, 9), 9)}${TC.off} ${TC.dim}${fmtN(m.tok).padStart(6)}${TC.off}`; };
-    if (!c.full) {   // 요약: 메시지마다 한 줄 (길면 앞뒤만)
+    if (c.raw) { /* 전체: 메시지는 아래 request 에 그대로 나온다 */ }
+    else if (!c.full) {   // 요약: 메시지마다 한 줄 (길면 앞뒤만)
       const rows = msgs.map((m, i) => [m, i]), show = rows.length > 14 ? [...rows.slice(0, 4), null, ...rows.slice(-8)] : rows;
       for (const r of show) {
         if (!r) { out.push(`${TC.dim}    … ${rows.length - 12} more …${TC.off}`); continue; }

@@ -914,6 +914,8 @@ const THINK_ROOM = () => Math.max(0, +(S.settings.format?.reasoning?.headroom ??
 interface CallOpts { method?: string; headers?: Record<string, string>; body?: unknown; signal?: AbortSignal }
 async function call(conn: Conn, url: string, { method = 'POST', headers = {}, body, signal }: CallOpts): Promise<Response> {
   headers = { ...headers, ...jsonOr<Record<string, string>>(conn.extraHeaders, {}) };
+  const tap = signal ? taps.get(signal) : undefined;   // 터미널 로그(전체): 실제로 보낸 요청 · 받은 응답
+  tap?.req(method, url, body);
   let res: Response | null | undefined;
   try {
     if (conn.proxy) res = await Server.proxy({ url, method, headers, body }, signal);
@@ -926,12 +928,14 @@ async function call(conn: Conn, url: string, { method = 'POST', headers = {}, bo
   const r = res as Response;
   if (!r.ok) {
     let t: unknown = await r.text().catch(() => '');
+    if (tap) { let j: unknown = t; try { j = JSON.parse(t as string); } catch { /* 글 그대로 */ } tap.res(r.status, j); }
     try {
       const j = JSON.parse(t as string), e = Array.isArray(j) ? j[0]?.error : j.error;
       t = e?.message || e?.type || j.message || j.detail || (typeof j.error === 'string' ? j.error : t);
     } catch { /* JSON 이 아니면 글 그대로 */ }
     throw new Error(tr('engine.err.apiStatus', { status: r.status, body: String(t).slice(0, 400) || r.statusText }));
   }
+  if (tap && /json/i.test(r.headers.get('content-type') || '')) tap.res(r.status, r.clone().json().catch(() => null));   // 스트리밍(SSE)은 다 받은 뒤 글로 남긴다
   return r;
 }
 
@@ -1079,23 +1083,46 @@ export interface StreamResult { text: string; think: string; finish: string | un
 export async function streamChat(conn: Conn | null | undefined, P: Params, messages: PromptList, opts: StreamOpts = {}): Promise<StreamResult> {
   const t0 = Date.now(), who = conn ? `${conn.name || defOf(conn).kind} · ${conn.model || '?'}` : '?';
   const chars = messages.reduce((n, m) => n + String(m.content ?? '').length, 0);
-  const id = ++termSeq, full = termMode() === 'full';
-  termSend('call', `▶ ${who} · ${messages.length} msgs · ~${Math.round(chars / 3)} tok in · max ${P.maxTokens ?? '-'}`, () => ({ call: termCallInfo(id, conn, P, messages, opts.label || '', full) }));
+  const id = ++termSeq, mode = termMode(), full = mode === 'full';
+  termSend('call', `▶ ${who} · ${messages.length} msgs · ~${Math.round(chars / 3)} tok in · max ${P.maxTokens ?? '-'}`, () => ({ call: { ...termCallInfo(id, conn, P, messages, opts.label || '', false), raw: full } }));
+  // 전체 모드: 이 호출의 요청 · 응답을 call() 에서 받아 실리태번처럼 그대로 찍는다. 그러려고 이 호출만의 signal 을 쓴다 (밖의 signal 을 따라 멈춘다)
+  let ac: AbortController | null = null, unlink = () => { }; const pending: Promise<unknown>[] = []; let gotJson = false;
+  if (full) {
+    const a = ac = new AbortController(), outer = opts.signal;
+    if (outer) { if (outer.aborted) a.abort(outer.reason); else { const on = () => a.abort(outer.reason); outer.addEventListener('abort', on, { once: true }); unlink = () => outer.removeEventListener('abort', on); } }
+    taps.set(a.signal, {
+      req: (method, url, body) => termSend('req', '', () => ({ req: { id, method, url: maskUrl(url), body: scrub(body ?? null) } })),
+      res: (status, data) => { gotJson = true; pending.push(Promise.resolve(data).then(j => termSend('res', '', () => ({ res: { id, status, body: scrub(j) } })))); },
+    });
+  }
+  const after = (f: () => void) => { void Promise.allSettled(pending).then(f); };   // 응답 기록이 먼저 찍히게
   try {
-    const r = await streamChatRaw(conn, P, messages, opts);
-    termSend('done', `✓ ${who} · ${((Date.now() - t0) / 1000).toFixed(1)}s · ${r.text.length} chars out · finish=${r.finish || '-'}`, () => ({
-      done: { id, ms: Date.now() - t0, chars: r.text.length, tok: tokens(r.text), finish: r.finish || '', usage: usageOf(r.usage), thinkTok: tokens(r.think), think: full ? r.think.slice(0, 50000) : '', out: full ? r.text.slice(0, 50000) : oneLine(r.text, 300) },
-    }));
+    const r = await streamChatRaw(conn, P, messages, ac ? { ...opts, signal: ac.signal } : opts);
+    after(() => termSend('done', `✓ ${who} · ${((Date.now() - t0) / 1000).toFixed(1)}s · ${r.text.length} chars out · finish=${r.finish || '-'}`, () => ({
+      done: { id, ms: Date.now() - t0, chars: r.text.length, tok: tokens(r.text), finish: r.finish || '', usage: usageOf(r.usage), thinkTok: tokens(r.think),
+        think: full && !gotJson ? r.think.slice(0, 50000) : '', out: full ? (gotJson ? '' : r.text.slice(0, 50000)) : oneLine(r.text, 300) },
+    })));
     return r;
   } catch (e) {
     const abort = e instanceof Error && e.name === 'AbortError';
-    termSend(abort ? 'done' : 'err', `${abort ? '■ stopped' : '✗ error'} · ${who} · ${((Date.now() - t0) / 1000).toFixed(1)}s${abort ? '' : ' · ' + String((e as Error)?.message || e).slice(0, 400)}`,
-      () => abort ? { done: { id, ms: Date.now() - t0, stopped: true } } : { err: { id, ms: Date.now() - t0, msg: String((e as Error)?.message || e).slice(0, 2000) } });
+    after(() => termSend(abort ? 'done' : 'err', `${abort ? '■ stopped' : '✗ error'} · ${who} · ${((Date.now() - t0) / 1000).toFixed(1)}s${abort ? '' : ' · ' + String((e as Error)?.message || e).slice(0, 400)}`,
+      () => abort ? { done: { id, ms: Date.now() - t0, stopped: true } } : { err: { id, ms: Date.now() - t0, msg: String((e as Error)?.message || e).slice(0, 2000) } }));
     throw e;
-  }
+  } finally { unlink(); if (ac) taps.delete(ac.signal); }
+}
+/** 호출마다의 요청 · 응답 받이 (streamChat 이 만든 signal → call() 이 찾는다) */
+const taps = new WeakMap<AbortSignal, { req: (method: string, url: string, body: unknown) => void; res: (status: number, data: unknown) => void }>();
+/** 주소 속 키는 가린다 */
+const maskUrl = (u: string) => u.replace(/([?&](?:key|api_key|apikey|token|access_token)=)[^&]+/gi, '$1***');
+/** 터미널에 찍을 사본: 이미지 같은 긴 base64 는 길이만 */
+function scrub(v: unknown, depth = 0): unknown {
+  if (typeof v === 'string') return v.length > 600 && (/^data:[^;,]+;base64,/.test(v) || /^[A-Za-z0-9+/=\r\n]+$/.test(v)) ? `[base64 ${Math.round(v.length / 1024)}KB]` : v;
+  if (!v || typeof v !== 'object' || depth > 40) return v;
+  if (Array.isArray(v)) return v.map(x => scrub(x, depth + 1));
+  const o: Record<string, unknown> = {}; for (const [k, x] of Object.entries(v)) o[k] = scrub(x, depth + 1); return o;
 }
 type TermMode = 'off' | 'brief' | 'full';
-const termMode = () => ((S.settings as { termLog?: TermMode }).termLog || 'brief') as TermMode;
+const termMode = () => ((S.settings as { termLog?: TermMode }).termLog || 'full') as TermMode;
 let termSeq = 0;
 const oneLine = (s: string, n: number) => s.replace(/\s+/g, ' ').trim().slice(0, n);
 const textOf = (c: unknown): string => typeof c === 'string' ? c : Array.isArray(c) ? c.map(p => typeof p === 'string' ? p : String((p as { text?: unknown })?.text ?? '')).join('') : c == null ? '' : JSON.stringify(c);
@@ -1119,11 +1146,14 @@ function termCallInfo(id: number, conn: Conn | null | undefined, P: Params, mess
   return { id, label, conn: conn?.name || '', provider: conn?.provider || '', model: conn?.model || '', host, stream: P.stream !== false, max: P.maxTokens ?? null, params, msgs, full };
 }
 /** 서버 터미널로 보낸다. line 은 옛 서버(새로 켜지 않은 서버)도 찍는 한 줄 요약, more 는 새 서버가 보기 좋게 그리는 자료 */
-function termSend(kind: 'call' | 'done' | 'err', line: string, more: () => Record<string, unknown>) {
+function termSend(kind: 'call' | 'req' | 'res' | 'done' | 'err', line: string, more: () => Record<string, unknown>) {
   if (termMode() === 'off' || typeof fetch === 'undefined') return;
   let extra: Record<string, unknown> = {}; try { extra = more(); } catch (e) { console.warn('[터미널 로그]', e); }
-  Server.log({ kind, line, v: 2, ...extra });
+  termPost({ kind, line, v: 2, ...extra });
 }
+/** 터미널 기록은 보낸 차례대로 찍히게 하나씩 보낸다 */
+let termQ: Promise<unknown> = Promise.resolve();
+const termPost = (body: { kind: string; line: string; [k: string]: unknown }) => { termQ = termQ.then(() => Server.post('log', body)).catch(() => { }); };
 /** 브라우저에서 일어난 일을 서버 터미널(Termux 등)에 한 줄 찍는다. 실패해도 조용히 넘어간다 */
 export function termLog(kind: 'call' | 'done' | 'err' | 'info', line: string, prompt?: PromptList, out?: string) {
   const mode = termMode();
@@ -1133,7 +1163,7 @@ export function termLog(kind: 'call' | 'done' | 'err' | 'info', line: string, pr
     if (prompt) body.prompt = prompt.map(m => `[${m.role}] ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`).join('\n\n').slice(0, 200000);
     if (out) body.out = out.slice(0, 50000);
   }
-  Server.log(body);
+  termPost(body);
 }
 
 async function streamChatRaw(conn: Conn | null | undefined, Pin: Params, messages: PromptList, { signal, onText = () => { }, onThink = () => { } }: StreamOpts = {}): Promise<StreamResult> {

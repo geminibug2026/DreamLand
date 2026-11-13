@@ -21,7 +21,7 @@ const STORES = ['chars', 'chats', 'msgs', 'personas', 'lore', 'presets', 'conns'
 function SettingsPage() {
   useLang();
   const { Vault, Secrets, DB, download, pickFiles } = core, st = S.settings, F = adv.AF();
-  (st as { termLog?: string }).termLog ||= 'brief';
+  (st as { termLog?: string }).termLog ||= 'full';
   const refresh = useBump(), timer = useRef(0);
   useEffect(() => () => clearTimeout(timer.current), []);
   const apply = () => { S.set({}); theme.applyTheme(); };
