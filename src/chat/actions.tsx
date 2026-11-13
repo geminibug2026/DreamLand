@@ -50,6 +50,23 @@ export const drawDrawer = () => bump('drawer');
 export const drawGauge = () => bump('gauge');
 export function setStatus(t: string) { cur.status = t; bump('status'); }
 export function setBusy(b: boolean) { cur.busy = b; bump('busy'); }
+function setPrep(b: boolean) { cur.prep = b; bump('busy'); }
+/** 답변 · 답변 전 준비 · 스크립트(QR) 가운데 하나라도 돌고 있나. 그동안 입력창의 보내기 단추는 멈추기가 되고 보낼 수 없다 */
+export const running = () => cur.busy || cur.prep || cur.qr > 0;
+let qrEpoch = 0, scriptStop: (() => void) | null = null;
+/** 스크립트를 멈추는 길 (stscript/host 가 맡긴다) */
+export function onStopScripts(fn: () => void) { scriptStop = fn; }
+/** 스크립트 하나가 도는 동안 세어 둔다. 멈추기를 누르면 셈을 비워 입력창을 바로 풀어 준다 (스크립트는 다음 명령에서 멈춘다) */
+export async function trackScript<T>(run: () => Promise<T>): Promise<T> {
+  const ep = qrEpoch; cur.qr++; bump('busy');
+  try { return await run(); } finally { if (ep === qrEpoch && cur.qr > 0) { cur.qr--; bump('busy'); } }
+}
+/** 멈추기 단추 · Esc: 답변, 답변 전 준비, 스크립트를 모두 멈춘다 */
+export function stopAll() {
+  cur.abort?.abort(); cur.prepAbort?.abort();
+  if (cur.qr > 0) { qrEpoch++; cur.qr = 0; }
+  scriptStop?.(); bump('busy');
+}
 export const nearBottom = () => { const sc = ui.scroll; return !!sc && sc.scrollHeight - sc.scrollTop - sc.clientHeight < 160; };
 export const toBottom = () => { const sc = ui.scroll; if (sc) sc.scrollTop = sc.scrollHeight; };
 export function setSide(open: boolean) { cur.sideOpen = open; bump('layout', 'side'); }
@@ -513,9 +530,11 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
   // 상태창: 다시 생성할 때는 그 답변이 나오기 전의 상태로 되감고 시작한다
   if (trackOn && type !== 'impersonate') { Live.arm(chat); if (type === 'regen' && Live.rewind(chat, msgs, msgs.length - 1)) drawHud(); }
   if (X.before.length) {   // 답변 전 준비: 그동안 다른 생성이 끼어들지 못하게 하고, 방이 바뀌었으면 그만둔다
-    cur.prep = true; setStatus(t('chat.status.recalling'));
-    try { for (const b of X.before) { try { await b.fn({ chat, msgs, type, chars, persona }); } catch (e) { console.warn('[생성 전 준비]', b.owner, e); } } } finally { cur.prep = false; setStatus(''); }
-    if (cur.chat !== chat || cur.msgs !== msgs || cur.busy) return;
+    // 멈추기를 누르면 기다리던 준비를 두고 바로 그만둔다
+    const stop = cur.prepAbort = new AbortController(), stopped = new Promise<void>(r => stop.signal.addEventListener('abort', () => r(), { once: true }));
+    setPrep(true); setStatus(t('chat.status.recalling'));
+    try { for (const b of X.before) { if (stop.signal.aborted) break; try { await Promise.race([b.fn({ chat, msgs, type, chars, persona }), stopped]); } catch (e) { console.warn('[생성 전 준비]', b.owner, e); } } } finally { if (cur.prepAbort === stop) cur.prepAbort = null; setPrep(false); setStatus(''); }
+    if (stop.signal.aborted || cur.chat !== chat || cur.msgs !== msgs || cur.busy) return;
   }
   chat.loreState ||= {}; chat.vars ||= {};
   const pchat: Room = inScene ? Object.assign(Object.create(chat) as Room, { mode: 'rp' as const, sceneLive: true }) : chat, keepPresence = chat.presence;
@@ -686,7 +705,7 @@ export const chatApi: ChatApi = {
 /** 방향키로 마지막 답변 넘기기 · Esc 로 생성 중단 */
 export function onKey(e: KeyboardEvent) {
   if (!onChat() || !cur.chat) return;
-  if (e.key === 'Escape' && cur.busy && !document.querySelector('.modal-wrap')) cur.abort?.abort();
+  if (e.key === 'Escape' && running() && !document.querySelector('.modal-wrap')) stopAll();
   if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && document.activeElement === document.body) {
     const last = cur.msgs[cur.msgs.length - 1];
     if (last?.role === 'assistant') void swipe(last, e.key === 'ArrowLeft' ? -1 : 1);

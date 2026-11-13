@@ -5,6 +5,8 @@ import type { Built, Msg, Room } from './types';
 
 export const cur = {
   chat: null as Room | null, msgs: [] as Msg[], busy: false, prep: false, abort: null as AbortController | null,
+  /** 답변 전 준비를 멈추는 것 · 돌고 있는 스크립트(QR · / 명령) 수 */
+  prepAbort: null as AbortController | null, qr: 0,
   lastPrompt: null as Built | null, shown: 60, drawer: false, status: '', attach: [] as string[],
   gen: null as { chat: Room; msgs: Msg[] } | null, openedAt: 0, chimeRun: 0,
   fold: new Set<string>(), more: new Map<string, number>(),

@@ -5,7 +5,7 @@ import * as E from '../lib/engine';
 import { qrActive, qrFind, qrSave, qrStore, type QrItem, type QrSet } from '../lib/qr-data';
 import { openModal, promptBox, toast } from '../ui';
 import { t } from '../i18n';
-import { chatApi, command } from '../chat/actions';
+import { chatApi, command, onStopScripts, trackScript } from '../chat/actions';
 import type { Chat, Msg } from '../lib/types';
 import { runScript, Abort, type DebugAction, type DebugInfo, type Host } from './run';
 import './commands';
@@ -13,9 +13,10 @@ import './ext';
 
 /** 드림랜드 기본 명령 가운데 스크립트에서 그대로 부를 수 있는 것 (나머지는 STscript 명령이 맡는다) */
 const NATIVE = new Set(['roll', 'r', 'dice', 'note', 'bg', 'help', '?']);
-let stopAll = 0;
-/** 돌고 있는 스크립트를 모두 멈춘다 (생성 멈춤 단추 · Esc) */
-export const stopScripts = () => { stopAll = Date.now(); };
+let stopAll = 0, genStop = new AbortController();
+/** 돌고 있는 스크립트를 모두 멈춘다 (입력창의 멈추기 단추 · Esc). 스크립트 안의 /gen 요청도 끊는다 */
+export const stopScripts = () => { stopAll = Date.now(); genStop.abort(); genStop = new AbortController(); };
+onStopScripts(stopScripts);
 
 const cur = () => chatApi.current();
 const chars = (chat: Chat) => chat.charIds.map(id => S.get('chars', id)).filter(Boolean) as NonNullable<ReturnType<typeof S.get<'chars'>>>[];
@@ -88,11 +89,12 @@ export function appHost(started = Date.now()): Host {
     stopGen: () => { chatApi.stop?.(); return ''; },
     async gen(prompt: string, o: { raw?: boolean; system?: string }) {
       const { chat, msgs } = cur();
-      if (o.raw || !chat) return E.quickCall(o.system || '', prompt, { conn: chat ? S.connFor(chat) : S.conn() });
+      const signal = genStop.signal;
+      if (o.raw || !chat) return E.quickCall(o.system || '', prompt, { conn: chat ? S.connFor(chat) : S.conn(), signal });
       const conn = S.connFor(chat); if (!conn) throw new Error(t('chat.gen.noConn'));
       const cs = chars(chat), preset = S.presetFor(chat);
       const built = E.buildPrompt({ chat, char: cs[0], chars: cs, persona: S.persona(chat), preset, msgs: [...msgs, newMsg('system', prompt)], type: 'quiet' });
-      const r = await E.streamChat(conn, { ...preset.params, stream: false, prefill: '' }, built.messages);
+      const r = await E.streamChat(conn, { ...preset.params, stream: false, prefill: '' }, built.messages, { signal });
       return E.splitThink(r.text).text.trim();
     },
     messages: (spec: string, names: boolean) => { const { msgs } = cur(); return range(spec, msgs.length).map(i => msgs[i]).map((m: Msg) => names ? `${m.name || m.role}: ${msgText(m)}` : msgText(m)).join('\n\n'); },
@@ -110,8 +112,8 @@ export function appHost(started = Date.now()): Host {
 
 /** 스크립트를 돌린다. 오류는 알림으로 보여 주고 빈 글자를 돌려준다 */
 export async function runQrScript(text: string, opt: { pipe?: string; args?: Record<string, string>; onError?: () => void; debug?: boolean } = {}): Promise<string> {
-  try { return await runScript(text, appHost(), opt); }
-  catch (e) { const msg = e instanceof Error ? e.message : String(e); console.warn('[STscript]', e); toast(t('qr.run.error', { msg }), 'err'); opt.onError?.(); return ''; }
+  try { return await trackScript(() => runScript(text, appHost(), opt)); }
+  catch (e) { if ((e as Error)?.name === 'AbortError') return ''; const msg = e instanceof Error ? e.message : String(e); console.warn('[STscript]', e); toast(t('qr.run.error', { msg }), 'err'); opt.onError?.(); return ''; }
 }
 /** 퀵 리플라이 단추 하나를 누른 것처럼 */
 /**

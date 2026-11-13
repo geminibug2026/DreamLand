@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useReducer, useRef, type MouseEvent } from 
 import { Avatar, Icon, IconBtn } from '../kit';
 import { menu, promptBox } from '../ui';
 import { bump, cur, ui, useCh } from './store';
-import { charsOf, closeScene, command, commandList, generate, modeOf, openScene, send, translateInput } from './actions';
+import { charsOf, closeScene, command, commandList, generate, modeOf, openScene, running, send, stopAll, translateInput } from './actions';
 import type { CmdItem } from './types';
 import { enterSends } from '../features/usersettings';
 import { S, pickFiles, readDataURL, shrinkImage } from '../lib/core';
@@ -56,8 +56,8 @@ function useSlash(list: () => CmdItem[]) {
 
 function SendBtn() {
   useCh('busy');
-  const b = cur.busy;
-  return <button className={'send' + (b ? ' busy' : '')} title={b ? t('chat.composer.stop') : t('chat.composer.send')} onClick={() => { if (cur.busy) cur.abort?.abort(); else void send(); }}><Icon name={b ? 'stop' : 'send'} size={20} /></button>;
+  const b = running();   // 답변 · 답변 전 준비 · QR 이 도는 동안은 멈추기 단추
+  return <button className={'send' + (b ? ' busy' : '')} title={b ? t('chat.composer.stop') : t('chat.composer.send')} onClick={() => { if (running()) stopAll(); else void send(); }}><Icon name={b ? 'stop' : 'send'} size={20} /></button>;
 }
 function Attach() {
   useCh('attach');
@@ -80,7 +80,7 @@ export function Composer() {
     ui.input = el;
     el.addEventListener('input', fit);
     const offSlash = slash.attach(el);   // 보내기 단축키보다 먼저 붙인다
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Enter' && !e.isComposing && ((enterSends() && !e.shiftKey) || e.ctrlKey || e.metaKey)) { e.preventDefault(); void send(); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Enter' && !e.isComposing && ((enterSends() && !e.shiftKey) || e.ctrlKey || e.metaKey)) { e.preventDefault(); if (!running()) void send(); } };
     const onPaste = (e: ClipboardEvent) => { const fs = [...(e.clipboardData?.files || [])].filter(f => f.type.startsWith('image/')); if (fs.length) { e.preventDefault(); void addImages(fs); } };
     el.addEventListener('keydown', onKey); el.addEventListener('paste', onPaste);
     return () => { el.removeEventListener('input', fit); offSlash(); el.removeEventListener('keydown', onKey); el.removeEventListener('paste', onPaste); if (ui.input === el) ui.input = null; };

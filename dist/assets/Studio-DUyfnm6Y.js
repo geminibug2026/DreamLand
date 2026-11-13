@@ -1,0 +1,1 @@
+export{i as openStudio}from"./Studio-DCFJrLRt.js";
