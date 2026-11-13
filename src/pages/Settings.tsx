@@ -1,7 +1,7 @@
 // 설정: 대화 화면 · 고급 포맷팅 · 상태 트래커 · 입력 도우미 · 보안 · 데이터
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Btn, Icon } from '../kit';
-import { Form, PageHead, confirmBox, promptBox, toast } from '../ui';
+import { Form, PageHead, TipBtn, confirmBox, promptBox, toast } from '../ui';
 import { useBump } from '../editors/parts';
 import { playChime, ux } from '../features/usersettings';
 import { DataFolderCard } from '../datafolder/Panel';
@@ -15,6 +15,25 @@ import * as adv from '../lib/advanced';
 import { LOCALES, getLang, setLang, t, tn, useLang } from '../i18n';
 
 export const page = { name: 'settings', Component: SettingsPage };
+
+/** 대화 모드 지시문: 비우면 기본 지시문. 기본 지시문을 불러와 고칠 수 있다 */
+function TalkPromptField() {
+  const [v, setV] = useState(String(S.settings.modes.talkPrompt || '')), timer = useRef(0);
+  const save = (x: string) => { setV(x); S.settings.modes.talkPrompt = x; clearTimeout(timer.current); timer.current = window.setTimeout(() => S.set({}), 300); };
+  useEffect(() => () => { if (timer.current) { clearTimeout(timer.current); S.set({}); } }, []);
+  const load = async () => { if (v.trim() && v !== engine.TALK_DEFAULT && !(await confirmBox(t('settings.chat.talkLoadConfirm'), t('settings.chat.talkLoad')))) return; save(engine.TALK_DEFAULT); };
+  const reset = async () => { if (!(await confirmBox(t('settings.chat.talkResetConfirm'), t('settings.chat.talkReset'), true))) return; save(''); };
+  return <div className="field">
+    <span className="field-label">{t('settings.chat.talkPrompt')}<TipBtn /></span>
+    <textarea className="inp" rows={v ? 10 : 4} value={v} placeholder={engine.TALK_DEFAULT} spellCheck={false} onChange={e => save(e.target.value)} />
+    <small className="hint tip-text">{t('settings.chat.talkPromptHint')}</small>
+    <div className="row wrap">
+      <Btn label={t('settings.chat.talkLoad')} ic="edit" cls="ghost" onClick={() => void load()} />
+      {v && <Btn label={t('settings.chat.talkReset')} ic="refresh" cls="ghost" onClick={() => void reset()} />}
+      <small className="hint">{v ? t('settings.chat.talkCustom') : t('settings.chat.talkUsingDefault')}</small>
+    </div>
+  </div>;
+}
 
 const STORES = ['chars', 'chats', 'msgs', 'personas', 'lore', 'presets', 'conns', 'regex', 'kv', 'assets', 'mem'];
 
@@ -34,7 +53,7 @@ function SettingsPage() {
       <small className="hint">{t('settings.languageHint')}</small></label>
       <p className="hint">{t('settings.languageHelp')}</p></div>
     <div className="card"><Form obj={st} defs={[{ section: t('settings.chat.section') }, { k: 'showMeta', label: t('settings.chat.showMeta'), type: 'check' }, { k: 'chatTruncation', label: t('settings.chat.truncation'), type: 'num', min: 0, max: 1000, step: 5, ph: '100', nullable: true, half: true, hint: t('settings.chat.truncationHint') }, { k: 'defaultMode', label: t('settings.chat.defaultMode'), type: 'select', opts: [['rp', t('settings.chat.modeRp')], ['talk', t('settings.chat.modeTalk')]], half: true }, { k: 'modes.talkTokens', label: t('settings.chat.talkTokens'), type: 'num', half: true },
-      { k: 'modes.talkPrompt', label: t('settings.chat.talkPrompt'), type: 'area', rows: 4, ph: engine.TALK_DEFAULT, hint: t('settings.chat.talkPromptHint') },
+      { el: <TalkPromptField /> },
       { k: 'modes.stagger', label: t('settings.chat.stagger'), type: 'check' }, { k: 'modes.commands', label: t('settings.chat.commands'), type: 'check' },
       { k: 'modes.presenceDelay', label: t('settings.chat.presenceDelay'), type: 'check' },
       { k: 'modes.scenes', label: t('settings.chat.scenes'), type: 'check' }, { k: 'modes.sceneStart', label: t('settings.chat.sceneStart'), type: 'check' },
