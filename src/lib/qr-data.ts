@@ -6,7 +6,7 @@ import { S, uid, arr, emit } from './core';
 import { t } from '../i18n';
 
 export interface QrAuto { start?: boolean; open?: boolean; newChat?: boolean; user?: boolean; ai?: boolean; gen?: boolean }
-export interface QrItem { id: string; label: string; icon: string; title: string; text: string; kind: 'insert' | 'send' | 'script'; hidden: boolean; auto: QrAuto; automationId: string; stIcon?: string }
+export interface QrItem { id: string; label: string; icon: string; title: string; text: string; kind: 'insert' | 'send' | 'script'; hidden: boolean; auto: QrAuto; automationId: string; stIcon?: string; contextList?: { set: string; isChained: boolean }[] }
 export interface QrSet { id: string; name: string; scope: 'global' | 'char' | 'chat'; on: boolean; charIds: string[]; chatIds: string[]; items: QrItem[]; legacy?: boolean; src?: string }
 export interface QrStore { v: number; sets: QrSet[]; bar: boolean; migrated?: boolean }
 /** Quick Reply 세트 파일의 한 버튼 */
@@ -60,7 +60,7 @@ export function stQrToSet(j: StQrSet, name?: string): QrSet {
     items: list.filter(x => x && (x.message || x.label)).map(x => newQrItem({
       label: String(x.label || x.title || t('qr.button')), title: x.title || '', text: x.message || '', kind: /^\s*\//.test(x.message || '') ? 'script' : (noSend ? 'insert' : 'send'), hidden: !!x.isHidden,
       auto: { start: !!x.executeOnStartup, open: !!x.executeOnChatChange, newChat: !!x.executeOnNewChat, user: !!x.executeOnUser, ai: !!x.executeOnAi, gen: !!x.executeBeforeGeneration },
-      automationId: x.automationId || '', stIcon: x.icon || '',
+      automationId: x.automationId || '', stIcon: x.icon || '', ...(Array.isArray((x as { contextList?: unknown }).contextList) && (x as { contextList: unknown[] }).contextList.length ? { contextList: (x as { contextList: { set: string; isChained: boolean }[] }).contextList } : {}),
     })),
   });
 }
@@ -68,7 +68,7 @@ export function stQrToSet(j: StQrSet, name?: string): QrSet {
 export function setToStQr(set: QrSet) {
   return {
     version: 2, name: set.name, disableSend: set.items.length > 0 && set.items.every(i => i.kind !== 'send'), placeBeforeInput: false, injectInput: false, color: 'transparent', onlyBorderColor: false,
-    qrList: set.items.map((it, i) => ({ id: i + 1, icon: it.stIcon || '', showLabel: !it.stIcon, label: it.label, title: it.title || '', message: it.text || '', contextList: [], preventAutoExecute: true, isHidden: !!it.hidden,
+    qrList: set.items.map((it, i) => ({ id: i + 1, icon: it.stIcon || '', showLabel: !it.stIcon, label: it.label, title: it.title || '', message: it.text || '', contextList: Array.isArray(it.contextList) ? it.contextList : [], preventAutoExecute: true, isHidden: !!it.hidden,
       executeOnStartup: !!it.auto?.start, executeOnUser: !!it.auto?.user, executeOnAi: !!it.auto?.ai, executeOnChatChange: !!it.auto?.open, executeOnGroupMemberDraft: false, executeOnNewChat: !!it.auto?.newChat, executeBeforeGeneration: !!it.auto?.gen, automationId: it.automationId || '' })),
     idIndex: set.items.length + 1,
   };

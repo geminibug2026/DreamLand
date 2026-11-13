@@ -51,9 +51,14 @@ export function def(name: string | string[], d: CmdDef) { for (const n of Array.
 
 const MAX_DEPTH = 60;
 
+/** 값이 {{var::이름}} 하나뿐이고 그 변수가 닫힌 블록이면 블록 그대로 (실리태번과 같다) */
+function varClosure(p: string, c: Ctx): Bound | undefined {
+  const m = /^\s*\{\{var::([^}]+)\}\}\s*$/.exec(p); if (!m) return undefined;
+  const v = c.scope.get(m[1].trim()); return isBound(v) ? v : undefined;
+}
 /** 값 하나를 돌릴 때의 모양으로: 닫힌 블록 하나면 그 블록, 아니면 매크로를 바꾼 글자 */
 export async function evalValue(v: Value, c: Ctx): Promise<Val> {
-  const one = async (p: Value[number]): Promise<Val> => typeof p === 'string' ? expand(p, c) : p.now ? callClosure({ kind: 'bound', closure: p, scope: c.scope }, c) : { kind: 'bound', closure: p, scope: c.scope };
+  const one = async (p: Value[number]): Promise<Val> => typeof p === 'string' ? varClosure(p, c) ?? expand(p, c) : p.now ? callClosure({ kind: 'bound', closure: p, scope: c.scope }, c) : { kind: 'bound', closure: p, scope: c.scope };
   if (v.length === 1) return one(v[0]);
   const parts = await Promise.all(v.map(one));
   const firstClosure = parts.find(isBound);
@@ -62,7 +67,7 @@ export async function evalValue(v: Value, c: Ctx): Promise<Val> {
 /** 이름 없는 값을 조각째로 (/if 처럼 글자 + 닫힌 블록을 따로 보는 명령용) */
 export async function evalParts(v: Value, c: Ctx): Promise<Val[]> {
   const out: Val[] = [];
-  for (const p of v) out.push(typeof p === 'string' ? expand(p, c) : p.now ? await callClosure({ kind: 'bound', closure: p, scope: c.scope }, c) : { kind: 'bound', closure: p, scope: c.scope });
+  for (const p of v) out.push(typeof p === 'string' ? varClosure(p, c) ?? expand(p, c) : p.now ? await callClosure({ kind: 'bound', closure: p, scope: c.scope }, c) : { kind: 'bound', closure: p, scope: c.scope });
   return out;
 }
 /** 매크로 바꾸기. {{timesIndex}} 같은 지역 이름은 범위에서 먼저 찾는다 */

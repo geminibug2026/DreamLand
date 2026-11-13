@@ -1,1 +1,0 @@
-export{l as qrSave}from"./qr-data-DC2tz5Qt.js";

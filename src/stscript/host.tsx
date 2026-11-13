@@ -9,6 +9,7 @@ import { chatApi, command } from '../chat/actions';
 import type { Chat, Msg } from '../lib/types';
 import { runScript, Abort, type Host } from './run';
 import './commands';
+import './ext';
 
 /** 드림랜드 기본 명령 가운데 스크립트에서 그대로 부를 수 있는 것 (나머지는 STscript 명령이 맡는다) */
 const NATIVE = new Set(['roll', 'r', 'dice', 'note', 'bg', 'help', '?']);

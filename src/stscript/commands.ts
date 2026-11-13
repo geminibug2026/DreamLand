@@ -100,12 +100,12 @@ const keyAndValue = (a: Args): [string, string] => {
   return m ? [m[1], m[2]] : ['', ''];
 };
 for (const [p, store] of [['', 'local'], ['global', 'global']] as [string, Store][]) {
-  def(`set${p}var`, { help: '변수에 값을 넣는다', args: 'key=이름 [index=] 값', run: async (a, c) => { const k = S(a, 'key') || keyAndValue(a)[0]; const v = has(a, 'key') ? str(a.unnamed) : keyAndValue(a)[1]; const s = io(c, store); const next = setIndexed(s.get(k), S(a, 'index'), v); await s.set(k, next); return v; } });
-  def(`get${p}var`, { help: '변수 값', args: 'key=이름 [index=]', run: (a, c) => getIndexed(io(c, store).get(S(a, 'key') || str(a.unnamed).trim()), S(a, 'index')) });
-  def(`add${p}var`, { help: '변수에 더하기 (숫자면 더하고, 목록이면 넣고, 글자면 잇는다)', run: async (a, c) => { const [k, v] = keyAndValue(a); const s = io(c, store); const next = addValue(s.get(k), v); await s.set(k, next); return next; } });
-  def(`inc${p}var`, { help: '1 더하기', run: async (a, c) => { const k = S(a, 'key') || str(a.unnamed).trim(), s = io(c, store); const n = fmt((num(s.get(k)) || 0) + 1); await s.set(k, n); return n; } });
-  def(`dec${p}var`, { help: '1 빼기', run: async (a, c) => { const k = S(a, 'key') || str(a.unnamed).trim(), s = io(c, store); const n = fmt((num(s.get(k)) || 0) - 1); await s.set(k, n); return n; } });
-  def(`flush${p}var`, { help: '변수 지우기', run: async (a, c) => { const k = S(a, 'key') || str(a.unnamed).trim(); if (k) await io(c, store).del(k); return ''; } });
+  def(p ? `set${p}var` : ['setvar', 'setchatvar'], { help: '변수에 값을 넣는다', args: 'key=이름 [index=] 값', run: async (a, c) => { const k = S(a, 'key') || keyAndValue(a)[0]; const v = has(a, 'key') ? str(a.unnamed) : keyAndValue(a)[1]; const s = io(c, store); const next = setIndexed(s.get(k), S(a, 'index'), v); await s.set(k, next); return v; } });
+  def(p ? `get${p}var` : ['getvar', 'getchatvar'], { help: '변수 값', args: 'key=이름 [index=]', run: (a, c) => getIndexed(io(c, store).get(S(a, 'key') || str(a.unnamed).trim()), S(a, 'index')) });
+  def(p ? `add${p}var` : ['addvar', 'addchatvar'], { help: '변수에 더하기 (숫자면 더하고, 목록이면 넣고, 글자면 잇는다)', run: async (a, c) => { const [k, v] = keyAndValue(a); const s = io(c, store); const next = addValue(s.get(k), v); await s.set(k, next); return next; } });
+  def(p ? `inc${p}var` : ['incvar', 'incchatvar'], { help: '1 더하기', run: async (a, c) => { const k = S(a, 'key') || str(a.unnamed).trim(), s = io(c, store); const n = fmt((num(s.get(k)) || 0) + 1); await s.set(k, n); return n; } });
+  def(p ? `dec${p}var` : ['decvar', 'decchatvar'], { help: '1 빼기', run: async (a, c) => { const k = S(a, 'key') || str(a.unnamed).trim(), s = io(c, store); const n = fmt((num(s.get(k)) || 0) - 1); await s.set(k, n); return n; } });
+  def(p ? `flush${p}var` : ['flushvar', 'flushchatvar'], { help: '변수 지우기', run: async (a, c) => { const k = S(a, 'key') || str(a.unnamed).trim(); if (k) await io(c, store).del(k); return ''; } });
 }
 def('let', { help: '이 스크립트(닫힌 블록) 안에서만 쓰는 변수를 만든다', args: 'key=이름 값 | 이름 값', run: (a, c) => {
   if (has(a, 'key')) { const v: Val = isBound(a.unnamed) ? a.unnamed : str(a.unnamed); c.scope.let(S(a, 'key'), v); return isBound(v) ? '' : v; }
@@ -120,7 +120,7 @@ def('var', { help: '범위 변수 읽기 · 바꾸기', args: 'key=이름 [값] 
   if (b || m[2]) { const v: Val = b || m[2]; c.scope.set(m[1], v); return isBound(v) ? '' : v; }
   const v = c.scope.get(m[1]); return isBound(v) ? v : getIndexed(v === undefined ? undefined : str(v), S(a, 'index'));
 } });
-def('listvar', { help: '변수 목록', run: (_a, c) => JSON.stringify(c.scope.flat()) });
+def('listvar', { alias: ['listchatvar'], help: '변수 목록', run: (_a, c) => JSON.stringify(c.scope.flat()) });
 
 // ════════ 흐름 ════════
 def('if', { help: '조건이 맞으면 돌린다', args: 'left= right= rule=(eq neq lt gt lte gte in nin not) else={: :} {: :}', noPipe: true, run: async (a, c) => {
@@ -152,7 +152,7 @@ def('return', { help: '스크립트(닫힌 블록 · 퀵 리플라이)를 끝내
 def('abort', { help: '스크립트를 멈춘다', args: '[quiet=false] 까닭', run: (a, c) => { const why = str(a.unnamed); if (!isTrue(S(a, 'quiet', 'true')) && why) c.host.echo(why, 'warning'); throw new Abort(true); } });
 def('pass', { help: '값을 그대로 넘긴다', run: a => a.unnamed });
 def('delay', { alias: ['wait', 'sleep'], help: '밀리초만큼 기다린다', run: async a => { const ms = Math.max(0, num(str(a.unnamed)) || 0); await new Promise(r => setTimeout(r, ms)); return ''; } });
-def('run', { help: '닫힌 블록 · 퀵 리플라이를 부른다', args: '이름 | 세트.이름 | {: :} [이름=값 …]', run: async (a, c) => {
+def('run', { alias: ['call', 'exec'], help: '닫힌 블록 · 퀵 리플라이를 부른다', args: '이름 | 세트.이름 | {: :} [이름=값 …]', run: async (a, c) => {
   const args: Record<string, string> = {}; for (const [k, v] of Object.entries(a.named)) args[k] = str(v);
   let target: Val = a.unnamed;
   // /run 이름 a=1 b=2 꼴도 받는다 (이름 뒤에 적은 값)
@@ -182,11 +182,11 @@ def('rand', { help: '무작위 수 (from= to= round=round|ceil|floor)', run: a =
 
 // ════════ 글자 ════════
 def('len', { help: '길이 (목록이면 개수)', run: a => { const s = str(a.unnamed), j = parseJson(s); return fmt(Array.isArray(j) ? j.length : j && typeof j === 'object' ? Object.keys(j).length : s.length); } });
-def('upper', { help: '대문자로', run: a => str(a.unnamed).toUpperCase() });
-def('lower', { help: '소문자로', run: a => str(a.unnamed).toLowerCase() });
+def('upper', { alias: ['uppercase', 'to-upper'], help: '대문자로', run: a => str(a.unnamed).toUpperCase() });
+def('lower', { alias: ['lowercase', 'to-lower'], help: '소문자로', run: a => str(a.unnamed).toLowerCase() });
 def('trimstart', { help: '앞 공백 없애기', run: a => str(a.unnamed).trimStart() });
 def('trimend', { help: '뒤 공백 없애기', run: a => str(a.unnamed).trimEnd() });
-def('substr', { help: '일부 (start= end=)', run: a => { const s = str(a.unnamed); return s.slice(has(a, 'start') ? num(S(a, 'start')) : 0, has(a, 'end') ? num(S(a, 'end')) : undefined); } });
+def('substr', { alias: ['substring'], help: '일부 (start= end=)', run: a => { const s = str(a.unnamed); return s.slice(has(a, 'start') ? num(S(a, 'start')) : 0, has(a, 'end') ? num(S(a, 'end')) : undefined); } });
 const toRegex = (p: string) => { const m = /^\/([\s\S]+)\/([dgimsuy]*)$/.exec(p); return m ? new RegExp(m[1], m[2]) : new RegExp(p); };
 def('replace', { alias: ['re'], help: '바꾸기 (mode=literal|regex pattern= replacer=)', run: a => {
   const s = str(a.unnamed), p = S(a, 'pattern'), r = S(a, 'replacer');
@@ -215,7 +215,7 @@ def('buttons', { help: '단추 가운데 하나를 고르게 한다', args: 'lab
 def('setinput', { help: '입력창 글을 바꾼다', run: (a, c) => call(c, 'setInput', str(a.unnamed)) });
 def('send', { help: '내 메시지로 보낸다 (답을 받지는 않는다)', run: (a, c) => call(c, 'send', str(a.unnamed)) });
 def('sendas', { help: '캐릭터 메시지로 넣는다', args: 'name= 글', run: (a, c) => call(c, 'sendAs', S(a, 'name'), str(a.unnamed)) });
-def(['sys', 'narrate'], { help: '해설 메시지', run: (a, c) => call(c, 'sys', str(a.unnamed)) });
+def(['sys', 'narrate', 'nar'], { help: '해설 메시지', run: (a, c) => call(c, 'sys', str(a.unnamed)) });
 def('comment', { help: '모델에게 보내지 않는 메모 메시지', run: (a, c) => call(c, 'comment', str(a.unnamed)) });
 def('trigger', { help: '답을 받는다', noPipe: true, run: (_a, c) => call(c, 'trigger') });
 def('gen', { help: '대화에 남기지 않고 모델에게 묻는다 (지금 대화를 함께 보낸다)', run: (a, c) => call(c, 'gen', str(a.unnamed), { raw: false, lock: S(a, 'lock') }) });
@@ -223,7 +223,7 @@ def('genraw', { help: '대화 없이 이 글만 모델에게 묻는다', run: (a
 def(['continue', 'cont'], { help: '마지막 답을 이어 쓴다', noPipe: true, run: (_a, c) => call(c, 'generate', 'continue') });
 def(['regenerate', 'regen'], { help: '마지막 답을 다시 받는다', noPipe: true, run: (_a, c) => call(c, 'generate', 'regen') });
 def(['impersonate', 'imp'], { help: '내 차례를 대신 써 준다', noPipe: true, run: (_a, c) => call(c, 'generate', 'impersonate') });
-def('stop', { help: '생성을 멈춘다', noPipe: true, run: (_a, c) => call(c, 'stopGen') });
+def('stop', { alias: ['generate-stop'], help: '생성을 멈춘다', noPipe: true, run: (_a, c) => call(c, 'stopGen') });
 def('messages', { alias: ['message'], help: '메시지 글 (범위: 0-3, -1 = 마지막)', args: '[names=on|off] 범위', run: (a, c) => call(c, 'messages', str(a.unnamed).trim(), !isFalse(S(a, 'names', 'on'))) });
 def('hide', { help: '메시지 숨기기 (범위)', run: (a, c) => call(c, 'hide', str(a.unnamed).trim(), true) });
 def('unhide', { help: '메시지 숨김 풀기 (범위)', run: (a, c) => call(c, 'hide', str(a.unnamed).trim(), false) });
