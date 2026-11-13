@@ -173,6 +173,12 @@
 .mode-talk .say { margin: 3px 0; } .mode-talk .say > span { padding: .5em .95em; line-height: 1.5; max-width: min(86%, 460px); }
 .mode-talk .nar.act { margin: 2px 8px; font-size: .86em; font-style: italic; color: var(--dim); } .mode-talk .msg.user .nar.act { text-align: right; }
 .mode-talk .msg-tools { margin-top: 0; }
+/* 대화 모드: 메시지 속 HTML 화면(코드블럭)은 아바타 칸까지 넓혀 RP 모드와 같은 폭으로 (bleed = 아바타 38px + .msg 의 gap) */
+.mode-talk .msg { --bleed: 52px; }
+.mode-talk .msg.ai:not(.in-scene) .dl-frame { margin-left: calc(-1 * var(--bleed)); }
+.mode-talk .msg.user:not(.in-scene) .dl-frame { margin-right: calc(-1 * var(--bleed)); }
+.mode-talk .msg.user .msg-body:has(.dl-frame) { max-width: 100%; }
+@media (max-width: 820px) { .mode-talk .msg { --bleed: 48px; } }
 
 /* 큰 달: 오늘의 실제 위상 */
 .bigmoon { position: absolute; right: -34%; top: -22%; color: var(--ink); pointer-events: none; display: block; line-height: 0; } .bigmoon .moon { width: 190px; height: 190px; }
