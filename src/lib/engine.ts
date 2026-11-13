@@ -500,14 +500,25 @@ export function makeCtx({ chat, char, chars, persona, msgs, input }: CtxInput): 
 }
 
 // ── 연출 지시: 사용자가 대사가 아니라 작가로서 적은 지시 (msg.direct) ──
-export const DIRECT_DEFAULT = `[Direction from the author. This is not something {{user}} says or does inside the story. Carry it out in your next reply through narration and through {{char}}'s own actions and words, keeping continuity with the scene. Do not quote, mention or answer the direction itself.]
-{{direction}}`;
+export const DIRECT_DEFAULT = `<direction>
+A note from the author, written outside the story. {{user}} does not say or do this inside the scene.
+It is for your next reply only, and it comes first: where it clashes with the pace or the turn you had in mind, follow the note.
+Play it out inside the story — through narration and through {{char}}'s own actions and words — and keep continuity with what has already happened. Never quote, mention or answer the note itself.
+[Direction: {{direction}}]
+</direction>`;
 export const DIRECT_PAST = '[Author direction: {{direction}}]';
+/** 지금 쓰는 답변에 걸린 연출 지시: 맨 끝 메시지이거나, 이어 쓰는 답변의 바로 앞 메시지 */
+function liveDirect(source: Msg[], type: string): Msg | null {
+  const n = source.length - 1, last = source[n];
+  if (last?.direct && last.role === 'user') return last;
+  const prev = source[n - 1];
+  return type === 'continue' && last?.role === 'assistant' && prev?.direct && prev.role === 'user' ? prev : null;
+}
 /** 연출 지시 메시지를 프롬프트용 글로. 마지막 것은 지시문 전체, 지난 것은 짧은 꼬리표(또는 빼기 → null) */
 function directText(text: string, isLast: boolean, mx: (t?: string) => string): string | null {
   const D = S.settings.direct || {};
   if (isLast) return mx(D.prompt || DIRECT_DEFAULT).replace(/\{\{direction\}\}/gi, () => text);
-  if (D.past === 'drop') return null;
+  if (D.past !== 'note') return null;
   return mx(D.pastFormat || DIRECT_PAST).replace(/\{\{direction\}\}/gi, () => text);
 }
 
@@ -548,10 +559,11 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
   const isGroup = chars.length > 1, clockMode = Clock.mode(chat), today = Clock.now(chat).toDateString();
   let source = msgs.filter(m => !m.hidden);
   if (type === 'regen' || type === 'swipe') source = source.slice(0, -1);
-  if ((S.settings.direct || {}).past === 'drop') source = source.filter((m, i) => !m.direct || i === source.length - 1);
+  const live = liveDirect(source, type);   // 연출 지시는 그 지시로 쓰는 답변 한 번에만 지시문으로 실린다
+  if ((S.settings.direct || {}).past !== 'note') source = source.filter(m => !m.direct || m === live);
   const history: PromptMsg[] = source.map((m, i) => {
     const depth = source.length - 1 - i, t = Clock.timeOf(chat, m);
-    if (m.direct && m.role === 'user') return { role: 'user', content: directText(msgText(m), depth === 0, mx) as string, src: 'history' };
+    if (m.direct && m.role === 'user') return { role: 'user', content: directText(msgText(m), m === live, mx) as string, src: 'history' };
     const stamp = clockMode === 'none' ? '' : new Date(t).toDateString() === today ? `[${hhmm(t)}] ` : `[${new Date(t).getMonth() + 1}/${new Date(t).getDate()} ${hhmm(t)}] `;
     let text = applyRegex(msgText(m), { who: m.role === 'user' ? 'user' : 'ai', target: 'prompt', depth, charId: m.charId, ctx });
     if (m.role === 'system') return { role: 'system', content: `[${text}]`, src: 'history' };
@@ -635,12 +647,13 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
   if (mk?.enabled && mk.trim && (X.covered?.(chat) || 0) > 0 && source.length > (mk.keepRecent || 20)) source = source.slice(-(mk.keepRecent || 20));
   // 지난 생각 과정을 다시 넣기: 마지막 메시지부터 세어 최대 개수까지만
   const rz = F.reasoning || {}, withThink = new Set<Msg>();
-  if ((S.settings.direct || {}).past === 'drop') source = source.filter((m, i) => !m.direct || i === source.length - 1);
+  const live = liveDirect(source, type);   // 연출 지시는 그 지시로 쓰는 답변 한 번에만 지시문으로 실린다
+  if ((S.settings.direct || {}).past !== 'note') source = source.filter(m => !m.direct || m === live);
   if (rz.addToPrompts) for (let i = source.length - 1; i >= 0 && withThink.size < (rz.maxAdditions ?? 1); i--) if (source[i].role === 'assistant' && source[i].swipes[source[i].sw]?.reasoning) withThink.add(source[i]);
   const history: PromptMsg[] = source.map((m, i) => {
     const depth = source.length - 1 - i;
     let text = applyRegex(msgText(m), { who: m.role === 'user' ? 'user' : 'ai', target: 'prompt', depth, charId: m.charId, ctx });
-    if (m.direct && m.role === 'user') { const dt = directText(text, depth === 0, mx) as string; return R ? { role: 'system', content: dt, name: '', src: 'history' } : { role: 'user', content: dt, src: 'history', images: m.images?.length ? m.images : undefined }; }
+    if (m.direct && m.role === 'user') { const dt = directText(text, m === live, mx) as string; return R ? { role: 'system', content: dt, name: '', src: 'history' } : { role: 'user', content: dt, src: 'history', images: m.images?.length ? m.images : undefined }; }
     if (withThink.has(m)) text = `${mx(rz.prefix)}${applyRegex(m.swipes[m.sw].reasoning, { who: 'reason', target: 'prompt', depth, charId: m.charId, ctx })}${mx(rz.suffix)}${mx(rz.separator)}${text}`;
     if (R) return { role: m.role, content: text, name: m.role === 'system' ? '' : m.role === 'user' ? ctx.user : (m.name || char.name), src: 'history' };
     if (m.role === 'assistant' && isGroup && P.namesInGroup !== false) text = `${m.name || char.name}: ${text}`;

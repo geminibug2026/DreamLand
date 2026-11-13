@@ -1,0 +1,1 @@
+export{t as go}from"./router-DA-8L8K8.js";

@@ -83,7 +83,7 @@ export async function regenWith(reason: unknown) {
 }
 
 // ════════ 연출 지시 모드: 보낸 글을 대사가 아니라 작가의 지시로 다룬다 (프롬프트 쪽은 engine.js 의 directText) ════════
-export const DIRECT_HINT = "[Direction from the author. This is not something {{user}} says or does inside the story. Carry it out in your next reply … ]\n{{direction}}";
+export const DIRECT_HINT = "<direction>\nA note from the author, written outside the story … It is for your next reply only, and it comes first …\n[Direction: {{direction}}]\n</direction>";
 export const directOn = (chat?: ChatX | null) => !!chat?.direct?.on;
 export async function setDirect(chat: ChatX | null | undefined, v: boolean | 'toggle') {
   if (!chat) return; chat.direct = { ...(chat.direct || {}), on: v === 'toggle' ? !directOn(chat) : !!v };

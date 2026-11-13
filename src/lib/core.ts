@@ -239,7 +239,7 @@ export const defaultSettings = (): Settings => ({
   qr: { v: 1, sets: [], bar: true },
   auto: { cont: { on: false, target: 400, max: 2, talk: false }, swipe: { on: false, minLen: 0, words: [], threshold: 1, max: 2 } },
   regenWhy: { ask: false, format: '', withDraft: false },
-  direct: { prompt: '', past: 'note', pastFormat: '' },
+  direct: { prompt: '', past: 'drop', pastFormat: '', v: 2 },
   profiles: [],
 });
 
@@ -414,6 +414,8 @@ export const S: Store = {
     if (sf && sf.v !== 2) this.settings.format.v = sf.v as number;   // 예전 형식은 js/advanced.js 의 AF() 가 옮긴다
     if (s && !s.look4) Object.assign(this.settings, { theme: d.theme, fontSize: d.fontSize, chatWidth: d.chatWidth }); // 새 디자인으로 한 번 맞춘다
     this.settings.look4 = true;
+    // 연출 지시: 예전 설정(지난 지시를 꼬리표로 남기기)이 기본이던 때의 값은 '그 답변 한 번에만'으로 한 번 옮긴다
+    if (plain(s?.direct) && (s.direct as Plain).v !== 2) { (set.direct as Plain).past = 'drop'; (set.direct as Plain).v = 2; }
     if (!this.presets.length) { const p = defaultPreset(); this.presets.push(p); await DB.put('presets', p); }
     for (const p of this.presets) { const m = (p.blocks || []).filter(b => b.kind === 'main' && b.content === MAIN_PROMPT_OLD); if (m.length) { m.forEach(b => { b.content = MAIN_PROMPT; }); await DB.put('presets', p); } }
     if (!this.personas.length) { const p = newPersona({ name: '나' }); this.personas.push(p); await DB.put('personas', p); }
