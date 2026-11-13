@@ -6126,7 +6126,7 @@
   "flow.direct.pastDrop": "That one reply only (default)",
   "flow.direct.pastFormat": "Tag format",
   "flow.direct.hide": "Hide sent directions in the chat",
-  "flow.direct.hideHint": "Directions stay in the history and the prompt; they are only hidden on screen. Turn off to show them again.",
+  "flow.direct.hideHint": "Hides them on screen only. What is sent to the model does not change — it follows \"How long a direction stays\" above (default: that one reply only). Turn off to show them again.",
   "flow.direct.mode": "Author direction mode",
   "flow.direct.modeHint": "Send input as a direction, not a line",
   "flow.direct.intro": "When on, what you send is passed as the author's direction instead of your persona's line. Write things like \"the power suddenly goes out\" or \"have him apologize first\" and the characters and narration work it into the story. Toggle via the input + menu, the \"Direction\" quick button or /direct. No extra calls.",
