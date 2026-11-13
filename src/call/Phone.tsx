@@ -46,7 +46,10 @@ function Phone() {
         <span className="call-state">{s.rec && live ? <i className="call-recdot" /> : null}{state}</span>
         {s.calls ? <small className="call-used">{tt('call.used', { count: s.calls })}</small> : null}
       </div>
-      {live || (ended && s.lines.length) ? <div className="call-lines" ref={box}>{s.lines.map((l, i) => <p key={i} className={l.who === 'u' ? 'me' : 'them'}>{l.text || (s.talking && i === s.lines.length - 1 ? '…' : '')}{l.cut ? <em>—</em> : null}</p>)}</div> : <div className="call-space"><i className="call-star" /></div>}
+      {live || (ended && s.lines.length) ? <div className="call-lines" ref={box}>{s.lines.flatMap((l, i) => {
+        const parts = l.text ? l.text.split('\n').filter(Boolean) : [s.talking && i === s.lines.length - 1 ? '…' : ''];
+        return parts.map((p, j) => <p key={`${i}-${j}`} className={l.who === 'u' ? 'me' : 'them'}>{p}{l.cut && j === parts.length - 1 ? <em>—</em> : null}</p>);
+      })}</div> : <div className="call-space"><i className="call-star" /></div>}
       {live && s.keypad ? <div className="call-pad">{keys.map(k => <button key={k} type="button" onClick={() => { C.press(k); setText(x => x + k); }}>{k}</button>)}</div> : null}
       {live ? <form className="call-say" onSubmit={e => { e.preventDefault(); send(); }}>
         <input ref={inp} className="inp" value={text} disabled={s.muted || s.hold} placeholder={s.muted ? tt('call.input.muted') : tt('call.input.ph')} onChange={e => setText(e.target.value)} />

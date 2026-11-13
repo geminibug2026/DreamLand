@@ -116,7 +116,10 @@ export function promptPieces(chat: Chat): PromptPiece[] {
 const strip = (raw: string, name: string) => {
   let t = E.splitThink(raw).text.replace(/<think(ing)?>[\s\S]*$/i, '');
   t = t.replace(/\[(react|status|schedule_update|selfie|memory|time|later|scene|scene_end)\b[^\]]*\]?/gi, '').replace(/\[hangup\]?/gi, '');
-  return t.replace(new RegExp('^\\s*' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*:\\s*'), '').replace(/\[$|\[[a-z_]*$/i, '').replace(/<\/?[a-z]*$/i, '');
+  t = t.replace(new RegExp('^\\s*' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*:\\s*'), '').replace(/\[$|\[[a-z_]*$/i, '').replace(/<\/?[a-z]*$/i, '');
+  // 따옴표로 감싼 말은 벗긴다
+  t = t.replace(/^"([\s\S]*)"$/, '$1');
+  return t;
 };
 
 /** 캐릭터가 말한다 (모델 호출 1회). 흘러나오는 대로 TTS 가 문장 단위로 읽는다 */
