@@ -22,6 +22,8 @@ function setup() {
   X.prompt.push({ owner: 'call', fn: info => C.promptPieces(info.chat) });
   // 대화 화면 위 전화 단추 (Top.tsx 가 보낸다)
   on<Chat>('call:dial', chat => C.dial(chat || cur.chat));
+  // 캐릭터가 답장에 [call] 을 넣었다: 말풍선이 다 나온 뒤에 걸려 온다
+  on<{ chat: Chat; reason: string; lines: number }>('talk:call', d => C.aiRing(d.chat, d.reason, d.lines));
   // 캐릭터가 답하면 "다음 대화에서 알아차릴 일"은 끝
   on<{ msg: Msg; chat: Chat }>('message:received', d => { if (d?.chat && d.msg?.role === 'assistant') C.clearPending(d.chat); });
   setInterval(C.tick, 60000);

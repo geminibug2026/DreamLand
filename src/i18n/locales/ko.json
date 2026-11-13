@@ -6638,6 +6638,8 @@
   "call.card.listen": "읽어 주기",
   "call.card.missedN": "부재중 {count}",
   "call.studio.title": "전화",
+  "call.set.aiCall": "대화 중에 캐릭터가 직접 전화 걸기",
+  "call.set.aiCallHint": "1:1 대화 모드에서 캐릭터가 \"전화해\" 같은 말을 듣거나 정말 전화할 상황이면 답장 끝에 스스로 전화를 겁니다. 받으면 통화 비용이 듭니다.",
   "call.set.auto": "캐릭터가 먼저 전화하기",
   "call.set.autoHint": "대화 모드의 대화방을 열어 둔 동안에만 걸려 옵니다. 방해 금지 시간 · 캐릭터 상태(바쁨 · 오프라인)를 지킵니다.",
   "call.set.daily": "하루 최대 횟수",

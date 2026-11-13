@@ -6638,6 +6638,8 @@
   "call.card.listen": "朗读",
   "call.card.missedN": "未接 {count}",
   "call.studio.title": "电话",
+  "call.set.aiCall": "聊天中角色可以主动打电话",
+  "call.set.aiCallHint": "在一对一对话模式中，当你让角色打电话或情境真的需要时，角色会在回复结束后主动打来。接听会产生通话费用。",
   "call.set.auto": "让角色主动打电话",
   "call.set.autoHint": "只有在打开聊天模式的聊天时才会来电。会遵守免打扰时段和角色状态（忙碌 · 离线）。",
   "call.set.daily": "每天最多次数",

@@ -532,8 +532,10 @@ Optional. Add one on its own line only when it really applies; most replies need
 [react: emoji="😂"] — put one emoji on {{user}}'s last message, with or without a written reply.
 [status: state="online|idle|dnd|offline", activity="what you are doing"] — your availability just changed (falling asleep, class starting, back home).
 [selfie: context="what the photo shows"] — send a photo of yourself, only when asked or when {{char}} clearly would.
-[memory: summary="one full sentence, with names instead of I or you"] — a lasting fact about {{user}} or a promise between you that is worth keeping. Not for small talk.{{clock_command}}
+[memory: summary="one full sentence, with names instead of I or you"] — a lasting fact about {{user}} or a promise between you that is worth keeping. Not for small talk.{{clock_command}}{{call_command}}
 </commands>`;
+/** 캐릭터가 직접 전화를 거는 명령 (1:1 대화 모드 · 설정 › 전화에서 끌 수 있다) */
+export const TALK_CALL_COMMAND = `\n[call: reason="why you are calling"] — phone {{user}} right now instead of texting. Only when {{char}} really would call at this moment: {{user}} asked you to call or to pick up, something urgent or emotional that texting cannot carry, or {{char}} simply needs to hear their voice. Not for routine replies. Write your messages first, then put this on the last line.`;
 const hhmm = (t: number) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 export interface BuildInput { chat: Chat; char: Char; chars: Char[]; persona?: Persona | null; preset: Preset; msgs: Msg[]; type?: string; commit?: boolean; proactive?: boolean }
 type Inj = PromptMsg & { depth: Num; order: Num };
@@ -578,7 +580,7 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
     type === 'continue' && 'Continue your last message from exactly where it stopped. Do not restart it or repeat what is already written.',
     type === 'impersonate' && `Write ${ctx.user}'s next text message, in the voice and length their earlier messages show. Output only that message, as plain lines.`,
   ].filter(Boolean).join('\n');
-  const tail: PromptMsg = { role: 'user', src: '지금 상황 · 명령 안내', content: `<context>\n${situation}\n</context>${M.commands === false || type === 'impersonate' ? '' : '\n\n' + mx(TALK_COMMANDS.replace('{{clock_command}}', Clock.command(chat) ? '\n' + Clock.command(chat) : ''))}` };
+  const tail: PromptMsg = { role: 'user', src: '지금 상황 · 명령 안내', content: `<context>\n${situation}\n</context>${M.commands === false || type === 'impersonate' ? '' : '\n\n' + mx(TALK_COMMANDS.replace('{{clock_command}}', Clock.command(chat) ? '\n' + Clock.command(chat) : '').replace('{{call_command}}', !isGroup && (S.settings as { call?: { aiCall?: boolean } }).call?.aiCall !== false ? TALK_CALL_COMMAND : ''))}` };
   const fixed = [...before, ...late, tail].reduce((n, m) => n + tokens(m.content) + 4, 0);
   const budget = Math.max(500, (P.contextSize || 128000) - (M.talkTokens || 400) - fixed - (S.settings.format?.tokenPadding || 0));
   let used = 0, start = history.length;
@@ -591,10 +593,10 @@ export interface TalkCmd { name: string; args: Record<string, string> }
 /** 대화 모드 답변 정리: 새어 나온 시각·이름을 지우고 명령을 떼어 낸다 */
 export function parseTalk(text: string, _names: string[] = []): { text: string; cmds: TalkCmd[] } {
   const cmds: TalkCmd[] = [];
-  let out = text.replace(/^[ \t]*\[(react|status|schedule_update|selfie|memory|time)\s*:?\s*([^\]\n]*)\][ \t]*$/gim, (_m, name: string, args: string) => {
+  let out = text.replace(/^[ \t]*\[(react|status|schedule_update|selfie|memory|time|call)\s*:?\s*([^\]\n]*)\][ \t]*$/gim, (_m, name: string, args: string) => {
     const o: Record<string, string> = {}; args.replace(/(\w+)\s*=\s*"([^"]*)"/g, (_, k: string, v: string) => { o[k] = v; return ''; });
     cmds.push({ name: name.toLowerCase() === 'schedule_update' ? 'status' : name.toLowerCase(), args: o }); return '';
-  }).replace(/\[(react|status|schedule_update|selfie|memory|time)\s*:?[^\]\n]*\]/gi, '');
+  }).replace(/\[(react|status|schedule_update|selfie|memory|time|call)\s*:?[^\]\n]*\]/gi, '');
   out = out.split('\n').map(l => l.replace(/^\s*\[\d{1,2}(?:\/\d{1,2})?\s*\d{0,2}:?\d{0,2}\]\s*/, '')).filter(l => l.trim()).join('\n');
   return { text: out.trim(), cmds };
 }

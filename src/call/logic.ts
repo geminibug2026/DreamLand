@@ -76,6 +76,12 @@ export function ring(chat: Chat | null = cur.chat, reason = '') {
   sound(A.ringtone); changed();
   ringTimer = window.setTimeout(() => { if (S0 === s && s.phase === 'ringing') void finish('missed'); }, Math.max(5, cfg().ringSec) * 1000);
 }
+/** 대화 모드 답장의 [call]: 캐릭터가 스스로 건다. 설정에서 끌 수 있고, 이미 통화 중이거나 다른 방으로 옮겼으면 걸지 않는다 */
+export function aiRing(chat: Chat, reason = '', lines = 1) {
+  if (cfg().aiCall === false || !chat || chat.mode !== 'talk' || chat.charIds.length !== 1) return;
+  const wait = 1200 + Math.min(10, Math.max(1, lines)) * 900;   // 말풍선이 차례로 다 나온 뒤
+  window.setTimeout(() => { if (cur.chat === chat && !S0 && !cur.busy && callConn(chat)) ring(chat, reason); }, wait);
+}
 export const accept = () => { if (S0?.phase === 'ringing') void connect(); };
 export const decline = () => { if (S0?.phase === 'ringing') void finish('declined'); };
 

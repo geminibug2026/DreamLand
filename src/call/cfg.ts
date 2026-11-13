@@ -31,11 +31,12 @@ export type PromptKey = typeof PROMPT_KEYS[number];
 export const PROMPT_DEFAULTS: Record<PromptKey, string> = { style: P_STYLE, incoming: P_INCOMING, pickup: P_PICKUP, voicemail: P_VOICEMAIL, summary: P_SUMMARY, record: P_RECORD, declined: P_DECLINED, missed: P_MISSED, hungUp: P_HUNGUP, cut: P_CUT, noAnswer: P_NOANSWER, charBye: P_CHARBYE };
 
 export interface CallCfg {
+  /** 대화 모드에서 캐릭터가 대화 흐름에 맞춰 직접 전화를 건다 ([call] 명령) */ aiCall: boolean;
   auto: boolean; daily: number; gapHours: number; chance: number; night: boolean; ringSec: number; voicemail: boolean; afterText: boolean; conn: string;
   tokens: number; inPrompt: 'raw' | 'summary' | 'none'; rawMax: number; rawTotal: number; rec: boolean; recAudio: boolean; tones: boolean; ambient: 'off' | 'auto' | 'cafe' | 'rain' | 'street';
   prompts: Partial<Record<PromptKey, string>>;
 }
-export const DEFAULTS: CallCfg = { auto: false, daily: 1, gapHours: 6, chance: 8, night: false, ringSec: 25, voicemail: false, afterText: true, conn: '', tokens: 500, inPrompt: 'raw', rawMax: 2000, rawTotal: 8000, rec: false, recAudio: false, tones: true, ambient: 'off', prompts: {} };
+export const DEFAULTS: CallCfg = { aiCall: true, auto: false, daily: 1, gapHours: 6, chance: 8, night: false, ringSec: 25, voicemail: false, afterText: true, conn: '', tokens: 500, inPrompt: 'raw', rawMax: 2000, rawTotal: 8000, rec: false, recAudio: false, tones: true, ambient: 'off', prompts: {} };
 
 type WithCall = { call?: Partial<CallCfg> };
 /** 설정 (빠진 칸은 기본값으로 채운다) */

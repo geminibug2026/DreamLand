@@ -6714,6 +6714,8 @@
   "call.card.listen": "Read aloud",
   "call.card.missedN": "{count} missed",
   "call.studio.title": "Phone",
+  "call.set.aiCall": "Character can call during a chat",
+  "call.set.aiCallHint": "In one-on-one talk mode, the character places a call at the end of a reply when you ask them to call or the moment truly calls for it. Picking up costs the same as a call.",
   "call.set.auto": "Let characters call first",
   "call.set.autoHint": "Calls only come in while a chat in chat mode is open. Quiet hours and the character's status (busy · offline) are respected.",
   "call.set.daily": "Max per day",

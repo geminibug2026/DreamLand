@@ -61,6 +61,7 @@ export function CallStudio() {
   return <div className="call-studio form">
     <section className="card">
       <div className="call-cost"><b>{tt('call.cost.title')}</b><p>{tt('call.cost.incoming')}</p><p>{tt('call.cost.outgoing')}</p><p>{tt('call.cost.summary')}</p></div>
+      <Check label={tt('call.set.aiCall')} on={c.aiCall !== false} onChange={v => set('aiCall', v)} hint={tt('call.set.aiCallHint')} />
       <Check label={tt('call.set.auto')} on={c.auto} onChange={v => set('auto', v)} hint={c.auto ? tt('call.cost.autoOn') + ' ' + tt('call.set.autoHint') : tt('call.set.autoHint')} />
       {c.auto ? <div className="call-row">
         <Field label={tt('call.set.daily')}>{num('daily')}</Field>

@@ -1,0 +1,1 @@
+export{t as go}from"./router-XbvW_QIL.js";
