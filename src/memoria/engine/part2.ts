@@ -205,17 +205,17 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     if (ai.hidden && !force) return mem;      // 숨긴 메시지는 건너뛰되, 자동 숨김으로 가려진 턴의 재기록(force)은 허용
     if (this.isSideMessage(ai)) return mem;   // 막간은 이야기가 아니다
     const userMes = this.findPrecedingUserMessage(msgs, idx);
-    // 대화 모드 묶음 기록: 앞선 기록 뒤의 메시지(내 말 · 답장)를 모두 한 턴으로 기록한다
-    const batch = this.talkBatch(chat) > 1 ? msgs.slice(this.batchStart(mem, msgs, idx), idx + 1).filter(m => m && !m.hidden && !this.isSideMessage(m) && (m.role === 'user' || m.role === 'assistant') && msgText(m).trim()) : null;
+    // 묶음 기록: 앞선 기록 뒤의 메시지(내 말 · 답장)를 모두 한 턴으로 기록한다
+    const batch = this.batchSize(chat) > 1 ? msgs.slice(this.batchStart(mem, msgs, idx), idx + 1).filter(m => m && !m.hidden && !this.isSideMessage(m) && (m.role === 'user' || m.role === 'assistant') && msgText(m).trim()) : null;
     const persona0 = S.persona(chat), nameOf = (m: Msg) => m.name || (m.role === 'user' ? persona0?.name || 'User' : S.get('chars', m.charId)?.name || 'Assistant');
     // 사서에게는 화면에 보이는 이야기만 보여준다 — 연출 계획 · 상태창 · 그림 프롬프트 · 서식 태그를 걷어 낸다
     const userText = batch ? batch.filter(m => m.role === 'user').map(m => visibleProse(msgText(m))).join('\n') : userMes ? visibleProse(msgText(userMes)) : '';
     const assistantText = batch ? batch.filter(m => m.role === 'assistant').map(m => visibleProse(msgText(m))).join('\n') : visibleProse(msgText(ai)), h0 = mesHashOf(ai);
-    // 묶음은 차례대로 주고받은 그대로 보낸다 (길면 앞부분부터 덜어 낸다)
+    // 묶음은 차례대로 주고받은 그대로 보낸다 (묶음은 BATCH_TOKENS 에서 끊기므로 대개 다 들어간다 — 그래도 넘치면 앞부분부터 덜어 낸다)
     let exchange: string[] = [];
     if (batch && batch.length > 1) {
-      let room = 16000;
-      for (const m of [...batch].reverse()) { const tag = m.role === 'user' ? 'user' : 'assistant', body = visibleProse(msgText(m)).slice(0, tag === 'user' ? 4000 : 6000); if (room - body.length < 0 && exchange.length) break; room -= body.length; exchange.unshift(`<${tag} name="${nameOf(m).replace(/"/g, "'")}">\n${body}\n</${tag}>`); }
+      let room = 80000;
+      for (const m of [...batch].reverse()) { const tag = m.role === 'user' ? 'user' : 'assistant', body = visibleProse(msgText(m)).slice(0, 8000); if (room - body.length < 0 && exchange.length) break; room -= body.length; exchange.unshift(`<${tag} name="${nameOf(m).replace(/"/g, "'")}">\n${body}\n</${tag}>`); }
     }
     if (!assistantText.trim()) return mem;
     const order = new Map(msgs.map((m, i) => [m.id, i]));
@@ -251,7 +251,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
       bondLines.length ? `Bonds on file (current stage — refile one only if this exchange moved it):\n${bondLines.join('\n')}\n` : '',
       recent ? `Already shelved (do not refile) — recent turn digests:\n${recent}\n` : '',
       ...(exchange.length ? [
-        `The exchange to shelve — ${exchange.length} short messenger messages in the order they were sent. File them together as ONE turn: one digest for the whole batch.`,
+        `The exchange to shelve — ${exchange.length} messages in the order they were sent. File them together as ONE turn: one digest that covers the whole batch, and every memory, state or bond change that happened anywhere in it.`,
         ...exchange,
       ] : [
         'The exchange to shelve:',
@@ -276,7 +276,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     const failed = !ext || (!ext.turnSummary && !ext.memories.length);
     if (!ext) this.logActivity('error', tr('memoria.engine.log.turnFailed', { why: stale ? tr('memoria.engine.turn.stale') : tr('memoria.engine.turn.unreadable') }));
     if (!ext) ext = { turnSummary: '', importance: 0.3, elapsedDays: 0, memories: [], worldRules: [], entityStates: [], locks: [], characters: [], milestones: [], items: [], bonds: [], settledPledges: [], settledHow: {} };   // 사서가 실패해도 원문 발췌 기억은 남긴다
-    const turn = { msgId: ai.id, hash: mesHashOf(ai), digest: ext.turnSummary, weight: ext.importance, days: cfg.storyClock !== false ? (ext.elapsedDays || 0) : 0, when: '', where: '', failed, error: failed ? (error || (answered ? tr('memoria.engine.turn.nothing') : tr('memoria.engine.turn.noAnswer'))) : '', ts: now() };
+    const turn = { msgId: ai.id, ...(batch && batch.length > 1 ? { span: Math.max(1, batch.filter(m => m.role === 'assistant').length) } : {}), hash: mesHashOf(ai), digest: ext.turnSummary, weight: ext.importance, days: cfg.storyClock !== false ? (ext.elapsedDays || 0) : 0, when: '', where: '', failed, error: failed ? (error || (answered ? tr('memoria.engine.turn.nothing') : tr('memoria.engine.turn.noAnswer'))) : '', ts: now() };
     at = mem.turns.findIndex(t => t.msgId === ai.id);   // 기다리는 사이 다른 턴이 지워졌을 수 있다 — 자리를 다시 잡는다
     if (at >= 0) mem.turns[at] = turn; else { at = place(); mem.turns.splice(at, 0, turn); if (at < mem.turns.length - 1) this.shiftTurns(mem, at, 1); }
     if (stale) { await this.save(mem); return mem; }

@@ -13,7 +13,7 @@ type Num = number | string;
 import type { Swipe, Msg, Char, Persona, Chat, Regex, Preset, PresetBlock as Block, PresetParams, Conn, LoreEntry, Lore as LoreBook } from './types';
 export type { Swipe, Msg, Char, Persona, Chat, Regex, Preset, Block, Conn, LoreEntry, LoreBook };
 /** 프리셋 매개변수 + 보조 호출이 덧붙이는 이름들 */
-export type Params = Partial<PresetParams> & { stop?: unknown[]; names?: Names; groupNudge?: string; continueNudge?: string; impersonatePrompt?: string };
+export type Params = Partial<PresetParams> & { /** 보조 호출(기억 정리 등): 생각(추론)을 적게 하라고 요청한다 */ lowThink?: boolean; stop?: unknown[]; names?: Names; groupNudge?: string; continueNudge?: string; impersonatePrompt?: string };
 export interface Names { user?: string; char?: string; others?: string[] }
 export type LoreState = Record<string, { sticky: number; cool: number }>;
 export interface LoreHit extends LoreEntry { text: string; book?: string; bookId: string; tok: number }
@@ -1174,6 +1174,7 @@ async function streamChatRaw(conn: Conn | null | undefined, Pin: Params, message
   if (!conn) throw new Error(tr('engine.err.noConn'));
   let P = Pin;
   const def = defOf(conn), kind = def.kind, model = conn.model as string;
+  if (P.lowThink && P.effort) P = { ...P, effort: 'low' };   // 프리셋이 추론 강도를 정해 두었으면 보조 호출은 낮게
   const stream = P.stream !== false;
   const extra = jsonOr<Obj>(conn.extraBody, {});
   if (P.stop?.length) P = { ...P, stop: P.stop.map(xIn => { const x = String(xIn).replace(/\\n/g, '\n'); return AF().stopMacro !== false && P.names ? macro(x, { user: P.names.user, char: P.names.char }) : x; }).filter(Boolean) };   // 중단 문자열 안의 \n · 매크로
@@ -1252,7 +1253,7 @@ async function streamChatRaw(conn: Conn | null | undefined, Pin: Params, message
     if (num(P.topK)) gen.topK = +P.topK;
     if (num(P.seed)) gen.seed = +P.seed;
     if (P.stop?.length) gen.stopSequences = P.stop.slice(0, 5);
-    if (thinks) gen.thinkingConfig = { includeThoughts: true };
+    if (thinks) gen.thinkingConfig = { includeThoughts: true, ...(P.lowThink ? (/gemini-2\.5/.test(model) ? { thinkingBudget: 512 } : { thinkingLevel: 'low' }) : {}) };
     const body: Obj = {
       contents: rest.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [...(m.images || []).map(b64).filter(nn).map(i => ({ inlineData: { mimeType: i.mime, data: i.data } })), { text: m.content }] })), generationConfig: gen,
       safetySettings: ['HARM_CATEGORY_HARASSMENT', 'HARM_CATEGORY_HATE_SPEECH', 'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'HARM_CATEGORY_DANGEROUS_CONTENT'].map(c => ({ category: c, threshold: 'BLOCK_NONE' })),
@@ -1336,6 +1337,7 @@ async function streamChatRaw(conn: Conn | null | undefined, Pin: Params, message
     if (num(P.repPen)) body.repetition_penalty = +P.repPen;
   }
   if (P.effort) { if (conn.provider === 'openrouter') body.reasoning = { effort: P.effort }; else body.reasoning_effort = P.effort; }
+  else if (P.lowThink && conn.provider === 'openrouter') body.reasoning = { effort: 'low' };   // OpenRouter 는 추론하지 않는 모델이면 이 값을 그냥 넘긴다
   if (stream && official) body.stream_options = { include_usage: true };
   Object.assign(body, extra);
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -1394,8 +1396,18 @@ export async function listModels(conn: Conn): Promise<string[]> {
 }
 
 /** 보조 호출(요약·트래커·번역): 스트리밍 없이 한 번에 */
-export async function quickCall(system: string, user: string, { maxTokens = 1500, signal, conn }: { maxTokens?: number; signal?: AbortSignal; conn?: Conn | null } = {}): Promise<string> {
-  const P: Params = { ...S.preset().params, stream: false, maxTokens, prefill: '', stop: [] };
-  const r = await streamChat(conn || S.conn(), P, [{ role: 'system', content: system }, { role: 'user', content: user }], { signal, label: 'helper' });
+/** 생각을 적게 하라는 요청을 거절한 모델 (이번 실행 동안은 다시 보내지 않는다) */
+const noLowThink = new Set<string>();
+export async function quickCall(system: string, user: string, { maxTokens = 1500, signal, conn, lowThink = false }: { maxTokens?: number; signal?: AbortSignal; conn?: Conn | null; lowThink?: boolean } = {}): Promise<string> {
+  const c = conn || S.conn(), key = `${c?.provider}|${c?.model}`, low = lowThink && !noLowThink.has(key);
+  const P: Params = { ...S.preset().params, stream: false, maxTokens, prefill: '', stop: [], ...(low ? { lowThink: true } : {}) };
+  const msgs: PromptList = [{ role: 'system', content: system }, { role: 'user', content: user }];
+  let r: StreamResult;
+  try { r = await streamChat(c, P, msgs, { signal, label: 'helper' }); }
+  catch (e) {
+    // 생각 설정을 받지 않는 모델이면 한 번만 그 설정 없이 다시 보내고 기억해 둔다
+    if (!low || errName(e) === 'AbortError' || !/think|reason|effort|budget|level|invalid argument|unknown (field|name|parameter)/i.test(String(errMsg(e) ?? ''))) throw e;
+    noLowThink.add(key); r = await streamChat(c, { ...P, lowThink: false }, msgs, { signal, label: 'helper' });
+  }
   return splitThink(r.text).text.trim();
 }

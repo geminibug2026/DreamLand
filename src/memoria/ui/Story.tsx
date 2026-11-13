@@ -52,7 +52,7 @@ export function Story({ st }: { st: StOpen }) {
   const rebuild = async () => {
     if (v.busy) { v.busy.stop = true; return say(t('memoria.story.stopping')); }
     if (!mem.turns.some(x => x.digest)) return toast(t('memoria.story.noDigests'), 'err');
-    const calls = Math.ceil(T / chunkTurnsOf(cfg, chat));
+    const calls = Math.ceil(mem.turns.reduce((n, x) => n + Math.max(1, Math.round(Number(x.span) || 1)), 0) / chunkTurnsOf(cfg, chat));   // 요약 주기는 답장 수 (묶음 기록 하나 = 답장 여러 개)
     if (!(await confirmList(t('memoria.story.rebuildConfirm', { n: T }), [t('memoria.story.rebuildCalls', { n: calls }), t('memoria.story.rebuildRevert'), t('memoria.story.rebuildCarried')], t('memoria.story.rebuildOk')))) return;
     const job = v.busy = { stop: false }; drawView(); say(t('memoria.story.preparing'));
     try {

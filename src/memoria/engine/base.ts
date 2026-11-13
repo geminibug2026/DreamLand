@@ -48,14 +48,16 @@ export const NARRATOR = '__narrator__', PUBLIC_ONLY = '__public__';
 export const LANGS: Record<string, string> = { auto: '자동 (대화 언어)', ko: '한국어', en: '영어', ja: '일본어', hybrid: '하이브리드 (영어 서술 + 대사 원문)' };
 export const LANG_DIRECTIVES: Record<string, string> = MP.LANG_DIRECTIVES;
 /** 설정 기본값 (S.settings.memory 에 없는 키는 여기서 채운다) */
+/** 묶음 기록 한 번에 담는 글의 상한(토큰) — 답장 수가 안 찼어도 여기서 끊는다 (긴 RP 답장 여러 개가 너무 큰 기록 요청이 되지 않게) */
+export const BATCH_TOKENS = 12000;
 /** 이 방의 요약 주기(턴): 대화 모드 방은 따로 정한 값이 있으면 그것 (대화 모드는 한 턴이 짧다) */
 export const chunkTurnsOf = (cfg: Pick<Cfg, 'chunkTurns' | 'chunkTurnsTalk'>, chat?: { mode?: string } | null) =>
   Math.max(3, +(chat?.mode === 'talk' && +cfg.chunkTurnsTalk > 0 ? cfg.chunkTurnsTalk : cfg.chunkTurns) || 8);
 export const MEMORY_DEFAULTS: Cfg = {
   enabled: false, auto: true, recordDelay: 0, tokenBudget: 8000, topK: 10, minScore: 0.12, minCosine: 0.08, mmrLambda: 0.74, maxPerKind: 3, maxPerTurn: 2, multiQueryRecent: 3,
-  chunkTurns: 8, chunkTurnsTalk: 0, talkBatch: 5, arcMergeAt: 6, consolidateEvery: 30, arcConsolidateEvery: 100, maxMemories: 400, responseTokens: 24000, summaryContextCount: 3, fossil: { settling: 12, fossilized: 40, deep: 120 }, language: 'auto',
+  chunkTurns: 30, chunkTurnsTalk: 0, talkBatch: 5, rpBatch: 10, arcMergeAt: 6, consolidateEvery: 30, arcConsolidateEvery: 100, maxMemories: 400, responseTokens: 24000, summaryContextCount: 3, fossil: { settling: 12, fossilized: 40, deep: 120 }, language: 'auto',
   cast: true, lockEdited: true, items: false, milestones: false, storyClock: true, refProfile: true, refLore: false,
-  trim: false, keepRecent: 20, autoHide: false, preserveRecent: 6,
+  trim: false, keepRecent: 20, autoHide: true, preserveRecent: 20,   // 요약된 옛 메시지는 기본으로 AI 에게서 숨긴다 (요약이 대신한다 — 긴 대화의 프롬프트가 일정하게 유지된다)
   supervisor: false, associative: true, authorizePrivate: true, perspective: '', audit: true, reasoningHeadroom: 8000,
   position: 'split', depth: 1, prompt: '',
   embed: { mode: 'off', connId: '', model: 'text-embedding-3-small', floor: 0.35 },
@@ -64,7 +66,8 @@ export const MEMORY_DEFAULTS: Cfg = {
   recallWaitSec: 5,         // 답변 전 회상(임베딩 왕복) 최대 대기 초 — 넘으면 내장 검색만으로 바로 생성 (0 = 제한 없음)
   yieldToChat: true,        // 답변을 생성하는 동안에는 사서 · 요약 호출을 시작하지 않고 기다린다
   watchUpdates: true,       // 다른 기능이 고친 메시지도 본문이 실제로 바뀌었으면 다시 기록
-  splitInjection: false,    // 고정 장부 — 안정 구간을 얼려 따로 주입하고 매 턴 바뀌는 것만 최근 대화 옆에 (프롬프트 캐시)
+  splitInjection: true,     // 고정 장부 (기본 켬)
+  lowThink: true,           // 기억 정리 호출은 생각(추론)을 적게 — 생각 토큰도 출력 요금이다 — 안정 구간을 얼려 따로 주입하고 매 턴 바뀌는 것만 최근 대화 옆에 (프롬프트 캐시)
   stableRefreshTurns: 24,   // 고정 장부를 이 턴 수마다 새로 뜬다 (0 = 달라진 줄이 넘칠 때만)
   styleGuard: true,         // "기록은 사실만 — 문체는 지금 대화를 따른다" 지시
   recallQuotes: true,       // 회상에 옛 원문 대사 인용을 싣는다 (옛 말투가 돌아오면 끈다)

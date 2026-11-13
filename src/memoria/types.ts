@@ -11,7 +11,7 @@ export type Msg = LibMsg & { memCheck?: MemCheck };
 /** 대화방 (공용 꼴) */
 export type ChatM = Chat;
 
-export interface Turn { msgId: string; weight?: number; when?: string; where?: string; hash?: string; digest?: string; days?: number; failed?: boolean; error?: string; at?: number; [k: string]: unknown }
+export interface Turn { msgId: string; /** 이 기록이 덮는 답변 수 (묶음 기록 · 없으면 1) */ span?: number; weight?: number; when?: string; where?: string; hash?: string; digest?: string; days?: number; failed?: boolean; error?: string; at?: number; [k: string]: unknown }
 export interface MemItem {
   id: string; kind: string; summary: string; quote?: string; importance: number; entities?: string[]; tags?: string[]; hints?: string[];
   visibility?: string; owner?: string; trigger?: string; pinned?: boolean; disabled?: boolean; manual?: boolean;
@@ -53,6 +53,8 @@ export interface Mem {
   packetPin?: { text: string; turn?: number; at?: number } | null;
   direction?: { plan?: Plan | null; afterId?: string; [k: string]: unknown } | null;
   perspective?: string; perspectiveScope?: string;
+  /** 자동 숨김을 처음 했을 때 한 번 알렸다 */
+  hideNoticed?: boolean;
   /** 옛 서고의 이름 (chunks · chunked 로 옮긴다) */
   chapters?: Summary[]; chaptered?: number;
   [k: string]: unknown;
@@ -61,7 +63,8 @@ export interface Mem {
 /** 설정 (S.settings.memory). 기본값은 memory.js 의 MEMORY_DEFAULTS */
 export interface Cfg {
   enabled: boolean; auto: boolean; recordDelay: number; tokenBudget: number; topK: number; minScore: number; minCosine: number; mmrLambda: number; maxPerKind: number; maxPerTurn: number; multiQueryRecent: number;
-  chunkTurns: number; /** 대화 모드 방의 요약 주기 (0 = chunkTurns 그대로) */ chunkTurnsTalk: number; /** 대화 모드: 답장 몇 개를 모아 한 번에 기록하나 (1 = 답장마다) */ talkBatch: number; arcMergeAt: number; consolidateEvery: number; arcConsolidateEvery: number; maxMemories: number; responseTokens: number; summaryContextCount: number;
+  /** 기억 정리 호출에서 생각(추론)을 적게 요청한다 */ lowThink?: boolean;
+  chunkTurns: number; /** 대화 모드 방의 요약 주기 (0 = chunkTurns 그대로) */ chunkTurnsTalk: number; /** 대화 모드: 답장 몇 개를 모아 한 번에 기록하나 (1 = 답장마다) */ talkBatch: number; /** RP: 답장 몇 개를 모아 한 번에 기록하나 */ rpBatch: number; arcMergeAt: number; consolidateEvery: number; arcConsolidateEvery: number; maxMemories: number; responseTokens: number; summaryContextCount: number;
   fossil: { settling: number; fossilized: number; deep: number }; language: string;
   cast: boolean; lockEdited: boolean; items: boolean; milestones: boolean; storyClock: boolean; refProfile: boolean; refLore: boolean;
   trim: boolean; keepRecent: number; autoHide: boolean; preserveRecent: number;

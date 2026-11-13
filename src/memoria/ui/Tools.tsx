@@ -22,7 +22,10 @@ export async function recordNow(chat: ChatM) {
   ensureCfg(); const msgs = await msgsOf(chat), last = [...msgs].reverse().find(m => m.role === 'assistant' && !m.hidden && !m.greeting);
   if (!last) return toast(t('memoria.tools.record.none'));
   toast(t('memoria.tools.record.start')); if (isCur(chat)) api.setStatus(t('memoria.tools.record.status'));
-  try { const mem = await M.commit(chat, msgs, last, { force: true }); const tr = mem.turns.find(x => x.msgId === last.id); toast(tr?.failed ? t('memoria.tools.record.failed', { error: tr.error || '' }) : t('memoria.tools.record.done'), tr?.failed ? 'err' : 'ok'); }
+  try {
+    // 묶음 기록: 밀린 게 많으면 묶음 단위로 먼저 기록하고(한 번에 너무 큰 요청이 되지 않게), 마지막 답장으로 남은 끝자락까지 기록한다
+    if (M.batchSize(chat) > 1) { const m0 = await M.load(chat.id); for (const m of M.pending(m0, msgs)) if (m !== last) await M.commit(chat, msgs, m, { force: true }); }
+    const mem = await M.commit(chat, msgs, last, { force: true }); const tr = mem.turns.find(x => x.msgId === last.id); toast(tr?.failed ? t('memoria.tools.record.failed', { error: tr.error || '' }) : t('memoria.tools.record.done'), tr?.failed ? 'err' : 'ok'); }
   catch (e) { toast(t('memoria.tools.record.error', { error: (e as Error).message }), 'err'); } finally { if (isCur(chat)) { api.setStatus(''); api.redraw(); } }
 }
 /** 「색인」 — 아직 기록되지 않은 턴과 기록에 실패한 턴을 순서대로 기록한다. 끝나면(10턴 이상) 서사 시계를 한 번 재계산한다 */

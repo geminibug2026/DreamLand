@@ -178,12 +178,17 @@ export const part3: Part3 & ThisType<MemoryApi> = {
    * 미요약 범위가 크게 밀렸어도(일괄 색인 · 기록 실패 구간) 한 덩이로 삼키지 않고 n턴 창 단위로 나눈다. 턴 기록이 없어 건너뛴 창도 "지나갔다"고 기억한다(mem.chunked)
    */
   async maybeSummarizeChunk(chat, mem, { signal, flushAll = false, onProgress = null, shouldStop = null, strict = false } = {}) {
-    const cfg = this.cfg(), n = chunkTurnsOf(cfg, chat);
-    let covered = this.summaryCoveredTurn(mem), made = 0, done = 0;
-    const pending = mem.turns.length - covered, total = pending <= 0 ? 0 : (flushAll ? Math.ceil(pending / n) : Math.floor(pending / n));
-    while (flushAll ? mem.turns.length > covered : mem.turns.length - covered >= n) {
+    // n = 요약 하나에 담을 답장 수. 묶음 기록은 기록 하나가 답장 여러 개를 덮으므로(span) 기록 수가 아니라 덮은 답장 수로 센다 — 예전 기록은 하나가 답장 하나
+    const cfg = this.cfg(), n = chunkTurnsOf(cfg, chat), spanOf = (k: number) => Math.max(1, Math.round(Number(mem.turns[k]?.span) || 1));
+    /** from 부터 답장 n 개를 채우는 창: 끝 자리(포함)와 덮은 답장 수 */
+    const windowFrom = (from: number) => { let sum = 0, k = from; while (k < mem.turns.length && sum < n) sum += spanOf(k++); return { to: k - 1, sum }; };
+    let covered = this.summaryCoveredTurn(mem), made = 0, done = 0, total = 0;
+    for (let k = covered; k < mem.turns.length;) { const w = windowFrom(k); if (!flushAll && w.sum < n) break; total++; k = w.to + 1; }
+    for (;;) {
+      if (covered >= mem.turns.length) break;
+      const w = windowFrom(covered); if (!flushAll && w.sum < n) break;
       if (shouldStop?.()) break;
-      const from = covered, to = Math.min(covered + n, mem.turns.length) - 1; covered = to + 1;
+      const from = covered, to = w.to; covered = to + 1;
       const text = await this.chunkText(chat, mem, from, to, signal, strict, { threads: true });
       if (!text) { mem.chunked = covered; onProgress?.(++done, total); continue; }   // 턴 기록이 하나도 없는 창
       mem.chunks.push({ id: 'c' + uid(), from, to, text }); mem.chunked = covered; made++; onProgress?.(++done, total);

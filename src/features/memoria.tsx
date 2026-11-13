@@ -180,6 +180,7 @@ function setup() {
     } catch (e) { console.warn('[장기기억]', e); M.logActivity?.('error', t('memoria.engine.log.eventError', { why: (e as Error)?.message || e })); }
   });
   on('memory:msgs', (chat?: ChatM) => { if (isCur(chat)) chatApi.redraw(); });
+  on('memory:hidden-first', (d?: { chat: ChatM; n: number }) => { if (d && isCur(d.chat)) toast(t('memoria.feat.hiddenFirst', { n: d.n })); });
   on('memory:check', () => queueDecorate());   // 엔진이 점검 결과를 메시지에 붙였을 때
   on('chat:open', (chat?: ChatM | null) => { setFocus(chat?.id); ensureCfg(); setTimeout(queueDecorate, 600); });
   installConfigEvents();   // 대화를 열면 그 대화의 설정 세트로 갈아 끼운다 (옛 memoria-settings.js 의 chat:open)
