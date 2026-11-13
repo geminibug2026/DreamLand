@@ -41,6 +41,7 @@ function SettingsPage() {
   useLang();
   const { Vault, Secrets, DB, download, pickFiles } = core, st = S.settings, F = adv.AF();
   (st as { termLog?: string }).termLog ||= 'full';
+  if (F.reasoning && F.reasoning.show === undefined) F.reasoning.show = true;   // 생각 과정: 기본은 보임
   const refresh = useBump(), timer = useRef(0);
   useEffect(() => () => clearTimeout(timer.current), []);
   const apply = () => { S.set({}); theme.applyTheme(); };
@@ -53,6 +54,7 @@ function SettingsPage() {
       <small className="hint">{t('settings.languageHint')}</small></label>
       <p className="hint">{t('settings.languageHelp')}</p></div>
     <div className="card"><Form obj={st} defs={[{ section: t('settings.chat.section') }, { k: 'showMeta', label: t('settings.chat.showMeta'), type: 'check' }, { k: 'chatTruncation', label: t('settings.chat.truncation'), type: 'num', min: 0, max: 1000, step: 5, ph: '100', nullable: true, half: true, hint: t('settings.chat.truncationHint') }, { k: 'defaultMode', label: t('settings.chat.defaultMode'), type: 'select', opts: [['rp', t('settings.chat.modeRp')], ['talk', t('settings.chat.modeTalk')]], half: true }, { k: 'modes.talkTokens', label: t('settings.chat.talkTokens'), type: 'num', half: true },
+      { k: 'format.reasoning.show', label: t('advanced.rs.show'), type: 'check', hint: t('advanced.rs.showHint') },
       { el: <TalkPromptField /> },
       { k: 'modes.stagger', label: t('settings.chat.stagger'), type: 'check' }, { k: 'modes.commands', label: t('settings.chat.commands'), type: 'check' },
       { k: 'modes.presenceDelay', label: t('settings.chat.presenceDelay'), type: 'check' },

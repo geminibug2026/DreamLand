@@ -66,6 +66,7 @@ function Format() {
   const [, setTick] = useState(0), [epoch, setEpoch] = useState(0);
   const A = libAdvanced, C = core;
   const F = A.AF(), conn = S.conn(), def = conn && libEngine.PROVIDERS[conn.provider], textConn = !!def && A.TEXT_PROVIDER_KINDS.includes(def.kind);
+  if (F.reasoning && F.reasoning.show === undefined) F.reasoning.show = true;   // 생각 과정: 기본은 보임
   const redraw = () => setEpoch(n => n + 1);                       // 폼까지 새로 만든다 (옛 refresh)
   const ch = () => { S.set({}); setTick(n => n + 1); };           // 저장하고 상태 줄 · 저장 안 됨 표시만 다시
   const form = (obj: object, defs: FormDefs) => <LForm obj={obj} defs={defs} onChange={ch} />;
@@ -112,7 +113,7 @@ function Format() {
     form(F.sysprompt, [{ k: 'content', label: tr('advanced.sys.content'), type: 'area', rows: 9, hint: tr('advanced.sys.contentHint') }, { k: 'post_history', label: tr('advanced.sys.post'), type: 'area', rows: 4, hint: tr('advanced.sys.postHint') }]),
     <p className="hint">{tr('advanced.sys.ccNote')}</p>);
   else if (afTab === 'reasoning') pane = <>
-    {card('', form(F.reasoning, [{ k: 'autoParse', label: tr('advanced.rs.autoParse'), type: 'check', hint: tr('advanced.rs.autoParseHint') }, { k: 'autoExpand', label: tr('advanced.rs.autoExpand'), type: 'check' }, { k: 'addToPrompts', label: tr('advanced.rs.add'), type: 'check', hint: tr('advanced.rs.addHint') }, { k: 'maxAdditions', label: tr('advanced.rs.max'), type: 'num', min: 0, third: true, hint: tr('advanced.rs.maxHint') }]))}
+    {card('', form(F.reasoning, [{ k: 'show', label: tr('advanced.rs.show'), type: 'check', hint: tr('advanced.rs.showHint') }, { k: 'autoParse', label: tr('advanced.rs.autoParse'), type: 'check', hint: tr('advanced.rs.autoParseHint') }, { k: 'autoExpand', label: tr('advanced.rs.autoExpand'), type: 'check' }, { k: 'addToPrompts', label: tr('advanced.rs.add'), type: 'check', hint: tr('advanced.rs.addHint') }, { k: 'maxAdditions', label: tr('advanced.rs.max'), type: 'num', min: 0, third: true, hint: tr('advanced.rs.maxHint') }]))}
     {card('', <h3 className="form-sec">{tr('advanced.kind.reasoning')}</h3>, bar('reasoning'), form(F.reasoning, [{ k: 'prefix', label: tr('advanced.rs.prefix'), type: 'area', rows: 2, third: true, hint: tr('advanced.rs.prefixHint') }, { k: 'suffix', label: tr('advanced.rs.suffix'), type: 'area', rows: 2, third: true, hint: tr('advanced.rs.suffixHint') }, { k: 'separator', label: tr('advanced.rs.sep'), type: 'area', rows: 2, third: true, hint: tr('advanced.rs.sepHint') }]))}
   </>;
   else {

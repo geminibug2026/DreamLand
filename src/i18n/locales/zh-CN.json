@@ -810,6 +810,8 @@
   "advanced.sys.post": "后续指令",
   "advanced.sys.postHint": "作为用户消息添加到聊天记录的最末尾。",
   "advanced.sys.ccNote": "聊天补全连接使用预设中的主提示词和后续指令区块。",
+  "advanced.rs.show": "显示思考过程",
+  "advanced.rs.showHint": "关闭后隐藏消息上方的“思考过程”。思考过程仍会保存，重新打开即可看到。",
   "advanced.rs.autoParse": "自动解析",
   "advanced.rs.autoParseHint": "将回复开头前缀…后缀之间的内容分离为思考过程。前缀和后缀都必须填写",
   "advanced.rs.autoExpand": "自动展开",

@@ -114,7 +114,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
       <header className="msg-head">{castNo ? <span className="cast-no">{String(castNo).padStart(2, '0')}</span> : null}<b>{who?.name || m.name || ''}</b><span className="msg-no">{String(idx + 1).padStart(3, '0')}</span><time>{meta}</time>
         {why ? <em className="why" title={t('chat.msg.whyTitle')}>{why}</em> : null}{m.hidden && <em className="badge">{t('chat.msg.hiddenBadge')}</em>}</header>
       {m.images?.length ? <div className="msg-images">{m.images.map((u, i) => <img key={i} src={u} alt={t('chat.msg.attachAlt')} onClick={() => bigImage(u)} />)}</div> : null}
-      {s.reasoning ? <details className="reason" open={!streaming && !!S.settings.format?.reasoning?.autoExpand}><summary><Icon name="sparkle" size={14} />{t('chat.msg.reasoning')}</summary><div>{s.reasoning}</div></details> : null}
+      {s.reasoning && S.settings.format?.reasoning?.show !== false ? <details className="reason" open={!streaming && !!S.settings.format?.reasoning?.autoExpand}><summary><Icon name="sparkle" size={14} />{t('chat.msg.reasoning')}</summary><div>{s.reasoning}</div></details> : null}
       {body}
       {m.reactions?.length ? <div className="reacts">{m.reactions.map((r, i) => <span key={i} title={r.by || ''}>{r.emoji}</span>)}</div> : null}
       <Illusts m={m} s={s} />

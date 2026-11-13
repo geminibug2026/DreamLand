@@ -19,7 +19,7 @@ export interface InstructTpl {
 }
 export interface SyspromptTpl { enabled?: boolean; name?: string; content?: string; post_history?: string; [k: string]: unknown }
 export interface ReasoningTpl {
-  name?: string; prefix?: string; suffix?: string; separator?: string; autoParse?: boolean; autoExpand?: boolean; addToPrompts?: boolean; maxAdditions?: number; [k: string]: unknown;
+  name?: string; prefix?: string; suffix?: string; separator?: string; autoParse?: boolean; autoExpand?: boolean; /** 메시지에 생각 과정을 보일지 (기본 보임) */ show?: boolean; addToPrompts?: boolean; maxAdditions?: number; [k: string]: unknown;
 }
 export interface ModelMapEntry { instruct: string; context: string }
 export interface Format {

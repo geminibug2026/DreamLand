@@ -823,6 +823,8 @@
   "advanced.sys.post": "Post-history instructions",
   "advanced.sys.postHint": "Added as a user message at the very end of the chat history.",
   "advanced.sys.ccNote": "Chat completion connections use the main prompt and post-history blocks from the preset.",
+  "advanced.rs.show": "Show reasoning",
+  "advanced.rs.showHint": "Turn off to hide the \"Reasoning\" box above messages. The reasoning is still saved and shows again when you turn this back on.",
   "advanced.rs.autoParse": "Auto-parse",
   "advanced.rs.autoParseHint": "Splits off the text between prefix … suffix at the start of a reply as the thinking process. Both prefix and suffix are required",
   "advanced.rs.autoExpand": "Auto-expand",

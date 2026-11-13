@@ -810,6 +810,8 @@
   "advanced.sys.post": "후속 지시",
   "advanced.sys.postHint": "대화 기록 맨 끝에 사용자 메시지로 들어갑니다.",
   "advanced.sys.ccNote": "채팅 완성형 연결은 프리셋의 메인 프롬프트 · 후속 지시 블록을 씁니다.",
+  "advanced.rs.show": "생각 과정 보이기",
+  "advanced.rs.showHint": "끄면 메시지 위의 \"생각 과정\" 칸을 숨깁니다. 생각 과정은 그대로 저장되고, 다시 켜면 보여요.",
   "advanced.rs.autoParse": "자동 분리",
   "advanced.rs.autoParseHint": "답변 앞의 접두 … 접미 사이를 생각 과정으로 떼어 냅니다. 접두와 접미가 모두 있어야 해요",
   "advanced.rs.autoExpand": "자동으로 펼치기",
