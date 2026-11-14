@@ -45,7 +45,8 @@ async function appSave(name: string, blob: Blob) {
   await native('Share', 'share', { files: [uri] }).catch(() => { /* 공유 창을 그냥 닫은 경우 */ });
 }
 const rawFetch =(input: string, init?: RequestInit) => (window.__dlFetch || fetch)(input, init);
-const noServer = () => new Response('{"error":"no server"}', { status: 503, headers: { 'Content-Type': 'text/plain' } });
+// 404 로 답한다 — 앱의 여러 곳이 "서버에 그 기능이 없다(404)"를 보고 화면에서 직접 하는 길로 넘어간다 (Vertex 서비스 계정 서명 등)
+const noServer = () => new Response('{"error":"no server"}', { status: 404, headers: { 'Content-Type': 'text/plain' } });
 /** 웹 버전에서 서버 대신 답한다: 함께 올린 확장 목록만 읽어 주고, 나머지는 "서버 없음" */
 async function webFetch(path: string): Promise<Response> {
   if (path !== 'extensions') return noServer();
