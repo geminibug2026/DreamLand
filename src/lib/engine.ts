@@ -2,6 +2,7 @@
 import * as core from './core';
 import * as hooks from './hooks';
 import { condBlocks, evalCond, pvResolve, type CondEnv, type PvMap } from './cond';
+import { ejs } from './ejs';
 import * as clock from './clock';
 import * as advanced from './advanced';
 import { t as tr } from '../i18n';
@@ -102,6 +103,12 @@ export function roll(expr: unknown): Roll | null {
 export const ordOf = (v: unknown) => { const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN; return Number.isFinite(n) ? n : 100; };
 /** 그 객체 자신의 값만 (프로토타입의 constructor · toString 따위는 없는 것으로) */
 const own = <T,>(o: Record<string, T> | null | undefined, k: string | undefined): T | undefined => o && k != null && Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined;
+/** 로어북 · 프리셋 · 카드 글의 <% … %> 템플릿을 처리한다 (조건문 · 값 넣기. 코드를 실제로 실행하지는 않는다) */
+export function tpl(text: string | null | undefined, c: Ctx = {}): string {
+  const s = text || ''; if (s.indexOf('<%') < 0) return s;
+  const vars = (c.vars || {}) as Record<string, unknown>, g = (S.settings.globalVars || {}) as Record<string, unknown>;
+  return ejs(s, { getvar: n => Object.prototype.hasOwnProperty.call(vars, n) ? vars[n] : undefined, getGlobalVar: n => Object.prototype.hasOwnProperty.call(g, n) ? g[n] : undefined });
+}
 /** 그룹 대화에서 쉬게 하지 않은 멤버 이름들 */
 function notMuted(c: Ctx): string {
   const chat = c.chat as (Chat & { muted?: string[] }) | undefined; if (!chat || (chat.charIds || []).length < 2) return '';
@@ -463,7 +470,7 @@ export function scanLore(books: LoreBook[], history: { content?: string | null }
     for (const it of now) {
       const e = it.e, bid = it.book.id;
       if (+(e.probability ?? 100) < 100 && !isSticky(e) && Math.random() * 100 > +(e.probability as Num)) { failed.add(e.id); continue; }
-      const text = applyRegex(macro(e.content, ctx), { who: 'lore', target: 'prompt', depth: e.position === 'depth' ? +(e.depth ?? 4) : undefined, ctx }), t = tokens(text), u = used.get(bid) || 0;
+      const text = applyRegex(macro(tpl(e.content, ctx), ctx), { who: 'lore', target: 'prompt', depth: e.position === 'depth' ? +(e.depth ?? 4) : undefined, ctx }), t = tokens(text), u = used.get(bid) || 0;
       if (!e.ignoreBudget) { if (u + t > +(it.book.tokenBudget || 2048) && u > 0) continue; used.set(bid, u + t); }
       activated.set(e.id, { it, text, tok: t }); fresh.push(it);
     }
@@ -562,7 +569,7 @@ type Inj = PromptMsg & { depth: Num; order: Num };
 function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'normal', commit = false, proactive = false }: BuildInput): Built {
   const P: Params = preset.params || {}, M = S.settings.modes || {};
   const ctx = makeCtx({ chat, char, chars, persona, msgs }); ctx.type = type;
-  const mx = (t?: string) => macro(t || '', ctx);
+  const mx = (t?: string) => macro(tpl(t, ctx), ctx);   // 프리셋 · 카드 글: 템플릿(<% %>) 다음에 매크로
   // 통화 중(src/call 이 기록 끝에 'Phone call started' 를 넣는다)에는 전화 걸기 안내를 주지 않는다
   const inCall = msgs.some(m => m.role === 'system' && msgText(m) === 'Phone call started');
   const isGroup = chars.length > 1, clockMode = Clock.mode(chat), today = Clock.now(chat).toDateString();
@@ -645,7 +652,7 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
   const P: Params = preset.params || {}, F = AF();
   const ctx = makeCtx({ chat, char, chars, persona, msgs }); ctx.type = type;
   const isGroup = chars.length > 1;
-  const mx = (t?: string | null) => macro(t || '', ctx);
+  const mx = (t?: string | null) => macro(tpl(t, ctx), ctx);   // 프리셋 · 카드 글: 템플릿(<% %>) 다음에 매크로
   // 텍스트 완성형 연결은 스토리 스트링 + 인스트럭트 템플릿으로 조립한다 (채팅 완성형은 프리셋 블록 그대로)
   const conn = S.connFor(chat), R = conn && A.TEXT_PROVIDER_KINDS.includes(defOf(conn).kind) && F.storyMode !== false ? A.resolve(conn) : null;
 
