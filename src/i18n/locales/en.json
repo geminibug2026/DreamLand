@@ -5147,6 +5147,7 @@
   "engine.err.googleAuthWhy": "Google authentication failed: {why}",
   "engine.err.noProject": "Unknown project ID. Enter the project ID in the connection settings.",
   "engine.err.connect": "Couldn't connect ({why}). Check the URL, or turn on \"Connect through the Dreamland server\" in the connection settings.",
+  "engine.err.connectWeb": "Couldn't connect ({why}). Check the URL and key. The web version connects straight from the browser, so services that block browser connections only work with Dreamland installed on a computer.",
   "engine.err.apiStatus": "API error {status}: {body}",
   "engine.err.noConn": "No API connection. Add a connection first.",
   "engine.err.noModel": "No model selected.",

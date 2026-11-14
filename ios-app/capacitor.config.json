@@ -1,0 +1,10 @@
+{
+  "appId": "app.dreamland.ios",
+  "appName": "Dreamland",
+  "webDir": "www",
+  "backgroundColor": "#fbf5f2",
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#fbf5f2"
+  }
+}

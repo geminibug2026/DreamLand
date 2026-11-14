@@ -60,6 +60,7 @@ export function h<E extends HTMLElement = HTMLElement>(spec: string, props?: HPr
 
 export function download(name: string, data: BlobPart | Blob, type = 'application/json') {
   const blob = data instanceof Blob ? data : new Blob([data], { type });
+  if (Server.app) { void Server.saveFile(name, blob).catch(e => console.warn('[save]', e)); return; }
   const a = h<HTMLAnchorElement>('a', { href: URL.createObjectURL(blob), download: name });
   document.body.append(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);

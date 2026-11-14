@@ -5,7 +5,8 @@
     "build": "tsc --noEmit && vite build",
     "watch": "vite build --watch",
     "check": "tsc --noEmit",
-    "i18n:check": "node scripts/i18n-check.mjs"
+    "i18n:check": "node scripts/i18n-check.mjs",
+    "build:web": "tsc --noEmit && vite build --mode web --base ./ --outDir web && node scripts/web-files.mjs"
   },
   "dependencies": {
     "react": "^19.3.1",

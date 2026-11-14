@@ -35,7 +35,7 @@ function loadBuf(kind: SoundKind): Promise<AudioBuffer | null> {
     p = (async () => {
       const c = ac(); if (!c) return null;
       const own = await customSound(kind);
-      const urls = [own?.data, kind === 'ring' ? '' : `/sounds/${kind}.ogg`].filter(Boolean) as string[];
+      const urls = [own?.data, kind === 'ring' ? '' : `sounds/${kind}.ogg`].filter(Boolean) as string[];
       for (const u of urls) { try { const r = await fetch(u); if (!r.ok) continue; return await c.decodeAudioData(await r.arrayBuffer()); } catch (e) { console.warn('[call sound]', kind, e); } }
       return null;
     })();

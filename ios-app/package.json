@@ -1,0 +1,17 @@
+{
+  "name": "dreamland-ios",
+  "private": true,
+  "description": "Dreamland iOS 앱 껍데기 (Capacitor). 웹 버전(npm run build:web)을 그대로 담는다",
+  "scripts": {
+    "sync": "cap sync ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "8.6.2",
+    "@capacitor/filesystem": "^8.0.0",
+    "@capacitor/ios": "8.6.2",
+    "@capacitor/share": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.2"
+  }
+}

@@ -32,7 +32,7 @@ function Panel({ chat, msgs: first, host }: { chat: DChat; msgs: Msg[]; host: HT
 }
 
 function setup() {
-  if (!document.querySelector('link[data-almanac]')) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = new URL('/css/almanac.css', location.origin).href; l.dataset.almanac = '1'; document.head.append(l); }
+  if (!document.querySelector('link[data-almanac]')) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = new URL('css/almanac.css', document.baseURI).href; l.dataset.almanac = '1'; document.head.append(l); }
   const { on } = core, { X, dropOwner } = hooks;
   dropOwner(OWNER);   // 옛 모듈이 먼저 꽂아 둔 것이 있으면 걷어 내고 꽂는다
   // 화면에 보이기 직전: 약속 태그를 지운다 (쓰는 도중에도)

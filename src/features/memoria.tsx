@@ -92,7 +92,7 @@ function SearchList({ mem, arg }: { mem: Mem; arg: string }) {
 }
 
 function setup() {
-  if (!document.querySelector('link[data-memoria]')) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = new URL('/css/f-memoria.css', location.origin).href; l.dataset.memoria = '1'; document.head.append(l); }
+  if (!document.querySelector('link[data-memoria]')) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = new URL('css/f-memoria.css', document.baseURI).href; l.dataset.memoria = '1'; document.head.append(l); }
   const x = X, { on } = core, M = Memory, { fmtDays } = memMod;
   // 옛 모듈이 먼저 꽂아 둔 것이 있으면 걷어 내고 꽂는다
   for (const [k, v] of x.commands) if (v.owner === OWNER) x.commands.delete(k);

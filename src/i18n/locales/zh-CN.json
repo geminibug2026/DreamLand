@@ -5089,6 +5089,7 @@
   "engine.err.googleAuthWhy": "Google 认证失败：{why}",
   "engine.err.noProject": "无法确定项目 ID。请在连接设置中填写项目 ID。",
   "engine.err.connect": "无法连接（{why}）。请检查地址，或在连接设置中开启“经 Dreamland 服务器连接”。",
+  "engine.err.connectWeb": "无法连接（{why}）。请检查地址和密钥。网页版由浏览器直接连接，因此禁止浏览器直连的服务只能在安装于电脑的 Dreamland 中使用。",
   "engine.err.apiStatus": "API 错误 {status}：{body}",
   "engine.err.noConn": "没有 API 连接。请先添加连接。",
   "engine.err.noModel": "未选择模型。",
