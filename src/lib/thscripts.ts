@@ -134,8 +134,12 @@ export function charScripts(ch: Char | undefined | null): ThScript[] {
   if (Array.isArray(th)) th = Object.fromEntries((th as unknown[]).filter((p): p is [string, unknown] => Array.isArray(p) && typeof p[0] === 'string'));
   const raw = ((th as Raw | undefined)?.scripts ?? x.TavernHelper_scripts ?? []) as unknown;
   const flat = (list: unknown): Raw[] => Array.isArray(list) ? list.flatMap(it => it && typeof it === 'object' ? ((it as Raw).type === 'folder' ? flat((it as Raw).scripts ?? (it as Raw).value) : [it as Raw]) : []) : [];
-  return flat(raw).filter(s => typeof s.content === 'string' && s.content.trim()).map(s => ({ id: 'char:' + (ch as Char).id + ':' + String(s.id || s.name), name: String(s.name || 'script'), content: String(s.content), info: String(s.info || ''), enabled: s.enabled !== false, trusted: true }));
+  return flat(raw).filter(s => typeof s.content === 'string' && s.content.trim()).map(s => ({ id: 'char:' + (ch as Char).id + ':' + String(s.id || s.name), name: String(s.name || 'script'), content: String(s.content), info: String(s.info || ''), enabled: s.enabled !== false, trusted: true }))
+    .map(s => { const o = onMap()[s.id]; return o === undefined ? s : { ...s, enabled: o }; });
 }
+/** 카드 스크립트 하나씩 켜고 끄기 (카드에 적힌 켜짐 상태보다 앞선다) */
+const onMap = () => ((S.settings as unknown as { thScriptOn?: Record<string, boolean> }).thScriptOn ||= {});
+export async function setCharScript(id: string, on: boolean) { onMap()[id] = on; S.saveSettings(); await syncChar(); emit('thscripts:changed'); }
 const allow = () => ((S.settings as unknown as { thCharAllow?: Record<string, boolean> }).thCharAllow ||= {});
 export const charAllowed = (id: string) => allow()[id];
 export async function setCharAllowed(id: string, v: boolean | undefined) { if (v === undefined) delete allow()[id]; else allow()[id] = v; S.saveSettings(); await syncChar(); emit('thscripts:changed'); }
@@ -144,7 +148,8 @@ async function syncChar() {
   const chat = cur.chat, ids = chat?.charIds || [];
   for (const k of [...running.keys()]) if (k.startsWith('char:') && !ids.some(id => k.startsWith('char:' + id + ':'))) { running.get(k)?.remove(); running.delete(k); }
   for (const id of ids) {
-    const ch = S.get('chars', id) as Char | undefined, list = charScripts(ch).filter(s => s.enabled);
+    const ch = S.get('chars', id) as Char | undefined, all = charScripts(ch), list = all.filter(s => s.enabled);
+    for (const s of all) if (!s.enabled) stop(s);
     if (!list.length) continue;
     if (allow()[id] === undefined) {
       if (asking) continue; asking = true;

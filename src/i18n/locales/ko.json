@@ -4029,6 +4029,7 @@
   "ths.charAllowed": "허용",
   "ths.charDenied": "막음",
   "ths.charUnset": "아직 안 물어봄",
+  "ths.charAllowHint": "이 캐릭터의 스크립트를 쓸지 정합니다. 아래에서 하나씩 켜고 끌 수 있어요.",
   "ths.menu": "스크립트 메뉴",
   "ths.title": "실리태번 스크립트",
   "ths.intro": "실리태번 Tavern Helper 에서 내보낸 스크립트(JSON)를 그대로 가져와 돌립니다. 실리태번과 똑같이 앱 전체에 접근할 수 있으므로 믿는 스크립트만 켜세요.",

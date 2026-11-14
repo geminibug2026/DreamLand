@@ -25,3 +25,7 @@
 .flexGap5 { gap: 5px; }
 .interactable { cursor: pointer; }
 .dl-script-frame { display: none; }
+
+/* 확장 페이지: 캐릭터 아래 스크립트 하나씩 */
+.ext-group { display: flex; flex-direction: column; gap: 6px; }
+.ext-card.ext-sub { margin-left: 28px; padding-top: 8px; padding-bottom: 8px; }

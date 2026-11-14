@@ -4029,6 +4029,7 @@
   "ths.charAllowed": "允许",
   "ths.charDenied": "已阻止",
   "ths.charUnset": "尚未询问",
+  "ths.charAllowHint": "决定是否允许此角色的脚本运行。可在下方逐个开关。",
   "ths.menu": "脚本菜单",
   "ths.title": "SillyTavern 脚本",
   "ths.intro": "直接导入并运行从 SillyTavern 酒馆助手导出的脚本（JSON）。与 SillyTavern 一样，脚本可以访问整个应用，请只开启信任的脚本。",

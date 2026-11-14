@@ -82,7 +82,7 @@ export function appHost(started = Date.now()): Host {
         actions: [{ label: t('qr.debug.stop'), onclick: () => { act = 'stop'; } }, { label: t('qr.debug.continue'), onclick: () => { act = 'continue'; } }, { label: t('qr.debug.stepBtn'), cls: 'primary', onclick: () => { act = 'step'; } }],
       });
     }),
-    popup: (text: string) => new Promise<string>(res => { openModal({ title: '', body: <div className="pre-wrap">{text}</div>, onClose: () => res(''), actions: [{ label: t('common.ok') }] }); }),
+    popup: (text: string) => new Promise<string>(res => { openModal({ title: '', body: hasHtml(text) ? <div className="qr-ask" dangerouslySetInnerHTML={{ __html: sanitize(text) }} /> : <div className="pre-wrap">{text}</div>, onClose: () => res(''), actions: [{ label: t('common.ok') }] }); }),
     input: async (q: string, dflt: string) => { const r = await promptBox(q || t('qr.run.input'), dflt, { area: q.length > 60 }); if (r === null) throw new Abort(true); return r; },
     buttons: (text: string, labels: string[]) => choose(text, labels),
     setInput: (text: string) => { chatApi.setInput?.(text); return ''; },

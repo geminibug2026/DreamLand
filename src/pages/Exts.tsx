@@ -75,8 +75,15 @@ function ThScripts() {
       <label className="switch"><input type="checkbox" checked={sc.enabled} onChange={e => void toggle(sc, e.target.checked)} /><i /></label>
     </div>) : <p className="dim">{t('ths.empty')}</p>}</div>
     {withScripts.length ? <><h4 className="form-sec">{t('ths.charTitle')}</h4><p className="hint">{t('ths.charHint')}</p>
-      <div className="ext-list">{withScripts.map(({ ch, list }) => { const a = TH.charAllowed(ch.id); return <div className="ext-card" key={ch.id}><div className="ext-ic"><Icon name="code" size={20} /></div>
-        <div className="ext-meta"><b>{ch.name} <span className="badge">{a === undefined ? t('ths.charUnset') : a ? t('ths.charAllowed') : t('ths.charDenied')}</span></b><small>{list.map(s => s.name).join(', ')}</small></div>
-        <label className="switch"><input type="checkbox" checked={!!a} onChange={async e => { if (e.target.checked && !(await confirmBox(t('ths.charAsk', { name: ch.name, n: list.length, names: list.map(s => s.name).join(', ') }), t('ths.trustOk'), true))) return; await TH.setCharAllowed(ch.id, e.target.checked); }} /><i /></label>
-      </div>; })}</div></> : null}</div>;
+      <div className="ext-list">{withScripts.map(({ ch, list }) => {
+        const a = TH.charAllowed(ch.id);
+        const allowIt = async () => (await confirmBox(t('ths.charAsk', { name: ch.name, n: list.length, names: list.map(s => s.name).join(', ') }), t('ths.trustOk'), true)) && (await TH.setCharAllowed(ch.id, true), true);
+        return <div className="ext-group" key={ch.id}>
+          <div className="ext-card"><div className="ext-ic"><Icon name="user" size={20} /></div>
+            <div className="ext-meta"><b>{ch.name} <span className="badge">{a === undefined ? t('ths.charUnset') : a ? t('ths.charAllowed') : t('ths.charDenied')}</span></b><small>{t('ths.charAllowHint')}</small></div>
+            <label className="switch" title={t('ths.charAllowed')}><input type="checkbox" checked={!!a} onChange={async e => { if (e.target.checked) await allowIt(); else await TH.setCharAllowed(ch.id, false); }} /><i /></label></div>
+          {list.map(sc => <div className="ext-card ext-sub" key={sc.id}><div className="ext-ic"><Icon name="code" size={18} /></div>
+            <div className="ext-meta"><b>{sc.name} {a && sc.enabled ? <span className="badge">{t('ths.running')}</span> : null}</b>{sc.info ? <small>{sc.info}</small> : null}</div>
+            <label className="switch"><input type="checkbox" checked={sc.enabled} onChange={async e => { const on = e.target.checked; if (on && !a && !(await allowIt())) return; await TH.setCharScript(sc.id, on); }} /><i /></label></div>)}
+        </div>; })}</div></> : null}</div>;
 }

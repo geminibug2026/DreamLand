@@ -4076,6 +4076,7 @@
   "ths.charAllowed": "Allowed",
   "ths.charDenied": "Blocked",
   "ths.charUnset": "Not asked yet",
+  "ths.charAllowHint": "Whether this character's scripts may run. Turn each one on or off below.",
   "ths.menu": "Script menu",
   "ths.title": "SillyTavern scripts",
   "ths.intro": "Run scripts exported from SillyTavern's Tavern Helper (JSON) as they are. Like in SillyTavern they can access the whole app, so only turn on scripts you trust.",
