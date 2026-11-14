@@ -369,3 +369,9 @@ button.chip:hover { color: var(--text); background: var(--surface2); }
 .msg.still { animation: none; }
 .dl-frame { margin: 6px 0; }
 .dl-frame-el { display: block; width: 100%; height: 160px; border: 0; background: transparent; }
+
+/* 아이폰 앱 (ios-app/) — html.dl-app 은 앱 안에서만 붙는다 */
+html.dl-app, html.dl-app body { overscroll-behavior: none; -webkit-tap-highlight-color: transparent; }
+html.dl-app #app { box-sizing: border-box; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) 0 env(safe-area-inset-left, 0px); }   /* 노치 · 다이내믹 아일랜드 아래에서 시작 (아래쪽은 --safe-b 가 맡는다) */
+html.dl-app button, html.dl-app summary, html.dl-app [role="button"], html.dl-app .rail-nav { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }   /* 버튼을 길게 눌러도 글자 선택 · 돋보기가 뜨지 않게 */
+html.dl-app .modal-wrap { padding-top: max(20px, env(safe-area-inset-top, 0px)); }

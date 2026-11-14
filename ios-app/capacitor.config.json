@@ -4,7 +4,11 @@
   "webDir": "www",
   "backgroundColor": "#fbf5f2",
   "ios": {
-    "contentInset": "always",
     "backgroundColor": "#fbf5f2"
+  },
+  "plugins": {
+    "Keyboard": {
+      "resize": "native"
+    }
   }
 }

@@ -53,7 +53,9 @@ export function onLang(f: () => void) { subs.add(f); return () => { subs.delete(
 export const useLang = () => useSyncExternalStore(onLang, getLang, getLang);
 
 const warned = new Set<string>();
+const IN_APP = import.meta.env.MODE === 'web' && typeof window !== 'undefined' && !!(window as unknown as { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor?.isNativePlatform?.();
 function raw(key: string): string | undefined {
+  if (IN_APP) { const k = key + '.app', a = dict[k] ?? (en as Dict)[k] ?? (ko as Dict)[k]; if (a !== undefined) return a; }
   const v = dict[key] ?? (en as Dict)[key] ?? (ko as Dict)[key];
   if (v === undefined && !warned.has(key)) { warned.add(key); console.warn('[i18n] 없는 키', key); }
   return v;

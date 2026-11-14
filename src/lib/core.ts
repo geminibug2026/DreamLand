@@ -68,6 +68,7 @@ export function download(name: string, data: BlobPart | Blob, type = 'applicatio
 
 export function pickFiles({ accept = '', multiple = false, dir = false }: { accept?: string; multiple?: boolean; dir?: boolean } = {}) {
   return new Promise<File[]>(resolve => {
+    if (/iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) accept = accept.split(',').map(x => x.trim()).filter(x => x.includes('/')).join(',');   // 아이폰 · 아이패드: 확장자로 거르면 고를 수 없는 파일이 생긴다 — 종류(image/* 등)만 남긴다
     const inp = h<HTMLInputElement>('input', { type: 'file', accept, multiple, style: { display: 'none' } });
     if (dir) inp.webkitdirectory = true;
     inp.addEventListener('change', () => { resolve([...(inp.files || [])]); inp.remove(); });

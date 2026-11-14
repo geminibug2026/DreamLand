@@ -44,6 +44,19 @@ async function appSave(name: string, blob: Blob) {
   const { uri } = await native<{ uri: string }>('Filesystem', 'writeFile', { path, data: await blobToB64(blob), directory: 'CACHE' });
   await native('Share', 'share', { files: [uri] }).catch(() => { /* 공유 창을 그냥 닫은 경우 */ });
 }
+/** 앱을 열 때 한 번: 아이폰에서 거슬리는 것들을 미리 손본다 */
+function appInit() {
+  const root = document.documentElement; root.classList.add('dl-app');
+  // 글자 칸을 누를 때 화면이 확대되지 않게 (아이폰은 16px 보다 작은 칸에서 저절로 확대한다)
+  const vp = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+  if (vp && !/maximum-scale/.test(vp.content)) vp.content += ', maximum-scale=1';
+  // 무음 스위치를 켜 두어도 통화음 · 목소리가 들리게 (iOS 16.4+)
+  try { const as = (navigator as unknown as { audioSession?: { type: string } }).audioSession; if (as) as.type = 'playback'; } catch { /* 지원하지 않는 기기 */ }
+  // 위쪽 시계 · 배터리 글자색을 테마의 밝기에 맞춘다
+  const bars = () => { void native('SystemBars', 'setStyle', { style: root.dataset.tone === 'dark' ? 'DARK' : 'LIGHT' }).catch(() => { }); };
+  bars(); new MutationObserver(bars).observe(root, { attributes: true, attributeFilter: ['data-tone'] });
+}
+if (APP) { try { appInit(); } catch (e) { console.warn('[app]', e); } }
 const rawFetch =(input: string, init?: RequestInit) => (window.__dlFetch || fetch)(input, init);
 // 404 로 답한다 — 앱의 여러 곳이 "서버에 그 기능이 없다(404)"를 보고 화면에서 직접 하는 길로 넘어간다 (Vertex 서비스 계정 서명 등)
 const noServer = () => new Response('{"error":"no server"}', { status: 404, headers: { 'Content-Type': 'text/plain' } });
