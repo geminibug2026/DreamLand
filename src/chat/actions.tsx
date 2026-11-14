@@ -8,7 +8,7 @@ import { ux } from '../features/usersettings';
 import type { Cast, CmdItem, GenOpt, GenType, Motive, Msg, Room, SceneSpec, Swipe } from './types';
 import { DB, S, emit, fmtTime, msgText, newChat, newMsg, uid } from '../lib/core';
 import { go, route } from '../lib/router';
-import { applyRegex, macro, makeCtx, roll } from '../lib/engine';
+import { applyRegex, macro, makeCtx, roll, tpl } from '../lib/engine';
 import { Live, cdHours, inQuietHours, mo, newLater, quietLeft } from '../lib/live';
 import { MOTIVE_ORDER, STATUS, cooldownLeft, pickMotive, planAuto, replyDelay, scheduleOf, wakeIn } from '../lib/f-schedule';
 import { X, runFilters } from '../lib/hooks';
@@ -138,10 +138,11 @@ export const TYPING = '<span class="typing"><i></i><i></i><i></i></span>';
 export function bodyHtml(m: Msg) {
   const s = m.swipes[m.sw] || { text: '' };
   let depth: number | undefined; if (!m.hidden) { depth = 0; for (let i = cur.msgs.length - 1; i >= 0 && cur.msgs[i] !== m; i--) if (!cur.msgs[i].hidden) depth++; }
-  const raw = s.showTr && s.tr ? s.tr : s.text;
+  // 화면에서도 <% … %> 템플릿은 처리한 결과만 보인다 (코드가 글자로 드러나지 않게)
+  const raw = tpl(s.showTr && s.tr ? s.tr : s.text, { vars: (cur.chat?.vars || {}) as Record<string, unknown> });
   const text = runFilters(applyRegex(raw, { who: m.role === 'user' ? 'user' : 'ai', target: 'display', depth, charId: m.charId, chat: cur.chat }), { role: m.role, msg: m, chat: cur.chat });
   const style = m.role === 'system' ? 'plain' : modeOf(cur.chat) === 'talk' && !m.scene ? 'chat' : S.settings.rpBubbles ? 'bubbles' : 'novel';
-  return render(Assets.expand(Illust.strip(text), assetOwners(), `${m.id}:${m.sw}`), { style, prose: m.role !== 'user' });
+  return render(Assets.inline(Assets.expand(Illust.strip(text), assetOwners(), `${m.id}:${m.sw}`), assetOwners()), { style, prose: m.role !== 'user' });
 }
 /** 메시지 옆에 적는 시각: 이야기 시계를 쓰는 방은 이야기 시각, 시각을 쓰지 않는 방은 비움 */
 export const msgClock = (m: Msg, s: Swipe) => { const k = Clock.mode(cur.chat); return k === 'none' ? '' : k === 'story' ? fmtTime(Clock.timeOf(cur.chat, m)) : fmtTime(s.ts || m.ts); };

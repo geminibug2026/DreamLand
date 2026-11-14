@@ -132,6 +132,13 @@ export const Assets = {
   count(owners: Owner[]) { let n = 0; for (const o of owners) n += this.active(o).length; return n; },
   /** 모델에게 알려 줄 이름 목록: 묶음 모드면 angry, happy / 아니면 angry_[1, 2], happy */
   keywords(owners: Owner[]) { return SS().settings.assets.random ? this.names(owners, { base: true }).join(', ') : this.grouped(owners); },
+  /** 화면 표시용: 파일 이름만 적은 그림(<img src="NAVI.png">)을 캐릭터 · 페르소나 에셋에서 찾아 넣는다. 못 찾으면 그대로 둔다 */
+  inline(text: string, owners: Owner[]) {
+    if (!text || !/<img\b/i.test(text)) return text;
+    return text.replace(/(<img\b[^>]*?\bsrc\s*=\s*)(["'])([^"'<>:?#\\/]+?\.(?:png|jpe?g|gif|webp|avif|bmp|svg))\2/gi, (m, pre: string, q: string, file: string) => {
+      const a = this.resolve(owners, file, false); return a ? pre + q + escape(a.data) + q : m;
+    });
+  },
   /** 화면 표시용: {{img::이름}} → 틀에 넣은 <img> */
   expand(text: string, owners: Owner[], seed = '') {
     if (!text || text.indexOf('{{img::') < 0) return text;
