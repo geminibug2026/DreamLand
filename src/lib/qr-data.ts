@@ -49,7 +49,21 @@ export function qrActive(chat?: QChat | null): QrSet[] {
   const off = new Set(chat?.qrOff || []);
   return qrStore().sets.filter(s => s.on !== false && !off.has(s.id) && (s.scope === 'char' ? (chat?.charIds || []).some(id => (s.charIds || []).includes(id)) : s.scope === 'chat' ? (s.chatIds || []).includes(chat?.id as string) : true));
 }
-export const qrFind = (key: unknown, chat?: QChat | null) => { const k = String(key || '').trim(); if (!k) return null; const sets = qrStore().sets, act = chat ? qrActive(chat) : sets; for (const list of [act, sets]) for (const s of list) { const it = s.items.find(i => i.id === k) || s.items.find(i => i.label === k); if (it) return { set: s, item: it }; } return null; };
+/** 이름 비교용: 이모지 · 기호 · 공백 차이를 무시한다 */
+const qrNorm = (x: string) => x.normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
+/** 버튼 찾기: id · 이름, 또는 "세트.이름" (세트 이름은 이모지 · 공백 차이를 봐준다. 그 세트가 없으면 켜진 세트들에서 이름으로 찾는다) */
+export const qrFind = (key: unknown, chat?: QChat | null) => {
+  const k = String(key || '').trim(); if (!k) return null;
+  const sets = qrStore().sets, act = chat ? qrActive(chat) : sets;
+  for (const list of [act, sets]) for (const s of list) { const it = s.items.find(i => i.id === k) || s.items.find(i => i.label === k); if (it) return { set: s, item: it }; }
+  for (let i = k.indexOf('.'); i > 0; i = k.indexOf('.', i + 1)) {
+    const sn = k.slice(0, i).trim(), label = k.slice(i + 1).trim(); if (!label) continue;
+    const pick = (ok: (s: QrSet) => boolean) => { for (const list of [act, sets]) for (const s of list) if (ok(s)) { const it = s.items.find(x => x.label === label) || s.items.find(x => qrNorm(x.label) === qrNorm(label)); if (it) return { set: s, item: it }; } return null; };
+    const f = pick(s => s.name === sn) || pick(s => qrNorm(s.name) === qrNorm(sn)) || pick(() => true);
+    if (f) return f;
+  }
+  return null;
+};
 
 /** Quick Reply 세트(.json) → 세트 */
 export function stQrToSet(j: StQrSet, name?: string): QrSet {
