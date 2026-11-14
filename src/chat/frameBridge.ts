@@ -6,6 +6,7 @@ import { toast } from '../ui';
 import { cur } from './store';
 import { chatApi } from './actions';
 import { appHost, runQrScript } from '../stscript/host';
+import { applyText, clone as cloneData, type MvuData } from '../mvu/engine';
 
 type Obj = Record<string, unknown>;
 type MsgD = Msg & { thData?: Obj };
@@ -46,6 +47,7 @@ frameHooks.call = async (_f, fn, args) => {
     case 'toast': { const [kind, m, title] = args as string[]; toast([title, m].filter(Boolean).join(' — '), (kind || '') as 'ok'); return null; }
     case 'slash': return await runQrScript(String(args[0] || ''));
     case 'emit': return null;
+    case 'mvuParse': { const d = cloneData(args[1]) as MvuData; if (d && typeof d === 'object' && d.stat_data) applyText(String(args[0] ?? ''), d); return d; }   // 글의 갱신 명령을 자료에 적용해 돌려준다 (저장하지 않음)
   }
   if (!chat) throw new Error('no chat open');
   const ms = cur.msgs as MsgD[];

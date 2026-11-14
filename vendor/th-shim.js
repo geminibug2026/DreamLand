@@ -118,6 +118,24 @@
     getCharAvatarPath: function () { return I.charAvatar || ""; }, getCharData: function () { return { name: I.char, avatar: I.charAvatar || "" }; },
     waitGlobalInitialized: function () { return Promise.resolve(); }, builtin: {}
   };
+  // ── 변수 갱신 틀: 카드의 상태창이 찾는 Mvu 전역 ──
+  var isVwd = function (v) { return Array.isArray(v) && v.length === 2 && typeof v[1] === "string"; };
+  function mvuLatest() { var ms = msgs(); for (var i = ms.length - 1; i >= 0; i--) if (ms[i].data && ms[i].data.stat_data) return clone(ms[i].data); return { stat_data: {}, display_data: {}, delta_data: {}, initialized_lorebooks: {}, schema: { type: "object", properties: {} } }; }
+  var Mvu = {
+    events: { VARIABLE_INITIALIZED: "mag_variable_initialized", VARIABLE_UPDATE_STARTED: "mag_variable_update_started", COMMAND_PARSED: "mag_command_parsed", VARIABLE_UPDATE_ENDED: "mag_variable_update_ended", BEFORE_MESSAGE_UPDATE: "mag_before_message_update", SINGLE_VARIABLE_UPDATED: "mag_variable_updated" },
+    getMvuData: function (o) { var d = getVariables(o || { type: "message", message_id: "latest" }); return d && d.stat_data ? d : mvuLatest(); },
+    replaceMvuData: function (d, o) { return replaceVariables(d, o || { type: "message", message_id: "latest" }); },
+    getCurrentMvuData: function () { return mvuLatest(); },
+    replaceCurrentMvuData: function (d) { return replaceVariables(d, { type: "message", message_id: "latest" }); },
+    parseMessage: function (message, old) { return call("mvuParse", [String(message), old]); },
+    getMvuVariable: function (d, path, o) { o = o || {}; var cat = o.category === "display" ? "display_data" : o.category === "delta" ? "delta_data" : "stat_data"; var v = _.get(d && d[cat], path); if (v === undefined) return o.default_value; return isVwd(v) ? v[0] : v; },
+    getRecordFromMvuData: function (d, category) { return (d && d[category === "display" ? "display_data" : category === "delta" ? "delta_data" : "stat_data"]) || {}; },
+    setMvuVariable: function (d, path, value) { if (!d || !d.stat_data || !_.has(d.stat_data, path)) return Promise.resolve(false); var old = _.get(d.stat_data, path); if (isVwd(old)) old[0] = typeof old[0] === "number" && value != null ? Number(value) : value; else _.set(d.stat_data, path, typeof old === "number" && typeof value === "string" ? Number(value) : value); return Promise.resolve(true); },
+    reloadInitVar: function () { return Promise.resolve(false); },
+    isDuringExtraAnalysis: function () { return false; }
+  };
+  window.Mvu = Mvu;
+  setTimeout(function () { fire("global_Mvu_initialized", []); }, 0);
   for (var k in TH) window[k] = TH[k];
   window.TavernHelper = TH;
   window.toastr = toastr;

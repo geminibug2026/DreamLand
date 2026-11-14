@@ -102,6 +102,12 @@ export function roll(expr: unknown): Roll | null {
 export const ordOf = (v: unknown) => { const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN; return Number.isFinite(n) ? n : 100; };
 /** 그 객체 자신의 값만 (프로토타입의 constructor · toString 따위는 없는 것으로) */
 const own = <T,>(o: Record<string, T> | null | undefined, k: string | undefined): T | undefined => o && k != null && Object.prototype.hasOwnProperty.call(o, k) ? o[k] : undefined;
+/** 그룹 대화에서 쉬게 하지 않은 멤버 이름들 */
+function notMuted(c: Ctx): string {
+  const chat = c.chat as (Chat & { muted?: string[] }) | undefined; if (!chat || (chat.charIds || []).length < 2) return '';
+  const off = new Set(chat.muted || []);
+  return chat.charIds.filter(id => !off.has(id)).map(id => (S.get('chars', id) as Char | undefined)?.name).filter(Boolean).join(', ');
+}
 export function macro(textIn: string | null | undefined, c: Ctx = {}): string {
   let text = textIn as string;
   if (!text || (text.indexOf('{{') < 0 && text.indexOf('<') < 0)) return text || '';
@@ -109,7 +115,7 @@ export function macro(textIn: string | null | undefined, c: Ctx = {}): string {
   if (text.indexOf('{{') >= 0 && /\{\{\s*#(if|unless)/i.test(text)) text = condBlocks(text, cond => evalCond(macro(cond, c), condEnv(c)));   // {{#if 조건}}…{{else}}…{{/if}}
   const d = Clock.now(c.chat);   // 방마다 따로 가는 시계 (기본은 현실 시각)
   const simple: Record<string, unknown> = {
-    user: c.user, char: c.char, charifnotgroup: c.char, group: c.group || c.char, persona: c.persona, description: c.description,
+    user: c.user, char: c.char, charifnotgroup: c.char, group: c.group || c.char, groupnotmuted: notMuted(c) || c.group || c.char, persona: c.persona, description: c.description,
     personality: c.personality, scenario: c.scenario, mesexamples: c.mesExamples, model: c.model, input: c.input,
     lastmessage: c.lastMessage, lastusermessage: c.lastUserMessage, lastcharmessage: c.lastCharMessage,
     time: d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }), date: d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }),
@@ -252,14 +258,17 @@ export function runRegexScript(r: Regex, text: string, ctx?: Ctx | null, trace?:
   if (trace) { trace.source = src; trace.matches = []; trace.error = re ? '' : 'compile'; }
   if (!re || !text) return text;
   re.lastIndex = 0;
-  const rep = String(r.replace ?? '').replace(/\{\{match\}\}/gi, '$0');
+  let rep = String(r.replace ?? '').replace(/\{\{match\}\}/gi, '$0');
+  // 바꿀 문장 안 스크립트의 한 줄 주석(// …)에 가져온 글이 들어가는 자리: 여러 줄이면 주석 밖으로 새어 스크립트가 통째로 죽는다 → 그 자리만 한 줄로 편다
+  if (rep.includes('<script') && rep.includes('//')) rep = rep.replace(/^[ \t]*\/\/[^\n]*$/gm, line => line.replace(/\$(\d+)/g, '$\u0001$1'));
   const trims = arr(r.trim as string[]).filter(t => typeof t === 'string' && t).map(t => (ctx ? macro(t, ctx) : t)).filter(Boolean);
   return text.replace(re, (...a: unknown[]) => {
     const named = typeof a[a.length - 1] === 'object' ? a.pop() as Record<string, string | undefined> : null;
     a.pop(); const index = a.pop() as number, caps = a.slice(1) as (string | undefined)[];
-    const fill = (cutting: boolean) => rep.replace(/\$(\d+)|\$<([^>]+)>/g, (_, n: string, name: string) => {
+    const fill = (cutting: boolean) => rep.replace(/\$(\u0001?)(\d+)|\$<([^>]+)>/g, (_, flat: string, n: string, name: string) => {
       let v = name ? named?.[name] : (+n === 0 ? a[0] as string : caps[+n - 1]);
       if (!v) return '';
+      if (flat) v = v.replace(/\s*\r?\n\s*/g, ' ');
       if (cutting) for (const t of trims) v = v.split(t).join('');   // 다듬기 문자열은 가져온 부분($n · {{match}})에서만 지운다
       return v;
     });
