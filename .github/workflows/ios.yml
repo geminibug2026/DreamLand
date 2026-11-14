@@ -30,9 +30,11 @@ jobs:
 
       - name: 버전 정하기
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/ios-v* ]]; then V="${GITHUB_REF_NAME#ios-v}"; else V="0.0.$GITHUB_RUN_NUMBER"; fi
-          echo "APP_VERSION=$V" >> "$GITHUB_ENV"
-          echo "IPA_NAME=Dreamland-iOS-$V-unsigned.ipa" >> "$GITHUB_ENV"
+          # ios-v0.1.0-beta1 처럼 뒤에 -무엇 이 붙은 꼬리표는 시험판(pre-release)으로 올린다
+          if [[ "$GITHUB_REF" == refs/tags/ios-v* ]]; then LABEL="${GITHUB_REF_NAME#ios-v}"; else LABEL="0.0.$GITHUB_RUN_NUMBER"; fi
+          echo "APP_LABEL=$LABEL" >> "$GITHUB_ENV"
+          echo "APP_VERSION=${LABEL%%-*}" >> "$GITHUB_ENV"
+          echo "IPA_NAME=Dreamland-iOS-$LABEL-unsigned.ipa" >> "$GITHUB_ENV"
 
       - name: 웹 버전 빌드
         run: |
@@ -88,7 +90,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: dreamland-ios-${{ env.APP_VERSION }}
+          name: dreamland-ios-${{ env.APP_LABEL }}
           path: out/
           retention-days: 7
 
@@ -97,6 +99,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" out/* \
-            --title "Dreamland iOS $APP_VERSION" \
+          PRE=""; if [[ "$APP_LABEL" == *-* ]]; then PRE="--prerelease"; fi
+          gh release create "$GITHUB_REF_NAME" out/* $PRE \
+            --title "Dreamland iOS $APP_LABEL" \
             --notes "아이폰 · 아이패드용 설치 파일(서명하지 않은 IPA)입니다. 설치 방법은 README 의 「아이폰 앱」을 봐 주세요."
