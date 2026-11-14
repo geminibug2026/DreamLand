@@ -5,7 +5,7 @@ import { Form, LibraryPage, Shelf, confirmBox, stripShelf, toast, useDragSort, t
 import { PresetVarsEditor } from '../editors/PresetVars';
 import type { Block, Preset } from '../editors/types';
 import { editorApi, useBump, useDebounced, type EditorApi } from '../editors/parts';
-import { go } from '../lib/router';
+import { go, route } from '../lib/router';
 import { errMsg } from '../editors/refresh';
 import { S } from '../lib/core';
 import * as engine from '../lib/engine';
@@ -33,10 +33,10 @@ function PresetEditor({ p, api }: { p: Preset; api: EditorApi }) {
   const drag = useDragSort((from, to) => moveBlock(from, to));
   // 방향키로 옮긴 뒤에는 그 줄의 손잡이를 다시 잡는다
   useLayoutEffect(() => { if (focus.current >= 0) { list.current?.children[focus.current]?.querySelector<HTMLElement>('.grip')?.focus(); focus.current = -1; } });
-  const active = p.id === S.settings.activePreset;
+  const active = p.id === S.settings.activePreset, here = !active && hereId() === p.id;   // here: 기본은 아니지만 방금 보던 대화가 (캐릭터 연결로) 쓰는 프리셋
   return <div className="editor">
     <header className="editor-head"><h2>{p.name}</h2><div className="row">
-      {active ? <em className="badge on">{t('presets.inUse')}</em> : <Btn label={t('presets.use')} ic="check" cls="primary" onClick={() => { S.set({ activePreset: p.id }); api.refresh(); }} />}
+      {active ? <em className="badge on">{t('presets.inUse')}</em> : here ? <em className="badge on">{t('presets.inUseHere')}</em> : <Btn label={t('presets.use')} ic="check" cls="primary" onClick={() => { S.set({ activePreset: p.id }); api.refresh(); }} />}
       <IconBtn ic="copy" title={t('common.duplicate')} onClick={async () => { await S.save('presets', { ...stripShelf(structuredClone(p)), id: uid(), name: p.name + ' (사본)', src: '', folder: p.folder }, true); api.refresh(); }} />
       <IconBtn ic="code" title={t('presets.regex', { n: (p.regex || []).length })} onClick={() => go('regex', 'preset:' + p.id)} />
       <IconBtn ic="import" title={t('common.export')} onClick={() => download(`${p.name}.dreamland-preset.json`, JSON.stringify(stripShelf(p), null, 2))} />
@@ -76,8 +76,12 @@ function PresetEditor({ p, api }: { p: Preset; api: EditorApi }) {
   </div>;
 }
 
+/** 대화 화면에서 넘어왔으면 그 대화가 실제로 쓰는 프리셋 (캐릭터에 연결한 것 포함) */
+const hereId = () => { const c = route.from === 'chat' ? S.get('chats', S.settings.lastChat) : null; return c ? S.presetFor(c).id : ''; };
+
 function PresetsPage({ arg }: { arg?: unknown }) {
-  return <LibraryPage<Preset> arg={arg} title={t('presets.title')} eyebrow="preset" coll="presets" ic="sliders" create={() => { const p = core.defaultPreset(); p.name = '새 프리셋'; return p; }} label={p => p.name}
+  // 들어오면 쓰고 있는 프리셋이 바로 열리고, 목록에서 고르면 그 프리셋을 쓴다
+  return <LibraryPage<Preset> arg={arg} initial={hereId() || S.settings.activePreset} openFirst switcher onPick={id => { if (S.settings.activePreset !== id) S.set({ activePreset: id }); }} title={t('presets.title')} eyebrow="preset" coll="presets" ic="sliders" create={() => { const p = core.defaultPreset(); p.name = '새 프리셋'; return p; }} label={p => p.name}
     sub={p => t('presets.sub', { n: p.blocks.filter(b => b.enabled).length }) + (p.id === S.settings.activePreset ? ' · ' + t('presets.inUse') : '')}
     actions={[{ ic: 'import', title: t('presets.import'), onclick: async draw => {
       const [f] = await core.pickFiles({ accept: '.json' }); if (!f) return;

@@ -5232,6 +5232,8 @@
   "ui.picker.title": "캐릭터 고르기",
   "ui.lib.new": "새로 만들기",
   "ui.lib.back": "목록으로",
+  "ui.lib.switch": "목록 열기",
+  "presets.inUseHere": "이 대화에서 사용 중",
   "ui.lib.empty": "왼쪽에서 항목을 고르거나 새로 만들어 보세요.",
   "ui.searchByName": "이름으로 찾기",
   "ui.noMatch": "찾는 항목이 없어요.",

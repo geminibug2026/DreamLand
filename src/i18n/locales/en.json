@@ -5290,6 +5290,8 @@
   "ui.picker.title": "Choose characters",
   "ui.lib.new": "Create new",
   "ui.lib.back": "Back to list",
+  "ui.lib.switch": "Open the list",
+  "presets.inUseHere": "In use in this chat",
   "ui.lib.empty": "Pick an item on the left or create a new one.",
   "ui.searchByName": "Search by name",
   "ui.noMatch": "No matching items.",

@@ -5232,6 +5232,8 @@
   "ui.picker.title": "选择角色",
   "ui.lib.new": "新建",
   "ui.lib.back": "返回列表",
+  "ui.lib.switch": "打开列表",
+  "presets.inUseHere": "此对话正在使用",
   "ui.lib.empty": "请在左侧选择一项或新建。",
   "ui.searchByName": "按名称搜索",
   "ui.noMatch": "没有找到项目。",

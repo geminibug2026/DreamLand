@@ -1,1 +1,0 @@
-export{t as go}from"./router-D-1iBdo2.js";

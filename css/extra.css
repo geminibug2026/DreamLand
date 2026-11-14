@@ -299,3 +299,12 @@
 .chat-list > .pager .pg-info { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .8em; }
 .chat-list > .pager .pg-size { flex: none; width: auto; min-width: 0; height: 32px; padding: 0 22px 0 8px; font-size: .82em; }
 @media (max-width: 820px) { .chat-list > .pager .pg-step { width: 40px; min-width: 40px; height: 40px; } .chat-list > .pager .pg-size { height: 40px; } }
+
+/* 목록 화면: 좁은 화면에서 편집기 위에 두는 "이름 ▾ + 도구" 줄 (누르면 목록) */
+.lib-switch { display: none; }
+@media (max-width: 820px) {
+  .lib-switch { display: flex; align-items: center; gap: 4px; margin: 10px 12px 0; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
+  .lib-switch-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; text-align: left; padding: 6px 2px; font: 800 1.15em var(--display); }
+  .lib-switch-name b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .lib-switch-name .ic { flex: none; color: var(--dim); }
+  .lib.has-switch .lib-editor .editor-head h2 { display: none; } .lib.has-switch .lib-editor .editor-head { justify-content: flex-end; }
+}

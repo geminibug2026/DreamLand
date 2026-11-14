@@ -3,7 +3,7 @@ import { S, emit } from './core';
 
 export type PageRender = (root: HTMLElement, arg?: unknown) => unknown;
 const pages: Record<string, PageRender> = {};
-export const route: { page: string; arg: unknown } = { page: '', arg: null };
+export const route: { page: string; arg: unknown; from: string } = { page: '', arg: null, from: '' };
 export const registerPage = (name: string, render: PageRender) => { pages[name] = render; };
 export function go(page: string, arg?: unknown, fromHistory?: boolean) {
   if (!pages[page]) page = 'home';
@@ -11,6 +11,7 @@ export function go(page: string, arg?: unknown, fromHistory?: boolean) {
     const st = history.state as { dl?: number; page?: string; arg?: unknown } | null, next = { dl: 1, page, arg: arg ?? null };
     if (st?.dl !== 1) history.replaceState(next, ''); else if (st.page !== page || st.arg !== next.arg) history.pushState(next, '');
   } catch { }
+  if (route.page && route.page !== page) route.from = route.page;   // 바로 앞 화면 (같은 화면을 다시 그릴 때는 그대로)
   route.page = page; route.arg = arg;
   const root = document.getElementById('page') as HTMLElement;
   root.className = 'page-' + page; root.replaceChildren();

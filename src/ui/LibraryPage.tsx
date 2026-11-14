@@ -34,19 +34,28 @@ export interface LibraryProps<T extends { id: string }> {
   /** 목록 자리를 직접 그린다 (정렬 · 폴더 · 쪽 나누기 등). item(x) 는 기본 줄, pick(id) 는 그 항목 고르기 */
   /** 기본 목록에 검색 + 쪽 나누기를 붙인다. id 는 한 쪽 개수를 기억할 이름, text 는 검색할 글 */
   paged?: { id: string; perPage?: number; text?: (o: T) => string; placeholder?: string };
+  /** arg 가 없을 때 처음 고를 항목 */
+  initial?: string;
+  /** 좁은 화면에서도 목록이 아니라 편집기부터 연다 */
+  openFirst?: boolean;
+  /** 목록에서 항목을 고를 때 (새로 만든 것 포함) */
+  onPick?: (id: string) => void;
+  /** 좁은 화면의 편집기 위에 "이름 ▾ + 도구" 줄을 둔다 (누르면 목록). 넓은 화면에서는 옆 목록이 그 일을 한다 */
+  switcher?: boolean;
   list?: (ctx: { all: T[]; current?: string; item: (x: T) => ReactNode; pick: (id: string) => void; redraw: () => void }) => ReactNode;
 }
 
 interface AnyStore { get(coll: string, id: string): unknown; save(coll: string, o: unknown, silent?: boolean): Promise<unknown> }
 
-export function LibraryPage<T extends { id: string }>({ arg, title, eyebrow, coll, ic, create, label, sub, thumb, trail, note, editor, actions = [], empty, list, paged }: LibraryProps<T>) {
+export function LibraryPage<T extends { id: string }>({ arg, title, eyebrow, coll, ic, create, label, sub, thumb, trail, note, editor, actions = [], empty, list, paged, initial, openFirst, onPick, switcher }: LibraryProps<T>) {
   const St = S as unknown as AnyStore & Record<string, unknown>;
   const all = (St[coll] as T[] | undefined) || [];
-  const [current, setCurrent] = useState<string | undefined>(() => (typeof arg === 'string' && arg) || all[0]?.id);
-  const [show, setShow] = useState(!!arg);
+  const [current, setCurrent] = useState<string | undefined>(() => (typeof arg === 'string' && arg) || (initial && all.some(x => x.id === initial) ? initial : all[0]?.id));
+  const [show, setShow] = useState(!!arg || !!openFirst);
   const [gen, draw] = useReducer((x: number) => x + 1, 0);       // 편집기까지 새로
   const [, redraw] = useReducer((x: number) => x + 1, 0);        // 목록만
-  const pick = (id: string) => { setCurrent(id); route.arg = id; setShow(true); draw(); };
+  const pick = (id: string) => { onPick?.(id); setCurrent(id); route.arg = id; setShow(true); draw(); };
+  const addNew = async () => { const n = create(); await St.save(coll, n, true); pick(n.id); };
   const o = current ? St.get(coll, current) as T | undefined : undefined;
   const row = (x: T) => {
     const item = <button key={x.id} className={'lib-item' + (x.id === current ? ' on' : '') + (thumb ? ' has-thumb' : '')} onClick={() => pick(x.id)}>
@@ -55,13 +64,13 @@ export function LibraryPage<T extends { id: string }>({ arg, title, eyebrow, col
     return trail ? <div key={x.id} className={'lib-row' + (x.id === current ? ' on' : '')}>{item}{trail(x, redraw)}</div> : item;
   };
 
-  return <section className={'lib' + (show ? ' show-editor' : '')}>
+  return <section className={'lib' + (show ? ' show-editor' : '') + (switcher ? ' has-switch' : '')}>
     <aside className="lib-side">
       <header className="lib-head">
         <div className="phead-text"><span className="eyebrow">{`${eyebrow || coll} · ${String(all.length).padStart(2, '0')}`}</span><h1>{title}</h1></div>
         <div className="row">
           {actions.map((a, i) => <IconBtn key={i} ic={a.ic} title={a.title} onClick={() => a.onclick(draw)} />)}
-          <IconBtn ic="plus" title={tr('ui.lib.new')} cls="accent" onClick={async () => { const n = create(); await St.save(coll, n, true); pick(n.id); }} />
+          <IconBtn ic="plus" title={tr('ui.lib.new')} cls="accent" onClick={addNew} />
         </div>
       </header>
       {note ? <div className="lib-note">{note()}</div> : null}
@@ -70,7 +79,11 @@ export function LibraryPage<T extends { id: string }>({ arg, title, eyebrow, col
         : <div className="lib-list">{all.map(x => row(x))}</div>}
     </aside>
     <div className="lib-editor">
-      <Btn label={tr('ui.lib.back')} ic="left" cls="ghost lib-back" onClick={() => setShow(false)} />
+      {switcher ? <div className="lib-switch">
+        <button type="button" className="lib-switch-name" title={tr('ui.lib.switch')} onClick={() => setShow(false)}><b>{o ? label(o) : title}</b><Icon name="down" size={16} /></button>
+        {actions.map((a, i) => <IconBtn key={i} ic={a.ic} title={a.title} onClick={() => a.onclick(draw)} />)}
+        <IconBtn ic="plus" title={tr('ui.lib.new')} cls="accent" onClick={addNew} />
+      </div> : <Btn label={tr('ui.lib.back')} ic="left" cls="ghost lib-back" onClick={() => setShow(false)} />}
       <Fragment key={gen}>{o
         ? editor(o, { redraw, save: () => St.save(coll, o, true), reselect: id => { setCurrent(id); draw(); } })
         : <div className="empty"><Icon name={ic} size={34} /><p>{empty || tr('ui.lib.empty')}</p></div>}</Fragment>
