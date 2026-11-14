@@ -67,3 +67,7 @@
 
 /* 연출 지시 숨기기 */
 .hide-direct .msgs .msg.is-direct { display: none; }
+
+/* /buttons 물음에 든 HTML */
+.qr-ask { margin: 0 0 14px; line-height: 1.6; }
+.qr-ask p { margin: 0 0 6px; }

@@ -4,6 +4,7 @@ import { X } from '../lib/hooks';
 import * as E from '../lib/engine';
 import { qrActive, qrFind, qrSave, qrStore, type QrItem, type QrSet } from '../lib/qr-data';
 import { openModal, promptBox, toast } from '../ui';
+import { sanitize } from '../lib/format';
 import { t } from '../i18n';
 import { chatApi, command, onStopScripts, trackScript } from '../chat/actions';
 import type { Chat, Msg } from '../lib/types';
@@ -28,10 +29,13 @@ function range(spec: string, n: number): number[] {
   if (m) { const a = fix(+m[1]), b = fix(+m[2]); const out: number[] = []; for (let i = Math.max(0, a); i <= Math.min(n - 1, b); i++) out.push(i); return out; }
   const i = fix(+s); return Number.isInteger(i) && i >= 0 && i < n ? [i] : [];
 }
+// 물음에 HTML 이 들어 있으면(실리태번처럼) 정화해서 그려 준다
+const hasHtml = (s: string) => /<[a-z][^>]*>/i.test(s);
 const choose = (text: string, labels: string[]) => new Promise<string>(res => {
   let done = false;
-  const m = openModal({ title: text || t('qr.run.choose'), onClose: () => { if (!done) res(''); },
-    body: <div className="row wrap">{labels.map(l => <button key={l} type="button" className="btn ghost" onClick={() => { done = true; res(l); m.close(); }}>{l}</button>)}</div> });
+  const rich = hasHtml(text || '');
+  const m = openModal({ title: rich ? t('qr.run.choose') : text || t('qr.run.choose'), onClose: () => { if (!done) res(''); },
+    body: <>{rich ? <div className="qr-ask" dangerouslySetInnerHTML={{ __html: sanitize(text) }} /> : null}<div className="row wrap">{labels.map(l => <button key={l} type="button" className="btn ghost" onClick={() => { done = true; res(l); m.close(); }}>{l}</button>)}</div></> });
 });
 
 export function appHost(started = Date.now()): Host {
