@@ -120,6 +120,8 @@ function framePlaceholder(code: string) {
   return `<div class="dl-frame" data-frame="${id}"></div>`;
 }
 let watching = false;
+/** 화면(iframe)과 앱 사이 연결을 켠다 (메시지 밖에서 만든 화면도 쓴다) */
+export function bridgeFrames() { watchFrames(); }
 function watchFrames() {
   if (watching || typeof document === 'undefined') return; watching = true;
   window.addEventListener('message', e => {

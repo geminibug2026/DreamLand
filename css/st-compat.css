@@ -1,0 +1,27 @@
+/* 실리태번 스크립트가 쓰는 화면 이름들 (마법봉 메뉴 · 오른쪽 클릭 메뉴) 을 드림랜드 모양으로 */
+.st-ext-menu {
+  position: fixed; z-index: 9000; min-width: 200px; max-width: 280px; max-height: 60vh; overflow-y: auto;
+  margin: 0; padding: 6px; list-style: none;
+  background: var(--paper, #fff); color: var(--ink, #222);
+  border: 1px solid var(--line, #d8d8d8); border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, .16);
+}
+.st-ext-menu[hidden] { display: none; }
+.st-ext-menu > .list-group-item, .st-ext-menu > * {
+  display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 7px; cursor: pointer; font-size: 14px;
+}
+.st-ext-menu > *:hover { background: var(--hover, rgba(127, 127, 127, .12)); }
+
+.ctx-blocker { position: fixed; inset: 0; z-index: 9000; background: transparent; }
+.ctx-menu {
+  position: absolute; margin: 0; padding: 6px; list-style: none; min-width: 170px; max-height: 70vh; overflow-y: auto;
+  background: var(--paper, #fff); color: var(--ink, #222);
+  border: 1px solid var(--line, #d8d8d8); border-radius: 10px; box-shadow: 0 12px 32px rgba(0, 0, 0, .16);
+}
+.ctx-menu .list-group-item { padding: 9px 12px; border-radius: 7px; font-size: 14px; list-style: none; }
+.ctx-menu .ctx-header { font-size: 12px; opacity: .65; cursor: default; padding-bottom: 6px; }
+.ctx-menu .ctx-item { cursor: pointer; }
+.ctx-menu .ctx-item:hover { background: var(--hover, rgba(127, 127, 127, .12)); }
+.flex-container { display: flex; }
+.flexGap5 { gap: 5px; }
+.interactable { cursor: pointer; }
+.dl-script-frame { display: none; }

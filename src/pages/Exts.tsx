@@ -5,6 +5,8 @@ import * as libExt from '../lib/ext';
 import * as core from '../lib/core';
 import { PageHead, confirmBox, promptBox } from '../studio/parts';
 import { t } from '../i18n';
+import * as TH from '../lib/thscripts';
+import { toast } from '../ui';
 
 interface ExtItem { id: string; name: string; version?: string; author?: string; description?: string; source: 'folder' | 'installed' }
 
@@ -39,9 +41,35 @@ function Exts() {
         </div>;
       }) : <p className="dim">{t('exts.empty')}</p>}</div>
       <p className="hint">{t('exts.folderHint')}</p></div>
+    <ThScripts />
     <div className="card"><h3 className="form-sec">{t('exts.make.title')}</h3>
       <p className="hint">{t('exts.make.hint')}</p>
       <details className="api-doc"><summary>{t('exts.make.template')}</summary><pre>{E.TEMPLATE}</pre></details>
       <div className="row"><Btn label={t('exts.make.download')} ic="import" onClick={() => C.download('my-extension.js', E.TEMPLATE, 'text/javascript')} /></div></div>
   </section>;
+}
+
+/** 실리태번 스크립트: 가져오기 · 켜기(처음엔 권한 확인) · 지우기 */
+function ThScripts() {
+  const redraw = useEvents('thscripts:changed');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { void TH.load().then(redraw); }, []);
+  const pick = async () => {
+    const files = await core.pickFiles({ accept: '.json', multiple: true });
+    let n = 0;
+    for (const f of files) { try { const list = TH.parseScripts(JSON.parse(await f.text())); if (list.length) { await TH.addScripts(list); n += list.length; } } catch { /* 아래에서 알린다 */ } }
+    toast(n ? t('ths.added', { n }) : t('ths.bad'), n ? 'ok' : 'err');
+  };
+  const toggle = async (sc: TH.ThScript, on: boolean) => {
+    if (on && !sc.trusted && !(await confirmBox(t('ths.trust', { name: sc.name }), t('ths.trustOk'), true))) return;
+    await TH.setEnabled(sc.id, on, on);
+  };
+  return <div className="card"><div className="row wrap"><h3 className="form-sec">{t('ths.title')}</h3>
+      <Btn label={t('ths.import')} ic="import" onClick={() => void pick()} /></div>
+    <p className="hint">{t('ths.intro')}</p>
+    <div className="ext-list">{TH.scripts.length ? TH.scripts.map(sc => <div className="ext-card" key={sc.id}><div className="ext-ic"><Icon name="code" size={20} /></div>
+      <div className="ext-meta"><b>{sc.name} {sc.enabled ? <span className="badge">{t('ths.running')}</span> : null}</b>{sc.info ? <small>{sc.info}</small> : null}</div>
+      <IconBtn ic="trash" title={t('common.delete')} onClick={async () => { if (await confirmBox(t('ths.deleteConfirm', { name: sc.name }), t('common.delete'), true)) await TH.removeScript(sc.id); }} />
+      <label className="switch"><input type="checkbox" checked={sc.enabled} onChange={e => void toggle(sc, e.target.checked)} /><i /></label>
+    </div>) : <p className="dim">{t('ths.empty')}</p>}</div></div>;
 }

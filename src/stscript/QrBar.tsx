@@ -1,6 +1,7 @@
 // 입력창 위 퀵 리플라이 줄: 꺼내 둔(★) 버튼 → 세트마다 칩 하나(누르면 서랍) 또는 늘어놓은 버튼
 // 오른쪽 클릭(휴대폰은 길게 누르기): 꺼내 두기 · 다른 세트로 옮기기/베끼기 · 편집 · 이어 둔 세트의 버튼(실리태번의 컨텍스트 메뉴)
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from 'react';
+import * as TH from '../lib/thscripts';
 import { createPortal } from 'react-dom';
 import { Icon, useEvents } from '../kit';
 import { menu, type MenuItem } from '../ui';
@@ -32,7 +33,7 @@ export function qrItemMenu(el: Element, it: QrItem, set: QrSet, run?: (fn: () =>
 }
 
 export function QrBar({ chat }: { chat: Chat }) {
-  useEvents('qr:changed', 'chat:open');
+  useEvents('qr:changed', 'chat:open', 'thscripts:menu', 'thscripts:changed');
   const [busy, setBusy] = useState('');
   const [tray, setTray] = useState('');
   const hold = useRef<{ timer: number; fired: boolean }>({ timer: 0, fired: false });
@@ -50,19 +51,20 @@ export function QrBar({ chat }: { chat: Chat }) {
     onPointerDown={(e: PointerEvent<HTMLButtonElement>) => { hold.current.fired = false; if (e.pointerType !== 'touch') return; const el = e.currentTarget; clearTimeout(hold.current.timer); hold.current.timer = window.setTimeout(() => { hold.current.fired = true; qrItemMenu(el, i, s, fn => void press(i.id, fn)); }, 500); }}
     onPointerUp={() => clearTimeout(hold.current.timer)} onPointerLeave={() => clearTimeout(hold.current.timer)} onPointerCancel={() => clearTimeout(hold.current.timer)}
   >{i.pinned ? <span className="qr-pin" aria-hidden>✦</span> : null}{i.stIcon && i.showLabel === false ? <span className="qr-ic-text">{i.label}</span> : i.label}</button>;
-  const pinned = sets.flatMap(s => visible(s).filter(i => i.pinned).map(i => btn(i, s, 'chip qr-chip')));
+  const pinned = sets.flatMap(s => visible(s).filter(i => i.pinned).map(i => btn(i, s, 'chip qr-chip qr--button')));
   const cur = sets.find(s => s.id === tray);
   return <>{pinned.length ? <span className="qr-set qr-pinned">{pinned}</span> : null}
     {sets.map(s => qrInline(s)
-      ? <span className="qr-set" key={s.id} title={sets.length > 1 ? s.name : undefined}>{visible(s).filter(i => !i.pinned).map(i => btn(i, s, 'chip qr-chip'))}</span>
+      ? <span className="qr-set" key={s.id} title={sets.length > 1 ? s.name : undefined}>{visible(s).filter(i => !i.pinned).map(i => btn(i, s, 'chip qr-chip qr--button'))}</span>
       : <button key={s.id} type="button" className={'chip qr-setchip' + (tray === s.id ? ' on' : '')} aria-expanded={tray === s.id} title={s.name}
         onClick={() => setTray(tray === s.id ? '' : s.id)}><span className="qr-setname">{s.name}</span><small>{visible(s).length}</small></button>)}
+    {TH.menuItems() ? <button type="button" className="chip ghost qr-wand" title={t('ths.menu')} onClick={e => TH.toggleMenu(e.currentTarget)}>🪄</button> : null}
     <button ref={anchor} type="button" className="chip ghost qr-more" title={t('qr.bar.manage')} onClick={e => menu(e.currentTarget, [
       { label: t('qr.bar.manage'), ic: 'sliders', onclick: () => go('qr') },
       { label: t('qr.bar.hide'), ic: 'eye', onclick: () => { qrStore().bar = false; qrSave(); } },
     ])}>⋯</button>
     {cur ? <Tray sets={sets} set={cur} anchor={anchor} pick={setTray} close={() => setTray('')}
-      btn={(i, s) => btn(i, s, 'qr-cell', () => { if (qrTrayClose(s)) setTray(''); })} /> : null}</>;
+      btn={(i, s) => btn(i, s, 'qr-cell qr--button', () => { if (qrTrayClose(s)) setTray(''); })} /> : null}</>;
 }
 
 /** 서랍: PC 는 입력창 위에 붙은 판, 휴대폰은 아래에서 올라오는 시트 */
