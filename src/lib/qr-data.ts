@@ -61,6 +61,14 @@ export const qrFind = (key: unknown, chat?: QChat | null) => {
     const pick = (ok: (s: QrSet) => boolean) => { for (const list of [act, sets]) for (const s of list) if (ok(s)) { const it = s.items.find(x => x.label === label) || s.items.find(x => qrNorm(x.label) === qrNorm(label)); if (it) return { set: s, item: it }; } return null; };
     const f = pick(s => s.name === sn) || pick(s => qrNorm(s.name) === qrNorm(sn)) || pick(() => true);
     if (f) return f;
+    // 이름이 맞는 세트에 그 버튼이 없으면: 마지막 낱말(예: "… 대필")이 같은 버튼이 그 세트에 딱 하나일 때 그것을 쓴다 (세트 판이 바뀌며 버튼 이름만 달라진 경우)
+    const tail = (x: string) => qrNorm(x.trim().split(/\s+/).pop() || '');
+    const want = tail(label);
+    if (want) for (const list of [act, sets]) for (const st of list) {
+      if (qrNorm(st.name) !== qrNorm(sn)) continue;
+      const hit = st.items.filter(x => tail(x.label) === want);
+      if (hit.length === 1) return { set: st, item: hit[0] };
+    }
   }
   return null;
 };
