@@ -4023,6 +4023,7 @@
   "assets.cmd.noChar": "열린 대화의 캐릭터가 없어요",
   "assets.cmd.linked": "에셋 링크를 쓰는 캐릭터에는 올릴 수 없어요",
   "assets.cmd.uploading": "에셋 올리는 중…",
+  "events.cmd.emit": "메시지 속 HTML 화면에 이름 붙은 이벤트를 보냅니다 (event=\"이름\" data=값)",
   "assets.cmd.gallery": "지금 캐릭터의 에셋 갤러리를 엽니다",
   "assets.cmd.refresh": "에셋 보관함을 다시 읽어 키워드를 새로 고칩니다",
   "assets.cmd.noChat": "열린 대화가 없어요",

@@ -4070,6 +4070,7 @@
   "assets.cmd.noChar": "The open chat has no character",
   "assets.cmd.linked": "Can't upload to a character using an asset link",
   "assets.cmd.uploading": "Uploading asset…",
+  "events.cmd.emit": "Send a named event to the HTML screens in messages (event=\"name\" data=value)",
   "assets.cmd.gallery": "Open the current character's asset gallery",
   "assets.cmd.refresh": "Reload the asset library and refresh keywords",
   "assets.cmd.noChat": "No open chat",

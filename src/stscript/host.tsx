@@ -51,9 +51,11 @@ export function appHost(started = Date.now()): Host {
     getGlobal: k => { const v = S.settings.globalVars?.[k]; return v === undefined ? undefined : String(v); },
     setGlobal: (k, v) => { (S.settings.globalVars ||= {})[k] = v; S.saveSettings(); },
     delGlobal: k => { delete S.settings.globalVars?.[k]; S.saveSettings(); },
-    async fallback(name, arg) {
+    async fallback(name, arg, named = {}) {
       const ext = X.commands.get('/' + name);
-      if (ext) { const r = await ext.run(arg, chatApi); return typeof r === 'string' ? r : ''; }
+      // 확장 명령은 글 한 줄로 받으므로 이름=값 인자도 앞에 붙여 넘긴다
+      const full = [...Object.entries(named).map(([k, v]) => `${k}=${JSON.stringify(v)}`), arg].filter(Boolean).join(' ');
+      if (ext) { const r = await ext.run(full, chatApi); return typeof r === 'string' ? r : ''; }
       if (NATIVE.has(name)) { await command(`/${name} ${arg}`.trim()); return ''; }
       return null;
     },

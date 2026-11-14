@@ -4023,6 +4023,7 @@
   "assets.cmd.noChar": "当前打开的对话没有角色",
   "assets.cmd.linked": "无法上传到使用素材链接的角色",
   "assets.cmd.uploading": "正在上传素材…",
+  "events.cmd.emit": "向消息中的 HTML 界面发送命名事件 (event=\"名称\" data=值)",
   "assets.cmd.gallery": "打开当前角色的素材图库",
   "assets.cmd.refresh": "重新读取素材库并刷新关键词",
   "assets.cmd.noChat": "没有打开的对话",
