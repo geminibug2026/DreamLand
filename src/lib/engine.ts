@@ -271,7 +271,7 @@ export function runRegexScript(r: Regex, text: string, ctx?: Ctx | null, trace?:
   const trims = arr(r.trim as string[]).filter(t => typeof t === 'string' && t).map(t => (ctx ? macro(t, ctx) : t)).filter(Boolean);
   return text.replace(re, (...a: unknown[]) => {
     const named = typeof a[a.length - 1] === 'object' ? a.pop() as Record<string, string | undefined> : null;
-    a.pop(); const index = a.pop() as number, caps = a.slice(1) as (string | undefined)[];
+    const whole = a.pop() as string, index = a.pop() as number, caps = a.slice(1) as (string | undefined)[];
     const fill = (cutting: boolean) => rep.replace(/\$(\u0001?)(\d+)|\$<([^>]+)>/g, (_, flat: string, n: string, name: string) => {
       let v = name ? named?.[name] : (+n === 0 ? a[0] as string : caps[+n - 1]);
       if (!v) return '';
@@ -279,7 +279,12 @@ export function runRegexScript(r: Regex, text: string, ctx?: Ctx | null, trace?:
       if (cutting) for (const t of trims) v = v.split(t).join('');   // 다듬기 문자열은 가져온 부분($n · {{match}})에서만 지운다
       return v;
     });
-    const cut = fill(true), out = ctx ? macro(cut, ctx) : cut;         // 매크로는 맨 마지막에
+    const cut = fill(true);
+    let out = ctx ? macro(cut, ctx) : cut;         // 매크로는 맨 마지막에
+    // 바꾼 결과가 코드블록(```)이면 줄 맨 앞에 와야 블록으로 읽힌다: 문장 한가운데에 끼었으면 앞뒤를 줄바꿈으로 떼어 준다
+    if (/^\s*```/.test(out) && index > 0 && !/\n\s*$/.test(whole.slice(Math.max(0, index - 4), index))) out = '\n\n' + out.replace(/^\s+/, '');
+    const after = index + String(a[0]).length;
+    if (/```\s*$/.test(out) && after < whole.length && !/^[^\S\n]*\n/.test(whole.slice(after, after + 4))) out = out.replace(/\s+$/, '') + '\n\n';
     if (trace && (trace.matches as Match[]).length < 2000) (trace.matches as Match[]).push({ index, match: a[0] as string, groups: caps, named, raw: trims.length ? fill(false) : cut, cut, out });
     return out;
   });
