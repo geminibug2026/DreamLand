@@ -5,6 +5,9 @@ import { Server } from './server';
 import { frameHooks, framePost, bridgeFrames } from './format';
 import { ejs } from './ejs';
 import { cur } from '../chat/store';
+import { confirmBox } from '../ui';
+import { t } from '../i18n';
+import type { Char } from './types';
 
 export interface ThScript { id: string; name: string; content: string; enabled: boolean; trusted: boolean; info?: string; ts?: number }
 
@@ -122,4 +125,36 @@ export function load() {
   })();
 }
 
-on('chat:open', () => framePost({ dlEvent: 'chat_id_changed', args: [cur.chat?.id || ''] }));
+// ── 캐릭터 카드에 실려 온 스크립트: 그 캐릭터의 대화를 열었을 때만 돈다 (실리태번처럼 캐릭터마다 처음 한 번 허락을 받는다) ──
+type Raw = Record<string, unknown>;
+/** 카드 확장 필드에서 스크립트 목록을 꺼낸다: tavern_helper.scripts · [['scripts', …]] 짝 배열 · 옛 TavernHelper_scripts · 폴더 */
+export function charScripts(ch: Char | undefined | null): ThScript[] {
+  const x = ((ch as unknown as { ext?: Raw })?.ext || {}) as Raw;
+  let th = x.tavern_helper as unknown;
+  if (Array.isArray(th)) th = Object.fromEntries((th as unknown[]).filter((p): p is [string, unknown] => Array.isArray(p) && typeof p[0] === 'string'));
+  const raw = ((th as Raw | undefined)?.scripts ?? x.TavernHelper_scripts ?? []) as unknown;
+  const flat = (list: unknown): Raw[] => Array.isArray(list) ? list.flatMap(it => it && typeof it === 'object' ? ((it as Raw).type === 'folder' ? flat((it as Raw).scripts ?? (it as Raw).value) : [it as Raw]) : []) : [];
+  return flat(raw).filter(s => typeof s.content === 'string' && s.content.trim()).map(s => ({ id: 'char:' + (ch as Char).id + ':' + String(s.id || s.name), name: String(s.name || 'script'), content: String(s.content), info: String(s.info || ''), enabled: s.enabled !== false, trusted: true }));
+}
+const allow = () => ((S.settings as unknown as { thCharAllow?: Record<string, boolean> }).thCharAllow ||= {});
+export const charAllowed = (id: string) => allow()[id];
+export async function setCharAllowed(id: string, v: boolean | undefined) { if (v === undefined) delete allow()[id]; else allow()[id] = v; S.saveSettings(); await syncChar(); emit('thscripts:changed'); }
+let asking = false;
+async function syncChar() {
+  const chat = cur.chat, ids = chat?.charIds || [];
+  for (const k of [...running.keys()]) if (k.startsWith('char:') && !ids.some(id => k.startsWith('char:' + id + ':'))) { running.get(k)?.remove(); running.delete(k); }
+  for (const id of ids) {
+    const ch = S.get('chars', id) as Char | undefined, list = charScripts(ch).filter(s => s.enabled);
+    if (!list.length) continue;
+    if (allow()[id] === undefined) {
+      if (asking) continue; asking = true;
+      try { allow()[id] = await confirmBox(t('ths.charAsk', { name: ch?.name || '', n: list.length, names: list.map(s => s.name).join(', ') }), t('ths.trustOk'), true); S.saveSettings(); }
+      finally { asking = false; }
+      if (cur.chat !== chat) return;
+    }
+    for (const s of list) if (allow()[id]) start(s); else stop(s);
+  }
+  emit('thscripts:changed');
+}
+
+on('chat:open', () => { framePost({ dlEvent: 'chat_id_changed', args: [cur.chat?.id || ''] }); void syncChar(); });

@@ -6,6 +6,7 @@ import * as core from '../lib/core';
 import { PageHead, confirmBox, promptBox } from '../studio/parts';
 import { t } from '../i18n';
 import * as TH from '../lib/thscripts';
+import type { Char } from '../lib/types';
 import { toast } from '../ui';
 
 interface ExtItem { id: string; name: string; version?: string; author?: string; description?: string; source: 'folder' | 'installed' }
@@ -52,6 +53,7 @@ function Exts() {
 /** 실리태번 스크립트: 가져오기 · 켜기(처음엔 권한 확인) · 지우기 */
 function ThScripts() {
   const redraw = useEvents('thscripts:changed');
+  const withScripts = (core.S.chars as Char[]).map(ch => ({ ch, list: TH.charScripts(ch) })).filter(x => x.list.length);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void TH.load().then(redraw); }, []);
   const pick = async () => {
@@ -71,5 +73,10 @@ function ThScripts() {
       <div className="ext-meta"><b>{sc.name} {sc.enabled ? <span className="badge">{t('ths.running')}</span> : null}</b>{sc.info ? <small>{sc.info}</small> : null}</div>
       <IconBtn ic="trash" title={t('common.delete')} onClick={async () => { if (await confirmBox(t('ths.deleteConfirm', { name: sc.name }), t('common.delete'), true)) await TH.removeScript(sc.id); }} />
       <label className="switch"><input type="checkbox" checked={sc.enabled} onChange={e => void toggle(sc, e.target.checked)} /><i /></label>
-    </div>) : <p className="dim">{t('ths.empty')}</p>}</div></div>;
+    </div>) : <p className="dim">{t('ths.empty')}</p>}</div>
+    {withScripts.length ? <><h4 className="form-sec">{t('ths.charTitle')}</h4><p className="hint">{t('ths.charHint')}</p>
+      <div className="ext-list">{withScripts.map(({ ch, list }) => { const a = TH.charAllowed(ch.id); return <div className="ext-card" key={ch.id}><div className="ext-ic"><Icon name="code" size={20} /></div>
+        <div className="ext-meta"><b>{ch.name} <span className="badge">{a === undefined ? t('ths.charUnset') : a ? t('ths.charAllowed') : t('ths.charDenied')}</span></b><small>{list.map(s => s.name).join(', ')}</small></div>
+        <label className="switch"><input type="checkbox" checked={!!a} onChange={async e => { if (e.target.checked && !(await confirmBox(t('ths.charAsk', { name: ch.name, n: list.length, names: list.map(s => s.name).join(', ') }), t('ths.trustOk'), true))) return; await TH.setCharAllowed(ch.id, e.target.checked); }} /><i /></label>
+      </div>; })}</div></> : null}</div>;
 }
