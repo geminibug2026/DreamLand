@@ -22,6 +22,9 @@ interface St { ail: Ails; /** 보스가 예고한 일격: 맞는 칸들과 누�
 const W = 7, H = 6, MOVE = 3, RANGE = 5;
 /** 전리품: 그림 열쇠 → 재료, 떨어지는 장비와 소모품 */
 const MAT: Record<string, string> = { beast: 'pelt', bear: 'claw', boar: 'tusk', rat: 'tail', cat: 'fang', ape: 'pelt', croc: 'scale', dragon: 'dscale', frog: 'slimy', turtle: 'shell', crab: 'shell', beetle: 'shell', scorpion: 'venom', serpent: 'venom', spider: 'silk', bee: 'venom', wing: 'wingm', raptor: 'feather', owl: 'feather', phoenix: 'feather', slime: 'jelly', cube: 'jelly', ghost: 'ecto', banshee: 'ecto', wisp: 'ecto', skull: 'bone', zombie: 'bone', mummy: 'wrap', lich: 'bone', vampire: 'fang', golem: 'core', robot: 'core', mushroom: 'spore', tree: 'bark', plant: 'seed', eye: 'lens', beholder: 'lens', tentacle: 'tent', flayer: 'tent', fish: 'scale', goblin: 'ear', orc: 'tusk', ogre: 'tusk', minotaur: 'horn', demon: 'horn', satyr: 'horn', horn: 'horn', yeti: 'pelt', cerberus: 'fang', basilisk: 'scale', storm: 'spark', spark: 'spark', fairy: 'dust', mimic: 'coin', pumpkin: 'seed', horse: 'pelt' };
+/** 사람꼴의 적은 재료 대신 지니고 있던 것을 떨군다 */
+const FOLK = ['blade', 'bandit', 'assassin', 'knight', 'archer', 'crown', 'spark', 'goblin', 'orc'];
+const FOLK_LOOT = ['pouch', 'note', 'badge', 'whet', 'flask', 'lockpick'];
 const GEAR = ['dagger', 'sword', 'axe', 'bow', 'staff', 'shield', 'armor', 'helm', 'ring', 'amulet'];
 const USE = ['potion', 'potion', 'antidote', 'bandage', 'torch', 'ration', 'bomb'];
 const key = (x: number, y: number) => `${x},${y}`;
@@ -251,7 +254,7 @@ export function Combat({ g, sheet, foes, onDone, faces = {} }: { g: GameCfg; she
     let loot = ''; if (won) {
       const got: string[] = [], give = (name: string) => { fx.push({ k: 'item', name, n: 1 }); got.push(name); };
       const firsts = st.foes.filter(f => !f.spent || f.trait === 'undying');
-      for (const f of firsts.sort(() => Math.random() - .5).slice(0, firsts.length >= 4 ? 2 : 1)) if (d(10) <= 7) give(t('game.loot.mat.' + (MAT[iconOf(f.kind)] || 'any')));
+      for (const f of firsts.sort(() => Math.random() - .5).slice(0, firsts.length >= 4 ? 2 : 1)) if (d(10) <= 7) { const key = MAT[iconOf(f.kind)], folk = FOLK.includes(iconOf(f.kind)); give(key ? t('game.loot.mat.' + key) : folk ? t('game.loot.' + FOLK_LOOT[d(FOLK_LOOT.length) - 1]) : t('game.loot.mat.of', { name: f.name })); }
       const rolls = 1 + (foes.some(f => f.boss) ? 1 : 0) + (foes.length >= 4 ? 1 : 0);
       for (let i = 0; i < rolls; i++) {
         const r = d(100) + foes.length * 3 + lv * 2;

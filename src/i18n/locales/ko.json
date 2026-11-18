@@ -7494,10 +7494,16 @@
   "game.loot.mat.spark": "마력의 불씨",
   "game.loot.mat.dust": "요정 가루",
   "game.loot.mat.coin": "이빨 자국 난 금화",
-  "game.loot.mat.any": "전리품",
   "game.bag.whenWorn": "걸치면 {what}",
   "game.bag.tier": "등급 +{n}",
   "conns.adv.via": "바깥 프록시 주소 (선택)",
   "conns.adv.viaHint": "이 연결의 요청만 VPN · 프록시 프로그램을 거쳐 내보냅니다. 컴퓨터 전체에 VPN을 켜지 않아도, 프로그램이 열어 둔 로컬 주소만 적으면 됩니다 (예: Clash http://127.0.0.1:7890, v2rayN socks5://127.0.0.1:10808). 지역 때문에 429가 자주 뜰 때 써 보세요. 드림랜드 서버(start.bat)로 실행할 때만 동작합니다.",
-  "engine.err.viaNeedsServer": "바깥 프록시는 드림랜드 서버로 실행할 때만 쓸 수 있습니다. 연결 설정의 프록시 주소를 비우거나 PC에서 start.bat으로 실행해 주세요."
+  "engine.err.viaNeedsServer": "바깥 프록시는 드림랜드 서버로 실행할 때만 쓸 수 있습니다. 연결 설정의 프록시 주소를 비우거나 PC에서 start.bat으로 실행해 주세요.",
+  "game.loot.mat.of": "{name}의 잔해",
+  "game.loot.pouch": "동전 주머니",
+  "game.loot.note": "구겨진 쪽지",
+  "game.loot.badge": "낡은 휘장",
+  "game.loot.whet": "숫돌",
+  "game.loot.flask": "독한 술이 든 휴대용 술병",
+  "game.loot.lockpick": "자물쇠 따개"
 }
