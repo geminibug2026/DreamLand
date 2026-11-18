@@ -1,1 +1,0 @@
-export{t as go}from"./router-BJTSi3n7.js";
