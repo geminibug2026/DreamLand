@@ -7496,5 +7496,8 @@
   "game.loot.mat.coin": "带牙印的金币",
   "game.loot.mat.any": "战利品",
   "game.bag.whenWorn": "装备后 {what}",
-  "game.bag.tier": "品级 +{n}"
+  "game.bag.tier": "品级 +{n}",
+  "conns.adv.via": "出站代理地址（可选）",
+  "conns.adv.viaHint": "仅让此连接的请求经由你的 VPN/代理程序发出。无需全局 VPN——填写程序开放的本地地址即可（如 Clash http://127.0.0.1:7890、v2rayN socks5://127.0.0.1:10808）。因地区原因频繁出现 429 时可以试试。仅在通过 DreamLand 服务器（start.bat）运行时有效。",
+  "engine.err.viaNeedsServer": "出站代理仅在通过 DreamLand 服务器运行时可用。请清空连接中的代理地址，或在电脑上用 start.bat 运行。"
 }

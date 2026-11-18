@@ -163,7 +163,7 @@ export interface Preset { id: string; name: string; createdAt: number; updatedAt
 // ── 연결 ──
 export interface Conn {
   id: string; name: string; provider: string; baseUrl: string; apiKey: string; model: string; proxy: boolean; postProcess: string; extraHeaders: string; extraBody: string; cache: boolean;
-  serviceAccount?: string; saEmail?: string; saProject?: string; sec?: string; updatedAt?: number; instruct?: string; project?: string; region?: string;
+  serviceAccount?: string; saEmail?: string; saProject?: string; sec?: string; updatedAt?: number; instruct?: string; project?: string; region?: string; /** 이 연결의 요청을 내보낼 바깥 프록시 (http://127.0.0.1:7890 등) */ via?: string;
   [k: string]: unknown;
 }
 

@@ -136,6 +136,7 @@ function ConnEditor({ c, api }: { c: Conn; api: EditorApi }) {
       <div className="model-chips">{chips.slice(0, 24).map(m => <button key={m} className={'chip' + (c.model === m ? ' on' : '')} onClick={() => { c.model = m; setModel(m); sv(); }}>{m}</button>)}</div></div>
     {def.kind !== 'mock' && <details className="adv"><summary><Icon name="sliders" size={15} />{t('conns.adv.section')}</summary><Form obj={c} defs={[
       { k: 'proxy', label: t('conns.adv.proxy'), type: 'check', hint: t('conns.adv.proxyHint') },
+      { k: 'via', label: t('conns.adv.via'), ph: 'http://127.0.0.1:7890', hint: t('conns.adv.viaHint') },
       def.kind === 'anthropic' && { k: 'cache', label: t('conns.adv.cache'), type: 'check', hint: t('conns.adv.cacheHint') },
       (def.kind === 'openai' || def.kind === 'azure') && { k: 'postProcess', label: t('conns.adv.postProcess'), type: 'select', opts: [['none', t('common.none')], ['merge', t('conns.adv.ppMerge')], ['semi', t('conns.adv.ppSemi')], ['strict', t('conns.adv.ppStrict')], ['single', t('conns.adv.ppSingle')]], hint: t('conns.adv.postProcessHint') },
       textKind && { k: 'instruct', label: t('conns.adv.instruct'), type: 'select', half: true, opts: [['', t('conns.adv.followFormat')], ['plain', t('conns.adv.instructPlain')], ['custom', t('conns.adv.instructCustom')], ...names('instruct')], hint: t('conns.adv.instructHint') },

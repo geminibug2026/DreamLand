@@ -967,11 +967,16 @@ async function call(conn: Conn, url: string, { method = 'POST', headers = {}, bo
   tap?.req(method, url, body);
   let res: Response | null | undefined;
   try {
-    if (conn.proxy) res = await Server.proxy({ url, method, headers, body }, signal);
+    const via = (conn.via || '').trim();
+    if (via) {   // 바깥 프록시를 거친다: 드림랜드 서버만 할 수 있다 (브라우저는 프록시를 고를 수 없다)
+      if (Server.web || Server.app) throw new Error(tr('engine.err.viaNeedsServer'));
+      res = await Server.proxy({ url, method, headers, body, via }, signal);
+    }
+    else if (conn.proxy) res = await Server.proxy({ url, method, headers, body }, signal);
     else res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, signal });
   } catch (e) {
     if (errName(e) === 'AbortError') throw e;
-    if (!conn.proxy) { try { res = await Server.proxy({ url, method, headers, body }, signal); } catch (e2) { if (errName(e2) === 'AbortError') throw e2; res = null; } }
+    if (!conn.proxy && !(conn.via || '').trim()) { try { res = await Server.proxy({ url, method, headers, body }, signal); } catch (e2) { if (errName(e2) === 'AbortError') throw e2; res = null; } }
     if (!res) throw new Error(tr(Server.web && !Server.app ? 'engine.err.connectWeb' : 'engine.err.connect', { why: errMsg(e) }));
   }
   const r = res as Response;

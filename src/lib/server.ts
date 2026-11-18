@@ -71,7 +71,7 @@ async function webFetch(path: string): Promise<Response> {
 }
 
 /** 서버를 거쳐 다른 주소로 보내는 요청 (/api/proxy) */
-export interface ProxyReq { url: string; method?: string; headers?: Record<string, string>; body?: unknown; /** 글자가 아닌 본문 (base64). body 대신 쓴다 */ bodyB64?: string }
+export interface ProxyReq { url: string; method?: string; headers?: Record<string, string>; body?: unknown; /** 글자가 아닌 본문 (base64). body 대신 쓴다 */ bodyB64?: string; /** 바깥 프록시 주소 (http:// · socks5://). 드림랜드 서버가 이 프록시를 거쳐 보낸다 */ via?: string }
 
 export const Server = {
   /** 'store/status' → '/api/store/status'. 링크·sendBeacon 처럼 fetch 가 아닌 곳에서 쓴다 */
