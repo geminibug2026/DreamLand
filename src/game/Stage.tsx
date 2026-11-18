@@ -10,9 +10,10 @@ import { cur } from '../chat/store';
 import { chatApi, generate, running, shownText, stopAll } from '../chat/actions';
 import { Sprites, charIdOf, currentOf } from '../expressions/store';
 import { fmt, pagesOf } from '../vn/Screen';
-import { Music, setSfx, sfx } from './sfx';
-import { gameOf, pendingAsk, sceneOf, sheetOf, trackOf, type GameMsg, type GameRec } from './state';
-import { GameCard, askLabel, openSheet, resolveAsk } from './ui';
+import { Ambience, Music, setSfx, sfx } from './sfx';
+import { Weather, airOf } from './Weather';
+import { gameOf, pendingAsk, pendingFate, sceneOf, sheetOf, trackOf, type GameMsg, type GameRec } from './state';
+import { GameCard, askLabel, openSheet, resolveAsk, settleFate } from './ui';
 import { bgFor, loadMedia, trackFor } from './media';
 import { ClockDial, Glyph, Keystone, Rule, type GlyphName } from './Art';
 
@@ -33,7 +34,7 @@ const tail = (msgs: Msg[]) => { const m = msgs[msgs.length - 1]; return m ? `${m
 
 function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   const [, bump] = useState(0), [pos, setPos] = useState(-1), [draft, setDraft] = useState(''), [sound, setSound] = useState(true);
-  const box = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null), lastEnd = useRef(''), was = useRef({ gold: -1, scene: '', ask: false });
+  const box = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null), lastEnd = useRef(''), was = useRef({ gold: -1, scene: '', ask: false, hp: -1 }), [cine, setCine] = useState(''), played = useRef(new Set<string>()), cineTm = useRef(0);
   const chat = cur.chat?.id === chatId ? cur.chat : null, msgs = chat ? cur.msgs : [], busy = running(), g = gameOf(chat);
   useEffect(() => { const tm = window.setInterval(() => { if (cur.chat?.id !== chatId || !gameOf(cur.chat)) return closeStage(); bump(n => n + 1); }, 160); return () => clearInterval(tm); }, [chatId]);
   useEffect(() => { void loadMedia().then(() => bump(n => n + 1)); }, []);
@@ -54,6 +55,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   }, [keys]);
   const at = Math.min(Math.max(pos, 0), Math.max(pages.length - 1, 0)), page = pages[at], atEnd = at >= pages.length - 1;
   useEffect(() => { if (atEnd && page && !busy) lastEnd.current = page.msgId; }, [atEnd, page, busy]);
+  const fate = !busy && atEnd ? pendingFate(msgs) : null;
   const ask = !busy && atEnd ? pendingAsk(msgs) : null, waiting = busy && atEnd, canAct = atEnd && !busy;
   const lastMsg = msgs[msgs.length - 1], picks = canAct && !ask && lastMsg?.role === 'assistant' ? (lastMsg.swipes[lastMsg.sw] as { gchoices?: string[] } | undefined)?.gchoices || [] : [];
   useEffect(() => { box.current?.scrollTo(0, 0); }, [page?.key]);
@@ -61,13 +63,27 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   // 소리: 장면에 맞는 음악, 장소가 바뀌거나 돈이 생기거나 할 일이 생기면 짧은 소리
   const fighting = !!document.querySelector('.gm-fight'), scene = sheet ? sceneOf(sheet) : 'road', on = sound && g?.music !== false;
   useEffect(() => { setSfx(sound && g?.sfx !== false); Music.set(on); if (on && sheet && g) { const tr = trackOf(sheet, g, fighting); Music.play(tr, trackFor(tr, sheet.place)); } }, [on, sound, g, sheet, fighting]);
-  useEffect(() => () => Music.stop(), []);
+  useEffect(() => () => { Music.stop(); Ambience.stop(); }, []);
+  // 날씨: 화면에는 비 · 눈 · 안개 · 낙엽을, 귀에는 빗소리와 바람을. 실내에서는 소리만 먹먹하게 들린다
+  const air = useMemo(() => sheet ? airOf(sheet, scene) : null, [sheet, scene]);
+  const ambOn = sound && g?.sfx !== false, wetNow = air && (air.sky === 'rain' || air.sky === 'storm');
+  useEffect(() => { if (!air || !ambOn) return Ambience.set(''); Ambience.set(wetNow ? 'rain' : air.sky === 'wind' || (air.sky === 'snow' && air.power > .8) ? 'wind' : '', air.power, air.indoor); }, [air, ambOn, wetNow]);
+  // 실내에서는 번개가 보이지 않지만 천둥은 가끔 들린다
+  useEffect(() => { if (!air || air.sky !== 'storm' || !air.indoor || !ambOn) return; const tm = window.setInterval(() => { if (Math.random() < .5) Ambience.thunder(true); }, 14000); return () => clearInterval(tm); }, [air, ambOn]);
   useEffect(() => {
     if (!sheet) return; const w = was.current;
     if (w.gold >= 0 && sheet.gold > w.gold) sfx('coin'); if (w.scene && w.scene !== scene) sfx('door'); if (ask && !w.ask) sfx('notify');
-    was.current = { gold: sheet.gold, scene, ask: !!ask };
+    if (w.hp >= 0 && sheet.hp < w.hp) play('hurt');
+    was.current = { gold: sheet.gold, scene, ask: !!ask, hp: sheet.hp };
   }, [sheet, scene, ask]);
 
+  // 연출: 진행자가 붙인 효과는 그 답변을 처음 볼 때 한 번, 다치면 화면이 흔들린다
+  const play = (name: string) => { clearTimeout(cineTm.current); setCine(''); requestAnimationFrame(() => setCine(name)); if (name !== 'letterbox') cineTm.current = window.setTimeout(() => setCine(c => c === name ? '' : c), 900); };
+  useEffect(() => {
+    if (!page || page.who === 'e') return; const list = (page.msg.swipes[page.msg.sw] as { gcine?: string[] } | undefined)?.gcine;
+    if (list?.length && !played.current.has(page.msgId)) { played.current.add(page.msgId); play(list[0]); } else if (!list?.length && cine === 'letterbox') setCine('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page?.msgId]);
   const total = useRef(0); total.current = pages.length;
   const step = (d: number) => setPos(p => Math.min(Math.max(Math.min(Math.max(p, 0), Math.max(total.current - 1, 0)) + d, 0), Math.max(total.current - 1, 0)));
   const send = (text = draft) => { const v = text.trim(); if (!v || busy) return; setDraft(''); void chatApi.send(v); };
@@ -93,9 +109,10 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   else if (page.who === 'e') body = <div className="gs-event" key={page.key}><GameCard m={page.msg} /></div>;
   else body = <p className="gs-text" key={page.key}>{fmt(page.text)}{waiting ? <span className="typing"><i /><i /><i /></span> : null}</p>;
 
-  return <div className={`gs${page?.who === 'u' ? ' is-me' : ''}${fighting ? ' is-fight' : ''}`}>
+  return <div className={`gs${page?.who === 'u' ? ' is-me' : ''}${fighting ? ' is-fight' : ''}${cine ? ' fx-' + cine : ''}`}>
     <div className={`gs-bg${bg ? '' : ' is-plain'}`} key={bg} style={bg ? { backgroundImage: `url("${bg}")` } : undefined} />
-    <div className="gs-shade" />
+    {air ? <Weather air={air} onFlash={() => { if (ambOn) window.setTimeout(() => Ambience.thunder(false), 500 + Math.random() * 2200); }} /> : null}
+    <div className="gs-shade" /><div className="gs-cine" />
     <header className="gs-top">
       <div className="gs-loc">{when ? <span className="gs-eyebrow">{when}</span> : null}<h1>{sheet.place || chatApi.roomName(chat)}</h1></div>
       <nav className="gs-tools">
@@ -111,7 +128,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
         <span className="gs-eyebrow">HP</span><b className={hpLow ? 'is-low' : ''}>{sheet.hp}<i>/{sheet.hpMax}</i></b>
         <span className="gs-meter"><i style={{ width: `${sheet.hp / sheet.hpMax * 100}%` }} className={hpLow ? 'is-low' : ''} /></span>
       </button>
-      <div className="gs-stats"><span><small>LV</small>{sheet.level}</span><span><small>{t('game.gold')}</small>{sheet.gold}</span></div>
+      <div className="gs-stats"><span title={t('game.fate.hint')}><small>{t('game.fate')}</small>{sheet.fate}</span><span><small>LV</small>{sheet.level}</span><span><small>{t('game.gold')}</small>{sheet.gold}</span></div>
       {sheet.clocks.map(c => <div key={c.name} className={`gs-clock${c.v >= c.max ? ' is-full' : ''}`}><ClockDial v={c.v} max={c.max} /><small>{c.name}</small><em>{c.v}/{c.max}</em></div>)}
       {sheet.party.length ? <div className="gs-party">{sheet.party.map(n => { const c = S.chars.find(x => x.name.toLowerCase() === n.toLowerCase()); return <span key={n} title={n} style={c?.avatar ? { backgroundImage: `url("${c.avatar}")` } : undefined}>{c?.avatar ? '' : n.slice(0, 1)}</span>; })}</div> : null}
     </aside>
@@ -131,9 +148,10 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
         {!atEnd ? <span className="gs-next">{t('game.stage.next')}</span> : null}
       </div>
       {canAct ? <div className="gs-acts">
+        {fate ? <div className="gs-fate"><button type="button" className="gs-ask" onClick={() => void settleFate(chat, true)}><b>{t('game.fate.reroll')}</b><small>{t('game.fate.left', { n: sheet.fate })}</small></button><button type="button" className="gs-plain" onClick={() => void settleFate(chat, false)}>{t('game.fate.accept')}</button></div> : null}
         {ask ? <button type="button" className="gs-ask" onClick={() => resolveAsk(chat, ask)}><b>{askLabel(ask)}</b>{'why' in ask && ask.why ? <small>{ask.why}</small> : 'stake' in ask && ask.stake ? <small>{ask.stake}</small> : null}</button> : null}
         {picks.length ? <ol className="gs-picks">{picks.map((x, i) => <li key={i}><button type="button" onClick={() => send(x)}><small>{['I', 'II', 'III', 'IV', 'V'][i]}</small>{x}</button></li>)}</ol> : null}
-        {!ask ? <div className="gs-write">
+        {!ask && !fate ? <div className="gs-write">
           <textarea ref={input} rows={1} value={draft} placeholder={t('game.stage.placeholder')} onChange={e => { setDraft(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 132) + 'px'; }}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} />
           <button type="button" className="gs-send" title={t('vn.send')} aria-label={t('vn.send')} disabled={!draft.trim()} onClick={() => send()}><Glyph name="send" size={18} /></button>

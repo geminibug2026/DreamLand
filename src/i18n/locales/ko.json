@@ -7197,5 +7197,12 @@
   "game.track.town": "마을",
   "game.track.battle": "전투",
   "game.track.dark": "어두운 곳 · 밤",
-  "game.track.rest": "휴식 · 실내"
+  "game.track.rest": "휴식 · 실내",
+  "game.fate": "운명",
+  "game.fate.hint": "실패한 판정을 다시 굴릴 수 있는 점수. 대실패하거나 진행자가 대담한 행동에 줍니다.",
+  "game.fate.reroll": "운명을 거슬러 다시 굴리기",
+  "game.fate.left": "운명 점 {n}",
+  "game.fate.accept": "받아들이기",
+  "game.fate.pending": "실패…?",
+  "game.fate.used": "운명 점으로 다시 굴림"
 }

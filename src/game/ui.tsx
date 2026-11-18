@@ -17,7 +17,7 @@ import { pickFiles } from '../lib/core';
 import { Mini } from './Minis';
 import { quickCall } from '../lib/engine';
 import { msgText } from '../lib/core';
-import { MINIS, PRESET_IDS, RULES, RULE_IDS, SESSION_PROMPT, gameOf, levelOf, presetStats, ruleOf, statVal, statsOf, journalOf, layoutMap, newGame, pendingAsk, recText, repTier, rollCheck, sheetOf, tallyOf, type Ask, type Fx, type GameCfg, type GameChat, type GameMsg, type GameRec, type MiniId, type Sheet as SheetData, type StatKey } from './state';
+import { MINIS, PRESET_IDS, RULES, RULE_IDS, SESSION_PROMPT, gameOf, levelOf, presetStats, ruleOf, statVal, statsOf, journalOf, layoutMap, newGame, pendingAsk, pendingFate, recText, repTier, rollCheck, sheetOf, tallyOf, type Ask, type Fx, type GameCfg, type GameChat, type GameMsg, type GameRec, type MiniId, type Sheet as SheetData, type StatKey } from './state';
 
 const foeName = (chat: Chat) => S.get('chars', chat.charIds[0])?.name || t('game.foe');
 const userName = (chat: Chat) => S.persona(chat).name || 'User';
@@ -62,7 +62,12 @@ export function resolveAsk(chat: Chat, ask: Ask) {
   const g = gameOf(chat); if (!g || running()) return;
   setSfx(g.sfx !== false);
   if (ask.k === 'qte') return void openModal({ title: t('game.qte.title'), spec: 'div.gm' }, close => <Qte ask={ask} onDone={r => { close(); void record(chat, { kind: 'qte', ...r, secs: ask.secs }); }} />);
-  if (ask.k === 'check') { sfx('dice'); const r = rollCheck(g, ask, sheetOf(g, cur.msgs).level); return void record(chat, { kind: 'check', ...r, ...(ask.why ? { why: ask.why } : {}) }); }
+  if (ask.k === 'check') {
+    sfx('dice'); const sh = sheetOf(g, cur.msgs), r = rollCheck(g, ask, sh.level), fumble = r.grade === 'fumble';
+    // 실패했고 운명 점이 있으면 바로 넘어가지 않고, 받아들일지 다시 굴릴지 묻는다. 대실패는 운명 점을 하나 준다
+    const open = !r.ok && sh.fate + (fumble ? 1 : 0) > 0;
+    return void record(chat, { kind: 'check', ...r, ...(ask.why ? { why: ask.why } : {}), ...(fumble ? { fx: [{ k: 'fate' as const, n: 1 }] } : {}), ...(open ? { open: true } : {}) }, !open);
+  }
   if (ask.k === 'play') return void playMini(chat, ask.game, ask.stake);
   const sheet = sheetOf(g, cur.msgs), foes = ask.foes?.length ? ask.foes : [{ name: (ask as unknown as { name?: string }).name || t('game.foe'), hp: 12, atk: 3 }];
   const names = [...new Set(foes.map(f => f.name.replace(/ \d+$/, '')))].join(', ');
@@ -83,6 +88,20 @@ function Qte({ ask, onDone }: { ask: Extract<Ask, { k: 'qte' }>; onDone(r: { cho
     <div className="gm-qte-time"><span className="gm-bar"><i style={{ width: `${left / ask.secs * 100}%` }} /></span><b>{left.toFixed(1)}</b></div>
     <div className="gm-qte-opts">{ask.options.map((o, i) => <button key={i} type="button" className="btn" onClick={() => end(o)}><small>{i + 1}</small>{o}</button>)}</div>
   </div>;
+}
+
+/** 실패한 판정: 받아들이거나(false), 운명 점을 써서 다시 굴린다(true) */
+export async function settleFate(chat: Chat, reroll: boolean) {
+  const g = gameOf(chat), m = pendingFate(cur.msgs); if (!g || !m || m.gm?.kind !== 'check' || cur.chat !== chat) return;
+  const old = m.gm;
+  if (reroll) {
+    sfx('dice'); const r = rollCheck(g, { k: 'check', stat: old.stat, dc: old.rule === '2d6' || old.rule === 'd100' ? 0 : old.dc, why: old.why || '', ...(old.note?.includes('advantage') && !old.note.includes('dis') ? { adv: 'adv' as const } : old.note?.includes('disadvantage') ? { adv: 'dis' as const } : {}), ...(old.note?.includes('proficient') ? { prof: true } : {}), ...(old.note === 'hard' || old.note === 'extreme' ? { hard: old.note } : {}) }, sheetOf(g, cur.msgs).level);
+    m.gm = { kind: 'check', ...r, ...(old.why ? { why: old.why } : {}), fx: [...(old.fx || []), { k: 'fate', n: -1 }], rerolled: true };
+  } else m.gm = { ...old, open: false };
+  delete (m.gm as { open?: boolean }).open;
+  m.swipes[0].text = recText(m.gm, userName(chat), foeName(chat));
+  await chatApi.save(); chatApi.redraw(); redrawGame();
+  if (!running()) void generate('normal');
 }
 
 // ── 시작 · 설정 창 ──
@@ -220,6 +239,7 @@ export function Sheet({ chat, msgs, onClose, first = 'sheet' }: { chat: Chat; ms
   return <div className="gm-sheet">{tabs}
     <div className="gm-row"><span className="eyebrow">HP</span><b className="gm-n">{s.hp}<i>/{s.hpMax}</i></b><span className="gm-bar"><i style={{ width: `${s.hp / s.hpMax * 100}%` }} /></span><Step fx={{ k: 'hp', n: -1 }} label="HP −1" /><Step fx={{ k: 'hp', n: 1 }} label="HP +1" /></div>
     <div className="gm-row"><span className="eyebrow">{t('game.gold')}</span><b className="gm-n">{s.gold}</b><i className="gm-fill" /><Step fx={{ k: 'gold', n: -1 }} label={t('game.gold') + ' −1'} /><Step fx={{ k: 'gold', n: 1 }} label={t('game.gold') + ' +1'} /></div>
+    <div className="gm-row"><span className="eyebrow">{t('game.fate')}</span><b className="gm-n">{s.fate}</b><span className="gm-fates">{Array.from({ length: Math.max(s.fate, 3) }, (_, i) => <i key={i} className={i < s.fate ? 'on' : ''} />)}</span><small className="gm-xp">{t('game.fate.hint')}</small></div>
     <div className="gm-row"><span className="eyebrow">LV</span><b className="gm-n">{s.level}</b><span className="gm-bar"><i style={{ width: `${s.level >= 20 ? 100 : s.xp % 100}%` }} /></span><small className="gm-xp">{s.xp} XP</small></div>
     <div className="gm-statline" style={{ gridTemplateColumns: `repeat(${statsOf(g).length > 4 ? 3 : 4}, 1fr)` }}>{statsOf(g).map(k => <span key={k}><small>{t('game.stat.' + k)}</small><b>{ruleOf(g) === 'd20' || ruleOf(g) === '2d6' ? sign(statVal(g, k)) : statVal(g, k)}</b></span>)}</div>
     {s.time || s.weather ? <div className="gm-sec"><span className="eyebrow">{t('game.time')}</span><p>{[s.time, s.weather].filter(Boolean).join(' · ')}</p></div> : null}
@@ -250,7 +270,7 @@ export function askLabel(ask: Ask): string {
 export function GameBar() {
   useCh('game'); useCh('busy');
   const chat = cur.chat, g = gameOf(chat); if (!chat || !g) return null;
-  const s = sheetOf(g, cur.msgs), ask = pendingAsk(cur.msgs), busy = running();
+  const s = sheetOf(g, cur.msgs), ask = pendingAsk(cur.msgs), busy = running(), fate = pendingFate(cur.msgs);
   const label = ask ? askLabel(ask) : '';
   const why = ask && (ask.k === 'check' ? ask.why : ask.k === 'play' ? ask.stake : '');
   const tail = cur.msgs[cur.msgs.length - 1], picks = !busy && !ask && tail?.role === 'assistant' ? (tail.swipes[tail.sw] as { gchoices?: string[] } | undefined)?.gchoices || [] : [];
@@ -258,6 +278,7 @@ export function GameBar() {
     <button type="button" className="gm-status" title={t('game.sheet.title')} onClick={() => openSheet(chat)}>
       <span><small>HP</small><b className={s.hp <= s.hpMax / 4 ? 'is-low' : ''}>{s.hp}/{s.hpMax}</b></span><span><small>{t('game.gold')}</small><b>{s.gold}</b></span>{s.place || s.time ? <span className="gm-where"><small>{t(s.place ? 'game.place' : 'game.time')}</small><b>{[s.place, s.time].filter(Boolean).join(' · ')}</b></span> : null}
     </button>
+    {fate && !busy ? <div className="gm-fate"><button type="button" className="gm-ask" onClick={() => void settleFate(chat, true)}><Icon name="dice" size={15} /><span><b>{t('game.fate.reroll')}</b><small>{t('game.fate.left', { n: s.fate })}</small></span></button><button type="button" className="btn" onClick={() => void settleFate(chat, false)}>{t('game.fate.accept')}</button></div> : null}
     {ask && !busy ? <button type="button" className="gm-ask" onClick={() => resolveAsk(chat, ask)}><Icon name={ask.k === 'check' ? 'dice' : ask.k === 'fight' ? 'star' : 'play'} size={15} /><span><b>{label}</b>{why ? <small>{why}</small> : null}</span></button> : null}
     {picks.length ? <div className="choices gm-picks">{picks.map((x, i) => <button key={i} type="button" className="choice" onClick={e => { if (e.shiftKey) chatApi.insert(x); else void chatApi.send(x); }}>{x}</button>)}</div> : null}
   </div>;
@@ -275,8 +296,8 @@ export function GameCard({ m }: { m: Msg }) {
       <span className="eyebrow">{t('game.rec.check', { stat: t('game.stat.' + r.stat) })}{rule === '2d6' ? '' : rule === 'd100' ? ` · ≤ ${r.dc}` : rule === 'pool' ? ` · ${t('game.rec.need', { n: r.dc })}` : ` · DC ${r.dc}`}{r.note ? ` · ${r.note}` : ''}</span>
       <div className="gm-roll">{dice.map((v, i) => rule === 'd20' || rule === '5e' ? <D20 key={i} dim={dice.length > 1 && i !== dice.indexOf(r.die)}>{v}</D20> : <i key={i} className={`gm-die${rule === 'pool' && v >= 5 ? ' is-hit' : ''}`}>{v}</i>)}
         {rule === 'd100' ? null : rule === 'pool' ? <><span>→</span><strong>{r.total}</strong></> : <><span>{sign(r.mod)}</span><span>=</span><strong>{r.total}</strong></>}
-        <em>{t('game.grade.' + grade)}</em></div>
-      {r.why ? <small>{r.why}</small> : null}</div>;
+        <em>{t(r.open ? 'game.fate.pending' : 'game.grade.' + grade)}</em></div>
+      {r.why || r.rerolled ? <small>{[r.why, r.rerolled ? t('game.fate.used') : ''].filter(Boolean).join(' · ')}</small> : null}</div>;
   }
   if (r.kind === 'fight') return <div className={`gm-card-rec is-${r.outcome === 'win' ? 'win' : r.outcome === 'lose' ? 'lose' : 'draw'}`}>
     <span className="eyebrow">{t('game.rec.fight')}</span><b>{r.name}</b>

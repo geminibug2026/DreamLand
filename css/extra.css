@@ -590,3 +590,28 @@ html.gs-on .modal-wrap:has(.gm) .gm-cell.is-foe b { color: var(--gs-paper); }
 .gm-tracks { list-style: none; margin: 6px 0 0; padding: 0; } .gm-tracks li { padding: 8px 0; border-bottom: 1px solid var(--ink-line); } .gm-tracks li > div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; } .gm-tracks b { font: 700 .95em var(--display); }
 .gm-tracks p { position: relative; display: flex; align-items: center; gap: 10px; margin: 6px 0 0; font-size: .9em; } .gm-tracks p span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .gm-tracks p.is-built span { color: var(--dim); }
 .gm-play { width: 26px; height: 26px; flex: none; display: grid; place-items: center; border: 1px solid var(--ink); background: none; color: var(--text); font-size: 10px; cursor: pointer; } .gm-x { position: static; flex: none; }
+/* 날씨 · 시간대: 배경 위의 색 보정과 한 장의 캔버스 */
+.gs-air { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
+.gs-grade { position: absolute; inset: 0; pointer-events: none; transition: background 2.5s ease, backdrop-filter 2.5s ease; }
+.gs-grade::after { content: ""; position: absolute; inset: 0; transition: background 2.5s ease; }
+.gs-grade.is-dawn { background: linear-gradient(180deg, rgb(255 196 170 / .34), rgb(150 165 205 / .2) 70%); mix-blend-mode: soft-light; }
+.gs-grade.is-dusk { background: linear-gradient(180deg, rgb(255 138 72 / .5), rgb(150 60 110 / .34) 75%); mix-blend-mode: soft-light; } .gs-grade.is-dusk::after { background: rgb(60 24 40 / .26); mix-blend-mode: multiply; }
+.gs-grade.is-night { background: rgb(14 26 62 / .64); mix-blend-mode: multiply; } .gs-grade.is-night::after { background: radial-gradient(70% 55% at 72% 8%, rgb(150 180 255 / .16), transparent 70%); }
+.gs-grade.is-overcast, .gs-grade.is-fog { -webkit-backdrop-filter: saturate(.72) brightness(.94); backdrop-filter: saturate(.72) brightness(.94); }
+.gs-grade.is-rain, .gs-grade.is-storm { -webkit-backdrop-filter: saturate(.6) brightness(.8) contrast(1.04); backdrop-filter: saturate(.6) brightness(.8) contrast(1.04); }
+.gs-grade.is-storm { -webkit-backdrop-filter: saturate(.5) brightness(.66) contrast(1.08); backdrop-filter: saturate(.5) brightness(.66) contrast(1.08); }
+.gs-grade.is-snow { -webkit-backdrop-filter: saturate(.7) brightness(1.04); backdrop-filter: saturate(.7) brightness(1.04); }
+.gs-grade.is-indoor { opacity: .45; -webkit-backdrop-filter: none; backdrop-filter: none; }
+/* 연출 · 운명 점 */
+.gs-cine { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+.gs.fx-shake .gs-bg, .gs.fx-shake .gs-figure, .gs.fx-hurt .gs-figure, .gs.fx-hurt .gs-bg { animation: gs-shake .5s cubic-bezier(.3, .7, .3, 1); }
+@keyframes gs-shake { 10% { transform: translate(-7px, 3px); } 25% { transform: translate(6px, -4px); } 40% { transform: translate(-5px, -2px); } 55% { transform: translate(4px, 3px); } 70% { transform: translate(-2px, 1px); } 85% { transform: translate(1px, -1px); } }
+.gs.fx-hurt .gs-cine { animation: gs-hurt .8s ease-out; } @keyframes gs-hurt { 0% { box-shadow: inset 0 0 140px 30px rgb(170 30 20 / .6); } 100% { box-shadow: inset 0 0 140px 30px rgb(170 30 20 / 0); } }
+.gs.fx-flash .gs-cine { animation: gs-flash .8s ease-out; } @keyframes gs-flash { 0% { background: rgb(255 248 230 / .9); } 12% { background: rgb(255 248 230 / .25); } 20% { background: rgb(255 248 230 / .7); } 100% { background: rgb(255 248 230 / 0); } }
+.gs.fx-dark .gs-cine { animation: gs-dark .9s ease-in-out; } @keyframes gs-dark { 30%, 60% { background: rgb(0 0 0 / .92); } 0%, 100% { background: rgb(0 0 0 / 0); } }
+.gs-cine::before, .gs-cine::after { content: ""; position: absolute; left: 0; right: 0; height: 0; background: #000; transition: height .6s cubic-bezier(.2, .8, .2, 1); } .gs-cine::before { top: 0; } .gs-cine::after { bottom: 0; }
+.gs.fx-letterbox .gs-cine::before, .gs.fx-letterbox .gs-cine::after { height: 9vh; } .gs.fx-letterbox .gs-top, .gs.fx-letterbox .gs-vitals { opacity: 0; transition: opacity .4s; }
+.gs-fate, .gm-fate { display: flex; gap: 8px; align-items: stretch; } .gs-fate .gs-ask, .gm-fate .gm-ask { flex: 1; }
+.gs-plain { padding: 0 18px; border: 1px solid var(--gs-line); background: none; color: var(--gs-paper); font: 500 .92rem var(--display); cursor: pointer; } .gs-plain:hover { border-color: var(--gs-gold); color: var(--gs-gold); }
+.gm-fates { flex: 1; display: flex; gap: 5px; } .gm-fates i { width: 9px; height: 9px; transform: rotate(45deg); border: 1px solid var(--ink); } .gm-fates i.on { background: var(--accent); border-color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .gs.fx-shake .gs-bg, .gs.fx-shake .gs-figure, .gs.fx-hurt .gs-figure, .gs.fx-hurt .gs-bg { animation: none; } }
