@@ -135,14 +135,18 @@ export function drawMain({ lazy = false } = {}) {
 // ── 본문 ──
 export const assetOwners = () => cur.chat ? [...cur.chat.charIds.map(Assets.ownerOfChar), Assets.ownerOfPersona(S.persona(cur.chat).id)] : [];
 export const TYPING = '<span class="typing"><i></i><i></i><i></i></span>';
-export function bodyHtml(m: Msg) {
+/** 화면에 보이는 글 (템플릿 · 정규식 · 표시 필터를 거친 것). 꾸미기 전의 글자 그대로 */
+export function shownText(m: Msg) {
   const s = m.swipes[m.sw] || { text: '' };
   let depth: number | undefined; if (!m.hidden) { depth = 0; for (let i = cur.msgs.length - 1; i >= 0 && cur.msgs[i] !== m; i--) if (!cur.msgs[i].hidden) depth++; }
   // 화면에서도 <% … %> 템플릿은 처리한 결과만 보인다 (코드가 글자로 드러나지 않게)
   const raw = tpl(s.showTr && s.tr ? s.tr : s.text, { vars: (cur.chat?.vars || {}) as Record<string, unknown> });
   const text = runFilters(applyRegex(raw, { who: m.role === 'user' ? 'user' : 'ai', target: 'display', depth, charId: m.charId, chat: cur.chat }), { role: m.role, msg: m, chat: cur.chat });
+  return Illust.strip(text);
+}
+export function bodyHtml(m: Msg) {
   const style = m.role === 'system' ? 'plain' : modeOf(cur.chat) === 'talk' && !m.scene ? 'chat' : S.settings.rpBubbles ? 'bubbles' : 'novel';
-  return render(Assets.inline(Assets.expand(Illust.strip(text), assetOwners(), `${m.id}:${m.sw}`), assetOwners()), { style, prose: m.role !== 'user' });
+  return render(Assets.inline(Assets.expand(shownText(m), assetOwners(), `${m.id}:${m.sw}`), assetOwners()), { style, prose: m.role !== 'user' });
 }
 /** 메시지 옆에 적는 시각: 이야기 시계를 쓰는 방은 이야기 시각, 시각을 쓰지 않는 방은 비움 */
 export const msgClock = (m: Msg, s: Swipe) => { const k = Clock.mode(cur.chat); return k === 'none' ? '' : k === 'story' ? fmtTime(Clock.timeOf(cur.chat, m)) : fmtTime(s.ts || m.ts); };
@@ -755,7 +759,8 @@ export const chatApi: ChatApi = {
 export function onKey(e: KeyboardEvent) {
   if (!onChat() || !cur.chat) return;
   if (e.key === 'Escape' && running() && !document.querySelector('.modal-wrap')) stopAll();
-  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && document.activeElement === document.body) {
+  // 비주얼 노벨 화면이 떠 있을 때는 방향키가 그 화면의 문단 넘기기다
+  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && document.activeElement === document.body && !document.documentElement.classList.contains('vn-on')) {
     const last = cur.msgs[cur.msgs.length - 1];
     if (last?.role === 'assistant') void swipe(last, e.key === 'ArrowLeft' ? -1 : 1);
   }

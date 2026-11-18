@@ -308,3 +308,36 @@
   .lib-switch-name b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .lib-switch-name .ic { flex: none; color: var(--dim); }
   .lib.has-switch .lib-editor .editor-head h2 { display: none; } .lib.has-switch .lib-editor .editor-head { justify-content: flex-end; }
 }
+
+/* ── 비주얼 노벨 화면 ── 앱의 다른 화면과 같은 결: 테마 색 · 잉크 선 · 모서리 표시 */
+.vn { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column; overflow: hidden; background: linear-gradient(180deg, var(--bg), var(--bg2)); color: var(--text); user-select: none; -webkit-user-select: none; }
+.vn-bg { position: absolute; inset: 0; background: center / cover no-repeat; }
+.vn-bg[data-kind="none"] { background: linear-gradient(var(--ink-line) 1px, transparent 1px) 0 0 / 100% 32px, linear-gradient(90deg, var(--ink-line) 1px, transparent 1px) 0 0 / 32px 100%; opacity: .35; }
+.vn-bar { position: relative; z-index: 2; display: flex; align-items: center; gap: 6px; padding: calc(10px + var(--safe-t, 0px)) 12px 10px; background: var(--surface); border-bottom: 1px solid var(--ink); }
+.vn-title { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.vn-title b { font: 700 15px var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vn-bar button { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border: 1px solid var(--ink); border-radius: var(--r-xs); background: var(--surface); color: var(--text); }
+.vn-bar button:hover { background: var(--ink); color: var(--bg); }
+.vn-bar button:disabled { opacity: .3; pointer-events: none; }
+.vn-stage { position: relative; z-index: 1; flex: 1; min-height: 0; cursor: pointer; }
+.vn-sprite { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); height: 100%; max-width: 100%; object-fit: contain; object-position: bottom center; pointer-events: none; transition: opacity .2s; }
+.vn-frame { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); height: min(78%, 460px); aspect-ratio: 3 / 4; max-width: calc(100% - 48px); background: var(--surface2) center 14% / cover; border: 1px solid var(--ink); pointer-events: none; }
+.vn-frame::before { content: ""; position: absolute; inset: -4px; background: var(--handles); }
+.vn.is-me .vn-sprite, .vn.is-me .vn-frame { opacity: .55; }
+.vn-box { position: relative; z-index: 2; width: min(var(--chat-w), calc(100% - 24px)); margin: 0 auto calc(12px + var(--safe-b, 0px)); background: var(--surface); border: 1px solid var(--ink); border-radius: var(--r-xs); cursor: pointer; }
+.vn-box::before { content: ""; position: absolute; inset: -4px; background: var(--handles); pointer-events: none; }
+.vn-name { position: absolute; left: 14px; top: 0; transform: translateY(-50%); max-width: 70%; padding: 2px 10px; background: var(--ink); color: var(--bg); font: 700 13px var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vn.is-me .vn-name { background: var(--accent); color: var(--on-accent); }
+.vn-scroll { min-height: 5.6em; max-height: 34vh; overflow-y: auto; padding: 20px 18px 6px; }
+.vn-text { margin: 0; font-size: var(--fs); line-height: var(--lh); white-space: pre-wrap; overflow-wrap: anywhere; }
+.vn-text em { color: var(--nar); }
+.vn-q { color: var(--say-text); font-weight: 600; }
+.vn-dim { color: var(--dim); }
+.vn-foot { display: flex; align-items: center; justify-content: space-between; padding: 4px 18px 10px; }
+.vn-foot .eyebrow { color: var(--dim); font-variant-numeric: tabular-nums; }
+.vn-next { color: var(--accent); animation: vn-blink 1.2s steps(2, jump-none) infinite; }
+@keyframes vn-blink { 50% { opacity: .25; } }
+.vn-write { padding: 0 10px 10px; cursor: auto; }
+.vn-write textarea { flex: 1; min-width: 0; min-height: 42px; resize: none; padding: 10px 8px; border: 0; background: none; color: inherit; font: inherit; font-size: 16px; line-height: 1.4; outline: none; user-select: text; -webkit-user-select: text; }
+.vn.is-bare .vn-box, .vn.is-bare .vn-bar { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) { .vn-next { animation: none; } }

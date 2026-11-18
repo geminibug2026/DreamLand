@@ -6913,5 +6913,17 @@
   "websearch.once.cancelled": "웹 검색을 취소했습니다.",
   "websearch.found": "웹 검색: \"{query}\" · 결과 {count}개",
   "websearch.none": "웹 검색: \"{query}\" 의 결과가 없습니다.",
-  "websearch.failed": "웹 검색을 하지 못했습니다: {error}"
+  "websearch.failed": "웹 검색을 하지 못했습니다: {error}",
+  "vn.open": "비주얼 노벨 화면",
+  "vn.cmd": "비주얼 노벨 화면을 켜거나 끈다",
+  "vn.noChat": "먼저 대화를 열어 주세요.",
+  "vn.me": "나",
+  "vn.back": "앞으로 되돌아가기",
+  "vn.stop": "멈추기",
+  "vn.regen": "다시 생성",
+  "vn.hide": "대사 창 숨기기",
+  "vn.close": "대화 화면으로 돌아가기",
+  "vn.empty": "아직 대화가 없습니다. 아래에 첫마디를 적어 보세요.",
+  "vn.placeholder": "무슨 말을 할까요?",
+  "vn.send": "보내기"
 }
