@@ -994,3 +994,32 @@ export async function importFiles(files: File[], progress: Progress = () => { })
 }
 
 export const summarize = (T: Tally) => ([['chars', T.chars], ['chats', T.chats], ['msgs', T.msgs], ['lore', T.lore], ['presets', T.presets], ['personas', T.personas], ['regex', T.regex], ['quick', T.quick], ['templates', T.templates]] as [string, number][]).filter(([, n]) => n).map(([k, n]) => t('cards.sum.' + k, { n })).join(' · ') || t('cards.sum.none');
+
+// ════════ 주소에서 가져오기 ════════
+/** 주소의 파일을 받아 File 로 만든다. 브라우저에서 바로 못 받으면(CORS) 드림랜드 서버를 거친다 */
+async function fetchFile(url: string, init: { method?: string; headers?: Record<string, string>; body?: unknown } = {}): Promise<{ bytes: Uint8Array; type: string }> {
+  let r: Response | null = null;
+  try { r = await fetch(url, { method: init.method || 'GET', headers: init.headers, body: init.body ? JSON.stringify(init.body) : undefined }); if (!r.ok) r = null; } catch { r = null; }
+  if (!r) { r = await Server.proxy({ url, method: init.method || 'GET', headers: init.headers, body: init.body }); if (!r.ok) throw new Error(t('cards.url.fail', { status: r.status })); }
+  return { bytes: new Uint8Array(await r.arrayBuffer()), type: r.headers.get('content-type') || '' };
+}
+/**
+ * 주소에서 캐릭터 카드를 가져온다.
+ *  - 카드 파일 주소(.png · .webp · .json · .charx)는 그대로 받는다
+ *  - chub.ai 캐릭터 페이지 주소는 그 사이트의 내려받기 주소로 바꿔서 받는다
+ */
+export async function importFromUrl(raw: string, progress: Progress = () => { }): Promise<Tally> {
+  const url = raw.trim(); let u: URL;
+  try { u = new URL(url); } catch { throw new Error(t('cards.url.bad')); }
+  if (!/^https?:$/.test(u.protocol)) throw new Error(t('cards.url.bad'));
+  let got: { bytes: Uint8Array; type: string }, name = decodeURIComponent(u.pathname.split('/').filter(Boolean).pop() || 'card');
+  const chub = /(^|\.)chub\.ai$|(^|\.)characterhub\.org$/i.test(u.hostname) && u.pathname.match(/\/characters\/([^/]+\/[^/?#]+)/);
+  progress(name);
+  if (chub) { got = await fetchFile('https://api.chub.ai/api/characters/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: { format: 'tavern', fullPath: chub[1], version: 'main' } }); name = chub[1].split('/').pop() + '.png'; }
+  else got = await fetchFile(url);
+  if (!/\.(png|webp|jpe?g|json|charx)$/i.test(name)) {   // 확장자가 없으면 내용으로 정한다
+    const b = got.bytes, head = String.fromCharCode(...b.slice(0, 4));
+    name += b[0] === 0x89 && head.slice(1) === 'PNG' ? '.png' : head.startsWith('PK') ? '.charx' : head.startsWith('RIFF') ? '.webp' : /json/.test(got.type) || head.trim().startsWith('{') ? '.json' : '.png';
+  }
+  return importFiles([new File([got.bytes as BlobPart], name, { type: got.type })], progress);
+}

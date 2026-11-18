@@ -1,7 +1,7 @@
 // 이식 센터: 다른 앱의 설치 폴더에서 옮겨 오기 + 파일로 가져오기
 import { useEffect, useRef, useState } from 'react';
 import { Btn, Icon } from '../kit';
-import { PageHead, toast } from '../ui';
+import { PageHead, promptBox, toast } from '../ui';
 import type { Source } from '../editors/types';
 import { errMsg } from '../editors/refresh';
 import { S } from '../lib/core';
@@ -116,7 +116,13 @@ function ImportPage() {
     <div className="card import-card"><h3 className="form-sec">{t('import.files')}</h3>
       <div className={'dropzone' + (over ? ' over' : '')} onClick={async () => handle(await core.pickFiles({ multiple: true, accept: '.png,.json,.jsonl,.webp,.charx' }))}
         onDragOver={e => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={e => { e.preventDefault(); setOver(false); void handle([...e.dataTransfer.files]); }}>
-        <Icon name="import" size={30} /><b>{t('import.drop')}</b><span>{dropText ?? t('import.dropHint')}</span></div></div>
+        <Icon name="import" size={30} /><b>{t('import.drop')}</b><span>{dropText ?? t('import.dropHint')}</span></div>
+      <div className="row"><Btn label={t('import.fromUrl')} ic="link" cls="ghost" onClick={async () => {
+        const url = await promptBox(t('import.fromUrlAsk'), '', { placeholder: 'https://…' }); if (!url?.trim()) return;
+        try { const T = await cards.importFromUrl(url, x => { if (alive.current) setDropText(x); }); say(t('import.filesLine', { n: 1, sum: cards.summarize(T) }), T.errors.length ? '' : 'ok'); T.errors.forEach(e => say(e, 'err')); toast(cards.summarize(T), T.errors.length && !T.chars ? 'err' : 'ok'); }
+        catch (e) { say(errMsg(e), 'err'); toast(errMsg(e), 'err'); }
+        if (alive.current) setDropText(t('import.autoDetect'));
+      }} /><small className="hint">{t('import.fromUrlHint')}</small></div></div>
     <div className="import-log">{log.map(l => <div key={l.k} className={'log-line' + (l.cls ? ' ' + l.cls : '')}>{l.text}</div>)}</div>
   </section>;
 }
