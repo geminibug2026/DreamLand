@@ -62,10 +62,25 @@ export const posOf = (p: Packed): NonNullable<BagCfg['pos']> => Object.fromEntri
 
 export interface Gear { /** 내 공격의 피해 + */ dmg: number; /** 내 명중 + */ aim: number; /** 내가 받는 피해 - */ soak: number; /** 적이 나를 맞히기 어려워지는 정도 */ def: number; weapon: string }
 const BIG: ItemKind[] = ['axe', 'bow', 'gun'];
+/** 등급: 이름에 붙은 말로 알아본다. 낡은 것 0 · 튼튼한 것 +1 · 정교한 것 +2. "검 +2" 처럼 숫자가 붙어 있으면 그만큼 (3까지) */
+export function tierOf(name: string): number {
+  const plus = name.match(/\+\s*(\d)/); if (plus) return Math.min(3, Number(plus[1]));
+  return /정교한|명품|걸작|전설|fine\b|masterwork|superior|exquisite|legendary|精良|精致|传说/i.test(name) ? 2 : /튼튼한|단단한|견고한|sturdy|solid|reinforced|结实|坚固/i.test(name) ? 1 : 0;
+}
+/** 물건 하나가 걸쳤을 때 주는 수치. 등급이 높을수록 그 자리의 주된 수치가 오른다 (갑옷은 +1 까지만 오르고, 정교한 갑옷은 방어도 +1) */
+export function bonusOf(name: string, kind: ItemKind): Omit<Gear, 'weapon'> {
+  const slot = SLOT_OF[kind], t = tierOf(name), out = { dmg: 0, aim: 0, soak: 0, def: 0 };
+  if (slot === 'weapon') { out.dmg = (BIG.includes(kind) ? 2 : 1) + t; if (kind === 'staff') out.aim = 1; }
+  else if (slot === 'body') { out.soak = 1 + Math.min(1, t); if (t >= 2) out.def = 1; }
+  else if (slot === 'off' || slot === 'head') out.def = 1 + t;
+  else if (slot === 'charm') out.aim = 1 + t;
+  return out;
+}
 /** 걸친 것이 주는 수치 */
 export function gearOf(p: Packed): Gear {
-  const wpn = p.worn.weapon;
-  return { dmg: wpn ? (BIG.includes(wpn.kind) ? 2 : 1) : 0, aim: (p.worn.charm ? 1 : 0) + (wpn?.kind === 'staff' ? 1 : 0), soak: p.worn.body ? 1 : 0, def: (p.worn.off ? 1 : 0) + (p.worn.head ? 1 : 0), weapon: wpn?.name || '' };
+  const g: Gear = { dmg: 0, aim: 0, soak: 0, def: 0, weapon: p.worn.weapon?.name || '' };
+  for (const s of SLOTS) { const w = p.worn[s]; if (!w) continue; const b = bonusOf(w.name, w.kind); g.dmg += b.dmg; g.aim += b.aim; g.soak += b.soak; g.def += b.def; }
+  return g;
 }
 /** 진행자에게 알리는 글 */
 export function bagPrompt(p: Packed): string {

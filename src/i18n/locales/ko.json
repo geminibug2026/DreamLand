@@ -7422,13 +7422,6 @@
   "game.bag.slot.body": "몸",
   "game.bag.slot.head": "머리",
   "game.bag.slot.charm": "장신구",
-  "game.bag.bonus.weapon": "걸치면 피해 +1",
-  "game.bag.bonus.big": "걸치면 피해 +2",
-  "game.bag.bonus.staff": "걸치면 피해 +1, 명중 +1",
-  "game.bag.bonus.off": "걸치면 덜 맞는다",
-  "game.bag.bonus.head": "걸치면 덜 맞는다",
-  "game.bag.bonus.body": "걸치면 받는 피해 -1",
-  "game.bag.bonus.charm": "걸치면 명중 +1",
   "game.bag.g.dmg": "피해 +{n}",
   "game.bag.g.aim": "명중 +{n}",
   "game.bag.g.soak": "받는 피해 -{n}",
@@ -7501,5 +7494,7 @@
   "game.loot.mat.spark": "마력의 불씨",
   "game.loot.mat.dust": "요정 가루",
   "game.loot.mat.coin": "이빨 자국 난 금화",
-  "game.loot.mat.any": "전리품"
+  "game.loot.mat.any": "전리품",
+  "game.bag.whenWorn": "걸치면 {what}",
+  "game.bag.tier": "등급 +{n}"
 }
