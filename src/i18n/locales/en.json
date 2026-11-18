@@ -7323,5 +7323,20 @@
   "game.fight.log.slam": "The heavy blow of {name} lands for {n}!",
   "game.fight.log.slamMiss": "The heavy blow of {name} hits empty ground.",
   "game.loot.potion": "Healing potion",
-  "game.loot.fate": "a fate point"
+  "game.loot.fate": "a fate point",
+  "game.meters": "Meters",
+  "game.docs": "Documents",
+  "game.memo": "My notes",
+  "game.memoPh": "Jot down what you want to remember. It is not sent to the game master.",
+  "game.journal.doc": "Paper",
+  "game.setup.secret": "For the game master only (optional)",
+  "game.setup.secretPh": "e.g. the old guide is the true villain; it comes out on the third night.",
+  "game.setup.secretHint": "Write twists or a hidden plot and the game master will steer toward them. Never shown on the game screen.",
+  "game.session.replay": "Replay",
+  "game.elapsed": "Day {day}, {time}",
+  "game.whom.act": "Act",
+  "game.whom.party": "To companions",
+  "game.whom.ooc": "To the GM",
+  "game.whom.oocPh": "Something to say to the game master, outside the story",
+  "game.whom.partyPh": "Something to say to your companions"
 }

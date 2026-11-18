@@ -7243,5 +7243,20 @@
   "game.fight.log.slam": "{name}的重击落下！受到 {n} 点伤害。",
   "game.fight.log.slamMiss": "{name}的重击打在了空地上。",
   "game.loot.potion": "治疗药水",
-  "game.loot.fate": "命运点 +1"
+  "game.loot.fate": "命运点 +1",
+  "game.meters": "数值",
+  "game.docs": "文书",
+  "game.memo": "我的笔记",
+  "game.memoPh": "记下想记住的事。不会发送给主持人。",
+  "game.journal.doc": "文书",
+  "game.setup.secret": "仅主持人知道的事（可选）",
+  "game.setup.secretPh": "例如：带路的老人其实是幕后黑手，第三天夜里身份暴露。",
+  "game.setup.secretHint": "写下反转或隐藏剧情，主持人会朝那个方向推进。不会显示在游戏画面上。",
+  "game.session.replay": "重看",
+  "game.elapsed": "第 {day} 天 {time}",
+  "game.whom.act": "行动",
+  "game.whom.party": "对同伴",
+  "game.whom.ooc": "对主持人",
+  "game.whom.oocPh": "在故事之外对主持人说的话",
+  "game.whom.partyPh": "对同伴说的话"
 }

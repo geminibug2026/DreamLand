@@ -32,6 +32,8 @@ async function record(chat: Chat, rec: GameRec, reply = true) {
   const m = newMsg('system', recText(rec, userName(chat), foeName(chat)), { gm: rec, charId: first?.id || '', name: first?.name || '' } as Partial<Msg>);
   if (cur.chat === chat && chatApi.push) await chatApi.push(m); else { const msgs = await S.msgs(chat.id); msgs.push(m); await S.saveMsgs(chat, msgs); }
   redrawGame();
+  // 전투와 세션의 끝은 나중에 돌아올 수 있게 체크포인트로 남긴다
+  if (cur.chat === chat && (rec.kind === 'fight' || rec.kind === 'session')) void import('../flow/logic').then(f => f.addCheckpoint(m, rec.kind === 'fight' ? `${t('game.rec.fight')} · ${rec.name}` : t('game.journal.sessionN', { n: rec.n }))).catch(() => { });
   if (reply && cur.chat === chat && !running()) void generate('normal');
 }
 
@@ -143,6 +145,7 @@ function Setup({ chat, close }: { chat: GameChat; close(): void }) {
       <label className="field"><span className="field-label">{t('game.setup.gold')}</span><input className="inp" type="number" min={0} value={g.gold} onChange={e => set('gold', +e.target.value)} /></label>
     </div>
     <label className="field"><span className="field-label">{t('game.setup.items')}</span><input className="inp" value={items} placeholder={t('game.setup.itemsPh')} onChange={e => setItems(e.target.value)} /></label>
+    <label className="field"><span className="field-label">{t('game.setup.secret')}</span><textarea className="inp" rows={3} value={g.secret || ''} placeholder={t('game.setup.secretPh')} onChange={e => set('secret', e.target.value)} /><small className="hint">{t('game.setup.secretHint')}</small></label>
     <label className="field"><span className="field-label">{t('game.setup.auto')}</span>
       <select className="inp" value={g.auto || 0} onChange={e => set('auto', +e.target.value)}>{[0, 2, 4, 6, 9].map(n => <option key={n} value={n}>{n ? t('game.setup.autoN', { n }) : t('game.setup.autoOff')}</option>)}</select></label>
     <label className="gm-check"><input type="checkbox" checked={g.music !== false} onChange={e => set('music', e.target.checked)} />{t('game.setup.music')}</label>
@@ -213,7 +216,7 @@ function SessionBox({ chat, onClose }: { chat: GameChat; onClose?: () => void })
   const [busy, setBusy] = useState(false), [trim, setTrim] = useState(true), list = chat.game?.sessions || [];
   const go = async () => { setBusy(true); try { if (await endSession(chat, trim)) { toast(t('game.session.done'), 'ok'); onClose?.(); } } catch (e) { toast(t('game.session.failed', { error: (e instanceof Error ? e.message : String(e)).slice(0, 120) }), 'err'); } finally { setBusy(false); } };
   return <div className="gm-sec">
-    {list.length ? <ol className="gm-sessions">{list.map((x, i) => <li key={i}><span className="eyebrow">{t('game.journal.sessionN', { n: i + 1 })}</span><p>{x.text}</p></li>)}</ol> : null}
+    {list.length ? <ol className="gm-sessions">{list.map((x, i) => <li key={i}><span className="eyebrow">{t('game.journal.sessionN', { n: i + 1 })}</span><button type="button" className="gm-link" onClick={() => { const ends = cur.msgs.map((m, k) => (m as GameMsg).gm?.kind === 'session' ? k : -1).filter(k => k >= 0), from = i ? ends[i - 1] + 1 : 0, first = cur.msgs.slice(from).find(m => !(m as GameMsg).gm); onClose?.(); if (first) { emit('game:enter', chat); window.setTimeout(() => emit('game:goto', first.id), 500); } }}>{t('game.session.replay')}</button><p>{x.text}</p></li>)}</ol> : null}
     <p className="hint">{t('game.session.hint')}</p>
     <label className="gm-check"><input type="checkbox" checked={trim} onChange={e => setTrim(e.target.checked)} />{t('game.session.trim')}</label>
     <div className="gm-foot"><button type="button" className="btn primary" disabled={busy} onClick={() => void go()}>{busy ? t('game.session.busy') : t('game.session.end')}</button></div>
@@ -252,25 +255,29 @@ function MediaBox() {
   </div>;
 }
 type Tab = 'sheet' | 'map' | 'journal' | 'session' | 'media';
+const StepBtn = ({ chat, fx, label }: { chat: GameChat; fx: Fx; label: string }) => <button type="button" className="gm-step" aria-label={label} title={label} onClick={() => adjust(chat, fx)}>{'n' in fx && fx.n > 0 ? '+' : '−'}</button>;
 export function Sheet({ chat, msgs, onClose, first = 'sheet' }: { chat: Chat; msgs: Msg[]; onClose?: () => void; first?: Tab }) {
   useCh('game'); const [tab, setTab] = useState<Tab>(first);
   const g = gameOf(chat); if (!g) return <><p className="dim">{t('game.sheet.off')}</p><button type="button" className="btn" onClick={() => openSetup(chat)}>{t('game.setup.title')}</button></>;
   const s = sheetOf(g, msgs), gc = chat as GameChat;
-  const Step = ({ fx, label }: { fx: Fx; label: string }) => <button type="button" className="gm-step" aria-label={label} title={label} onClick={() => adjust(gc, fx)}>{'n' in fx && fx.n > 0 ? '+' : '−'}</button>;
   const addItem = async () => { const v = await promptBox(t('game.sheet.addItem'), ''); if (v?.trim()) adjust(gc, { k: 'item', name: v.trim().slice(0, 60), n: 1 }); };
   const tabs = <div className="gm-tabs">{(['sheet', 'map', 'journal', 'session', 'media'] as const).map(k => <button key={k} type="button" className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{t('game.tab.' + k)}</button>)}</div>;
   if (tab === 'map') return <div className="gm-sheet">{tabs}<MapView s={s} onGo={name => { chatApi.insert(t('game.map.go', { place: name })); onClose?.(); }} /></div>;
-  if (tab === 'journal') return <div className="gm-sheet">{tabs}<p className="hint">{t('game.rewind.hint')}</p><Journal msgs={msgs} onClose={onClose} /></div>;
+  if (tab === 'journal') return <div className="gm-sheet">{tabs}
+    <div className="gm-sec"><span className="eyebrow">{t('game.memo')}</span><textarea className="inp" rows={3} defaultValue={g.memo || ''} placeholder={t('game.memoPh')} onBlur={e => { if ((g.memo || '') !== e.target.value) { g.memo = e.target.value; saveChat(chat); } }} /></div>
+    {s.docs.length ? <div className="gm-sec"><span className="eyebrow">{t('game.docs')}</span>{s.docs.map(d => <details key={d.title} className="gm-doc"><summary>{d.title}</summary><p>{d.text}</p></details>)}</div> : null}
+    <p className="hint">{t('game.rewind.hint')}</p><Journal msgs={msgs} onClose={onClose} /></div>;
   if (tab === 'media') return <div className="gm-sheet">{tabs}<MediaBox /></div>;
   if (tab === 'session') return <div className="gm-sheet">{tabs}<SessionBox chat={gc} onClose={onClose} /></div>;
   return <div className="gm-sheet">{tabs}
-    <div className="gm-row"><span className="eyebrow">HP</span><b className="gm-n">{s.hp}<i>/{s.hpMax}</i></b><span className="gm-bar"><i style={{ width: `${s.hp / s.hpMax * 100}%` }} /></span><Step fx={{ k: 'hp', n: -1 }} label="HP −1" /><Step fx={{ k: 'hp', n: 1 }} label="HP +1" /></div>
-    <div className="gm-row"><span className="eyebrow">{t('game.gold')}</span><b className="gm-n">{s.gold}</b><i className="gm-fill" /><Step fx={{ k: 'gold', n: -1 }} label={t('game.gold') + ' −1'} /><Step fx={{ k: 'gold', n: 1 }} label={t('game.gold') + ' +1'} /></div>
+    <div className="gm-row"><span className="eyebrow">HP</span><b className="gm-n">{s.hp}<i>/{s.hpMax}</i></b><span className="gm-bar"><i style={{ width: `${s.hp / s.hpMax * 100}%` }} /></span><StepBtn chat={gc} fx={{ k: 'hp', n: -1 }} label="HP −1" /><StepBtn chat={gc} fx={{ k: 'hp', n: 1 }} label="HP +1" /></div>
+    <div className="gm-row"><span className="eyebrow">{t('game.gold')}</span><b className="gm-n">{s.gold}</b><i className="gm-fill" /><StepBtn chat={gc} fx={{ k: 'gold', n: -1 }} label={t('game.gold') + ' −1'} /><StepBtn chat={gc} fx={{ k: 'gold', n: 1 }} label={t('game.gold') + ' +1'} /></div>
     <div className="gm-row"><span className="eyebrow">{t('game.fate')}</span><b className="gm-n">{s.fate}</b><span className="gm-fates">{Array.from({ length: Math.max(s.fate, 3) }, (_, i) => <i key={i} className={i < s.fate ? 'on' : ''} />)}</span></div>
     <p className="hint gm-note">{t('game.fate.hint')}</p>
     <div className="gm-row"><span className="eyebrow">LV</span><b className="gm-n">{s.level}</b><span className="gm-bar"><i style={{ width: `${s.level >= 20 ? 100 : s.xp % 100}%` }} /></span><small className="gm-xp">{s.xp} XP</small></div>
     <div className="gm-statline" style={{ gridTemplateColumns: `repeat(${statsOf(g).length > 4 ? 3 : 4}, 1fr)` }}>{statsOf(g).map(k => <span key={k}><small>{t('game.stat.' + k)}</small><b>{ruleOf(g) === 'd20' || ruleOf(g) === '2d6' ? sign(statVal(g, k)) : statVal(g, k)}</b></span>)}</div>
     {s.time || s.weather ? <div className="gm-sec"><span className="eyebrow">{t('game.time')}</span><p>{[s.time, s.weather].filter(Boolean).join(' · ')}</p></div> : null}
+    {s.meters.length ? <div className="gm-sec"><span className="eyebrow">{t('game.meters')}</span>{s.meters.map(m => <div key={m.name} className="gm-row"><span className="gm-mname">{m.name}</span><span className="gm-bar"><i style={{ width: `${m.v / m.max * 100}%` }} /></span><small className="gm-xp">{m.v}/{m.max}</small></div>)}</div> : null}
     {s.clocks.length ? <div className="gm-sec"><span className="eyebrow">{t('game.clocks')}</span>{s.clocks.map(c => <div key={c.name} className={`gm-clock${c.v >= c.max ? ' is-full' : ''}`}><span>{c.name}</span><b>{c.v}/{c.max}</b><ClockDial v={c.v} max={c.max} size={26} /></div>)}</div> : null}
     {s.party.length || s.people.length ? <div className="gm-sec"><span className="eyebrow">{t('game.people')}</span>
       <ul className="gm-people">{s.party.filter(n => !s.people.some(p => p.name.toLowerCase() === n.toLowerCase())).map(n => <li key={'p' + n}><span>{n}</span><em>{t('game.party')}</em></li>)}

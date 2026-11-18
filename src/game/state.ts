@@ -18,7 +18,7 @@ export const RULES: Record<RuleId, { stats: StatKey[]; min: number; max: number;
 export const STATS: StatKey[] = FOUR;
 export type Diff = 'easy' | 'normal' | 'hard';
 export interface GameCfg {
-  on: boolean; rule?: RuleId; /** 새 장소 · 전투 때 삽화를 그린다 */ art?: boolean; /** 효과음 (기본 켬) */ sfx?: boolean; /** 배경 음악 (기본 켬) */ music?: boolean; /** 게임 화면으로 연다 (기본 켬) */ stage?: boolean; /** 자동 넘김: 문단마다 기다리는 초 (0 = 끔) */ auto?: number; /** 게임을 시작하기 전의 모드 */ prev?: string; /** 게임 화면에서 보던 문단 */ at?: string; genre: string; tone: string; diff: Diff; hero: string; goal: string;
+  on: boolean; rule?: RuleId; /** 새 장소 · 전투 때 삽화를 그린다 */ art?: boolean; /** 효과음 (기본 켬) */ sfx?: boolean; /** 배경 음악 (기본 켬) */ music?: boolean; /** 게임 화면으로 연다 (기본 켬) */ stage?: boolean; /** 자동 넘김: 문단마다 기다리는 초 (0 = 끔) */ auto?: number; /** 게임을 시작하기 전의 모드 */ prev?: string; /** 진행자만 아는 것 (반전 · 흑막). 화면에는 나오지 않는다 */ secret?: string; /** 내 메모 (진행자에게 보내지 않는다) */ memo?: string; /** 게임 화면에서 보던 문단 */ at?: string; genre: string; tone: string; diff: Diff; hero: string; goal: string;
   stats: Partial<Record<StatKey, number>>; hpMax: number; gold: number; items: string[];
   /** 손으로 고친 값 (시트에서 직접 바꾼 것) */
   adj?: Fx[];
@@ -31,7 +31,9 @@ export type Fx =
   /** 두 장소를 잇는 길 (아직 가 보지 않은 곳도 지도에 나타난다) */
   | { k: 'path'; a: string; b: string } | { k: 'xp'; n: number }
   /** 인물과의 사이 (-100 ~ 100) · 동료 · 작중 시간 · 날씨 · 진행 시계 */
-  | { k: 'rep'; name: string; n: number } | { k: 'party'; name: string; add: boolean } | { k: 'time'; text: string } | { k: 'weather'; text: string } | { k: 'scene'; key: string } | { k: 'fate'; n: number } | { k: 'clock'; name: string; v: number; max: number };
+  | { k: 'rep'; name: string; n: number } | { k: 'party'; name: string; add: boolean } | { k: 'time'; text: string } | { k: 'weather'; text: string } | { k: 'scene'; key: string } | { k: 'fate'; n: number }
+  /** 수치(위젯) · 읽을거리 · 흐른 시간(분) · 음악 지정 */
+  | { k: 'meter'; name: string; v: number; max: number } | { k: 'doc'; title: string; text: string } | { k: 'pass'; min: number } | { k: 'music'; key: string } | { k: 'clock'; name: string; v: number; max: number };
 export type MiniId = 'rps' | 'dice' | 'blackjack' | 'tictactoe' | 'numbers' | 'gomoku';
 export const MINIS: MiniId[] = ['rps', 'dice', 'blackjack', 'tictactoe', 'gomoku', 'numbers'];
 export type Element = 'fire' | 'ice' | 'bolt' | 'poison';
@@ -58,7 +60,7 @@ export type GameRec =
   | { kind: 'check'; stat: StatKey; dc: number; die: number; mod: number; total: number; ok: boolean; crit?: 'hit' | 'miss'; why?: string; fx?: Fx[]; rule?: RuleId; dice?: number[]; grade?: Grade; note?: string; /** 실패했고 운명 점이 남아 있다: 받아들일지 다시 굴릴지 고르는 중 */ open?: boolean; rerolled?: boolean }
   | { kind: 'fight'; name: string; outcome: 'win' | 'lose' | 'fled'; rounds: number; took: number; hp: number; hpMax: number; fx?: Fx[]; loot?: string; fallen?: string[] }
   | { kind: 'play'; game: MiniId; outcome: Outcome; score: string; stake?: string; fx?: Fx[] };
-export interface Sheet { hp: number; hpMax: number; gold: number; items: { name: string; n: number }[]; quests: { title: string; done: boolean }[]; place: string; places: { name: string; seen: boolean }[]; paths: [string, string][]; xp: number; level: number; people: { name: string; v: number }[]; party: string[]; time: string; weather: string; scene: string; fate: number; clocks: { name: string; v: number; max: number }[] }
+export interface Sheet { hp: number; hpMax: number; gold: number; items: { name: string; n: number }[]; quests: { title: string; done: boolean }[]; place: string; places: { name: string; seen: boolean }[]; paths: [string, string][]; xp: number; level: number; people: { name: string; v: number }[]; party: string[]; time: string; weather: string; scene: string; fate: number; meters: { name: string; v: number; max: number }[]; docs: { title: string; text: string }[]; mins: number; music: string; clocks: { name: string; v: number; max: number }[] }
 
 export type GameChat = Chat & { game?: GameCfg };
 export type GameSwipe = { /** 연출: 흔들림 · 섬광 · 어두워짐 · 위아래 띠 */ gcine?: string[]; gfx?: Fx[]; gask?: Ask; /** 진행자가 내놓은 선택지 */ gchoices?: string[] };
@@ -96,6 +98,10 @@ function apply(s: Sheet, fx: Fx) {
   else if (fx.k === 'party') { const i = s.party.findIndex(x => same(x, fx.name)); if (fx.add && i < 0 && s.party.length < 3) s.party.push(fx.name.trim()); if (!fx.add && i >= 0) s.party.splice(i, 1); }
   else if (fx.k === 'scene') s.scene = fx.key;
   else if (fx.k === 'fate') s.fate = Math.max(0, Math.min(5, s.fate + fx.n));
+  else if (fx.k === 'meter') { const i = s.meters.findIndex(x => same(x.name, fx.name)); if (fx.max <= 0) { if (i >= 0) s.meters.splice(i, 1); } else { const m = { name: i >= 0 ? s.meters[i].name : fx.name.trim(), v: Math.min(fx.max, Math.max(0, fx.v)), max: fx.max }; if (i >= 0) s.meters[i] = m; else if (s.meters.length < 6) s.meters.push(m); } }
+  else if (fx.k === 'doc') { const i = s.docs.findIndex(x => same(x.title, fx.title)); if (i >= 0) s.docs[i] = { title: s.docs[i].title, text: fx.text }; else s.docs.push({ title: fx.title, text: fx.text }); }
+  else if (fx.k === 'pass') s.mins += fx.min;
+  else if (fx.k === 'music') s.music = fx.key;
   else if (fx.k === 'time') s.time = fx.text; else if (fx.k === 'weather') s.weather = fx.text;
   else if (fx.k === 'clock') { const i = s.clocks.findIndex(x => same(x.name, fx.name)); if (fx.max <= 0) { if (i >= 0) s.clocks.splice(i, 1); } else if (i >= 0) s.clocks[i] = { name: s.clocks[i].name, v: Math.min(fx.max, Math.max(0, fx.v)), max: fx.max }; else s.clocks.push({ name: fx.name.trim(), v: Math.min(fx.max, Math.max(0, fx.v)), max: fx.max }); }
   else if (fx.k === 'place') { const from = s.place, p = spot(s, fx.name); p.seen = true; s.place = p.name; if (from && !same(from, p.name)) link(s, from, p.name); }
@@ -110,7 +116,7 @@ function apply(s: Sheet, fx: Fx) {
 }
 /** 지금의 시트: 시작값 + 손으로 고친 값 + 메시지마다의 변화 */
 export function sheetOf(g: GameCfg, msgs: Msg[]): Sheet {
-  const s: Sheet = { hp: g.hpMax, hpMax: g.hpMax, gold: g.gold, items: [], quests: [], place: '', places: [], paths: [], xp: 0, level: 1, people: [], party: [], time: '', weather: '', scene: '', fate: g.diff === 'easy' ? 2 : g.diff === 'hard' ? 0 : 1, clocks: [] };
+  const s: Sheet = { hp: g.hpMax, hpMax: g.hpMax, gold: g.gold, items: [], quests: [], place: '', places: [], paths: [], xp: 0, level: 1, people: [], party: [], time: '', weather: '', scene: '', fate: g.diff === 'easy' ? 2 : g.diff === 'hard' ? 0 : 1, meters: [], docs: [], mins: 0, music: '', clocks: [] };
   for (const name of g.items) apply(s, { k: 'item', name, n: 1 });
   for (const m of msgs as GameMsg[]) {
     for (const fx of m.gm && 'fx' in m.gm && m.gm.fx || []) apply(s, fx);
@@ -148,6 +154,7 @@ export function sceneOf(s: Sheet): string {
 /** 지금 틀 음악 */
 export function trackOf(s: Sheet, g: GameCfg, fighting: boolean): 'explore' | 'town' | 'battle' | 'dark' | 'rest' {
   if (fighting) return 'battle';
+  if (['explore', 'town', 'dark', 'rest', 'battle'].includes(s.music)) return s.music as 'explore';
   const sc = sceneOf(s), dark = /horror|호러|공포|恐怖/i.test(g.genre) || ['hall', 'ruins', 'night'].includes(sc) || /night|midnight|밤|자정|夜/i.test(s.time);
   if (['tavern', 'room'].includes(sc) || /rest|camp|sleep|휴식|야영|쉬/i.test(s.place)) return 'rest';
   if (dark) return 'dark';
@@ -155,7 +162,7 @@ export function trackOf(s: Sheet, g: GameCfg, fighting: boolean): 'explore' | 't
 }
 
 // ── 진행자가 쓰는 표시 ──
-const TAG = /\[\s*(hp|maxhp|gold|xp|item|quest|place|path|rep|party|time|weather|backdrop|fx|fate|clock|choices|qte|check|save|fight|play)\b[\s:：]*([^[\]\n]{0,300})\]/gi;
+const TAG = /\[\s*(hp|maxhp|gold|xp|item|quest|place|path|rep|party|time|weather|backdrop|fx|fate|meter|note|pass|music|clock|choices|qte|check|save|fight|play)\b[\s:：]*([^[\]\n]{0,300})\]/gi;
 const STAT_ALIAS: Record<string, StatKey> = { str: 'str', strength: 'str', 힘: 'str', 근력: 'str', 力量: 'str', dex: 'dex', dexterity: 'dex', agi: 'dex', 민첩: 'dex', 敏捷: 'dex', con: 'con', constitution: 'con', 건강: 'con', 体质: 'con', int: 'int', intelligence: 'int', 지능: 'int', 智力: 'int', wis: 'wis', wisdom: 'wis', 지혜: 'wis', 感知: 'wis', cha: 'cha', charisma: 'cha', 매력: 'cha', 魅力: 'cha' };
 const MINI_ALIAS: Record<string, MiniId> = { gomoku: 'gomoku', omok: 'gomoku', 'five-in-a-row': 'gomoku', rps: 'rps', dice: 'dice', blackjack: 'blackjack', tictactoe: 'tictactoe', 'tic-tac-toe': 'tictactoe', ttt: 'tictactoe', numbers: 'numbers', baseball: 'numbers' };
 const num = (s: string) => { const m = s.replace(/[−–]/g, '-').match(/[+-]?\s*\d+/); return m ? parseInt(m[0].replace(/\s+/g, ''), 10) : NaN; };
@@ -181,6 +188,10 @@ export function readTags(text: string): { text: string; fx: Fx[]; ask: Ask | nul
     if (k === 'party') { const m = v.match(/^([+-−–])\s*(.+)$/); if (!m) return all; fx.push({ k: 'party', name: m[2].trim().slice(0, 40), add: m[1] === '+' }); return ''; }
     if (k === 'fx') { for (const w of v.toLowerCase().split(/[\s,|]+/)) if (['shake', 'flash', 'dark', 'letterbox'].includes(w) && !cine.includes(w)) cine.push(w); return ''; }
     if (k === 'fate') { const n = num(v); if (!isFinite(n) || !n) return ''; fx.push({ k: 'fate', n: clampN(n, -5, 5) }); return ''; }
+    if (k === 'meter') { const m = v.match(/^(.+?)\s+(?:(\d+)\s*\/\s*(\d+)|(clear|done|off))$/i); if (!m) return all; fx.push({ k: 'meter', name: m[1].trim().slice(0, 30), v: +(m[2] || 0), max: m[4] ? 0 : clampN(+m[3], 1, 9999) }); return ''; }
+    if (k === 'note') { const m = v.match(/^([^:：]{1,60})[:：]\s*(.+)$/); if (!m) return all; fx.push({ k: 'doc', title: m[1].trim(), text: m[2].trim().slice(0, 1200) }); return ''; }
+    if (k === 'pass') { const m = v.match(/^(\d+(?:\.\d+)?)\s*(m|min|minutes?|h|hours?|d|days?|분|시간|일)?/i); if (!m) return ''; const u = (m[2] || 'm').toLowerCase(), min = +m[1] * (/^(h|hour|시간)/.test(u) ? 60 : /^(d|day|일)/.test(u) ? 1440 : 1); fx.push({ k: 'pass', min: clampN(Math.round(min), 1, 43200) }); return ''; }
+    if (k === 'music') { const key = v.toLowerCase().replace(/[^a-z]/g, ''); fx.push({ k: 'music', key: ['explore', 'town', 'battle', 'dark', 'rest'].includes(key) ? key : '' }); return ''; }
     if (k === 'backdrop') { const key = v.toLowerCase().replace(/[^a-z]/g, ''); if (!SCENES.includes(key)) return ''; fx.push({ k: 'scene', key }); return ''; }
     if (k === 'time' || k === 'weather') { if (!v) return all; fx.push({ k, text: v.slice(0, 60) }); return ''; }
     if (k === 'clock') { const m = v.match(/^(.+?)\s+(?:(\d+)\s*\/\s*(\d+)|(clear|done|off))$/i); if (!m) return all; fx.push({ k: 'clock', name: m[1].trim().slice(0, 40), v: +(m[2] || 0), max: m[4] ? 0 : clampN(+m[3], 1, 12) }); return ''; }
@@ -214,7 +225,7 @@ export function readTags(text: string): { text: string; fx: Fx[]; ask: Ask | nul
 /** 화면에서만 가린다 (받는 중에는 아직 닫히지 않은 표시도) */
 export const hideTags = (text: string, streaming: boolean) => {
   let s = text.replace(TAG, '');
-  if (streaming) s = s.replace(/\[\s*(hp|maxhp|gold|xp|item|quest|place|path|rep|party|time|weather|backdrop|fx|fate|clock|choices|qte|check|save|fight|play)\b[^\]\n]*$/i, '');
+  if (streaming) s = s.replace(/\[\s*(hp|maxhp|gold|xp|item|quest|place|path|rep|party|time|weather|backdrop|fx|fate|meter|note|pass|music|clock|choices|qte|check|save|fight|play)\b[^\]\n]*$/i, '');
   return s;
 };
 
@@ -261,12 +272,13 @@ export function rulesPrompt(g: GameCfg): string {
   return `[Game mode]
 Besides playing your role, you run this as a tabletop adventure for {{user}}${g.genre ? ` — genre: ${g.genre}` : ''}${g.tone ? `, tone: ${g.tone}` : ''}.${g.hero ? ` {{user}} plays: ${g.hero}.` : ''}${g.goal ? ` The adventure's goal: ${g.goal}.` : ''}
 Describe the scene, offer real choices with consequences, and let {{user}} decide. Never decide {{user}}'s actions, never roll dice, and never state the result of a roll yourself — the app rolls and reports it.
-${RULE_TEXT[ruleOf(g)].stats}${g.sessions?.length ? `\nThe story so far (earlier sessions, oldest first):\n${g.sessions.map((x, i) => `Session ${i + 1}: ${x.text}`).join('\n')}` : ''}
+${RULE_TEXT[ruleOf(g)].stats}${g.secret?.trim() ? `\nFor your eyes only — never state these outright; use them to steer events and to foreshadow:\n${g.secret.trim().slice(0, 3000)}` : ''}${g.sessions?.length ? `\nThe story so far (earlier sessions, oldest first):\n${g.sessions.map((x, i) => `Session ${i + 1}: ${x.text}`).join('\n')}` : ''}
 When something changes, write the matching tag on its own line at the end of the reply. The app applies it to {{user}}'s sheet and hides it:
 [hp -3]  [hp +5]  [gold +10]  [gold -4]  [xp +20] (for clever play or a finished quest; 100 XP is a level)  [item +Torch]  [item +Arrow x5]  [item -Rusty key]  [quest +Find the missing bell]  [quest done: Find the missing bell]
 [place Old Mill] when {{user}} arrives somewhere (keep place names short and reuse the exact same name later).  [path Old Mill - River Dock] to reveal a route to a place {{user}} has heard of or can see. The app draws the map from these.
 [rep Mira +10] / [rep Mira -15] when someone's opinion of {{user}} shifts (-100 enemy … +100 devoted).  [party +Mira] / [party -Mira] when someone joins or leaves as a companion (they fight alongside {{user}}; at most three).  [time Day 2, dusk]  [weather Heavy rain]  [backdrop forest] to change the backdrop when the setting changes — one of: ${SCENES.join(', ')}.  [clock Guards alerted 2/6] for a danger or countdown that fills step by step ([clock Guards alerted clear] to drop it).
 [fx shake] for an impact or explosion, [fx flash] for lightning or magic, [fx dark] when the lights go out, [fx letterbox] for a dramatic reveal — at most one, only for big moments.  [fate +1] rewards daring or selfless play ({{user}} spends fate points to re-roll a failed check).
+[meter Suspicion 40/100] for any number worth tracking on screen (trust, heat, supplies…; [meter Suspicion clear] to drop it).  [note Torn letter: the text {{user}} can read] when {{user}} finds something to read — it is kept in the journal.  [pass 2h] / [pass 30m] when time goes by.  [music dark] to set the mood music (explore, town, battle, dark, rest; [music auto] to let the app choose).
 [choices Sneak around | Talk to the guard | Wait for night] — optional: two to four suggested actions shown as buttons; {{user}} may still type anything.
 To hand something to the app, use ONE of these as the very last line, then stop — do not narrate what happens next:
 ${RULE_TEXT[ruleOf(g)].check}
@@ -276,12 +288,16 @@ ${RULE_TEXT[ruleOf(g)].check}
 ${diff}
 Language: keep the tag keywords in English exactly as shown, but write everything you put inside a tag — place names, times, weather, quest titles, item names, clock names, people's names, choices, reasons and stakes — in the language the story is being told in. The English wording above is only an example of the format.
 Keep those names short (a place name of two to four words; a time like "둘째 날 저녁" rather than a sentence).
+A message from {{user}} that starts with [OOC] is said to you as game master, outside the story: answer briefly out of character and do not advance the scene unless asked. One that starts with [To companions] is spoken to the companions inside the story.
 The result comes back as a bracketed line; narrate from there and honor it. Do not change the sheet without a tag, and do not show the tags' meaning to {{user}}.`;
 }
 export function sheetPrompt(g: GameCfg, s: Sheet): string {
   const items = s.items.map(i => i.n > 1 ? `${i.name} x${i.n}` : i.name).join(', ') || 'nothing', open = s.quests.filter(q => !q.done).map(q => q.title), done = s.quests.filter(q => q.done).map(q => q.title);
-  return `[{{user}}'s sheet — HP ${s.hp}/${s.hpMax}${s.hp <= 0 ? ' (down: cannot act until helped or healed)' : ''} · Gold ${s.gold} · Fate ${s.fate} · Level ${s.level} (${s.xp} XP) · ${statsOf(g).map(k => `${STAT_EN[k]} ${ruleOf(g) === 'd20' || ruleOf(g) === '2d6' ? sign(statVal(g, k)) : statVal(g, k)}`).join(' ')} · Carrying: ${items}${open.length ? ` · Quests: ${open.join('; ')}` : ''}${done.length ? ` · Finished: ${done.join('; ')}` : ''}${s.place ? ` · Place: ${s.place}` : ''}${ways(s)}${s.time ? ` · Time: ${s.time}` : ''}${s.weather ? ` · Weather: ${s.weather}` : ''}${s.party.length ? ` · Companions: ${s.party.join(', ')}` : ''}${s.people.length ? ` · Standing: ${s.people.map(p => `${p.name} ${sign(p.v)} (${REP_EN[repTier(p.v)]})`).join(', ')}` : ''}${s.clocks.length ? ` · Clocks: ${s.clocks.map(c => `${c.name} ${c.v}/${c.max}${c.v >= c.max ? ' (FULL — it happens now)' : ''}`).join(', ')}` : ''}]`;
+  return `[{{user}}'s sheet — HP ${s.hp}/${s.hpMax}${s.hp <= 0 ? ' (down: cannot act until helped or healed)' : ''} · Gold ${s.gold} · Fate ${s.fate} · Level ${s.level} (${s.xp} XP) · ${statsOf(g).map(k => `${STAT_EN[k]} ${ruleOf(g) === 'd20' || ruleOf(g) === '2d6' ? sign(statVal(g, k)) : statVal(g, k)}`).join(' ')} · Carrying: ${items}${open.length ? ` · Quests: ${open.join('; ')}` : ''}${done.length ? ` · Finished: ${done.join('; ')}` : ''}${s.place ? ` · Place: ${s.place}` : ''}${ways(s)}${s.time ? ` · Time: ${s.time}` : ''}${s.weather ? ` · Weather: ${s.weather}` : ''}${s.party.length ? ` · Companions: ${s.party.join(', ')}` : ''}${s.people.length ? ` · Standing: ${s.people.map(p => `${p.name} ${sign(p.v)} (${REP_EN[repTier(p.v)]})`).join(', ')}` : ''}${s.meters.length ? ` · Meters: ${s.meters.map(m => `${m.name} ${m.v}/${m.max}`).join(', ')}` : ''}${s.mins ? ` · Elapsed: ${elapsedText(s.mins)}` : ''}${s.clocks.length ? ` · Clocks: ${s.clocks.map(c => `${c.name} ${c.v}/${c.max}${c.v >= c.max ? ' (FULL — it happens now)' : ''}`).join(', ')}` : ''}]`;
 }
+/** 흐른 시간을 "Day N, HH:MM" 으로 (첫날 아침 8시에서 시작) */
+export const elapsedOf = (mins: number) => { const t = 480 + mins; return { day: 1 + Math.floor(t / 1440), h: Math.floor(t % 1440 / 60), m: t % 60 }; };
+const elapsedText = (mins: number) => { const e = elapsedOf(mins); return `Day ${e.day}, ${String(e.h).padStart(2, '0')}:${String(e.m).padStart(2, '0')}`; };
 /** 사이의 단계: 0 원수 · 1 적대 · 2 중립 · 3 우호 · 4 신뢰 */
 export const repTier = (v: number) => v <= -60 ? 0 : v <= -20 ? 1 : v < 20 ? 2 : v < 60 ? 3 : 4;
 const REP_EN = ['enemy', 'hostile', 'neutral', 'friendly', 'devoted'];
@@ -332,7 +348,7 @@ export function layoutMap(s: Sheet): { nodes: MapNode[]; edges: [MapNode, MapNod
 }
 
 // ── 모험 일지: 있었던 일을 기록에서 그대로 뽑는다 (모델을 부르지 않는다) ──
-export type JournalRow = { kind: 'place' | 'quest' | 'questDone' | 'item' | 'party' | 'check' | 'fight' | 'play' | 'session'; text: string; ok?: boolean; id: string };
+export type JournalRow = { kind: 'place' | 'quest' | 'questDone' | 'item' | 'party' | 'doc' | 'check' | 'fight' | 'play' | 'session'; text: string; ok?: boolean; id: string };
 export function journalOf(msgs: Msg[]): JournalRow[] {
   const out: JournalRow[] = [];
   for (const m of msgs as GameMsg[]) {
@@ -345,6 +361,7 @@ export function journalOf(msgs: Msg[]): JournalRow[] {
     for (const fx of fxs) {
       if (fx.k === 'place') out.push({ kind: 'place', text: fx.name, id: m.id });
       else if (fx.k === 'quest') out.push({ kind: fx.done ? 'questDone' : 'quest', text: fx.title, id: m.id });
+      else if (fx.k === 'doc') out.push({ kind: 'doc', text: fx.title, id: m.id });
       else if (fx.k === 'party') out.push({ kind: 'party', text: fx.name, ok: fx.add, id: m.id });
       else if (fx.k === 'item' && fx.n > 0) out.push({ kind: 'item', text: fx.n > 1 ? `${fx.name} ×${fx.n}` : fx.name, id: m.id });
     }

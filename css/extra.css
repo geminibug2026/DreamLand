@@ -715,3 +715,10 @@ html.gs-on .modal-wrap:has(.gm) .gm-cell.is-foe b { color: var(--gs-paper); }
 .gm-cell.is-mark { background-image: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--bad, #c0392b) 38%, transparent) 0 4px, transparent 4px 9px); animation: gm-warn .7s ease-in-out infinite alternate; } @keyframes gm-warn { to { background-color: color-mix(in srgb, var(--bad, #c0392b) 22%, transparent); } }
 .gm-cell.is-boss b { border-width: 2px; box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--ink); }
 @media (prefers-reduced-motion: reduce) { .gm-cell.is-mark { animation: none; } }
+/* 수치 · 읽을거리 · 말 걸기 */
+.gm-mname { min-width: 5.5em; max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .92em; }
+.gm-doc { border-bottom: 1px solid var(--ink-line); } .gm-doc summary { padding: 6px 0; cursor: pointer; font: 600 .95em var(--display); } .gm-doc p { margin: 0 0 10px; padding: 10px 12px; border-left: 2px solid var(--ink); background: var(--surface2); font-family: var(--gs-serif, serif); font-size: .96em; line-height: 1.7; white-space: pre-wrap; }
+.gm-sessions li { position: relative; } .gm-sessions .gm-link { position: absolute; right: 0; top: 4px; }
+.gs-mbar .gs-meter { width: 84px; grid-column: auto; } .gs-mbar .gs-meter::after { display: none; }
+.gs-whom { display: flex; gap: 14px; padding-top: 2px; } .gs-whom button { padding: 3px 0; border: 0; border-bottom: 1px solid transparent; background: none; color: var(--gs-mute); font: 500 .8rem var(--display); letter-spacing: .06em; cursor: pointer; } .gs-whom button.on { color: var(--gs-gold); border-bottom-color: var(--gs-gold); }
+@media (min-width: 900px) { .gs-whom button { font-size: .92rem; } .gs-mbar .gs-meter { width: 130px; } }
