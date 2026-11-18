@@ -7585,5 +7585,8 @@
   "game.loot.badge": "Worn insignia",
   "game.loot.whet": "Whetstone",
   "game.loot.flask": "Hip flask of strong liquor",
-  "game.loot.lockpick": "Lockpick"
+  "game.loot.lockpick": "Lockpick",
+  "game.bag.dropAll": "Remove all (×{n})",
+  "game.bag.dropped": "{item} — removed.",
+  "game.bag.undo": "Undo"
 }

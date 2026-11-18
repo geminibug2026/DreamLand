@@ -827,3 +827,4 @@ html.gs-on .modal-wrap:has(.gm) .gm-chess button.is-w { color: #f4ecdb; } html.g
 .gm-slot em { font-size: 9.5px; line-height: 1.2; font-weight: 500; }
 
 .gm-item.is-short span { display: none; } .gm-item span { background: color-mix(in srgb, var(--surface) 70%, transparent); } .gm-item:not(.is-short) svg { margin-top: 10px; max-height: calc(100% - 16px); }
+.gm-undo { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0; padding: 7px 10px; border: 1px dashed var(--ink); font-size: .88em; } .gm-undo span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
