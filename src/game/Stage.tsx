@@ -18,10 +18,11 @@ import { bgFor, loadMedia, trackFor } from './media';
 import { ClockDial, Glyph, Keystone, Rule, type GlyphName } from './Art';
 
 interface Page { key: string; msgId: string; who: 'c' | 'u' | 'n' | 'e'; charId: string; name: string; text: string; rec?: GameRec; msg: Msg }
-const LOOKBACK = 60;
+/** 되돌아볼 수 있는 메시지 수. 세션을 마무리해 프롬프트에서 뺀(숨긴) 메시지도 읽을 수는 있다 */
+const LOOKBACK = 400;
 function build(chat: Chat, msgs: Msg[]): Page[] {
   const out: Page[] = [], me = S.persona(chat).name || t('game.you');
-  for (const m of msgs.filter(x => !x.hidden && !(x as { call?: unknown }).call).slice(-LOOKBACK)) {
+  for (const m of msgs.filter(x => !(x as { call?: unknown }).call).slice(-LOOKBACK)) {
     const rec = (m as GameMsg).gm;
     if (rec) { if (rec.kind !== 'start') out.push({ key: m.id, msgId: m.id, who: 'e', charId: '', name: '', text: '', rec, msg: m }); continue; }
     const who = m.role === 'user' ? 'u' : m.role === 'assistant' ? 'c' : 'n', charId = who === 'c' ? charIdOf(m, chat as ChatX) : '';
@@ -34,7 +35,7 @@ const tail = (msgs: Msg[]) => { const m = msgs[msgs.length - 1]; return m ? `${m
 
 function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   const [, bump] = useState(0), [pos, setPos] = useState(-1), [draft, setDraft] = useState(''), [sound, setSound] = useState(true);
-  const box = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null), lastEnd = useRef(''), was = useRef({ gold: -1, scene: '', ask: false, hp: -1 }), [cine, setCine] = useState(''), played = useRef(new Set<string>()), cineTm = useRef(0);
+  const box = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null), lastEnd = useRef(''), restored = useRef(false), was = useRef({ gold: -1, scene: '', ask: false, hp: -1 }), [cine, setCine] = useState(''), played = useRef(new Set<string>()), cineTm = useRef(0);
   const chat = cur.chat?.id === chatId ? cur.chat : null, msgs = chat ? cur.msgs : [], busy = running(), g = gameOf(chat);
   useEffect(() => { const tm = window.setInterval(() => { if (cur.chat?.id !== chatId || !gameOf(cur.chat)) return closeStage(); bump(n => n + 1); }, 160); return () => clearInterval(tm); }, [chatId]);
   useEffect(() => { void loadMedia().then(() => bump(n => n + 1)); }, []);
@@ -47,6 +48,8 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   const keys = pages.map(p => p.msgId).join('|');
   useEffect(() => {
     if (!pages.length) return setPos(0);
+    // 다시 들어왔을 때는 보던 문단에서 이어 본다
+    if (!restored.current) { restored.current = true; const i = g?.at ? pages.findIndex(p => p.key === g.at) : -1; if (i >= 0) { if (i >= pages.length - 1) lastEnd.current = pages[i].msgId; return setPos(i); } }
     const seen = lastEnd.current, at = seen ? pages.map(p => p.msgId).lastIndexOf(seen) : -1;
     // 내가 방금 보낸 말은 건너뛴다 (되돌아가면 볼 수 있다)
     if (at >= 0 && at < pages.length - 1) { let i = at + 1; while (i < pages.length - 1 && pages[i].who === 'u') i++; setPos(i); }
@@ -59,6 +62,12 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   const ask = !busy && atEnd ? pendingAsk(msgs) : null, waiting = busy && atEnd, canAct = atEnd && !busy;
   const lastMsg = msgs[msgs.length - 1], picks = canAct && !ask && lastMsg?.role === 'assistant' ? (lastMsg.swipes[lastMsg.sw] as { gchoices?: string[] } | undefined)?.gchoices || [] : [];
   useEffect(() => { box.current?.scrollTo(0, 0); }, [page?.key]);
+  // 보던 자리를 방에 적어 둔다 (조금 머문 뒤에만 — 빠르게 넘기는 동안에는 쓰지 않는다)
+  useEffect(() => {
+    if (!page || !g || !chat || !restored.current || g.at === page.key) return;
+    const tm = window.setTimeout(() => { g.at = page.key; void S.save('chats', chat, true); }, 700);
+    return () => clearTimeout(tm);
+  }, [page?.key, g, chat]);
 
   // 소리: 장면에 맞는 음악, 장소가 바뀌거나 돈이 생기거나 할 일이 생기면 짧은 소리
   const fighting = !!document.querySelector('.gm-fight'), scene = sheet ? sceneOf(sheet) : 'road', on = sound && g?.music !== false;
