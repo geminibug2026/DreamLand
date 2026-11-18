@@ -62,6 +62,9 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   const ask = !busy && atEnd ? pendingAsk(msgs) : null, waiting = busy && atEnd, canAct = atEnd && !busy;
   const lastMsg = msgs[msgs.length - 1], picks = canAct && !ask && lastMsg?.role === 'assistant' ? (lastMsg.swipes[lastMsg.sw] as { gchoices?: string[] } | undefined)?.gchoices || [] : [];
   useEffect(() => { box.current?.scrollTo(0, 0); }, [page?.key]);
+  // 머리글(장소 · 상태)의 높이만큼 인물을 내려 놓는다 — 시계가 여럿이거나 이름이 길어도 겹치지 않게
+  const head = useRef<HTMLDivElement>(null), wrap = useRef<HTMLDivElement>(null);
+  useEffect(() => { const h = head.current, w = wrap.current; if (!h || !w) return; const set = () => w.style.setProperty('--gs-head', Math.ceil(h.getBoundingClientRect().height) + 'px'); set(); const ro = new ResizeObserver(set); ro.observe(h); return () => ro.disconnect(); }, [!!sheet]);
   // 보던 자리를 방에 적어 둔다 (조금 머문 뒤에만 — 빠르게 넘기는 동안에는 쓰지 않는다)
   useEffect(() => {
     if (!page || !g || !chat || !restored.current || g.at === page.key) return;
@@ -126,13 +129,14 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   else if (page.who === 'e') body = <div className="gs-event" key={page.key}><GameCard m={page.msg} /></div>;
   else body = <p className="gs-text" key={page.key}>{fmt(page.text)}{waiting ? <span className="typing"><i /><i /><i /></span> : null}</p>;
 
-  return <div className={`gs${page?.who === 'u' ? ' is-me' : ''}${fighting ? ' is-fight' : ''}${cine ? ' fx-' + cine : ''}`}>
+  const title = sheet.place || chatApi.roomName(chat);
+  return <div ref={wrap} className={`gs${page?.who === 'u' ? ' is-me' : ''}${fighting ? ' is-fight' : ''}${cine ? ' fx-' + cine : ''}`}>
     <div className={`gs-bg${bg ? '' : ' is-plain'}`} key={bg} style={bg ? { backgroundImage: `url("${bg}")` } : undefined} />
     {air ? <Weather air={air} onFlash={() => { if (ambOn) window.setTimeout(() => Ambience.thunder(false), 500 + Math.random() * 2200); }} /> : null}
     <div className="gs-shade" /><div className="gs-cine" />
-    <div className="gs-head">
+    <div className="gs-head" ref={head}>
     <header className="gs-top">
-      <div className="gs-loc">{when ? <span className="gs-eyebrow">{when}</span> : null}<h1>{sheet.place || chatApi.roomName(chat)}</h1></div>
+      <div className="gs-loc">{when ? <span className="gs-eyebrow">{when}</span> : null}<h1 className={title.length > 22 ? 'is-xlong' : title.length > 12 ? 'is-long' : undefined} title={title}>{title}</h1></div>
       <nav className="gs-tools">
         <Tool d="map" label={t('game.tab.map')} onClick={() => openSheet(chat, 'map')} />
         <Tool d="journal" label={t('game.tab.journal')} onClick={() => openSheet(chat, 'journal')} />
