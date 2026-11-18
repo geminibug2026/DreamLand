@@ -7383,7 +7383,7 @@
   "game.uno.color.g": "Green",
   "game.uno.color.b": "Blue",
   "game.chess.hint": "You are white, {name} is black. Tap a piece, then where it goes.",
-  "game.chess.check": "Check!",
+  "game.chess.check": "Check! Your king is under attack — move it, block, or capture the attacker.",
   "game.chess.resign": "Resign",
   "game.setup.autoWeather": "Let the app set the weather (by season and place; it changes as time passes)",
   "game.wx.clear": "Clear",
@@ -7439,5 +7439,10 @@
   "game.video.step.upload": "Uploading…",
   "game.video.step.queue": "Queuing…",
   "game.video.step.render": "Rendering…",
-  "game.video.step.fetch": "Downloading…"
+  "game.video.step.fetch": "Downloading…",
+  "game.chess.stuck": "That piece can't get you out of check. Pick one of the outlined pieces.",
+  "game.chess.gave": "Check on {name}'s king!",
+  "game.chess.mate": "Checkmate",
+  "game.chess.stale": "Stalemate — no legal move, so it's a draw.",
+  "game.chess.draw": "Drawn — the game ran too long."
 }

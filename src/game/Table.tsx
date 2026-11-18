@@ -191,19 +191,24 @@ const GLYPH: Record<string, string> = { k: '♚', q: '♛', r: '♜', b: '♝', 
 function Chess({ foe, onDone }: P) {
   const [s, setS] = useState<ChessSt>(chessStart), [sel, setSel] = useState(-1), [last, setLast] = useState<number[]>([]), [think, setThink] = useState(false), later = useLater(), count = useRef(0);
   const moves = useMemo(() => chessMoves(s), [s]), check = attacked(s.b, kingOf(s.b, s.white), !s.white);
+  // 체크: 몰린 킹과 그 킹을 노리는 말을 찾아 둔다
+  const kingSq = check ? kingOf(s.b, s.white) : -1;
+  const checkers = useMemo(() => { if (kingSq < 0) return [] as number[]; const out: number[] = []; for (let i = 0; i < 64; i++) { const p = s.b[i]; if (!p || isW(p) === s.white) continue; const b = s.b.map((q, j) => q && j !== i && isW(q) !== s.white ? (s.white ? 'P' : 'p') : q); if (attacked(b, kingSq, !s.white)) out.push(i); } return out; }, [s, kingSq]);
+  const [stuck, setStuck] = useState(false);
   const end = !moves.length ? (check ? (s.white ? 'lose' : 'win') : 'draw') : count.current >= 200 ? 'draw' : '';
   const targets = sel >= 0 ? moves.filter(m => m.f === sel) : [];
   const tap = (i: number) => {
     if (!s.white || end || think) return;
     const m = targets.find(x => x.t === i);
-    if (!m) return setSel(isW(s.b[i]) && s.b[i] !== '' ? i : -1);
+    if (!m) { const mine = isW(s.b[i]) && s.b[i] !== ''; setStuck(mine && check && !moves.some(x => x.f === i)); return setSel(mine ? i : -1); }
+    setStuck(false);
     const n = chessApply(s, m); count.current++; setS(n); setSel(-1); setLast([m.f, m.t]); setThink(true);
     later(() => { const r = chessReply(n); if (r) { count.current++; setS(chessApply(n, r)); setLast([r.f, r.t]); } setThink(false); }, 350);
   };
   return <div className="gm-mini">
-    <p className="gm-line">{end ? '' : think ? t('game.thinking', { name: foe }) : check ? t('game.chess.check') : t('game.chess.hint', { name: foe })}</p>
+    <p className={`gm-line${check && !end ? ' is-check' : ''}`} role="status">{end ? t(end === 'draw' ? (check || moves.length ? 'game.chess.draw' : 'game.chess.stale') : 'game.chess.mate') : check && !s.white ? t('game.chess.gave', { name: foe }) : think ? t('game.thinking', { name: foe }) : check ? t(stuck ? 'game.chess.stuck' : 'game.chess.check') : t('game.chess.hint', { name: foe })}</p>
     <div className="gm-chess">{s.b.map((p, i) => <button key={i} type="button" onClick={() => tap(i)} aria-label={`${'abcdefgh'[X(i)]}${8 - Y(i)} ${p}`}
-      className={`${(X(i) + Y(i)) % 2 ? 'is-dark' : ''}${sel === i ? ' is-sel' : ''}${targets.some(m => m.t === i) ? ' is-to' : ''}${last.includes(i) ? ' is-last' : ''}${p ? (isW(p) ? ' is-w' : ' is-b') : ''}`}>{p ? GLYPH[p.toLowerCase()] : ''}</button>)}</div>
+      className={`${(X(i) + Y(i)) % 2 ? 'is-dark' : ''}${sel === i ? ' is-sel' : ''}${targets.some(m => m.t === i) ? ' is-to' : ''}${last.includes(i) ? ' is-last' : ''}${p ? (isW(p) ? ' is-w' : ' is-b') : ''}${i === kingSq ? (end ? ' is-mate' : ' is-check') : ''}${checkers.includes(i) ? ' is-threat' : ''}${check && s.white && !end && !think && sel < 0 && moves.some(m => m.f === i) ? ' is-can' : ''}`}>{p ? GLYPH[p.toLowerCase()] : ''}</button>)}</div>
     {end ? <Done r={{ outcome: end as 'win' | 'lose' | 'draw', score: `${Math.ceil(count.current / 2)} moves` }} onDone={onDone} />
       : <div className="gm-acts"><button type="button" className="btn ghost" onClick={() => onDone({ outcome: 'lose', score: 'resigned' })}>{t('game.chess.resign')}</button></div>}
   </div>;

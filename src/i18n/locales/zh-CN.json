@@ -7303,7 +7303,7 @@
   "game.uno.color.g": "绿",
   "game.uno.color.b": "蓝",
   "game.chess.hint": "你执白，{name}执黑。点击棋子，再点击目标格。",
-  "game.chess.check": "将军！",
+  "game.chess.check": "将军！你的王正受到攻击——移开、挡住或吃掉进攻的棋子。",
   "game.chess.resign": "认输",
   "game.setup.autoWeather": "由应用决定天气（按季节和地点，随时间变化）",
   "game.wx.clear": "晴",
@@ -7359,5 +7359,10 @@
   "game.video.step.upload": "上传图片…",
   "game.video.step.queue": "提交中…",
   "game.video.step.render": "生成中…",
-  "game.video.step.fetch": "下载中…"
+  "game.video.step.fetch": "下载中…",
+  "game.chess.stuck": "这枚棋子无法解除将军。请选择有边框标记的棋子。",
+  "game.chess.gave": "将了 {name} 的王！",
+  "game.chess.mate": "将死",
+  "game.chess.stale": "逼和——无子可动，和棋。",
+  "game.chess.draw": "回合过多，和棋。"
 }
