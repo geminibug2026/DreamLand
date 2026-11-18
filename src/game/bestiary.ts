@@ -3,6 +3,19 @@ export type Trait = 'pack' | 'fly' | 'phase' | 'web' | 'venom' | 'split' | 'armo
 interface Beast { id: string; icon: string; re: RegExp; trait?: Trait }
 const B = (id: string, icon: string, re: RegExp, trait?: Trait): Beast => ({ id, icon, re, trait });
 export const BEASTS: Beast[] = [
+  // 아이콘 모음에 없어 직접 그린 것들 (Art.tsx 의 DRAWN)
+  B('phoenix', '', /phoenix|firebird|불사조|피닉스|주작|凤凰|不死鸟/i, 'fly'),
+  B('yeti', '', /yeti|sasquatch|bigfoot|wendigo|설인|예티|웬디고|雪人/i),
+  B('wisp', '', /wisp|will-o|도깨비불|위습|혼불|鬼火/i, 'phase'),
+  B('cerberus', '', /cerber|hellhound|three-headed|케르베로스|지옥견|삼두견|地狱犬/i, 'pack'),
+  B('basilisk', '', /basilisk|cockatrice|바실리스크|코카트리스|蛇怪/i, 'gaze'),
+  B('satyr', '', /satyr|faun|사티로스|파우누스|판\s|萨堤尔/i),
+  B('beholder', '', /beholder|gazer|주시자|비홀더|眼魔/i, 'gaze'),
+  B('storm', '', /storm (elemental|spirit|cloud)|tempest|thunderhead|폭풍 ?정령|폭풍의|뇌운|번개 ?정령|风暴/i, 'fly'),
+  B('lich', '', /lich|리치|巫妖/i, 'undying'),
+  B('banshee', '', /banshee|wailing|밴시|곡하는|女妖/i, 'phase'),
+  B('flayer', '', /mind ?flayer|illithid|brain eater|정신 포식자|마인드 플레이어|일리시드|夺心魔/i, 'web'),
+  B('cube', '', /gelatinous|젤라틴|凝胶/i, 'split'),
   B('dragon', 'dragon-head', /dragon|drake|wyvern|wyrm|(^|\s)용(\s|$|의\s)|[가-힣]룡(\s|$)|드래곤|와이번|비룡|龙/i, 'breath'),
   B('hydra', 'hydra', /hydra|히드라|九头蛇/i, 'breath'),
   B('dino', 'dinosaur-rex', /dinosaur|raptor|\brex\b|공룡|랩터|恐龙/i),
@@ -14,7 +27,7 @@ export const BEASTS: Beast[] = [
   B('rat', 'rat', /\brats?\b|mouse|mice|vermin|(?<!박)쥐|鼠/i, 'pack'),
   B('tiger', 'tiger-head', /tiger|panther|leopard|jaguar|\bcats?\b|lynx|호랑이|표범|고양이|살쾡이|虎|豹/i),
   B('lion', 'lion', /\blion|manticore|chimera|사자|만티코어|키메라|狮/i),
-  B('ape', 'gorilla', /\bapes?\b|gorilla|monkey|yeti|sasquatch|유인원|고릴라|원숭이|설인|猿|猴/i),
+  B('ape', 'gorilla', /\bapes?\b|gorilla|monkey|유인원|고릴라|원숭이|猿|猴/i),
   B('croc', 'croc-jaws', /croc|alligator|악어|鳄/i),
   B('lizard', 'lizardman', /lizard|kobold|saurian|gecko|salamander|도마뱀|리자드|코볼트|蜥/i),
   B('frog', 'frog', /frog|toad|개구리|두꺼비|蛙/i),
