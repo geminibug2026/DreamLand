@@ -7324,5 +7324,13 @@
   "game.pool.scratch": "母球落袋，轮到对方。",
   "game.pool.foeScratch": "{name}的母球落袋了。",
   "game.pool.again": "进球！再打一杆。",
-  "game.pool.foeAgain": "{name}进球，继续击球。"
+  "game.pool.foeAgain": "{name}进球，继续击球。",
+  "game.story.title": "分镜",
+  "game.story.loading": "正在加载图片…",
+  "game.story.empty": "此对话还没有插图。",
+  "game.story.draw": "绘制缺少的 {n} 个关键场景",
+  "game.story.drawing": "绘制中…还剩 {n} 个",
+  "game.story.queued": "已加入队列，完成后会显示在这里。",
+  "game.story.failed": "绘制失败：{error}",
+  "game.story.hint": "为尚无图片的到达场景和战后场景绘图。需要先设置好插图；每个场景需要一次分析请求和一张图片。点击分镜可跳到该场景。"
 }
