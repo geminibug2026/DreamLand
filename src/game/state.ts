@@ -34,8 +34,8 @@ export type Fx =
   | { k: 'rep'; name: string; n: number } | { k: 'party'; name: string; add: boolean } | { k: 'time'; text: string } | { k: 'weather'; text: string } | { k: 'scene'; key: string } | { k: 'fate'; n: number }
   /** 수치(위젯) · 읽을거리 · 흐른 시간(분) · 음악 지정 */
   | { k: 'meter'; name: string; v: number; max: number } | { k: 'doc'; title: string; text: string } | { k: 'pass'; min: number } | { k: 'music'; key: string } | { k: 'clock'; name: string; v: number; max: number };
-export type MiniId = 'rps' | 'dice' | 'blackjack' | 'tictactoe' | 'numbers' | 'gomoku';
-export const MINIS: MiniId[] = ['rps', 'dice', 'blackjack', 'tictactoe', 'gomoku', 'numbers'];
+export type MiniId = 'rps' | 'dice' | 'blackjack' | 'tictactoe' | 'numbers' | 'gomoku' | 'poker' | 'uno' | 'chess';
+export const MINIS: MiniId[] = ['rps', 'dice', 'blackjack', 'poker', 'uno', 'tictactoe', 'gomoku', 'chess', 'numbers'];
 export type Element = 'fire' | 'ice' | 'bolt' | 'poison';
 export const ELEMENTS: Element[] = ['fire', 'ice', 'bolt', 'poison'];
 /** 이름에서 원소를 짐작한다 (적의 이름 · 가진 물건의 이름) */
@@ -164,7 +164,7 @@ export function trackOf(s: Sheet, g: GameCfg, fighting: boolean): 'explore' | 't
 // ── 진행자가 쓰는 표시 ──
 const TAG = /\[\s*(hp|maxhp|gold|xp|item|quest|place|path|rep|party|time|weather|backdrop|fx|fate|meter|note|pass|music|clock|choices|qte|check|save|fight|play)\b[\s:：]*([^[\]\n]{0,300})\]/gi;
 const STAT_ALIAS: Record<string, StatKey> = { str: 'str', strength: 'str', 힘: 'str', 근력: 'str', 力量: 'str', dex: 'dex', dexterity: 'dex', agi: 'dex', 민첩: 'dex', 敏捷: 'dex', con: 'con', constitution: 'con', 건강: 'con', 体质: 'con', int: 'int', intelligence: 'int', 지능: 'int', 智力: 'int', wis: 'wis', wisdom: 'wis', 지혜: 'wis', 感知: 'wis', cha: 'cha', charisma: 'cha', 매력: 'cha', 魅力: 'cha' };
-const MINI_ALIAS: Record<string, MiniId> = { gomoku: 'gomoku', omok: 'gomoku', 'five-in-a-row': 'gomoku', rps: 'rps', dice: 'dice', blackjack: 'blackjack', tictactoe: 'tictactoe', 'tic-tac-toe': 'tictactoe', ttt: 'tictactoe', numbers: 'numbers', baseball: 'numbers' };
+const MINI_ALIAS: Record<string, MiniId> = { poker: 'poker', holdem: 'poker', uno: 'uno', chess: 'chess', gomoku: 'gomoku', omok: 'gomoku', 'five-in-a-row': 'gomoku', rps: 'rps', dice: 'dice', blackjack: 'blackjack', tictactoe: 'tictactoe', 'tic-tac-toe': 'tictactoe', ttt: 'tictactoe', numbers: 'numbers', baseball: 'numbers' };
 const num = (s: string) => { const m = s.replace(/[−–]/g, '-').match(/[+-]?\s*\d+/); return m ? parseInt(m[0].replace(/\s+/g, ''), 10) : NaN; };
 const clampN = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
@@ -283,7 +283,7 @@ When something changes, write the matching tag on its own line at the end of the
 To hand something to the app, use ONE of these as the very last line, then stop — do not narrate what happens next:
 ${RULE_TEXT[ruleOf(g)].check}
 [fight Goblin x2 hp=8 atk=2; Orc Chief hp=24 atk=5] — a tactical fight the app runs on a grid (up to 6 enemies; x2 means two of them; add the word ranged for archers and casters, boss for a leader with a telegraphed heavy attack, and fire, ice, bolt or poison for an elemental enemy — e.g. [fight Frost Wolf hp=10 atk=3 ice; Lich hp=30 atk=5 boss ranged]). The app also hands out gold and XP for a win. Guide: weak hp 8 atk 2, tough hp 18 atk 4, boss hp 30 atk 6.
-[play rps: who pays for dinner] — settle something with a quick game against you: rps, dice, blackjack, tictactoe, gomoku or numbers.
+[play rps: who pays for dinner] — settle something with a quick game against you: rps, dice, blackjack, poker, uno, tictactoe, gomoku, chess or numbers.
 [qte 6: Dive aside | Raise the shield | Grab the rope] — a split-second moment: {{user}} has that many seconds to pick. Use sparingly, for sudden danger.
 ${diff}
 Language: keep the tag keywords in English exactly as shown, but write everything you put inside a tag — place names, times, weather, quest titles, item names, clock names, people's names, choices, reasons and stakes — in the language the story is being told in. The English wording above is only an example of the format.
@@ -303,7 +303,7 @@ export const repTier = (v: number) => v <= -60 ? 0 : v <= -20 ? 1 : v < 20 ? 2 :
 const REP_EN = ['enemy', 'hostile', 'neutral', 'friendly', 'devoted'];
 const ways = (s: Sheet) => { if (!s.place) return ''; const near = s.paths.filter(([a, b]) => same(a, s.place) || same(b, s.place)).map(([a, b]) => same(a, s.place) ? b : a); return near.length ? ` · Routes from here: ${near.join(', ')}` : ''; };
 const STAT_EN: Record<StatKey, string> = { str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA' };
-const MINI_EN: Record<MiniId, string> = { gomoku: 'gomoku (five in a row)', rps: 'rock-paper-scissors', dice: 'a dice duel', blackjack: 'blackjack', tictactoe: 'tic-tac-toe', numbers: 'the number-guessing game (bulls and cows)' };
+const MINI_EN: Record<MiniId, string> = { poker: 'poker (heads-up hold\'em, chips left)', uno: 'UNO (cards left)', chess: 'chess', gomoku: 'gomoku (five in a row)', rps: 'rock-paper-scissors', dice: 'a dice duel', blackjack: 'blackjack', tictactoe: 'tic-tac-toe', numbers: 'the number-guessing game (bulls and cows)' };
 /** 기록 메시지의 글 (프롬프트에 들어간다) */
 export function recText(r: GameRec, user: string, foe: string): string {
   if (r.kind === 'start') return `The game begins. Open the first scene for ${user}.`;

@@ -722,3 +722,22 @@ html.gs-on .modal-wrap:has(.gm) .gm-cell.is-foe b { color: var(--gs-paper); }
 .gs-mbar .gs-meter { width: 84px; grid-column: auto; } .gs-mbar .gs-meter::after { display: none; }
 .gs-whom { display: flex; gap: 14px; padding-top: 2px; } .gs-whom button { padding: 3px 0; border: 0; border-bottom: 1px solid transparent; background: none; color: var(--gs-mute); font: 500 .8rem var(--display); letter-spacing: .06em; cursor: pointer; } .gs-whom button.on { color: var(--gs-gold); border-bottom-color: var(--gs-gold); }
 @media (min-width: 900px) { .gs-whom button { font-size: .92rem; } .gs-mbar .gs-meter { width: 130px; } }
+/* 탁자 게임: 포커 · 우노 · 체스 */
+.gm-board5 p { justify-content: center; } .gm-poker .gm-hands > div:first-child p, .gm-poker .gm-hands > div:last-child p { justify-content: center; } .gm-poker .gm-hands small { display: block; text-align: center; }
+.gm-poker .gm-card { width: 40px; height: 56px; }
+.gm-uno { width: 44px; height: 64px; flex: none; display: grid; place-items: center; border: 1px solid var(--ink); border-radius: 5px; color: #fff; font: 800 1.15rem var(--display); cursor: pointer; padding: 0; transition: transform .12s; }
+.gm-uno b { display: grid; place-items: center; width: 30px; height: 44px; border-radius: 50%; background: rgb(255 255 255 / .16); transform: rotate(-18deg); }
+.gm-uno.is-r { background: #c8473d; } .gm-uno.is-y { background: #d2a72c; } .gm-uno.is-g { background: #4b9a5c; } .gm-uno.is-b { background: #3f76c2; } .gm-uno.is-w { background: #24211d; } .gm-uno.is-back { background: var(--ink); color: var(--bg); cursor: default; }
+.gm-uno:disabled { cursor: default; opacity: .5; } .gm-uno.is-on { opacity: 1; transform: translateY(-6px); box-shadow: 0 6px 0 -3px var(--accent); } .gm-table .gm-uno { opacity: 1; cursor: default; }
+.gm-unohand { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; padding-top: 6px; min-height: 76px; }
+.gm-unocolor { padding: 2px 9px; border: 1px solid currentColor; } .gm-unocolor.is-r, .gm-unopick.is-r { color: #c8473d; } .gm-unocolor.is-y, .gm-unopick.is-y { color: #b98f1c; } .gm-unocolor.is-g, .gm-unopick.is-g { color: #3f8a50; } .gm-unocolor.is-b, .gm-unopick.is-b { color: #3f76c2; }
+.gm-unopick { border-color: currentColor !important; }
+.gm-chess { display: grid; grid-template-columns: repeat(8, 1fr); width: min(100%, 384px); margin: 0 auto; border: 1px solid var(--ink); }
+.gm-chess button { aspect-ratio: 1; padding: 0; border: 0; background: var(--surface); font-size: clamp(1.3rem, 6.500vw, 2rem); line-height: 1; cursor: pointer; position: relative; }
+.gm-chess button.is-dark { background: color-mix(in srgb, var(--text) 16%, var(--surface)); }
+.gm-chess button.is-w { color: var(--text); -webkit-text-stroke: 0; } .gm-chess button.is-b { color: var(--accent); }
+.gm-chess button.is-last { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent); } .gm-chess button.is-sel { box-shadow: inset 0 0 0 3px var(--accent); }
+.gm-chess button.is-to::after { content: ""; position: absolute; left: 50%; top: 50%; width: 26%; height: 26%; margin: -13% 0 0 -13%; border-radius: 50%; background: var(--accent); opacity: .75; }
+html.gs-on .modal-wrap:has(.gm) .gm-chess button.is-w { color: #f4ecdb; } html.gs-on .modal-wrap:has(.gm) .gm-chess button.is-b { color: #c98f3d; }
+@media (min-width: 900px) { html.gs-on .gm-chess { width: min(100%, 480px); } html.gs-on .gm-uno { width: 52px; height: 76px; } }
+.gm-uno b { transform: none; width: 32px; height: 32px; }
