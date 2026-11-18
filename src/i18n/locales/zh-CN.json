@@ -6897,5 +6897,21 @@
   "settings.term.brief": "摘要（模型、设置、消息列表、结果）",
   "settings.term.full": "完整请求和响应（同 SillyTavern）",
   "settings.term.hint.app": "iPhone 应用中不使用此设置。（在电脑上运行服务器时，将记录输出到该窗口的功能）",
-  "settings.term.hint": "每次调用模型都会在运行服务器的终端留下记录。完整模式像 SillyTavern 一样原样打印发给服务商的请求（消息和设置）和收到的响应；摘要只显示连接、模型和设置、每条消息一行，以及耗时、token 和错误。不会打印 API 密钥。更新后需要重启一次服务器才会显示新格式。"
+  "settings.term.hint": "每次调用模型都会在运行服务器的终端留下记录。完整模式像 SillyTavern 一样原样打印发给服务商的请求（消息和设置）和收到的响应；摘要只显示连接、模型和设置、每条消息一行，以及耗时、token 和错误。不会打印 API 密钥。更新后需要重启一次服务器才会显示新格式。",
+  "websearch.section": "网络搜索",
+  "websearch.mode": "自动搜索",
+  "websearch.mode.off": "关闭（仅手动开启时）",
+  "websearch.mode.auto": "由 AI 在需要时决定",
+  "websearch.provider": "搜索来源",
+  "websearch.provider.wiki": "维基百科",
+  "websearch.url": "SearXNG 地址",
+  "websearch.count": "获取结果数",
+  "websearch.hint": "回复前先在网上查找，并把找到的内容一并告诉 AI。只想用一次时，请在输入框的 + 菜单中选择“本次回复使用网络搜索”。“由 AI 决定”会在每次回复前多发送一次简短请求来判断是否搜索。搜索词会发送到所选的搜索网站。",
+  "websearch.once.on": "本次回复使用网络搜索",
+  "websearch.once.off": "取消网络搜索",
+  "websearch.once.armed": "发送下一条消息时会先在网上查找。",
+  "websearch.once.cancelled": "已取消网络搜索。",
+  "websearch.found": "网络搜索：\"{query}\" · {count} 条结果",
+  "websearch.none": "网络搜索：没有找到\"{query}\"的结果。",
+  "websearch.failed": "网络搜索失败：{error}"
 }

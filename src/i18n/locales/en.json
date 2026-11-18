@@ -6977,5 +6977,21 @@
   "settings.term.brief": "Summary (model, settings, message list, result)",
   "settings.term.full": "Full request and response (like SillyTavern)",
   "settings.term.hint.app": "Not used in the iPhone app. (It logs to the server window when Dreamland runs on a computer.)",
-  "settings.term.hint": "Each model call is logged in the terminal running the server. Full prints the exact request sent to the provider (messages and settings) and the response, like SillyTavern; summary shows the connection, model and settings, one line per message, and the time, tokens and errors. API keys are never printed. After updating, restart the server once to get the new format."
+  "settings.term.hint": "Each model call is logged in the terminal running the server. Full prints the exact request sent to the provider (messages and settings) and the response, like SillyTavern; summary shows the connection, model and settings, one line per message, and the time, tokens and errors. API keys are never printed. After updating, restart the server once to get the new format.",
+  "websearch.section": "Web search",
+  "websearch.mode": "Automatic search",
+  "websearch.mode.off": "Off (only when I turn it on)",
+  "websearch.mode.auto": "AI decides when it is needed",
+  "websearch.provider": "Search with",
+  "websearch.provider.wiki": "Wikipedia",
+  "websearch.url": "SearXNG address",
+  "websearch.count": "Results to fetch",
+  "websearch.hint": "Looks things up on the internet before a reply and passes what it found to the AI. To use it once, choose \"Search the web for this reply\" in the + menu of the message box. \"AI decides\" sends one extra short request per reply to ask whether to search. Your search words are sent to the search site you chose.",
+  "websearch.once.on": "Search the web for this reply",
+  "websearch.once.off": "Cancel web search",
+  "websearch.once.armed": "Your next message will be looked up on the web first.",
+  "websearch.once.cancelled": "Web search cancelled.",
+  "websearch.found": "Web search: \"{query}\" · {count} results",
+  "websearch.none": "Web search: no results for \"{query}\".",
+  "websearch.failed": "Web search failed: {error}"
 }
