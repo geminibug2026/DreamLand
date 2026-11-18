@@ -148,6 +148,7 @@ function Setup({ chat, close }: { chat: GameChat; close(): void }) {
     <label className="field"><span className="field-label">{t('game.setup.secret')}</span><textarea className="inp" rows={3} value={g.secret || ''} placeholder={t('game.setup.secretPh')} onChange={e => set('secret', e.target.value)} /><small className="hint">{t('game.setup.secretHint')}</small></label>
     <label className="field"><span className="field-label">{t('game.setup.auto')}</span>
       <select className="inp" value={g.auto || 0} onChange={e => set('auto', +e.target.value)}>{[0, 2, 4, 6, 9].map(n => <option key={n} value={n}>{n ? t('game.setup.autoN', { n }) : t('game.setup.autoOff')}</option>)}</select></label>
+    <label className="gm-check"><input type="checkbox" checked={g.autoWeather !== false} onChange={e => set('autoWeather', e.target.checked)} />{t('game.setup.autoWeather')}</label>
     <label className="gm-check"><input type="checkbox" checked={g.music !== false} onChange={e => set('music', e.target.checked)} />{t('game.setup.music')}</label>
     <label className="gm-check"><input type="checkbox" checked={g.sfx !== false} onChange={e => set('sfx', e.target.checked)} />{t('game.setup.sfx')}</label>
     <label className="gm-check"><input type="checkbox" checked={!!g.art} onChange={e => set('art', e.target.checked)} />{t('game.setup.art')}</label>
@@ -276,7 +277,7 @@ export function Sheet({ chat, msgs, onClose, first = 'sheet' }: { chat: Chat; ms
     <p className="hint gm-note">{t('game.fate.hint')}</p>
     <div className="gm-row"><span className="eyebrow">LV</span><b className="gm-n">{s.level}</b><span className="gm-bar"><i style={{ width: `${s.level >= 20 ? 100 : s.xp % 100}%` }} /></span><small className="gm-xp">{s.xp} XP</small></div>
     <div className="gm-statline" style={{ gridTemplateColumns: `repeat(${statsOf(g).length > 4 ? 3 : 4}, 1fr)` }}>{statsOf(g).map(k => <span key={k}><small>{t('game.stat.' + k)}</small><b>{ruleOf(g) === 'd20' || ruleOf(g) === '2d6' ? sign(statVal(g, k)) : statVal(g, k)}</b></span>)}</div>
-    {s.time || s.weather ? <div className="gm-sec"><span className="eyebrow">{t('game.time')}</span><p>{[s.time, s.weather].filter(Boolean).join(' · ')}</p></div> : null}
+    {s.time || s.weather || s.wx ? <div className="gm-sec"><span className="eyebrow">{t('game.time')}</span><p>{[s.time, s.weather || (s.wx ? t('game.wx.' + s.wx) : '')].filter(Boolean).join(' · ')}</p></div> : null}
     {s.meters.length ? <div className="gm-sec"><span className="eyebrow">{t('game.meters')}</span>{s.meters.map(m => <div key={m.name} className="gm-row"><span className="gm-mname">{m.name}</span><span className="gm-bar"><i style={{ width: `${m.v / m.max * 100}%` }} /></span><small className="gm-xp">{m.v}/{m.max}</small></div>)}</div> : null}
     {s.clocks.length ? <div className="gm-sec"><span className="eyebrow">{t('game.clocks')}</span>{s.clocks.map(c => <div key={c.name} className={`gm-clock${c.v >= c.max ? ' is-full' : ''}`}><span>{c.name}</span><b>{c.v}/{c.max}</b><ClockDial v={c.v} max={c.max} size={26} /></div>)}</div> : null}
     {s.party.length || s.people.length ? <div className="gm-sec"><span className="eyebrow">{t('game.people')}</span>

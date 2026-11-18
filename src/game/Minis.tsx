@@ -171,7 +171,8 @@ function Numbers({ foe, onDone }: P) {
 
 // 탁자 게임은 따로 둔다 (서로 가져다 쓰므로 여기서는 아래에서 불러온다)
 import { TableGame } from './Table';
+import { Pool } from './Pool';
 export function Mini({ game, foe, onDone, gold }: { game: MiniId } & P) {
   return game === 'rps' ? <Rps foe={foe} onDone={onDone} /> : game === 'dice' ? <Dice foe={foe} onDone={onDone} /> : game === 'blackjack' ? <Blackjack foe={foe} onDone={onDone} gold={gold} />
-    : game === 'poker' || game === 'uno' || game === 'chess' ? <TableGame game={game} foe={foe} onDone={onDone} /> : game === 'gomoku' ? <Gomoku foe={foe} onDone={onDone} /> : game === 'tictactoe' ? <TicTacToe foe={foe} onDone={onDone} /> : <Numbers foe={foe} onDone={onDone} />;
+    : game === 'pool' ? <Pool foe={foe} onDone={onDone} /> : game === 'poker' || game === 'uno' || game === 'chess' ? <TableGame game={game} foe={foe} onDone={onDone} /> : game === 'gomoku' ? <Gomoku foe={foe} onDone={onDone} /> : game === 'tictactoe' ? <TicTacToe foe={foe} onDone={onDone} /> : <Numbers foe={foe} onDone={onDone} />;
 }

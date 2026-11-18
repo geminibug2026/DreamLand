@@ -1,7 +1,7 @@
 // 날씨 · 계절 · 시간대: 배경 그림 위에 얹는 한 장의 캔버스와 색 보정.
 // 눈에 띄려는 효과가 아니라 "그 자리에 있는 느낌"을 내는 것이 목표다 — 원근 세 겹, 속도에 따른 번짐, 초점 밖의 흐림, 느린 흐름
 import { useEffect, useRef } from 'react';
-import type { Sheet } from './state';
+import { weatherOf, type Sheet } from './state';
 
 export type Sky = 'clear' | 'overcast' | 'rain' | 'storm' | 'snow' | 'fog' | 'wind';
 export type Season = '' | 'spring' | 'summer' | 'autumn' | 'winter';
@@ -10,7 +10,7 @@ export interface Air { sky: Sky; power: number; season: Season; tod: Tod; indoor
 const INDOOR = ['room', 'tavern', 'hall', 'station'];
 /** 시트의 날씨 · 시간 글에서 지금의 공기를 읽는다 */
 export function airOf(s: Sheet, scene: string): Air {
-  const w = s.weather.toLowerCase(), t = s.time.toLowerCase(), all = `${w} ${t} ${s.place.toLowerCase()}`;
+  const w = weatherOf(s).toLowerCase(), t = s.time.toLowerCase(), all = `${w} ${t} ${s.place.toLowerCase()}`;
   const heavy = /heavy|pour|downpour|torrential|violent|blizzard|폭우|장대|세찬|거센|눈보라|폭설|暴|大雨|大雪/.test(w), light = /light|drizzle|sprinkle|flurr|가랑|이슬|보슬|약한|살짝|小雨|小雪|毛毛/.test(w);
   const sky: Sky = /thunder|storm|lightning|tempest|뇌우|천둥|번개|폭풍|雷|风暴/.test(w) ? 'storm' : /rain|drizzle|shower|downpour|비\b|비가|빗|소나기|장마|雨/.test(w) ? 'rain' : /snow|blizzard|sleet|flurr|눈\b|눈이|눈보라|폭설|진눈|雪/.test(w) ? 'snow'
     : /fog|mist|haze|smog|안개|연무|雾|霾/.test(w) ? 'fog' : /wind|gale|breez|gust|바람|강풍|돌풍|风/.test(w) ? 'wind' : /cloud|overcast|gloom|grey|gray|흐림|흐린|구름|阴|多云/.test(w) ? 'overcast' : 'clear';

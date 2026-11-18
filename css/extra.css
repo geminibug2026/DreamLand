@@ -741,3 +741,8 @@ html.gs-on .modal-wrap:has(.gm) .gm-cell.is-foe b { color: var(--gs-paper); }
 html.gs-on .modal-wrap:has(.gm) .gm-chess button.is-w { color: #f4ecdb; } html.gs-on .modal-wrap:has(.gm) .gm-chess button.is-b { color: #c98f3d; }
 @media (min-width: 900px) { html.gs-on .gm-chess { width: min(100%, 480px); } html.gs-on .gm-uno { width: 52px; height: 76px; } }
 .gm-uno b { transform: none; width: 32px; height: 32px; }
+/* 당구 */
+.gm-felt { display: block; width: 100%; aspect-ratio: 2 / 1; border: 6px solid color-mix(in srgb, var(--text) 70%, #3a2a1a); border-radius: 6px; touch-action: none; cursor: crosshair; }
+.gm-poolbar { align-items: center; flex-wrap: nowrap; } .gm-poolbar label { flex: 1; display: flex; align-items: center; gap: 10px; min-width: 0; } .gm-poolbar input[type="range"] { flex: 1; min-width: 0; accent-color: var(--accent); }
+.gm-poolbar small { font: 500 10px var(--display); letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+.gm-pool .gm-score small { white-space: nowrap; }

@@ -1,4 +1,4 @@
-import{I as e,s as t}from"./router-BOZW4GhK.js";import{Et as n,X as r,bt as i,ft as a,it as o}from"./engine-BxEetu-6.js";import{A as s,Z as c,at as l,st as u,u as d,yn as f}from"./actions-uBBwE7yX.js";import{f as p,l as m,m as h}from"./i18n-D1aDZLyV.js";import{p as g,r as _,u as v}from"./store-BxZ5hrvC.js";var y=p(),b=i(),x=a(),S=e=>String(e||``).replace(/```[\s\S]*?(```|$)/g,`
+import{M as e,r as t}from"./core-Bd3wWBDW.js";import{Et as n,X as r,bt as i,ft as a,it as o}from"./engine-BNEXh2RZ.js";import{A as s,Z as c,at as l,st as u,u as d,yn as f}from"./actions-lwJeThPW.js";import{f as p,l as m,m as h}from"./i18n-Cis0KouB.js";import{p as g,r as _,u as v}from"./store-B5dOl4nI.js";var y=p(),b=i(),x=a(),S=e=>String(e||``).replace(/```[\s\S]*?(```|$)/g,`
 `).replace(/<(style|script)[\s\S]*?(<\/\1>|$)/gi,`
 `).replace(/!\[[^\]]*\]\([^)]*\)/g,``).replace(/<br\s*\/?>/gi,`
 `).replace(/<\/(p|div|li|h\d)>/gi,`

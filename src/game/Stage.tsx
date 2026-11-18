@@ -14,7 +14,7 @@ import { Ambience, Music, setSfx, sfx } from './sfx';
 import { Weather, airOf } from './Weather';
 import { elapsedOf, gameOf, pendingAsk, pendingFate, sceneOf, sheetOf, trackOf, type GameMsg, type GameRec } from './state';
 import { GameCard, askLabel, openSheet, resolveAsk, rewindTo, settleFate } from './ui';
-import { bgFor, loadMedia, trackFor } from './media';
+import { bgFor, loadMedia, trackByName, trackFor } from './media';
 import { ClockDial, Glyph, Keystone, Rule, type GlyphName } from './Art';
 
 interface Page { key: string; msgId: string; who: 'c' | 'u' | 'n' | 'e'; charId: string; name: string; text: string; rec?: GameRec; msg: Msg }
@@ -77,7 +77,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
 
   // 소리: 장면에 맞는 음악, 장소가 바뀌거나 돈이 생기거나 할 일이 생기면 짧은 소리
   const fighting = !!document.querySelector('.gm-fight'), scene = sheet ? sceneOf(sheet) : 'road', on = sound && g?.music !== false;
-  useEffect(() => { setSfx(sound && g?.sfx !== false); Music.set(on); if (on && sheet && g) { const tr = trackOf(sheet, g, fighting); Music.play(tr, trackFor(tr, sheet.place)); } }, [on, sound, g, sheet, fighting]);
+  useEffect(() => { setSfx(sound && g?.sfx !== false); Music.set(on); if (on && sheet && g) { const tr = trackOf(sheet, g, fighting), mine = !fighting && sheet.music.startsWith('name:') ? trackByName(sheet.music.slice(5)) : ''; Music.play(tr, mine || trackFor(tr, sheet.place)); } }, [on, sound, g, sheet, fighting]);
   useEffect(() => () => { Music.stop(); Ambience.stop(); }, []);
   // 날씨: 화면에는 비 · 눈 · 안개 · 낙엽을, 귀에는 빗소리와 바람을. 실내에서는 소리만 먹먹하게 들린다
   const air = useMemo(() => sheet ? airOf(sheet, scene) : null, [sheet, scene]);
@@ -128,7 +128,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   let standId = ''; for (let i = at; i >= 0 && !standId; i--) if (pages[i]?.who === 'c') standId = pages[i].charId;
   standId ||= chat.charIds[0] || '';
   const stand = S.get('chars', standId), sprite = standId && Sprites.has(standId) ? currentOf(chat as ChatX, msgs, standId).sprite : null;
-  const bg = chat.bg || bgFor(scene, sheet.place), el = sheet.mins ? elapsedOf(sheet.mins) : null, when = [sheet.time || (el ? t('game.elapsed', { day: el.day, time: `${String(el.h).padStart(2, '0')}:${String(el.m).padStart(2, '0')}` }) : ''), sheet.weather].filter(Boolean).join(' · ');
+  const bg = chat.bg || bgFor(scene, sheet.place), el = sheet.mins ? elapsedOf(sheet.mins) : null, wxText = sheet.weather || (sheet.wx ? t('game.wx.' + sheet.wx) : ''), when = [sheet.time || (el ? t('game.elapsed', { day: el.day, time: `${String(el.h).padStart(2, '0')}:${String(el.m).padStart(2, '0')}` }) : ''), wxText].filter(Boolean).join(' · ');
   const hpLow = sheet.hp <= sheet.hpMax / 4, lastAi = lastMsg?.role === 'assistant';
   let body: ReactNode;
   if (!page) body = <p className="gs-text gs-faint">{busy ? '' : t('game.stage.empty')}</p>;
