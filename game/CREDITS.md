@@ -53,3 +53,9 @@ Wikimedia Commons (public domain; the artists died more than 100 years ago)
 | `bg/sea.jpg` | The Ninth Wave | Ivan Aivazovsky | 1850 |
 
 Images were resized for the web.
+
+## Icons
+
+The monster, item and terrain silhouettes in game mode (`src/game/icons.gen.ts`) are from [game-icons.net](https://game-icons.net)
+by Lorc, Delapouite, Skoll, Caro Asercion, Cathelineau, sbed, Faithtoken and other contributors,
+licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). Coordinates were rounded for size; shapes are unchanged.

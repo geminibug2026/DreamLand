@@ -4,21 +4,19 @@ import { useMemo, useState } from 'react';
 import { t } from '../i18n';
 import { sfx } from './sfx';
 import { gearOf, packBag, type BagCfg } from './bag';
-import { Emblem, Terrain, foeKind, type Kind } from './Art';
+import { Emblem, Terrain } from './Art';
+import { foeKind, traitOf, type Trait } from './bestiary';
 import { DIFF_HIT, WEAK, d, elementOf, isPotion, modOf, statsOf, type Element, type Foe, type Fx, type GameCfg, type Sheet, type StatKey } from './state';
 
 export interface FightResult { outcome: 'win' | 'lose' | 'fled'; rounds: number; took: number; hp: number; fx: Fx[]; gold: number; xp: number; fallen: string[]; loot: string }
 type End = '' | FightResult['outcome'];
 /** 상태 이상: 남은 차례 수. 화상 · 중독 · 출혈은 차례마다 피해, 냉기는 걸음이 줄어든다 */
 type Ail = 'burn' | 'poison' | 'bleed' | 'chill' | 'web';
-/** 종류마다 타고난 버릇 — 이름에서 알아본 종류로 정해진다 */
-type Trait = 'pack' | 'fly' | 'phase' | 'web' | 'venom' | 'split' | 'armor' | 'root' | 'breath' | 'undying' | 'gaze';
-const TRAIT: Partial<Record<Kind, Trait>> = { beast: 'pack', wing: 'fly', ghost: 'phase', spider: 'web', tentacle: 'web', serpent: 'venom', slime: 'split', golem: 'armor', plant: 'root', dragon: 'breath', skull: 'undying', eye: 'gaze' };
 type Ails = Partial<Record<Ail, number>>;
 const AIL_OF: Record<Element, Ail | 'stun'> = { fire: 'burn', poison: 'poison', ice: 'chill', bolt: 'stun' };
 const AIL_DMG: Partial<Record<Ail, number>> = { burn: 2, poison: 1, bleed: 1 };
-interface Unit extends Foe { id: number; x: number; y: number; max: number; stun: number; ail: Ails; kind: Kind; trait: Trait | ''; /** 갈라져 나온 것 · 이미 한 번 되살아난 것 */ spent?: boolean }
-const unitOf = (f: Foe, id: number, x: number, y: number): Unit => { const kind = foeKind(f.name), trait = TRAIT[kind] || ''; return { ...f, id, x, y, max: f.hp, stun: 0, ail: {}, kind, trait, ranged: f.ranged || trait === 'root' || trait === 'gaze' }; };
+interface Unit extends Foe { id: number; x: number; y: number; max: number; stun: number; ail: Ails; kind: string; trait: Trait | ''; /** 갈라져 나온 것 · 이미 한 번 되살아난 것 */ spent?: boolean }
+const unitOf = (f: Foe, id: number, x: number, y: number): Unit => { const kind = foeKind(f.name), trait = traitOf(kind); return { ...f, id, x, y, max: f.hp, stun: 0, ail: {}, kind, trait, ranged: f.ranged || trait === 'root' || trait === 'gaze' }; };
 interface Ally { name: string; x: number; y: number; hp: number; max: number }
 interface St { ail: Ails; /** 보스가 예고한 일격: 맞는 칸들과 누가 치는지 */ mark: { cells: string[]; by: number } | null; x: number; y: number; hp: number; foes: Unit[]; allies: Ally[]; herbs: string[]; kegs: string[]; /** 방금 내가 한 일 (따로 크게 보여 준다) */ mine: string[]; /** 칸 위에 떠오르는 숫자 */ pop: { k: string; text: string; miss: boolean; n: number } | null; hurt: number; moved: boolean; guard: boolean; round: number; log: string[]; used: string[]; end: End; special: boolean; sure: boolean; aim: boolean }
 const W = 7, H = 6, MOVE = 3, RANGE = 5;
