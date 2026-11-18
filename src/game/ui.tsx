@@ -16,6 +16,7 @@ import { SCENES, sceneOf } from './state';
 import { pickFiles } from '../lib/core';
 import { Illust } from '../lib/illust';
 import { Mini } from './Minis';
+import { clipFor, loadClips, makeClip, pingVideo, removeClip, videoCfg } from './video';
 import { quickCall } from '../lib/engine';
 import { msgText } from '../lib/core';
 import { MINIS, PRESET_IDS, RULES, RULE_IDS, SESSION_PROMPT, gameOf, levelOf, presetStats, ruleOf, statVal, statsOf, journalOf, layoutMap, newGame, pendingAsk, pendingFate, recText, repTier, rollCheck, sheetOf, tallyOf, type Ask, type Fx, type GameCfg, type GameChat, type GameMsg, type GameRec, type MiniId, type Sheet as SheetData, type StatKey } from './state';
@@ -161,6 +162,8 @@ export function openSetup(chat: Chat) { openModal({ title: t(gameOf(chat) ? 'gam
 // ── 시트 ──
 function adjust(chat: GameChat, fx: Fx) { const g = chat.game; if (!g) return; (g.adj ||= []).push(fx); saveChat(chat); }
 /** 지도: 비스듬히 내려다본 판. 장소마다 블록이 하나씩 솟아 있고, 간 곳은 그림이 얹히고 들어만 본 곳은 낮고 흐리다. 이어진 곳을 누르면 그리로 간다고 적는다 */
+/** 입력창에 적어 둔다. 게임 화면이 떠 있으면 그 화면의 입력창에, 아니면 대화 입력창에 */
+const putDraft = (text: string) => { if (document.documentElement.classList.contains('gs-on')) emit('game:draft', text); else chatApi.insert(text); };
 function MapView({ s, onGo }: { s: SheetData; onGo(name: string): void }) {
   const m = layoutMap(s); if (!m.nodes.length) return <p className="dim">{t('game.map.empty')}</p>;
   const TW = 74, TH = 44, iso = (n: { x: number; y: number }) => ({ x: (n.x - n.y) * TW, y: (n.x + n.y) * TH });   // 블록 사이에 이름이 들어갈 틈을 둔다
@@ -257,24 +260,43 @@ function MediaBox() {
   </div>;
 }
 /** 스토리보드: 이 대화에 그려 둔 삽화를 이야기 차례대로 만화 컷처럼 늘어놓는다. 빠진 주요 장면(새 장소 · 전투 뒤)은 여기서 그릴 수 있다 */
-interface Panel { msgId: string; src: string; caption: string; place: string }
+interface Panel { key: string; msgId: string; src: string; caption: string; place: string }
 function storyPanels(msgs: Msg[]): { panels: Panel[]; missing: Msg[] } {
   const panels: Panel[] = [], missing: Msg[] = []; let place = '';
   msgs.forEach((m, i) => {
     const sw = m.swipes[m.sw] as (Msg['swipes'][number] & { gfx?: Fx[] }) | undefined; if (!sw) return;
     const moved = sw.gfx?.find(f => f.k === 'place'); if (moved && moved.k === 'place') place = moved.name;
     if (m.role !== 'assistant') return;
-    const pics = (sw.illust || []).map(it => { const s = Illust.slot(it as never) as unknown as { versions: { id?: string }[]; sel: number; id?: string }; return Illust.data(s.versions[s.sel]?.id || s.id || ''); }).filter(Boolean);
+    const pics = (sw.illust || []).map(it => { const s = Illust.slot(it as never) as unknown as { versions: { id?: string }[]; sel: number; id?: string }; const id = s.versions[s.sel]?.id || s.id || ''; return { id, src: Illust.data(id) }; }).filter(p => p.src);
     const caption = msgText(m).replace(/[*_`#]/g, '').replace(/\s+/g, ' ').trim().slice(0, 110);
-    for (const src of pics) panels.push({ msgId: m.id, src, caption, place });
+    for (const p of pics) panels.push({ msgId: m.id, key: p.id, src: p.src, caption, place });
     const key = !!moved || (msgs[i - 1] as GameMsg | undefined)?.gm?.kind === 'fight' || (msgs[i - 1] as GameMsg | undefined)?.gm?.kind === 'start';
     if (key && !pics.length && !m.hidden) missing.push(m);
   });
   return { panels, missing: missing.slice(-6) };
 }
+function VideoSetup() {
+  const c = videoCfg(), [, draw] = useState(0), [state, setState] = useState('');
+  const set = <K extends keyof typeof c>(k: K, v: (typeof c)[K]) => { c[k] = v; S.set({}); draw(n => n + 1); };
+  const num = (k: 'seconds' | 'fps' | 'width' | 'height', min: number, max: number) => <label className="field"><span className="field-label">{t('game.video.' + k)}</span><input className="inp" type="number" min={min} max={max} value={c[k]} onChange={e => set(k, Math.min(max, Math.max(min, Number(e.target.value) || min)))} /></label>;
+  return <div className="gm-video-box">
+    <p className="hint">{t('game.video.about')}</p>
+    <label className="field"><span className="field-label">{t('game.video.url')}</span>
+      <span className="gm-inline"><input className="inp" value={c.url} placeholder="http://127.0.0.1:8188" onChange={e => set('url', e.target.value)} />
+        <button type="button" className="btn sm" onClick={() => { setState('…'); void pingVideo().then(ok => setState(t(ok ? 'game.video.ok' : 'game.video.unreachable'))); }}>{t('game.video.test')}</button></span>
+      {state ? <small className="hint">{state}</small> : null}</label>
+    <label className="field"><span className="field-label">{t('game.video.workflow')}</span>
+      <textarea className="inp mono" rows={5} value={c.workflow} placeholder={'{ "1": { "class_type": "LoadImage", "inputs": { "image": "%reference_image_name%" } }, … }'} onChange={e => set('workflow', e.target.value)} />
+      <small className="hint">{t('game.video.workflowHint')}</small></label>
+    <div className="gm-nums">{num('seconds', 1, 20)}{num('fps', 8, 60)}{num('width', 256, 1920)}{num('height', 256, 1920)}</div>
+    <label className="field"><span className="field-label">{t('game.video.model')}</span><input className="inp" value={c.model} onChange={e => set('model', e.target.value)} /></label>
+    <label className="check"><input type="checkbox" checked={c.plan} onChange={e => set('plan', e.target.checked)} /><span>{t('game.video.plan')}</span></label>
+  </div>;
+}
 function Storyboard({ chat, close }: { chat: Chat; close(): void }) {
   const [ready, setReady] = useState(false), [busy, setBusy] = useState(0), [, tick] = useState(0);
-  useEffect(() => { void Illust.load(chat.id).then(() => setReady(true)).catch(() => setReady(true)); const tm = window.setInterval(() => tick(n => n + 1), 1500); return () => clearInterval(tm); }, [chat.id]);
+  const [making, setMaking] = useState<Record<string, string>>({}), [setup, setSetup] = useState(false), stops = useRef<Record<string, AbortController>>({});
+  useEffect(() => { void Promise.all([Illust.load(chat.id), loadClips(chat.id)]).then(() => setReady(true)).catch(() => setReady(true)); const tm = window.setInterval(() => tick(n => n + 1), 1500); return () => clearInterval(tm); }, [chat.id]);
   if (!ready) return <p className="dim">{t('game.story.loading')}</p>;
   const { panels, missing } = storyPanels(cur.chat === chat ? cur.msgs : []);
   const drawAll = async () => {
@@ -283,12 +305,26 @@ function Storyboard({ chat, close }: { chat: Chat; close(): void }) {
     catch (e) { toast(t('game.story.failed', { error: (e instanceof Error ? e.message : String(e)).slice(0, 140) }), 'err'); }
     finally { setBusy(0); }
   };
+  const film = async (p: Panel) => {
+    if (!videoCfg().workflow.trim()) { setSetup(true); toast(t('game.video.need')); return; }
+    const ac = new AbortController(); stops.current[p.key] = ac; setMaking(m => ({ ...m, [p.key]: 'upload' }));
+    try { await makeClip({ chatId: chat.id, label: p.key, image: p.src, caption: p.caption, scene: p.place }, step => setMaking(m => ({ ...m, [p.key]: step })), ac.signal); toast(t('game.video.done'), 'ok'); }
+    catch (e) { if ((e as Error).name !== 'AbortError') { const msg = (e as Error).message || String(e); toast(t('game.video.failed', { error: msg === 'BAD_WORKFLOW' ? t('game.video.badWorkflow') : msg === 'NO_VIDEO_OUTPUT' ? t('game.video.noOutput') : /fetch|network|ECONN|502|504/i.test(msg) ? t('game.video.unreachable') : msg.slice(0, 160) }), 'err'); } }
+    finally { delete stops.current[p.key]; setMaking(m => { const n = { ...m }; delete n[p.key]; return n; }); }
+  };
   return <div className="gm-story">
-    {panels.length ? <div className="gm-strip-grid">{panels.map((p, i) => <figure key={i} className={i % 5 === 0 ? 'is-wide' : ''} onClick={() => { close(); emit('game:enter', chat); window.setTimeout(() => emit('game:goto', p.msgId), 500); }}>
-      <img src={p.src} alt="" loading="lazy" />{p.place ? <span className="gm-where-tag">{p.place}</span> : null}<figcaption>{p.caption}</figcaption></figure>)}</div>
+    {panels.length ? <div className="gm-strip-grid">{panels.map((p, i) => { const clip = clipFor(chat.id, p.key), st = making[p.key]; return <figure key={p.key || i} className={i % 5 === 0 ? 'is-wide' : ''} onClick={() => { close(); emit('game:enter', chat); window.setTimeout(() => emit('game:goto', p.msgId), 500); }}>
+      {clip && !/^data:image/.test(clip) ? <video src={clip} poster={p.src} muted loop playsInline autoPlay /> : <img src={clip || p.src} alt="" loading="lazy" />}{p.place ? <span className="gm-where-tag">{p.place}</span> : null}
+      <span className="gm-clip" onClick={e => e.stopPropagation()}>
+        {st ? <><i>{t('game.video.step.' + st)}</i><button type="button" onClick={() => stops.current[p.key]?.abort()}>{t('common.cancel')}</button></>
+          : clip ? <><button type="button" onClick={() => void film(p)}>{t('game.video.again')}</button><button type="button" onClick={() => void removeClip(chat.id, p.key).then(() => tick(n => n + 1))}>{t('game.video.remove')}</button></>
+            : <button type="button" onClick={() => void film(p)}>{t('game.video.make')}</button>}
+      </span>
+      <figcaption>{p.caption}</figcaption></figure>; })}</div>
       : <p className="dim">{t('game.story.empty')}</p>}
     <div className="gm-foot">{missing.length ? <button type="button" className="btn primary" disabled={!!busy} onClick={() => void drawAll()}>{busy ? t('game.story.drawing', { n: busy }) : t('game.story.draw', { n: missing.length })}</button> : null}</div>
     {missing.length ? <p className="hint">{t('game.story.hint')}</p> : null}
+    <details className="gm-video" open={setup} onToggle={e => setSetup((e.target as HTMLDetailsElement).open)}><summary>{t('game.video.title')}</summary><VideoSetup /></details>
   </div>;
 }
 export function openStoryboard(chat: Chat) { openModal({ title: t('game.story.title'), wide: true, spec: 'div.gm' }, close => <Storyboard chat={chat} close={close} />); }
@@ -300,7 +336,7 @@ export function Sheet({ chat, msgs, onClose, first = 'sheet' }: { chat: Chat; ms
   const s = sheetOf(g, msgs), gc = chat as GameChat;
   const addItem = async () => { const v = await promptBox(t('game.sheet.addItem'), ''); if (v?.trim()) adjust(gc, { k: 'item', name: v.trim().slice(0, 60), n: 1 }); };
   const tabs = <div className="gm-tabs">{(['sheet', 'map', 'journal', 'session', 'media'] as const).map(k => <button key={k} type="button" className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{t('game.tab.' + k)}</button>)}</div>;
-  if (tab === 'map') return <div className="gm-sheet">{tabs}<MapView s={s} onGo={name => { chatApi.insert(t('game.map.go', { place: name })); onClose?.(); }} /></div>;
+  if (tab === 'map') return <div className="gm-sheet">{tabs}<MapView s={s} onGo={name => { putDraft(t('game.map.go', { place: name })); onClose?.(); }} /></div>;
   if (tab === 'journal') return <div className="gm-sheet">{tabs}
     <div className="gm-sec"><span className="eyebrow">{t('game.memo')}</span><textarea className="inp" rows={3} defaultValue={g.memo || ''} placeholder={t('game.memoPh')} onBlur={e => { if ((g.memo || '') !== e.target.value) { g.memo = e.target.value; saveChat(chat); } }} /></div>
     {s.docs.length ? <div className="gm-sec"><span className="eyebrow">{t('game.docs')}</span>{s.docs.map(d => <details key={d.title} className="gm-doc"><summary>{d.title}</summary><p>{d.text}</p></details>)}</div> : null}
@@ -354,7 +390,7 @@ export function GameBar() {
     </button>
     {fate && !busy ? <div className="gm-fate"><button type="button" className="gm-ask" onClick={() => void settleFate(chat, true)}><Icon name="dice" size={15} /><span><b>{t('game.fate.reroll')}</b><small>{t('game.fate.left', { n: s.fate })}</small></span></button><button type="button" className="btn" onClick={() => void settleFate(chat, false)}>{t('game.fate.accept')}</button></div> : null}
     {ask && !busy ? <button type="button" className="gm-ask" onClick={() => resolveAsk(chat, ask)}><Icon name={ask.k === 'check' ? 'dice' : ask.k === 'fight' ? 'star' : 'play'} size={15} /><span><b>{label}</b>{why ? <small>{why}</small> : null}</span></button> : null}
-    {picks.length ? <div className="choices gm-picks">{picks.map((x, i) => <button key={i} type="button" className="choice" onClick={e => { if (e.shiftKey) chatApi.insert(x); else void chatApi.send(x); }}>{x}</button>)}</div> : null}
+    {picks.length ? <div className="choices gm-picks">{picks.map((x, i) => <button key={i} type="button" className="choice" onClick={e => { if (e.shiftKey) putDraft(x); else void chatApi.send(x); }}>{x}</button>)}</div> : null}
   </div>;
 }
 

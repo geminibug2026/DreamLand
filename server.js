@@ -624,7 +624,8 @@ async function api(req, res, url) {
       target = new URL(fillSecrets(String(body.url), host0));
       if (target.hostname !== host0) return send(res, 400, { error: 'bad url' });
       pHeaders = Object.fromEntries(Object.entries(body.headers || {}).map(([k, v]) => [k, fillSecrets(String(v), target.hostname)]));
-      pBody = body.body == null ? undefined : fillSecrets(typeof body.body === 'string' ? body.body : JSON.stringify(body.body), target.hostname);
+      // bodyB64: 글자가 아닌 것(그림 올리기 등)을 그대로 보낼 때
+      pBody = body.bodyB64 != null ? Buffer.from(String(body.bodyB64), 'base64') : body.body == null ? undefined : fillSecrets(typeof body.body === 'string' ? body.body : JSON.stringify(body.body), target.hostname);
     } catch (e) { return send(res, 400, { error: e.message }); }
     if (!/^https?:$/.test(target.protocol)) return send(res, 400, { error: 'bad url' });
     for (const k of Object.keys(pHeaders)) if (k.toLowerCase() === 'x-dl-proxied') delete pHeaders[k];
