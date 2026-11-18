@@ -615,7 +615,7 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
     type === 'continue' && 'Continue your last message from exactly where it stopped. Do not restart it or repeat what is already written.',
     type === 'impersonate' && `Write ${ctx.user}'s next text message, in the voice and length their earlier messages show. Output only that message, as plain lines.`,
   ].filter(Boolean).join('\n');
-  const tail: PromptMsg = { role: 'user', src: '지금 상황 · 명령 안내', content: `<context>\n${situation}\n</context>${M.commands === false || type === 'impersonate' ? '' : '\n\n' + mx(TALK_COMMANDS.replace('{{clock_command}}', Clock.command(chat) ? '\n' + Clock.command(chat) : '').replace('{{call_command}}', !isGroup && !inCall && (S.settings as { call?: { aiCall?: boolean } }).call?.aiCall !== false ? TALK_CALL_COMMAND : ''))}` };
+  const tail: PromptMsg = { role: 'user', src: '지금 상황 · 명령 안내', content: `<context>\n${situation}\n</context>${M.commands === false || type === 'impersonate' ? '' : '\n\n' + mx(TALK_COMMANDS.replace('{{clock_command}}', Clock.command(chat) ? '\n' + Clock.command(chat) : '').replace('{{call_command}}', !inCall && (S.settings as { call?: { aiCall?: boolean } }).call?.aiCall !== false ? TALK_CALL_COMMAND : ''))}` };
   const fixed = [...before, ...late, tail].reduce((n, m) => n + tokens(m.content) + 4, 0);
   const budget = Math.max(500, (P.contextSize || 128000) - (M.talkTokens || 400) - fixed - (S.settings.format?.tokenPadding || 0));
   let used = 0, start = history.length;
