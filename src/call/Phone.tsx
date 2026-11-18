@@ -1,6 +1,7 @@
 // 통화 화면: 화면 위에 휴대폰 한 대 (PC 는 가운데 기기, 휴대폰은 화면 전체)
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
+import { S } from '../lib/core';
 import { Emblem, Icon } from '../kit';
 import { I } from '../lib/icons';
 import { tt } from './strings';
@@ -119,7 +120,7 @@ function Phone() {
       {live && s.keypad ? <div className="call-pad">{keys.map(k => <button key={k} type="button" onClick={() => { C.press(k); setText(x => x + k); }}>{k}</button>)}</div> : null}
       {live ? <form className="call-say" onSubmit={e => { e.preventDefault(); send(); }}>
         <button type="button" className={`ibtn call-ghost${ghosting ? ' busy' : ''}`} title={tt('call.do.ghostHint')} aria-label={tt('call.do.ghost')} disabled={s.muted || s.hold || ghosting} onClick={() => void ghost()}><Icon name="sparkle" /></button>
-        {sttSupported() ? <button type="button" className={`ibtn call-mic${hearing ? ' on' : ''}`} title={hearing ? tt('call.do.micStop') : tt('call.do.mic')} aria-label={tt('call.do.mic')} aria-pressed={hearing} disabled={s.muted || s.hold} onClick={mic}><Icon name="mic" /></button> : null}
+        {sttSupported() && S.settings.ux?.mic === true ? <button type="button" className={`ibtn call-mic${hearing ? ' on' : ''}`} title={hearing ? tt('call.do.micStop') : tt('call.do.mic')} aria-label={tt('call.do.mic')} aria-pressed={hearing} disabled={s.muted || s.hold} onClick={mic}><Icon name="mic" /></button> : null}
         <input ref={inp} className="inp" value={text} disabled={s.muted || s.hold} placeholder={s.muted ? tt('call.input.muted') : hearing ? tt('call.input.hearing') : ghosting ? tt('call.input.ghosting') : tt('call.input.ph')} onChange={e => setText(e.target.value)} />
         <button type="submit" className="ibtn" title={text.trim() ? tt('call.do.send') : tt('call.do.nudge')} aria-label={text.trim() ? tt('call.do.send') : tt('call.do.nudge')} disabled={s.muted || s.hold}><Icon name={text.trim() ? 'send' : 'right'} /></button>
       </form> : null}

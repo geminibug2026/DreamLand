@@ -29,7 +29,7 @@ function Choices() {
 function MicBtn() {
   const [on, setOn] = useState(false), stop = useRef<(() => void) | null>(null), base = useRef('');
   useEffect(() => () => stop.current?.(), []);
-  if (!sttSupported() || S.settings.ux?.mic === false) return null;
+  if (!sttSupported() || S.settings.ux?.mic !== true) return null;   // 기본은 꺼 둔다 (설정 › 입력에서 켠다)
   const put = (text: string) => { const el = ui.input; if (!el) return; el.value = base.current + (base.current && text && !/\s$/.test(base.current) ? ' ' : '') + text; el.dispatchEvent(new Event('input')); };
   const toggle = () => {
     if (on) return void stop.current?.();
