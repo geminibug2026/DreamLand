@@ -7220,5 +7220,7 @@
   "game.rewind.tip": "回到这一幕",
   "game.rewind.ask": "将创建一个到此幕为止的新分支并从那里继续。当前对话会原样保留。",
   "game.rewind.go": "回到这里",
-  "game.rewind.hint": "点击 ↺ 可回到事件发生的那一幕（作为新分支）。"
+  "game.rewind.hint": "点击 ↺ 可回到事件发生的那一幕（作为新分支）。",
+  "settings.input.mic": "显示语音输入按钮",
+  "settings.input.micHint": "在输入框和通话画面显示麦克风按钮，说话即可转成文字。仅在浏览器支持时出现。"
 }

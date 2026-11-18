@@ -7300,5 +7300,7 @@
   "game.rewind.tip": "Go back to this scene",
   "game.rewind.ask": "This makes a new branch that ends at this scene and continues from there. The current chat stays as it is.",
   "game.rewind.go": "Go back",
-  "game.rewind.hint": "Tap ↺ to go back to the scene where it happened (as a new branch)."
+  "game.rewind.hint": "Tap ↺ to go back to the scene where it happened (as a new branch).",
+  "settings.input.mic": "Show the voice input button",
+  "settings.input.micHint": "Puts a microphone button in the message box and on the call screen; speak and it is written down. Appears only where the browser supports it."
 }

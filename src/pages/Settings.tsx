@@ -78,7 +78,8 @@ function SettingsPage() {
         <select className="inp" defaultValue={st.enterSend === 'auto' ? 'auto' : st.enterSend ? 'on' : 'off'} onChange={e => { const v = e.target.value; S.set({ enterSend: v === 'auto' ? 'auto' : v === 'on' }); }}>
           <option value="auto">{t('settings.input.enterAuto')}</option><option value="on">{t('settings.input.enterOn')}</option><option value="off">{t('settings.input.enterOff')}</option></select></label> },
       { k: 'ux.restoreInput', label: t('settings.input.restoreInput'), type: 'check' },
-      { k: 'ux.mdKeys', label: t('settings.input.mdKeys'), type: 'check' }]} onChange={apply} /></div>
+      { k: 'ux.mdKeys', label: t('settings.input.mdKeys'), type: 'check' },
+      { k: 'ux.mic', label: t('settings.input.mic'), type: 'check', hint: t('settings.input.micHint') }]} onChange={apply} /></div>
     <div className="card"><Form obj={st} defs={[{ section: t('settings.msg.section') },
       { k: 'ux.metaTime', label: t('settings.msg.metaTime'), type: 'check' }, { k: 'ux.showIds', label: t('settings.msg.showIds'), type: 'check' }, { k: 'ux.showAvatars', label: t('settings.msg.showAvatars'), type: 'check' },
       { k: 'ux.metaModel', label: t('settings.msg.metaModel'), type: 'check', hint: t('settings.msg.metaModelHint') }, { k: 'ux.metaTimer', label: t('settings.msg.metaTimer'), type: 'check' }, { k: 'ux.metaTokens', label: t('settings.msg.metaTokens'), type: 'check' },
