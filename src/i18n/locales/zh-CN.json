@@ -6913,5 +6913,17 @@
   "websearch.once.cancelled": "已取消网络搜索。",
   "websearch.found": "网络搜索：\"{query}\" · {count} 条结果",
   "websearch.none": "网络搜索：没有找到\"{query}\"的结果。",
-  "websearch.failed": "网络搜索失败：{error}"
+  "websearch.failed": "网络搜索失败：{error}",
+  "vn.open": "视觉小说画面",
+  "vn.cmd": "打开或关闭视觉小说画面",
+  "vn.noChat": "请先打开一个对话。",
+  "vn.me": "我",
+  "vn.back": "返回上一段",
+  "vn.stop": "停止",
+  "vn.regen": "重新生成",
+  "vn.hide": "隐藏对话框",
+  "vn.close": "返回聊天画面",
+  "vn.empty": "还没有对话。在下方写下第一句话吧。",
+  "vn.placeholder": "你想说什么？",
+  "vn.send": "发送"
 }

@@ -418,7 +418,7 @@ const style = (bubbles: boolean, novel = false) => () => {
 def('single', { help: '', alias: ['story'], run: style(false, true) });
 def('bubble', { help: '', alias: ['bubbles'], run: style(true) });
 def('flat', { help: '', alias: ['default'], run: style(false) });
-def('vn', { help: '', run: (_a, c) => warn(c, 'noVn') });
+def('vn', { help: '', run: async () => { (await import('../../features/vn')).toggleVn(); return ''; } });
 
 // ════════ 도움말 ════════
 def('?', {

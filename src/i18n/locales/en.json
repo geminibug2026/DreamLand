@@ -6993,5 +6993,17 @@
   "websearch.once.cancelled": "Web search cancelled.",
   "websearch.found": "Web search: \"{query}\" · {count} results",
   "websearch.none": "Web search: no results for \"{query}\".",
-  "websearch.failed": "Web search failed: {error}"
+  "websearch.failed": "Web search failed: {error}",
+  "vn.open": "Visual novel screen",
+  "vn.cmd": "Turn the visual novel screen on or off",
+  "vn.noChat": "Open a chat first.",
+  "vn.me": "Me",
+  "vn.back": "Go back",
+  "vn.stop": "Stop",
+  "vn.regen": "Regenerate",
+  "vn.hide": "Hide the text box",
+  "vn.close": "Back to the chat screen",
+  "vn.empty": "Nothing here yet. Write the first line below.",
+  "vn.placeholder": "What do you say?",
+  "vn.send": "Send"
 }
