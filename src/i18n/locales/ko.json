@@ -7147,5 +7147,14 @@
   "game.fight.log.allyMiss": "{ally}의 공격이 {name}을(를) 빗나갔다.",
   "game.fight.log.foeHitAlly": "{name}이(가) {ally}을(를) 쳤다. 피해 {n}.",
   "game.fight.log.foeMissAlly": "{ally}이(가) {name}의 공격을 피했다.",
-  "game.fight.log.allyDown": "{ally}이(가) 쓰러졌다."
+  "game.fight.log.allyDown": "{ally}이(가) 쓰러졌다.",
+  "game.stage.open": "게임 화면",
+  "game.stage.exit": "대화 화면으로 돌아가기",
+  "game.stage.mute": "소리 끄기",
+  "game.stage.unmute": "소리 켜기",
+  "game.stage.next": "다음",
+  "game.stage.event": "결과",
+  "game.stage.empty": "이야기가 곧 시작됩니다.",
+  "game.stage.placeholder": "무엇을 할까요?",
+  "game.setup.music": "배경 음악"
 }

@@ -3,13 +3,14 @@ import { useEffect, useRef, useState } from 'react';
 import { setSfx, sfx } from './sfx';
 import type { Chat, Msg } from '../lib/types';
 import { Icon } from '../kit';
-import { S, newMsg } from '../lib/core';
+import { S, emit, newMsg } from '../lib/core';
 import { openModal } from '../addons/parts';
 import { promptBox, toast } from '../ui';
 import { t } from '../i18n';
 import { bump, cur, useCh } from '../chat/store';
 import { chatApi, generate, running } from '../chat/actions';
 import { Combat } from './Combat';
+import { ClockDial, D20 } from './Art';
 import { Mini } from './Minis';
 import { quickCall } from '../lib/engine';
 import { msgText } from '../lib/core';
@@ -62,7 +63,8 @@ export function resolveAsk(chat: Chat, ask: Ask) {
   if (ask.k === 'play') return void playMini(chat, ask.game, ask.stake);
   const sheet = sheetOf(g, cur.msgs), foes = ask.foes?.length ? ask.foes : [{ name: (ask as unknown as { name?: string }).name || t('game.foe'), hp: 12, atk: 3 }];
   const names = [...new Set(foes.map(f => f.name.replace(/ \d+$/, '')))].join(', ');
-  openModal({ title: t('game.fight.title', { name: names }), spec: 'div.gm' }, close => <Combat g={g} sheet={sheet} foes={foes} onDone={r => { close(); void record(chat, { kind: 'fight', name: names, outcome: r.outcome, rounds: r.rounds, took: r.took, hp: r.hp, hpMax: sheet.hpMax, fx: r.fx, ...(r.gold || r.xp ? { loot: `${r.gold} gold and ${r.xp} XP` } : {}), ...(r.fallen.length ? { fallen: r.fallen } : {}) }); }} />);
+  const faces: Record<string, string> = {}; { const me = S.persona(chat).avatar; if (me) faces.me = me; for (const n of sheet.party) { const c = S.chars.find(x => x.name.toLowerCase() === n.toLowerCase()); if (c?.avatar) faces[n.toLowerCase()] = c.avatar; } }
+  openModal({ title: t('game.fight.title', { name: names }), spec: 'div.gm' }, close => <Combat g={g} sheet={sheet} foes={foes} faces={faces} onDone={r => { close(); void record(chat, { kind: 'fight', name: names, outcome: r.outcome, rounds: r.rounds, took: r.took, hp: r.hp, hpMax: sheet.hpMax, fx: r.fx, ...(r.gold || r.xp ? { loot: `${r.gold} gold and ${r.xp} XP` } : {}), ...(r.fallen.length ? { fallen: r.fallen } : {}) }); }} />);
 }
 
 /** 순간 반응: 시간이 줄어드는 동안 하나를 고른다. 빨리 고를수록 유리하고, 놓치면 나쁘게 흘러간다 */
@@ -92,7 +94,7 @@ function Setup({ chat, close }: { chat: GameChat; close(): void }) {
   const done = () => {
     const next: GameCfg = { ...g, on: true, hpMax: Math.max(1, Math.round(g.hpMax) || 20), gold: Math.max(0, Math.round(g.gold) || 0), items: items.split(/[,\n]/).map(s => s.trim()).filter(Boolean).slice(0, 20), adj: editing ? g.adj || [] : [] };
     chat.game = next; saveChat(chat); close();
-    if (!editing) void record(chat, { kind: 'start' });
+    if (!editing) { emit('game:start', chat); void record(chat, { kind: 'start' }); }
   };
   return <div className="gm-setup">
     <p className="hint">{t(editing ? 'game.setup.editHint' : 'game.setup.hint', { name: foeName(chat) })}</p>
@@ -118,6 +120,7 @@ function Setup({ chat, close }: { chat: GameChat; close(): void }) {
       <label className="field"><span className="field-label">{t('game.setup.gold')}</span><input className="inp" type="number" min={0} value={g.gold} onChange={e => set('gold', +e.target.value)} /></label>
     </div>
     <label className="field"><span className="field-label">{t('game.setup.items')}</span><input className="inp" value={items} placeholder={t('game.setup.itemsPh')} onChange={e => setItems(e.target.value)} /></label>
+    <label className="gm-check"><input type="checkbox" checked={g.music !== false} onChange={e => set('music', e.target.checked)} />{t('game.setup.music')}</label>
     <label className="gm-check"><input type="checkbox" checked={g.sfx !== false} onChange={e => set('sfx', e.target.checked)} />{t('game.setup.sfx')}</label>
     <label className="gm-check"><input type="checkbox" checked={!!g.art} onChange={e => set('art', e.target.checked)} />{t('game.setup.art')}</label>
     <div className="gm-foot"><button type="button" className="btn primary" onClick={done}>{t(editing ? 'game.setup.save' : 'game.setup.start')}</button></div>
@@ -167,8 +170,9 @@ function SessionBox({ chat, onClose }: { chat: GameChat; onClose?: () => void })
     <div className="gm-foot"><button type="button" className="btn primary" disabled={busy} onClick={() => void go()}>{busy ? t('game.session.busy') : t('game.session.end')}</button></div>
   </div>;
 }
-export function Sheet({ chat, msgs, onClose }: { chat: Chat; msgs: Msg[]; onClose?: () => void }) {
-  useCh('game'); const [tab, setTab] = useState<'sheet' | 'map' | 'journal' | 'session'>('sheet');
+type Tab = 'sheet' | 'map' | 'journal' | 'session';
+export function Sheet({ chat, msgs, onClose, first = 'sheet' }: { chat: Chat; msgs: Msg[]; onClose?: () => void; first?: Tab }) {
+  useCh('game'); const [tab, setTab] = useState<Tab>(first);
   const g = gameOf(chat); if (!g) return <><p className="dim">{t('game.sheet.off')}</p><button type="button" className="btn" onClick={() => openSetup(chat)}>{t('game.setup.title')}</button></>;
   const s = sheetOf(g, msgs), gc = chat as GameChat;
   const Step = ({ fx, label }: { fx: Fx; label: string }) => <button type="button" className="gm-step" aria-label={label} title={label} onClick={() => adjust(gc, fx)}>{'n' in fx && fx.n > 0 ? '+' : '−'}</button>;
@@ -183,7 +187,7 @@ export function Sheet({ chat, msgs, onClose }: { chat: Chat; msgs: Msg[]; onClos
     <div className="gm-row"><span className="eyebrow">LV</span><b className="gm-n">{s.level}</b><span className="gm-bar"><i style={{ width: `${s.level >= 20 ? 100 : s.xp % 100}%` }} /></span><small className="gm-xp">{s.xp} XP</small></div>
     <div className="gm-statline" style={{ gridTemplateColumns: `repeat(${statsOf(g).length > 4 ? 3 : 4}, 1fr)` }}>{statsOf(g).map(k => <span key={k}><small>{t('game.stat.' + k)}</small><b>{ruleOf(g) === 'd20' || ruleOf(g) === '2d6' ? sign(statVal(g, k)) : statVal(g, k)}</b></span>)}</div>
     {s.time || s.weather ? <div className="gm-sec"><span className="eyebrow">{t('game.time')}</span><p>{[s.time, s.weather].filter(Boolean).join(' · ')}</p></div> : null}
-    {s.clocks.length ? <div className="gm-sec"><span className="eyebrow">{t('game.clocks')}</span>{s.clocks.map(c => <div key={c.name} className={`gm-clock${c.v >= c.max ? ' is-full' : ''}`}><span>{c.name}</span><i>{Array.from({ length: c.max }, (_, i) => <b key={i} className={i < c.v ? 'on' : ''} />)}</i></div>)}</div> : null}
+    {s.clocks.length ? <div className="gm-sec"><span className="eyebrow">{t('game.clocks')}</span>{s.clocks.map(c => <div key={c.name} className={`gm-clock${c.v >= c.max ? ' is-full' : ''}`}><span>{c.name}</span><b>{c.v}/{c.max}</b><ClockDial v={c.v} max={c.max} size={26} /></div>)}</div> : null}
     {s.party.length || s.people.length ? <div className="gm-sec"><span className="eyebrow">{t('game.people')}</span>
       <ul className="gm-people">{s.party.filter(n => !s.people.some(p => p.name.toLowerCase() === n.toLowerCase())).map(n => <li key={'p' + n}><span>{n}</span><em>{t('game.party')}</em></li>)}
         {s.people.map(p => <li key={p.name}><span>{p.name}</span><i className="gm-rep"><b style={{ left: `${(p.v + 100) / 2}%` }} /></i><em>{s.party.some(n => n.toLowerCase() === p.name.toLowerCase()) ? t('game.party') + ' · ' : ''}{t('game.rep.' + repTier(p.v))} {sign(p.v)}</em></li>)}</ul></div> : null}
@@ -199,16 +203,19 @@ export function Sheet({ chat, msgs, onClose }: { chat: Chat; msgs: Msg[]; onClos
     </div>
   </div>;
 }
-export function openSheet(chat: Chat) { openModal({ title: t('game.sheet.title'), spec: 'div.gm' }, close => <Sheet chat={chat} msgs={cur.chat === chat ? cur.msgs : []} onClose={close} />); }
+export function openSheet(chat: Chat, first: Tab = 'sheet') { openModal({ title: t('game.sheet.title'), spec: 'div.gm' }, close => <Sheet chat={chat} msgs={cur.chat === chat ? cur.msgs : []} onClose={close} first={first} />); }
 /** 입력창 + 메뉴 · /game: 게임 중이면 시트를, 아니면 시작 창을 연다 */
 export const openGame = (chat: Chat) => gameOf(chat) ? openSheet(chat) : openSetup(chat);
 
+export function askLabel(ask: Ask): string {
+  return ask.k === 'check' ? t('game.ask.check', { stat: t('game.stat.' + ask.stat), dc: ask.dc }) : ask.k === 'qte' ? t('game.ask.qte', { n: ask.secs }) : ask.k === 'fight' ? t('game.ask.fight', { name: [...new Set((ask.foes || []).map(f => f.name.replace(/ \d+$/, '')))].join(', ') }) : t('game.ask.play', { game: t('game.mini.' + ask.game) });
+}
 // ── 입력창 위의 띠: 지금 상태 한 줄 + 진행자가 맡긴 일 ──
 export function GameBar() {
   useCh('game'); useCh('busy');
   const chat = cur.chat, g = gameOf(chat); if (!chat || !g) return null;
   const s = sheetOf(g, cur.msgs), ask = pendingAsk(cur.msgs), busy = running();
-  const label = !ask ? '' : ask.k === 'check' ? t('game.ask.check', { stat: t('game.stat.' + ask.stat), dc: ask.dc }) : ask.k === 'qte' ? t('game.ask.qte', { n: ask.secs }) : ask.k === 'fight' ? t('game.ask.fight', { name: [...new Set((ask.foes || []).map(f => f.name.replace(/ \d+$/, '')))].join(', ') }) : t('game.ask.play', { game: t('game.mini.' + ask.game) });
+  const label = ask ? askLabel(ask) : '';
   const why = ask && (ask.k === 'check' ? ask.why : ask.k === 'play' ? ask.stake : '');
   const tail = cur.msgs[cur.msgs.length - 1], picks = !busy && !ask && tail?.role === 'assistant' ? (tail.swipes[tail.sw] as { gchoices?: string[] } | undefined)?.gchoices || [] : [];
   return <div className="gm-strip">
@@ -230,7 +237,7 @@ export function GameCard({ m }: { m: Msg }) {
     const grade = r.grade || (r.crit === 'hit' ? 'crit' : r.crit === 'miss' ? 'fumble' : r.ok ? 'ok' : 'fail'), dice = r.dice?.length ? r.dice : [r.die], rule = r.rule || 'd20';
     return <div className={`gm-card-rec is-${r.ok ? 'win' : 'lose'}`}>
       <span className="eyebrow">{t('game.rec.check', { stat: t('game.stat.' + r.stat) })}{rule === '2d6' ? '' : rule === 'd100' ? ` · ≤ ${r.dc}` : rule === 'pool' ? ` · ${t('game.rec.need', { n: r.dc })}` : ` · DC ${r.dc}`}{r.note ? ` · ${r.note}` : ''}</span>
-      <div className="gm-roll">{dice.map((v, i) => <i key={i} className={`gm-die${rule === 'pool' && v >= 5 ? ' is-hit' : ''}${dice.length > 1 && (rule === 'd20' || rule === '5e') && v !== r.die ? ' is-off' : ''}`}>{v}</i>)}
+      <div className="gm-roll">{dice.map((v, i) => rule === 'd20' || rule === '5e' ? <D20 key={i} dim={dice.length > 1 && i !== dice.indexOf(r.die)}>{v}</D20> : <i key={i} className={`gm-die${rule === 'pool' && v >= 5 ? ' is-hit' : ''}`}>{v}</i>)}
         {rule === 'd100' ? null : rule === 'pool' ? <><span>→</span><strong>{r.total}</strong></> : <><span>{sign(r.mod)}</span><span>=</span><strong>{r.total}</strong></>}
         <em>{t('game.grade.' + grade)}</em></div>
       {r.why ? <small>{r.why}</small> : null}</div>;

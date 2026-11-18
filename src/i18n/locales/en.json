@@ -7227,5 +7227,14 @@
   "game.fight.log.allyMiss": "{ally} misses {name}.",
   "game.fight.log.foeHitAlly": "{name} hits {ally} for {n}.",
   "game.fight.log.foeMissAlly": "{name} misses {ally}.",
-  "game.fight.log.allyDown": "{ally} is knocked out."
+  "game.fight.log.allyDown": "{ally} is knocked out.",
+  "game.stage.open": "Game screen",
+  "game.stage.exit": "Back to the chat screen",
+  "game.stage.mute": "Mute",
+  "game.stage.unmute": "Unmute",
+  "game.stage.next": "Next",
+  "game.stage.event": "Outcome",
+  "game.stage.empty": "The story is about to begin.",
+  "game.stage.placeholder": "What do you do?",
+  "game.setup.music": "Background music"
 }

@@ -7147,5 +7147,14 @@
   "game.fight.log.allyMiss": "{ally}对{name}的攻击落空了。",
   "game.fight.log.foeHitAlly": "{name}击中了{ally}，造成 {n} 点伤害。",
   "game.fight.log.foeMissAlly": "{ally}躲开了{name}的攻击。",
-  "game.fight.log.allyDown": "{ally}倒下了。"
+  "game.fight.log.allyDown": "{ally}倒下了。",
+  "game.stage.open": "游戏画面",
+  "game.stage.exit": "返回聊天画面",
+  "game.stage.mute": "静音",
+  "game.stage.unmute": "取消静音",
+  "game.stage.next": "继续",
+  "game.stage.event": "结果",
+  "game.stage.empty": "故事即将开始。",
+  "game.stage.placeholder": "你要做什么？",
+  "game.setup.music": "背景音乐"
 }

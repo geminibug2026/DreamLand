@@ -24,7 +24,7 @@ export const pagesOf = (text: string) => plainOf(text).split(/\n+/).map(s => s.t
 /** 대사("…")와 지문(*…*)만 가볍게 꾸민다 */
 const marks = (text: string, k: string): ReactNode[] => text.split(/(\*\*[^*\n]+\*\*|\*[^*\n]+\*)/).filter(Boolean).map((p, i) =>
   /^\*\*/.test(p) ? <b key={k + i}>{p.slice(2, -2)}</b> : /^\*/.test(p) ? <em key={k + i}>{p.slice(1, -1)}</em> : p);
-function fmt(text: string): ReactNode[] {
+export function fmt(text: string): ReactNode[] {
   return text.split(/("[^"\n]+"|“[^”\n]+”|「[^」\n]+」)/).filter(Boolean).map((p, i) =>
     /^["“「]/.test(p) ? <span key={i} className="vn-q">{marks(p, `q${i}-`)}</span> : marks(p, `t${i}-`)).flat();
 }

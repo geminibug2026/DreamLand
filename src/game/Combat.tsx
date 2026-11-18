@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { t } from '../i18n';
 import { sfx } from './sfx';
+import { Emblem, Terrain, foeKind } from './Art';
 import { DIFF_HIT, d, isPotion, modOf, statsOf, type Foe, type Fx, type GameCfg, type Sheet, type StatKey } from './state';
 
 export interface FightResult { outcome: 'win' | 'lose' | 'fled'; rounds: number; took: number; hp: number; fx: Fx[]; gold: number; xp: number; fallen: string[] }
@@ -46,7 +47,8 @@ function makeBoard(foes: Foe[]) {
 }
 const Bar = ({ v, max }: { v: number; max: number }) => <span className="gm-bar"><i style={{ width: `${Math.max(0, Math.min(100, v / max * 100))}%` }} /></span>;
 
-export function Combat({ g, sheet, foes, onDone }: { g: GameCfg; sheet: Sheet; foes: Foe[]; onDone(r: FightResult): void }) {
+export function Combat({ g, sheet, foes, onDone, faces = {} }: { g: GameCfg; sheet: Sheet; foes: Foe[]; onDone(r: FightResult): void; /** 얼굴 그림: me 와 동료 이름 → 주소 */ faces?: Record<string, string> }) {
+  const face = (n: string) => faces[n.toLowerCase()] ? { backgroundImage: `url("${faces[n.toLowerCase()]}")` } : undefined;
   const lv = sheet.level || 1;
   const board = useMemo(() => makeBoard(foes), [foes]), { rocks, high, bush } = board;
   const M = { str: modOf(g, 'str'), dex: modOf(g, 'dex') };
@@ -163,7 +165,7 @@ export function Combat({ g, sheet, foes, onDone }: { g: GameCfg; sheet: Sheet; f
     const k = key(x, y), f = alive.find(o => o.x === x && o.y === y), me = st.x === x && st.y === y, pal = st.allies.find(a => a.hp > 0 && a.x === x && a.y === y), rock = rocks.has(k), can = !st.end && f ? canHit(f) : '', go = !f && !me && !pal && !rock && reach.has(k);
     cells.push(<button key={k} type="button" disabled={!!st.end || rock || me || !!pal || (!go && !can)} aria-label={f ? f.name : pal ? pal.name : me ? t('game.you') : rock ? t('game.fight.rock') : `${x + 1},${y + 1}`}
       className={`gm-cell${rock ? ' is-rock' : ''}${high.has(k) ? ' is-high' : ''}${bush.has(k) ? ' is-bush' : ''}${f?.ranged ? ' is-ranged' : ''}${me ? ' is-me' : ''}${pal ? ' is-pal' : ''}${f ? ' is-foe' : ''}${go ? ' is-go' : ''}${can ? ' is-aim' : ''}${f?.stun ? ' is-stun' : ''}`}
-      onClick={() => f ? attack(f) : moveTo(x, y)}>{me ? <b>{t('game.fight.meMark')}</b> : pal ? <b>{pal.name.slice(0, 1)}</b> : f ? <><b>{f.id + 1}</b><i style={{ width: `${f.hp / f.max * 100}%` }} /></> : null}</button>);
+      onClick={() => f ? attack(f) : moveTo(x, y)}>{me ? <b style={faces.me ? { backgroundImage: `url("${faces.me}")` } : undefined}>{faces.me ? '' : t('game.fight.meMark')}</b> : pal ? <b style={face(pal.name)}>{face(pal.name) ? '' : pal.name.slice(0, 1)}</b> : f ? <><b><Emblem kind={foeKind(f.name)} /></b><em>{f.id + 1}</em><i style={{ width: `${f.hp / f.max * 100}%` }} /></> : rock ? <Terrain kind="rock" /> : null}{!rock && high.has(k) ? <span className="gm-land"><Terrain kind="high" /></span> : null}{!rock && bush.has(k) ? <span className="gm-land"><Terrain kind="bush" /></span> : null}</button>);
   }
   return <div className="gm-mini gm-fight">
     <div className="gm-roster">
@@ -172,7 +174,7 @@ export function Combat({ g, sheet, foes, onDone }: { g: GameCfg; sheet: Sheet; f
       {st.foes.map(f => <div key={f.id} className={f.hp <= 0 ? 'is-out' : ''}><small>{f.id + 1} · {f.name}{f.ranged ? ' ➶' : ''}</small><b>{f.hp}<i>/{f.max}</i></b><Bar v={f.hp} max={f.max} /></div>)}
     </div>
     <div key={st.hurt} className={`gm-board${st.hurt ? ' is-hurt' : ''}`} style={{ gridTemplateColumns: `repeat(${W}, 1fr)` }}>{cells}</div>
-    <p className="gm-legend"><span><i className="is-rock" />{t('game.fight.rock')}</span><span><i className="is-high" />{t('game.fight.high')}</span><span><i className="is-bush" />{t('game.fight.bush')}</span></p>
+    <p className="gm-legend"><span><Terrain kind="rock" size={20} />{t('game.fight.rock')}</span><span><Terrain kind="high" size={20} />{t('game.fight.high')}</span><span><Terrain kind="bush" size={20} />{t('game.fight.bush')}</span></p>
     <ol className="gm-log">{st.log.length ? st.log.map((l, i) => <li key={i}>{l}</li>) : <li className="dim">{t('game.fight.hint')}</li>}</ol>
     {st.end ? <div className="gm-done"><b className={`gm-verdict is-${st.end === 'win' ? 'win' : st.end === 'lose' ? 'lose' : 'draw'}`}>{t('game.fight.end.' + st.end)}</b><button type="button" className="btn primary" onClick={finish}>{t('game.mini.finish')}</button></div>
       : <div className="gm-acts">
