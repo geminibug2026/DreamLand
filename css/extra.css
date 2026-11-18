@@ -767,3 +767,12 @@ html.gs-on .modal-wrap:has(.gm) .gm-chess button.is-w { color: #f4ecdb; } html.g
 .gm-video-box { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; } .gm-video-box textarea { font-size: 12px; }
 .gm-inline { display: flex; gap: 6px; } .gm-inline .inp { flex: 1; min-width: 0; }
 .gm-nums { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; } @media (max-width: 520px) { .gm-nums { grid-template-columns: repeat(2, 1fr); } }
+
+/* 체스: 체크 · 체크메이트 표시 */
+.gm-line.is-check { color: #c0392b; font-weight: 700; }
+.gm-chess button.is-check, .gm-chess button.is-mate { background: #c0392b !important; color: #fff !important; }
+.gm-chess button.is-check { animation: gm-check 1s ease-in-out infinite; }
+.gm-chess button.is-threat { box-shadow: inset 0 0 0 3px #c0392b; }
+.gm-chess button.is-can { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 80%, transparent); }
+@keyframes gm-check { 50% { background: #e2574a; } }
+@media (prefers-reduced-motion: reduce) { .gm-chess button.is-check { animation: none; } }
