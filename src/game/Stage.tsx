@@ -20,6 +20,8 @@ import { ClockDial, Glyph, Keystone, Rule, type GlyphName } from './Art';
 interface Page { key: string; msgId: string; who: 'c' | 'u' | 'n' | 'e'; charId: string; name: string; text: string; rec?: GameRec; msg: Msg }
 /** 되돌아볼 수 있는 메시지 수. 세션을 마무리해 프롬프트에서 뺀(숨긴) 메시지도 읽을 수는 있다 */
 const LOOKBACK = 400;
+// 메시지마다 나눠 둔 문단을 기억해 둔다 — 답변이 흘러오는 동안 지난 메시지 수백 개를 매번 다시 나누지 않게
+const pageCache = new WeakMap<Msg, { sig: string; pages: Page[] }>();
 function build(chat: Chat, msgs: Msg[]): Page[] {
   const out: Page[] = [], me = S.persona(chat).name || t('game.you');
   for (const m of msgs.filter(x => !(x as { call?: unknown }).call).slice(-LOOKBACK)) {
@@ -27,7 +29,10 @@ function build(chat: Chat, msgs: Msg[]): Page[] {
     if (rec) { if (rec.kind !== 'start') out.push({ key: m.id, msgId: m.id, who: 'e', charId: '', name: '', text: '', rec, msg: m }); continue; }
     const who = m.role === 'user' ? 'u' : m.role === 'assistant' ? 'c' : 'n', charId = who === 'c' ? charIdOf(m, chat as ChatX) : '';
     const name = who === 'u' ? me : who === 'c' ? S.get('chars', charId)?.name || m.name || '' : '';
-    pagesOf(shownText(m)).forEach((text, i) => out.push({ key: `${m.id}:${m.sw}:${i}`, msgId: m.id, who, charId, name, text, msg: m }));
+    const sig = `${m.sw}\u0001${name}\u0001${charId}\u0001${m.swipes[m.sw]?.text || ''}`, had = pageCache.get(m);
+    if (had && had.sig === sig) { for (const p of had.pages) out.push(p); continue; }
+    const mine = pagesOf(shownText(m)).map((text, i): Page => ({ key: `${m.id}:${m.sw}:${i}`, msgId: m.id, who, charId, name, text, msg: m }));
+    pageCache.set(m, { sig, pages: mine }); for (const p of mine) out.push(p);
   }
   return out;
 }
@@ -40,7 +45,16 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   const [, bump] = useState(0), [pos, setPos] = useState(-1), [draft, setDraft] = useState(''), [sound, setSound] = useState(true);
   const box = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null), lastEnd = useRef(''), restored = useRef(false), was = useRef({ gold: -1, scene: '', ask: false, hp: -1 }), [cine, setCine] = useState(''), played = useRef(new Set<string>()), cineTm = useRef(0);
   const chat = cur.chat?.id === chatId ? cur.chat : null, msgs = chat ? cur.msgs : [], busy = running(), g = gameOf(chat);
-  useEffect(() => { const tm = window.setInterval(() => { if (cur.chat?.id !== chatId || !gameOf(cur.chat)) return closeStage(); bump(n => n + 1); }, 160); return () => clearInterval(tm); }, [chatId]);
+  // 대화는 바깥에서 바뀐다. 자주 들여다보되, 달라진 것이 있을 때만 다시 그린다 (그 밖의 변화는 2초마다 한 번 따라잡는다)
+  useEffect(() => {
+    let sig = '', n = 0;
+    const tm = window.setInterval(() => {
+      if (cur.chat?.id !== chatId || !gameOf(cur.chat)) return closeStage();
+      const ms = cur.msgs, now = `${ms.length}|${tail(ms)}|${running() ? 1 : 0}|${JSON.stringify(gameOf(cur.chat))}`;
+      if (now !== sig || ++n >= 12) { sig = now; n = 0; bump(x => x + 1); }
+    }, 160);
+    return () => clearInterval(tm);
+  }, [chatId]);
   useEffect(() => { void loadMedia().then(() => bump(n => n + 1)); }, []);
   useEffect(() => { if (chat) void Sprites.load(chat.charIds).then(() => bump(n => n + 1)).catch(() => { }); }, [chat]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
