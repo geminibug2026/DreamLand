@@ -4,13 +4,13 @@ import { t } from '../i18n';
 import { d, type Fx, type MiniId, type Outcome } from './state';
 
 export interface MiniResult { outcome: Outcome; score: string; fx?: Fx[] }
-interface P { foe: string; onDone(r: MiniResult): void; /** 게임 모드일 때 걸 수 있는 골드 */ gold?: number }
+export interface P { foe: string; onDone(r: MiniResult): void; /** 게임 모드일 때 걸 수 있는 골드 */ gold?: number }
 /** 잠깐 뜸을 들인다 (상대가 내거나 두는 사이). 창을 닫으면 그만둔다 */
-function useLater() { const tm = useRef(0); useEffect(() => () => clearTimeout(tm.current), []); return (fn: () => void, ms: number) => { clearTimeout(tm.current); tm.current = window.setTimeout(fn, ms); }; }
+export function useLater() { const tm = useRef(0); useEffect(() => () => clearTimeout(tm.current), []); return (fn: () => void, ms: number) => { clearTimeout(tm.current); tm.current = window.setTimeout(fn, ms); }; }
 const pick = <T,>(a: T[]) => a[d(a.length) - 1];
-const Score = ({ me, foe, a, b }: { me: string; foe: string; a: number | string; b: number | string }) =>
+export const Score = ({ me, foe, a, b }: { me: string; foe: string; a: number | string; b: number | string }) =>
   <div className="gm-score"><span><small>{me}</small><b>{a}</b></span><i>:</i><span><small>{foe}</small><b>{b}</b></span></div>;
-const Done = ({ r, onDone }: { r: MiniResult; onDone(r: MiniResult): void }) =>
+export const Done = ({ r, onDone }: { r: MiniResult; onDone(r: MiniResult): void }) =>
   <div className="gm-done"><b className={`gm-verdict is-${r.outcome}`}>{t('game.out.' + r.outcome)}</b><button type="button" className="btn primary" onClick={() => onDone(r)}>{t('game.mini.finish')}</button></div>;
 
 // ── 가위바위보: 먼저 두 번 이기면 승리 ──
@@ -54,11 +54,11 @@ function Dice({ foe, onDone }: P) {
 }
 
 // ── 블랙잭: 상대가 딜러. 21 을 넘기지 않고 더 가까운 쪽이 승리 ──
-interface Card { r: string; s: string }
-const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'], SUITS = ['♠', '♥', '♦', '♣'];
-const deck = () => { const all = SUITS.flatMap(s => RANKS.map(r => ({ r, s }))); for (let i = all.length - 1; i > 0; i--) { const j = d(i + 1) - 1; [all[i], all[j]] = [all[j], all[i]]; } return all; };
+export interface Card { r: string; s: string }
+export const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'], SUITS = ['♠', '♥', '♦', '♣'];
+export const deck = () => { const all = SUITS.flatMap(s => RANKS.map(r => ({ r, s }))); for (let i = all.length - 1; i > 0; i--) { const j = d(i + 1) - 1; [all[i], all[j]] = [all[j], all[i]]; } return all; };
 export const handValue = (h: Card[]) => { let v = 0, aces = 0; for (const c of h) { if (c.r === 'A') { aces++; v += 11; } else v += 'JQK'.includes(c.r) || c.r === '10' ? 10 : +c.r; } while (v > 21 && aces) { v -= 10; aces--; } return v; };
-const CardView = ({ c, down }: { c: Card; down?: boolean }) => down ? <span className="gm-card is-down" /> : <span className={`gm-card gm-pop${c.s === '♥' || c.s === '♦' ? ' is-red' : ''}`}><b>{c.r}</b><i>{c.s}</i></span>;
+export const CardView = ({ c, down }: { c: Card; down?: boolean }) => down ? <span className="gm-card is-down" /> : <span className={`gm-card gm-pop${c.s === '♥' || c.s === '♦' ? ' is-red' : ''}`}><b>{c.r}</b><i>{c.s}</i></span>;
 function Blackjack({ foe, onDone, gold = 0 }: P) {
   const dk = useRef<Card[]>([]), later = useLater();
   const [bet, setBet] = useState<number | null>(gold > 0 ? null : 0);
@@ -169,7 +169,9 @@ function Numbers({ foe, onDone }: P) {
   </div>;
 }
 
+// 탁자 게임은 따로 둔다 (서로 가져다 쓰므로 여기서는 아래에서 불러온다)
+import { TableGame } from './Table';
 export function Mini({ game, foe, onDone, gold }: { game: MiniId } & P) {
   return game === 'rps' ? <Rps foe={foe} onDone={onDone} /> : game === 'dice' ? <Dice foe={foe} onDone={onDone} /> : game === 'blackjack' ? <Blackjack foe={foe} onDone={onDone} gold={gold} />
-    : game === 'gomoku' ? <Gomoku foe={foe} onDone={onDone} /> : game === 'tictactoe' ? <TicTacToe foe={foe} onDone={onDone} /> : <Numbers foe={foe} onDone={onDone} />;
+    : game === 'poker' || game === 'uno' || game === 'chess' ? <TableGame game={game} foe={foe} onDone={onDone} /> : game === 'gomoku' ? <Gomoku foe={foe} onDone={onDone} /> : game === 'tictactoe' ? <TicTacToe foe={foe} onDone={onDone} /> : <Numbers foe={foe} onDone={onDone} />;
 }
