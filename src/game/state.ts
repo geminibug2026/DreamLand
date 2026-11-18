@@ -3,12 +3,23 @@
 // 그래서 답변을 다시 받거나, 지우거나, 갈래를 나눠도 언제나 그 대화의 내용과 맞는다.
 import type { Chat, Msg } from '../lib/types';
 
-export type StatKey = 'str' | 'dex' | 'int' | 'cha';
-export const STATS: StatKey[] = ['str', 'dex', 'int', 'cha'];
+export type StatKey = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
+/** 규칙서: 판정을 어떻게 굴리고 읽는지 */
+export type RuleId = 'd20' | '5e' | '2d6' | 'd100' | 'pool';
+export const RULE_IDS: RuleId[] = ['d20', '5e', '2d6', 'd100', 'pool'];
+const FOUR: StatKey[] = ['str', 'dex', 'int', 'cha'];
+export const RULES: Record<RuleId, { stats: StatKey[]; min: number; max: number; hi: number; mid: number; lo: number; even: number }> = {
+  d20: { stats: FOUR, min: -2, max: 6, hi: 3, mid: 1, lo: 0, even: 1 },
+  '5e': { stats: ['str', 'dex', 'con', 'int', 'wis', 'cha'], min: 3, max: 20, hi: 16, mid: 14, lo: 10, even: 12 },
+  '2d6': { stats: FOUR, min: -1, max: 3, hi: 2, mid: 1, lo: 0, even: 1 },
+  d100: { stats: FOUR, min: 5, max: 95, hi: 70, mid: 55, lo: 40, even: 55 },
+  pool: { stats: FOUR, min: 1, max: 6, hi: 4, mid: 3, lo: 2, even: 3 },
+};
+export const STATS: StatKey[] = FOUR;
 export type Diff = 'easy' | 'normal' | 'hard';
 export interface GameCfg {
-  on: boolean; genre: string; tone: string; diff: Diff; hero: string; goal: string;
-  stats: Record<StatKey, number>; hpMax: number; gold: number; items: string[];
+  on: boolean; rule?: RuleId; /** 새 장소 · 전투 때 삽화를 그린다 */ art?: boolean; genre: string; tone: string; diff: Diff; hero: string; goal: string;
+  stats: Partial<Record<StatKey, number>>; hpMax: number; gold: number; items: string[];
   /** 손으로 고친 값 (시트에서 직접 바꾼 것) */
   adj?: Fx[];
   /** 끝낸 세션의 요약 (차례대로). 프롬프트에 '지금까지의 이야기'로 들어간다 */
@@ -18,34 +29,48 @@ export type Fx =
   | { k: 'hp'; n: number } | { k: 'hpmax'; n: number } | { k: 'gold'; n: number }
   | { k: 'item'; name: string; n: number } | { k: 'quest'; title: string; done: boolean } | { k: 'place'; name: string }
   /** 두 장소를 잇는 길 (아직 가 보지 않은 곳도 지도에 나타난다) */
-  | { k: 'path'; a: string; b: string };
+  | { k: 'path'; a: string; b: string } | { k: 'xp'; n: number };
 export type MiniId = 'rps' | 'dice' | 'blackjack' | 'tictactoe' | 'numbers' | 'gomoku';
 export const MINIS: MiniId[] = ['rps', 'dice', 'blackjack', 'tictactoe', 'gomoku', 'numbers'];
-export interface Foe { name: string; hp: number; atk: number }
+export interface Foe { name: string; hp: number; atk: number; ranged?: boolean }
 /** 진행자가 앱에 맡긴 일: 판정 · 전투 · 미니게임 */
 export type Ask =
-  | { k: 'check'; stat: StatKey; dc: number; why: string }
+  | { k: 'check'; stat: StatKey; dc: number; why: string; adv?: 'adv' | 'dis'; prof?: boolean; hard?: 'hard' | 'extreme' }
   | { k: 'fight'; foes: Foe[] }
   | { k: 'play'; game: MiniId; stake: string };
 export type Outcome = 'win' | 'lose' | 'draw';
+export type Grade = 'crit' | 'ok' | 'partial' | 'fail' | 'fumble';
 /** 대화에 남는 게임 기록 (시스템 메시지에 붙는다) */
 export type GameRec =
   | { kind: 'start' }
   | { kind: 'session'; n: number; text: string }
-  | { kind: 'check'; stat: StatKey; dc: number; die: number; mod: number; total: number; ok: boolean; crit?: 'hit' | 'miss'; why?: string; fx?: Fx[] }
-  | { kind: 'fight'; name: string; outcome: 'win' | 'lose' | 'fled'; rounds: number; took: number; hp: number; hpMax: number; fx?: Fx[] }
+  | { kind: 'check'; stat: StatKey; dc: number; die: number; mod: number; total: number; ok: boolean; crit?: 'hit' | 'miss'; why?: string; fx?: Fx[]; rule?: RuleId; dice?: number[]; grade?: Grade; note?: string }
+  | { kind: 'fight'; name: string; outcome: 'win' | 'lose' | 'fled'; rounds: number; took: number; hp: number; hpMax: number; fx?: Fx[]; loot?: string }
   | { kind: 'play'; game: MiniId; outcome: Outcome; score: string; stake?: string; fx?: Fx[] };
-export interface Sheet { hp: number; hpMax: number; gold: number; items: { name: string; n: number }[]; quests: { title: string; done: boolean }[]; place: string; places: { name: string; seen: boolean }[]; paths: [string, string][] }
+export interface Sheet { hp: number; hpMax: number; gold: number; items: { name: string; n: number }[]; quests: { title: string; done: boolean }[]; place: string; places: { name: string; seen: boolean }[]; paths: [string, string][]; xp: number; level: number }
 
 export type GameChat = Chat & { game?: GameCfg };
 export type GameSwipe = { gfx?: Fx[]; gask?: Ask };
 export type GameMsg = Msg & { gm?: GameRec };
 
-export const PRESETS: Record<string, Record<StatKey, number>> = {
-  balanced: { str: 1, dex: 1, int: 1, cha: 1 }, fighter: { str: 3, dex: 1, int: 0, cha: 0 }, rogue: { str: 0, dex: 3, int: 1, cha: 0 },
-  scholar: { str: 0, dex: 0, int: 3, cha: 1 }, charmer: { str: 0, dex: 1, int: 0, cha: 3 },
-};
-export const newGame = (): GameCfg => ({ on: true, genre: '', tone: '', diff: 'normal', hero: '', goal: '', stats: { ...PRESETS.balanced }, hpMax: 20, gold: 10, items: [], adj: [] });
+export const PRESET_IDS = ['balanced', 'fighter', 'rogue', 'scholar', 'charmer'] as const;
+const PRESET_TOP: Record<string, [StatKey, StatKey, StatKey]> = { fighter: ['str', 'con', 'dex'], rogue: ['dex', 'int', 'cha'], scholar: ['int', 'wis', 'cha'], charmer: ['cha', 'dex', 'wis'] };
+/** 규칙서에 맞춘 능력치 묶음 */
+export function presetStats(rule: RuleId, id: string): Partial<Record<StatKey, number>> {
+  const R = RULES[rule], out: Partial<Record<StatKey, number>> = {}, top = PRESET_TOP[id];
+  for (const k of R.stats) out[k] = !top ? R.even : k === top[0] ? R.hi : k === top[1] || (!R.stats.includes(top[1]) && k === top[2]) ? R.mid : R.lo;
+  return out;
+}
+export const ruleOf = (g: GameCfg): RuleId => g.rule && RULES[g.rule] ? g.rule : 'd20';
+export const statsOf = (g: GameCfg) => RULES[ruleOf(g)].stats;
+export const statVal = (g: GameCfg, k: StatKey) => g.stats[k] ?? RULES[ruleOf(g)].even;
+/** d20 에 더하는 보정으로 바꾼 값 (전투는 규칙서와 상관없이 이 값으로 계산한다) */
+export function modOf(g: GameCfg, k: StatKey): number {
+  const r = ruleOf(g), v = g.stats[k] ?? (k === 'con' ? g.stats.str : k === 'wis' ? g.stats.int : undefined) ?? RULES[r].even;
+  return r === '5e' ? Math.floor((v - 10) / 2) : r === 'd100' ? Math.round((v - 50) / 10) : r === 'pool' ? v - 2 : v;
+}
+export const levelOf = (xp: number) => Math.min(20, 1 + Math.floor(Math.max(0, xp) / 100));
+export const newGame = (): GameCfg => ({ on: true, genre: '', tone: '', diff: 'normal', hero: '', goal: '', rule: 'd20', stats: presetStats('d20', 'balanced'), hpMax: 20, gold: 10, items: [], adj: [] });
 export const gameOf = (chat: Chat | null | undefined): GameCfg | null => { const g = (chat as GameChat | null | undefined)?.game; return g?.on ? g : null; };
 
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
@@ -55,6 +80,7 @@ function apply(s: Sheet, fx: Fx) {
   if (fx.k === 'hp') s.hp = Math.min(s.hpMax, Math.max(0, s.hp + fx.n));
   else if (fx.k === 'hpmax') { s.hpMax = Math.max(1, s.hpMax + fx.n); s.hp = Math.min(s.hp, s.hpMax); }
   else if (fx.k === 'gold') s.gold = Math.max(0, s.gold + fx.n);
+  else if (fx.k === 'xp') { s.xp = Math.max(0, s.xp + fx.n); const lv = levelOf(s.xp); if (lv > s.level) { const up = (lv - s.level) * 3; s.hpMax += up; s.hp += up; } s.level = Math.max(s.level, lv); }
   else if (fx.k === 'place') { const from = s.place, p = spot(s, fx.name); p.seen = true; s.place = p.name; if (from && !same(from, p.name)) link(s, from, p.name); }
   else if (fx.k === 'path') { const a = spot(s, fx.a), b = spot(s, fx.b); if (!same(a.name, b.name)) link(s, a.name, b.name); }
   else if (fx.k === 'item') {
@@ -67,7 +93,7 @@ function apply(s: Sheet, fx: Fx) {
 }
 /** 지금의 시트: 시작값 + 손으로 고친 값 + 메시지마다의 변화 */
 export function sheetOf(g: GameCfg, msgs: Msg[]): Sheet {
-  const s: Sheet = { hp: g.hpMax, hpMax: g.hpMax, gold: g.gold, items: [], quests: [], place: '', places: [], paths: [] };
+  const s: Sheet = { hp: g.hpMax, hpMax: g.hpMax, gold: g.gold, items: [], quests: [], place: '', places: [], paths: [], xp: 0, level: 1 };
   for (const name of g.items) apply(s, { k: 'item', name, n: 1 });
   for (const m of msgs as GameMsg[]) {
     for (const fx of m.gm && 'fx' in m.gm && m.gm.fx || []) apply(s, fx);
@@ -83,8 +109,8 @@ export function pendingAsk(msgs: Msg[]): Ask | null {
 }
 
 // ── 진행자가 쓰는 표시 ──
-const TAG = /\[\s*(hp|maxhp|gold|item|quest|place|path|check|fight|play)\b[\s:：]*([^[\]\n]{0,240})\]/gi;
-const STAT_ALIAS: Record<string, StatKey> = { str: 'str', strength: 'str', 힘: 'str', 근력: 'str', 力量: 'str', dex: 'dex', dexterity: 'dex', agi: 'dex', 민첩: 'dex', 敏捷: 'dex', int: 'int', intelligence: 'int', wis: 'int', 지능: 'int', 智力: 'int', cha: 'cha', charisma: 'cha', 매력: 'cha', 魅力: 'cha' };
+const TAG = /\[\s*(hp|maxhp|gold|xp|item|quest|place|path|check|save|fight|play)\b[\s:：]*([^[\]\n]{0,240})\]/gi;
+const STAT_ALIAS: Record<string, StatKey> = { str: 'str', strength: 'str', 힘: 'str', 근력: 'str', 力量: 'str', dex: 'dex', dexterity: 'dex', agi: 'dex', 민첩: 'dex', 敏捷: 'dex', con: 'con', constitution: 'con', 건강: 'con', 体质: 'con', int: 'int', intelligence: 'int', 지능: 'int', 智力: 'int', wis: 'wis', wisdom: 'wis', 지혜: 'wis', 感知: 'wis', cha: 'cha', charisma: 'cha', 매력: 'cha', 魅力: 'cha' };
 const MINI_ALIAS: Record<string, MiniId> = { gomoku: 'gomoku', omok: 'gomoku', 'five-in-a-row': 'gomoku', rps: 'rps', dice: 'dice', blackjack: 'blackjack', tictactoe: 'tictactoe', 'tic-tac-toe': 'tictactoe', ttt: 'tictactoe', numbers: 'numbers', baseball: 'numbers' };
 const num = (s: string) => { const m = s.replace(/[−–]/g, '-').match(/[+-]?\s*\d+/); return m ? parseInt(m[0].replace(/\s+/g, ''), 10) : NaN; };
 const clampN = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
@@ -94,7 +120,7 @@ export function readTags(text: string): { text: string; fx: Fx[]; ask: Ask | nul
   const fx: Fx[] = []; let ask: Ask | null = null;
   const out = String(text || '').replace(TAG, (all, key: string, rest: string) => {
     const k = key.toLowerCase(), v = rest.trim();
-    if (k === 'hp' || k === 'gold' || k === 'maxhp') { const n = num(v); if (!isFinite(n) || !n) return ''; fx.push({ k: k === 'maxhp' ? 'hpmax' : k, n: clampN(n, -9999, 9999) }); return ''; }
+    if (k === 'hp' || k === 'gold' || k === 'maxhp' || k === 'xp') { const n = num(v); if (!isFinite(n) || !n) return ''; fx.push({ k: k === 'maxhp' ? 'hpmax' : k, n: clampN(n, -9999, 9999) }); return ''; }
     if (k === 'item') {
       const m = v.match(/^([+-−–])\s*(.+?)(?:\s*[x×*]\s*(\d+))?$/); if (!m) return all;
       const name = m[2].trim().slice(0, 60); if (!name) return all;
@@ -106,18 +132,19 @@ export function readTags(text: string): { text: string; fx: Fx[]; ask: Ask | nul
     }
     if (k === 'place') { if (!v) return all; fx.push({ k: 'place', name: v.slice(0, 60) }); return ''; }
     if (k === 'path') { const m = v.split(/\s+(?:-|–|—|<->|↔|to)\s+/i).map(x => x.trim()).filter(Boolean); if (m.length !== 2) return all; fx.push({ k: 'path', a: m[0].slice(0, 60), b: m[1].slice(0, 60) }); return ''; }
-    if (k === 'check') {
-      const m = v.match(/^([^\s\d:：]+)\s*(?:dc\s*)?(\d+)?\s*[:：]?\s*(.*)$/i), stat = m && STAT_ALIAS[m[1].toLowerCase()]; if (!m || !stat) return all;
-      ask = { k: 'check', stat, dc: clampN(parseInt(m[2] || '12', 10), 2, 30), why: (m[3] || '').trim().slice(0, 120) }; return '';
+    if (k === 'check' || k === 'save') {
+      const m = v.match(/^([^\s\d:：]+)\s*(?:dc\s*)?(\d+)?\s*([^:：]*)[:：]?\s*(.*)$/i), stat = m && STAT_ALIAS[m[1].toLowerCase()]; if (!m || !stat) return all;
+      const flags = (m[3] || '').toLowerCase(), adv = /\badv/.test(flags) ? 'adv' as const : /\bdis/.test(flags) ? 'dis' as const : undefined, hard = /\bextreme/.test(flags) ? 'extreme' as const : /\bhard/.test(flags) ? 'hard' as const : undefined;
+      ask = { k: 'check', stat, dc: clampN(parseInt(m[2] || '0', 10) || 0, 0, 30), why: (m[4] || '').trim().slice(0, 120), ...(adv ? { adv } : {}), ...(/\bprof/.test(flags) ? { prof: true } : {}), ...(hard ? { hard } : {}) }; return '';
     }
     if (k === 'fight') {
       // 여럿이면 ; 로 나눈다. "Goblin x3 hp=8 atk=2" 는 셋으로 편다
       const foes: Foe[] = [];
       for (const part of v.split(/\s*[;；]\s*/)) {
-        const hp = part.match(/\bhp\s*[=:]?\s*(\d+)/i), atk = part.match(/\batk\s*[=:]?\s*(\d+)/i), many = part.match(/(?:^|\s)[x×*]\s*(\d+)\b/i);
-        const name = part.replace(/\b(hp|atk)\s*[=:]?\s*\d+/gi, '').replace(/(?:^|\s)[x×*]\s*\d+\b/i, ' ').replace(/[,·|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40); if (!name) continue;
+        const hp = part.match(/\bhp\s*[=:]?\s*(\d+)/i), atk = part.match(/\batk\s*[=:]?\s*(\d+)/i), ranged = /\branged\b/i.test(part), many = part.match(/(?:^|\s)[x×*]\s*(\d+)\b/i);
+        const name = part.replace(/\b(hp|atk)\s*[=:]?\s*\d+/gi, '').replace(/\branged\b/gi, '').replace(/(?:^|\s)[x×*]\s*\d+\b/i, ' ').replace(/[,·|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40); if (!name) continue;
         const n = clampN(parseInt(many?.[1] || '1', 10), 1, 6);
-        for (let i = 0; i < n && foes.length < 6; i++) foes.push({ name: n > 1 ? `${name} ${i + 1}` : name, hp: clampN(parseInt(hp?.[1] || '12', 10), 1, 200), atk: clampN(parseInt(atk?.[1] || '3', 10), 0, 20) });
+        for (let i = 0; i < n && foes.length < 6; i++) foes.push({ name: n > 1 ? `${name} ${i + 1}` : name, hp: clampN(parseInt(hp?.[1] || '12', 10), 1, 200), atk: clampN(parseInt(atk?.[1] || '3', 10), 0, 20), ...(ranged ? { ranged: true } : {}) });
       }
       if (!foes.length) return all; ask = { k: 'fight', foes }; return '';
     }
@@ -129,51 +156,84 @@ export function readTags(text: string): { text: string; fx: Fx[]; ask: Ask | nul
 /** 화면에서만 가린다 (받는 중에는 아직 닫히지 않은 표시도) */
 export const hideTags = (text: string, streaming: boolean) => {
   let s = text.replace(TAG, '');
-  if (streaming) s = s.replace(/\[\s*(hp|maxhp|gold|item|quest|place|path|check|fight|play)\b[^\]\n]*$/i, '');
+  if (streaming) s = s.replace(/\[\s*(hp|maxhp|gold|xp|item|quest|place|path|check|save|fight|play)\b[^\]\n]*$/i, '');
   return s;
 };
 
 // ── 주사위 ──
 export const d = (sides: number) => { const a = new Uint32Array(1); crypto.getRandomValues(a); return 1 + (a[0] % sides); };
-export function rollCheck(g: GameCfg, stat: StatKey, dc: number) {
-  const die = d(20), mod = g.stats[stat] || 0, total = die + mod;
-  const crit = die === 20 ? 'hit' as const : die === 1 ? 'miss' as const : undefined;
-  return { die, mod, total, ok: crit === 'hit' ? true : crit === 'miss' ? false : total >= dc, crit };
+/** 판정을 굴린다. 규칙서마다 굴리는 법과 읽는 법이 다르다 */
+export function rollCheck(g: GameCfg, ask: Extract<Ask, { k: 'check' }>, level = 1) {
+  const rule = ruleOf(g), stat = ask.stat, v = statVal(g, stat);
+  const base = { rule, stat, dc: ask.dc, die: 0, mod: 0, total: 0, ok: false, dice: [] as number[], grade: 'fail' as Grade, note: '' };
+  if (rule === '2d6') {
+    const dice = [d(6), d(6)], total = dice[0] + dice[1] + v, grade: Grade = total >= 10 ? 'ok' : total >= 7 ? 'partial' : 'fail';
+    return { ...base, dice, die: dice[0] + dice[1], mod: v, total, dc: 7, grade, ok: grade !== 'fail' };
+  }
+  if (rule === 'd100') {
+    const die = d(100), target = Math.max(1, Math.floor(v / (ask.hard === 'extreme' ? 5 : ask.hard === 'hard' ? 2 : 1)));
+    const grade: Grade = die >= 96 ? 'fumble' : die <= Math.max(1, Math.floor(target / 5)) ? 'crit' : die <= target ? 'ok' : 'fail';
+    return { ...base, dice: [die], die, total: die, dc: target, grade, ok: grade === 'ok' || grade === 'crit', note: ask.hard || '' };
+  }
+  if (rule === 'pool') {
+    const dice = Array.from({ length: Math.max(1, v) }, () => d(6)), hits = dice.filter(x => x >= 5).length, need = clampN(ask.dc || 2, 1, 6);
+    const grade: Grade = hits >= need + 2 ? 'crit' : hits >= need ? 'ok' : hits === 0 && dice.filter(x => x === 1).length * 2 >= dice.length ? 'fumble' : 'fail';
+    return { ...base, dice, die: hits, total: hits, dc: need, grade, ok: hits >= need };
+  }
+  // d20 계열. 5e 는 유리 · 불리(두 번 굴려 큰/작은 값)와 숙련 보너스가 있다
+  const two = rule === '5e' && ask.adv ? [d(20), d(20)] : [d(20)], die = ask.adv === 'dis' ? Math.min(...two) : Math.max(...two);
+  const prof = rule === '5e' && ask.prof ? 2 + Math.floor((level - 1) / 4) : 0, mod = modOf(g, stat) + prof, total = die + mod, dc = ask.dc || 12;
+  const grade: Grade = die === 20 ? 'crit' : die === 1 ? 'fumble' : total >= dc ? 'ok' : 'fail';
+  return { ...base, dice: two, die, mod, total, dc, grade, ok: grade === 'crit' || grade === 'ok', crit: die === 20 ? 'hit' as const : die === 1 ? 'miss' as const : undefined, note: [ask.adv === 'adv' ? 'advantage' : ask.adv === 'dis' ? 'disadvantage' : '', prof ? 'proficient' : ''].filter(Boolean).join(', ') };
 }
 export const DIFF_HIT: Record<Diff, number> = { easy: .7, normal: 1, hard: 1.3 };
 export const isPotion = (name: string) => /potion|elixir|포션|물약|회복약|药水|藥水/i.test(name);
 
 // ── 모델에게 알려 주는 글 ──
 const sign = (n: number) => (n >= 0 ? '+' : '') + n;
+const RULE_TEXT: Record<RuleId, { stats: string; check: string }> = {
+  d20: { stats: `{{user}}'s stats are modifiers added to a d20: STR, DEX, INT, CHA.`, check: `[check DEX 12: slipping past the guard] — whenever the outcome is uncertain and failing would be interesting. Guide: easy 8, normal 12, hard 16, heroic 20.` },
+  '5e': { stats: `Rules: fifth-edition style. {{user}} has six ability scores (STR, DEX, CON, INT, WIS, CHA); the app adds the ability modifier to a d20.`, check: `[check DEX 13: slipping past the guard] — ability checks and saving throws alike (e.g. [check CON 12: resisting the poison]). DC guide: very easy 5, easy 10, medium 15, hard 20. Add the word prof before the colon when {{user}}'s role would be trained at it, and adv or dis for advantage or disadvantage: [check DEX 13 prof adv: ...].` },
+  '2d6': { stats: `Rules: 2d6 + stat (STR, DEX, INT, CHA from -1 to +3), no difficulty numbers.`, check: `[check DEX: slipping past the guard] — whenever {{user}} does something risky. The result comes back as full success (10+), partial success (7–9: it works, but you add a cost, a hard choice or a complication) or miss (6-: things get worse — make a hard move).` },
+  d100: { stats: `Rules: percentile. {{user}}'s STR, DEX, INT, CHA are chances out of 100; the app rolls d100 and must roll equal or under.`, check: `[check DEX: slipping past the guard] — whenever the outcome is uncertain. For tougher tasks add hard (half chance) or extreme (one fifth) before the colon: [check DEX hard: ...]. A very low roll is a critical success; 96+ is a fumble.` },
+  pool: { stats: `Rules: dice pool. {{user}} rolls as many d6 as the stat (STR, DEX, INT, CHA); each 5 or 6 is a hit.`, check: `[check DEX 2: slipping past the guard] — the number is how many hits are needed: 1 easy, 2 normal, 3 hard, 4 heroic.` },
+};
 export function rulesPrompt(g: GameCfg): string {
   const diff = g.diff === 'easy' ? 'Be generous: prefer DC 8–12, give second chances, keep fights short.' : g.diff === 'hard' ? 'Be demanding: prefer DC 13–18, make mistakes cost something, enemies hit hard.' : 'Keep it fair: most checks DC 10–14.';
   return `[Game mode]
 Besides playing your role, you run this as a tabletop adventure for {{user}}${g.genre ? ` — genre: ${g.genre}` : ''}${g.tone ? `, tone: ${g.tone}` : ''}.${g.hero ? ` {{user}} plays: ${g.hero}.` : ''}${g.goal ? ` The adventure's goal: ${g.goal}.` : ''}
 Describe the scene, offer real choices with consequences, and let {{user}} decide. Never decide {{user}}'s actions, never roll dice, and never state the result of a roll yourself — the app rolls and reports it.
-{{user}}'s stats are modifiers added to a d20: STR, DEX, INT, CHA.${g.sessions?.length ? `\nThe story so far (earlier sessions, oldest first):\n${g.sessions.map((x, i) => `Session ${i + 1}: ${x.text}`).join('\n')}` : ''}
+${RULE_TEXT[ruleOf(g)].stats}${g.sessions?.length ? `\nThe story so far (earlier sessions, oldest first):\n${g.sessions.map((x, i) => `Session ${i + 1}: ${x.text}`).join('\n')}` : ''}
 When something changes, write the matching tag on its own line at the end of the reply. The app applies it to {{user}}'s sheet and hides it:
-[hp -3]  [hp +5]  [gold +10]  [gold -4]  [item +Torch]  [item +Arrow x5]  [item -Rusty key]  [quest +Find the missing bell]  [quest done: Find the missing bell]
+[hp -3]  [hp +5]  [gold +10]  [gold -4]  [xp +20] (for clever play or a finished quest; 100 XP is a level)  [item +Torch]  [item +Arrow x5]  [item -Rusty key]  [quest +Find the missing bell]  [quest done: Find the missing bell]
 [place Old Mill] when {{user}} arrives somewhere (keep place names short and reuse the exact same name later).  [path Old Mill - River Dock] to reveal a route to a place {{user}} has heard of or can see. The app draws the map from these.
 To hand something to the app, use ONE of these as the very last line, then stop — do not narrate what happens next:
-[check DEX 12: slipping past the guard] — whenever the outcome is uncertain and failing would be interesting. Guide: easy 8, normal 12, hard 16, heroic 20.
-[fight Goblin x2 hp=8 atk=2; Orc Chief hp=24 atk=5] — a tactical fight the app runs on a grid (up to 6 enemies; x2 means two of them). Guide: weak hp 8 atk 2, tough hp 18 atk 4, boss hp 30 atk 6.
+${RULE_TEXT[ruleOf(g)].check}
+[fight Goblin x2 hp=8 atk=2; Orc Chief hp=24 atk=5] — a tactical fight the app runs on a grid (up to 6 enemies; x2 means two of them; add the word ranged for archers and casters). The app also hands out gold and XP for a win. Guide: weak hp 8 atk 2, tough hp 18 atk 4, boss hp 30 atk 6.
 [play rps: who pays for dinner] — settle something with a quick game against you: rps, dice, blackjack, tictactoe, gomoku or numbers.
 ${diff}
 The result comes back as a bracketed line; narrate from there and honor it. Do not change the sheet without a tag, and do not show the tags' meaning to {{user}}.`;
 }
 export function sheetPrompt(g: GameCfg, s: Sheet): string {
   const items = s.items.map(i => i.n > 1 ? `${i.name} x${i.n}` : i.name).join(', ') || 'nothing', open = s.quests.filter(q => !q.done).map(q => q.title), done = s.quests.filter(q => q.done).map(q => q.title);
-  return `[{{user}}'s sheet — HP ${s.hp}/${s.hpMax}${s.hp <= 0 ? ' (down: cannot act until helped or healed)' : ''} · Gold ${s.gold} · STR ${sign(g.stats.str)} DEX ${sign(g.stats.dex)} INT ${sign(g.stats.int)} CHA ${sign(g.stats.cha)} · Carrying: ${items}${open.length ? ` · Quests: ${open.join('; ')}` : ''}${done.length ? ` · Finished: ${done.join('; ')}` : ''}${s.place ? ` · Place: ${s.place}` : ''}${ways(s)}]`;
+  return `[{{user}}'s sheet — HP ${s.hp}/${s.hpMax}${s.hp <= 0 ? ' (down: cannot act until helped or healed)' : ''} · Gold ${s.gold} · Level ${s.level} (${s.xp} XP) · ${statsOf(g).map(k => `${STAT_EN[k]} ${ruleOf(g) === 'd20' || ruleOf(g) === '2d6' ? sign(statVal(g, k)) : statVal(g, k)}`).join(' ')} · Carrying: ${items}${open.length ? ` · Quests: ${open.join('; ')}` : ''}${done.length ? ` · Finished: ${done.join('; ')}` : ''}${s.place ? ` · Place: ${s.place}` : ''}${ways(s)}]`;
 }
 const ways = (s: Sheet) => { if (!s.place) return ''; const near = s.paths.filter(([a, b]) => same(a, s.place) || same(b, s.place)).map(([a, b]) => same(a, s.place) ? b : a); return near.length ? ` · Routes from here: ${near.join(', ')}` : ''; };
-const STAT_EN: Record<StatKey, string> = { str: 'STR', dex: 'DEX', int: 'INT', cha: 'CHA' };
+const STAT_EN: Record<StatKey, string> = { str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA' };
 const MINI_EN: Record<MiniId, string> = { gomoku: 'gomoku (five in a row)', rps: 'rock-paper-scissors', dice: 'a dice duel', blackjack: 'blackjack', tictactoe: 'tic-tac-toe', numbers: 'the number-guessing game (bulls and cows)' };
 /** 기록 메시지의 글 (프롬프트에 들어간다) */
 export function recText(r: GameRec, user: string, foe: string): string {
   if (r.kind === 'start') return `The game begins. Open the first scene for ${user}.`;
   if (r.kind === 'session') return `Session ${r.n} ended. A new session begins — pick the story up from where it left off.`;
-  if (r.kind === 'check') return `${STAT_EN[r.stat]} check${r.why ? ` (${r.why})` : ''}: d20 ${r.die} ${sign(r.mod)} = ${r.total} vs DC ${r.dc} → ${r.crit === 'hit' ? 'CRITICAL SUCCESS' : r.crit === 'miss' ? 'CRITICAL FAILURE' : r.ok ? 'success' : 'failure'}`;
-  if (r.kind === 'fight') return `Fight with ${r.name}: ${r.outcome === 'win' ? `${user} won` : r.outcome === 'fled' ? `${user} got away` : `${user} was beaten and is down`} after ${r.rounds} round${r.rounds === 1 ? '' : 's'}, taking ${r.took} damage (HP ${r.hp}/${r.hpMax}).`;
+  if (r.kind === 'check') {
+    const head = `${STAT_EN[r.stat]} check${r.why ? ` (${r.why})` : ''}${r.note ? ` [${r.note}]` : ''}: `, g = r.grade || (r.crit === 'hit' ? 'crit' : r.crit === 'miss' ? 'fumble' : r.ok ? 'ok' : 'fail');
+    const word = g === 'crit' ? 'CRITICAL SUCCESS' : g === 'fumble' ? 'CRITICAL FAILURE' : g === 'partial' ? 'partial success (it works, but at a cost or with a complication)' : g === 'ok' ? 'success' : 'failure';
+    if (r.rule === '2d6') return `${head}2d6 (${(r.dice || []).join('+')}) ${sign(r.mod)} = ${r.total} → ${g === 'ok' ? 'full success' : word}`;
+    if (r.rule === 'd100') return `${head}d100 = ${r.die}, needed ${r.dc} or less → ${word}`;
+    if (r.rule === 'pool') return `${head}${(r.dice || []).length}d6 [${(r.dice || []).join(', ')}] → ${r.total} hit${r.total === 1 ? '' : 's'}, needed ${r.dc} → ${word}`;
+    return `${head}d20 ${(r.dice?.length || 0) > 1 ? `(${r.dice!.join(', ')} → ${r.die})` : r.die} ${sign(r.mod)} = ${r.total} vs DC ${r.dc} → ${word}`;
+  }
+  if (r.kind === 'fight') return `Fight with ${r.name}: ${r.outcome === 'win' ? `${user} won` : r.outcome === 'fled' ? `${user} got away` : `${user} was beaten and is down`} after ${r.rounds} round${r.rounds === 1 ? '' : 's'}, taking ${r.took} damage (HP ${r.hp}/${r.hpMax}).${r.loot ? ` The app awarded ${r.loot}.` : ''}`;
   return `${user} and ${foe} played ${MINI_EN[r.game]}${r.stake ? ` (at stake: ${r.stake})` : ''}: ${r.outcome === 'win' ? `${user} won` : r.outcome === 'lose' ? `${foe} won` : 'a draw'}${r.score ? ` — ${r.game === 'numbers' ? 'guesses used ' : ''}${r.score}` : ''}.`;
 }
 

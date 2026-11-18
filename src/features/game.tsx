@@ -10,7 +10,7 @@ import { toast } from '../ui';
 import { t } from '../i18n';
 import { def, str } from '../stscript/run';
 import { MINIS, gameOf, hideTags, readTags, rulesPrompt, sheetOf, sheetPrompt, type GameSwipe, type MiniId } from '../game/state';
-import { Sheet, openGame, openMiniPicker, playMini, redrawGame } from '../game/ui';
+import { Sheet, drawFor, openGame, openMiniPicker, playMini, redrawGame } from '../game/ui';
 
 const OWNER = 'game';
 const here = () => chatApi.current().chat;
@@ -27,6 +27,8 @@ function setup() {
       if (here()?.id === chat.id) void chatApi.save(); else void S.msgs(chat.id).then(msgs => S.saveMsgs(chat, msgs));
     }
     redrawGame();
+    // 삽화: 새 장소에 도착했거나, 전투 결과를 이어받은 답변만 그린다 (답변마다 그리지 않는다)
+    if (here()?.id === chat.id) { const msgs = chatApi.current().msgs, before = msgs[msgs.indexOf(msg) - 1] as (Msg & { gm?: { kind?: string } }) | undefined; if (r.fx.some(f => f.k === 'place') || before?.gm?.kind === 'fight') void drawFor(chat, msg); }
   });
   for (const ev of ['generate:end', 'message:deleted', 'message:swiped', 'message:edited', 'message:sent', 'chat:open']) on(ev, redrawGame);
 
