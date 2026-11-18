@@ -5,7 +5,7 @@ import { t } from '../i18n';
 import { sfx } from './sfx';
 import { gearOf, packBag, type BagCfg } from './bag';
 import { Emblem, Terrain } from './Art';
-import { foeKind, traitOf, type Trait } from './bestiary';
+import { foeKind, iconOf, traitOf, type Trait } from './bestiary';
 import { DIFF_HIT, WEAK, d, elementOf, isPotion, modOf, statsOf, type Element, type Foe, type Fx, type GameCfg, type Sheet, type StatKey } from './state';
 
 export interface FightResult { outcome: 'win' | 'lose' | 'fled'; rounds: number; took: number; hp: number; fx: Fx[]; gold: number; xp: number; fallen: string[]; loot: string }
@@ -20,6 +20,10 @@ const unitOf = (f: Foe, id: number, x: number, y: number): Unit => { const kind 
 interface Ally { name: string; x: number; y: number; hp: number; max: number }
 interface St { ail: Ails; /** 보스가 예고한 일격: 맞는 칸들과 누가 치는지 */ mark: { cells: string[]; by: number } | null; x: number; y: number; hp: number; foes: Unit[]; allies: Ally[]; herbs: string[]; kegs: string[]; /** 방금 내가 한 일 (따로 크게 보여 준다) */ mine: string[]; /** 칸 위에 떠오르는 숫자 */ pop: { k: string; text: string; miss: boolean; n: number } | null; hurt: number; moved: boolean; guard: boolean; round: number; log: string[]; used: string[]; end: End; special: boolean; sure: boolean; aim: boolean }
 const W = 7, H = 6, MOVE = 3, RANGE = 5;
+/** 전리품: 그림 열쇠 → 재료, 떨어지는 장비와 소모품 */
+const MAT: Record<string, string> = { beast: 'pelt', bear: 'claw', boar: 'tusk', rat: 'tail', cat: 'fang', ape: 'pelt', croc: 'scale', dragon: 'dscale', frog: 'slimy', turtle: 'shell', crab: 'shell', beetle: 'shell', scorpion: 'venom', serpent: 'venom', spider: 'silk', bee: 'venom', wing: 'wingm', raptor: 'feather', owl: 'feather', phoenix: 'feather', slime: 'jelly', cube: 'jelly', ghost: 'ecto', banshee: 'ecto', wisp: 'ecto', skull: 'bone', zombie: 'bone', mummy: 'wrap', lich: 'bone', vampire: 'fang', golem: 'core', robot: 'core', mushroom: 'spore', tree: 'bark', plant: 'seed', eye: 'lens', beholder: 'lens', tentacle: 'tent', flayer: 'tent', fish: 'scale', goblin: 'ear', orc: 'tusk', ogre: 'tusk', minotaur: 'horn', demon: 'horn', satyr: 'horn', horn: 'horn', yeti: 'pelt', cerberus: 'fang', basilisk: 'scale', storm: 'spark', spark: 'spark', fairy: 'dust', mimic: 'coin', pumpkin: 'seed', horse: 'pelt' };
+const GEAR = ['dagger', 'sword', 'axe', 'bow', 'staff', 'shield', 'armor', 'helm', 'ring', 'amulet'];
+const USE = ['potion', 'potion', 'antidote', 'bandage', 'torch', 'ration', 'bomb'];
 const key = (x: number, y: number) => `${x},${y}`;
 const dist = (ax: number, ay: number, bx: number, by: number) => Math.max(Math.abs(ax - bx), Math.abs(ay - by));
 const STEPS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
@@ -243,8 +247,19 @@ export function Combat({ g, sheet, foes, onDone, faces = {} }: { g: GameCfg; she
     const won = st.end === 'win', xp = won ? Math.round(foes.reduce((n, f) => n + f.hp + f.atk * 3, 0)) : 0, gold = won ? foes.reduce((n, f) => n + d(4) + f.atk, 0) : 0;
     if (gold) fx.push({ k: 'gold', n: gold }); if (xp) fx.push({ k: 'xp', n: xp });
     // 전리품의 등급: 흔한 것은 물약, 드문 것은 운명 점, 보스를 잡으면 하나가 더 떨어진다
-    let loot = ''; if (won) { const rolls = 1 + (foes.some(f => f.boss) ? 1 : 0), got: string[] = [];
-      for (let i = 0; i < rolls; i++) { const r = d(100) + foes.length * 4; if (r > 92) { fx.push({ k: 'fate', n: 1 }); got.push(t('game.loot.fate')); } else if (r > 55) { fx.push({ k: 'item', name: t('game.loot.potion'), n: 1 }); got.push(t('game.loot.potion')); } }
+    // 전리품: 쓰러뜨린 것에게서 나오는 재료 + 등급 굴림 (소모품 → 보석 → 장비 → 운명 점). 보스나 큰 싸움이면 한 번 더 굴린다
+    let loot = ''; if (won) {
+      const got: string[] = [], give = (name: string) => { fx.push({ k: 'item', name, n: 1 }); got.push(name); };
+      const firsts = st.foes.filter(f => !f.spent || f.trait === 'undying');
+      for (const f of firsts.sort(() => Math.random() - .5).slice(0, firsts.length >= 4 ? 2 : 1)) if (d(10) <= 7) give(t('game.loot.mat.' + (MAT[iconOf(f.kind)] || 'any')));
+      const rolls = 1 + (foes.some(f => f.boss) ? 1 : 0) + (foes.length >= 4 ? 1 : 0);
+      for (let i = 0; i < rolls; i++) {
+        const r = d(100) + foes.length * 3 + lv * 2;
+        if (r > 100) { fx.push({ k: 'fate', n: 1 }); got.push(t('game.loot.fate')); }
+        else if (r > 84) give(t(r > 94 ? 'game.loot.q2' : r > 89 ? 'game.loot.q1' : 'game.loot.q0', { item: t('game.loot.gear.' + GEAR[d(GEAR.length) - 1]) }));
+        else if (r > 76) give(t('game.loot.gem'));
+        else if (r > 40) give(t('game.loot.' + USE[d(USE.length) - 1]));
+      }
       loot = got.join(', '); }
     onDone({ outcome: st.end, rounds: st.round, took: Math.max(0, sheet.hp - st.hp), hp: st.hp, fx, gold, xp, fallen: st.allies.filter(a => a.hp <= 0).map(a => a.name), loot });
   };

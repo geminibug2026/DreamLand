@@ -165,6 +165,12 @@ function adjust(chat: GameChat, fx: Fx) { const g = chat.game; if (!g) return; (
 /** 지도: 비스듬히 내려다본 판. 장소마다 블록이 하나씩 솟아 있고, 간 곳은 그림이 얹히고 들어만 본 곳은 낮고 흐리다. 이어진 곳을 누르면 그리로 간다고 적는다 */
 /** 입력창에 적어 둔다. 게임 화면이 떠 있으면 그 화면의 입력창에, 아니면 대화 입력창에 */
 const putDraft = (text: string) => { if (document.documentElement.classList.contains('gs-on')) emit('game:draft', text); else chatApi.insert(text); };
+/** 전투의 전리품을 화면 언어로 (기록에는 진행자가 읽을 영어 글이 들어 있다) */
+function lootText(r: { loot?: string; fx?: Fx[] }): string {
+  const gold = r.fx?.find(f => f.k === 'gold' && f.n > 0), xp = r.fx?.find(f => f.k === 'xp' && f.n > 0), extra = (r.loot || '').split(' XP and ')[1];
+  const parts = [gold && 'n' in gold ? t('game.rec.gold', { n: gold.n }) : '', xp && 'n' in xp ? t('game.rec.xp', { n: xp.n }) : '', extra || ''].filter(Boolean);
+  return parts.length ? parts.join(' · ') : '+' + (r.loot || '');
+}
 function MapView({ s, onGo }: { s: SheetData; onGo(name: string): void }) {
   const m = layoutMap(s); if (!m.nodes.length) return <p className="dim">{t('game.map.empty')}</p>;
   const TW = 74, TH = 44, iso = (n: { x: number; y: number }) => ({ x: (n.x - n.y) * TW, y: (n.x + n.y) * TH });   // 블록 사이에 이름이 들어갈 틈을 둔다
@@ -413,7 +419,7 @@ export function GameCard({ m }: { m: Msg }) {
   }
   if (r.kind === 'fight') return <div className={`gm-card-rec is-${r.outcome === 'win' ? 'win' : r.outcome === 'lose' ? 'lose' : 'draw'}`}>
     <span className="eyebrow">{t('game.rec.fight')}</span><b>{r.name}</b>
-    <small>{t('game.fight.end.' + r.outcome)} · {t('game.rec.rounds', { n: r.rounds })} · {t('game.rec.took', { n: r.took })} · HP {r.hp}/{r.hpMax}{r.loot ? ` · +${r.loot}` : ''}</small></div>;
+    <small>{t('game.fight.end.' + r.outcome)} · {t('game.rec.rounds', { n: r.rounds })} · {t('game.rec.took', { n: r.took })} · HP {r.hp}/{r.hpMax}{r.loot ? ' · ' + lootText(r) : ''}</small></div>;
   const foe = S.get('chars', m.charId)?.name || m.name || t('game.foe');
   return <div className={`gm-card-rec is-${r.outcome}`}>
     <span className="eyebrow">{t('game.mini.' + r.game)}</span><b>{r.outcome === 'win' ? t('game.rec.youWon') : r.outcome === 'lose' ? t('game.rec.foeWon', { name: foe }) : t('game.out.draw')}</b>

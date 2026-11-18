@@ -826,9 +826,4 @@ html.gs-on .modal-wrap:has(.gm) .gm-chess button.is-w { color: #f4ecdb; } html.g
 .gm-item.is-sel { pointer-events: none; }
 .gm-slot em { font-size: 9.5px; line-height: 1.2; font-weight: 500; }
 
-/* 실루엣 아이콘: 적 문장 · 지형 · 물건 */
-.gm-cell.is-foe b svg { width: 88%; height: 88%; } .gm-cell > svg, .gm-land svg { opacity: .78; }
-.gm-cell.is-rock > svg { color: var(--text); opacity: .62; } .gm-cell .gm-land.is-herb svg { opacity: 1; }
-.gm-legend svg { opacity: .8; }
-.gm-item svg { opacity: .92; }
 .gm-item.is-short span { display: none; } .gm-item span { background: color-mix(in srgb, var(--surface) 70%, transparent); } .gm-item:not(.is-short) svg { margin-top: 10px; max-height: calc(100% - 16px); }

@@ -56,6 +56,6 @@ Images were resized for the web.
 
 ## Icons
 
-The monster, item and terrain silhouettes in game mode (`src/game/icons.gen.ts`) are from [game-icons.net](https://game-icons.net)
-by Lorc, Delapouite, Skoll, Caro Asercion, Cathelineau, sbed, Faithtoken and other contributors,
-licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). Coordinates were rounded for size; shapes are unchanged.
+The rock, herb, powder keg and key silhouettes in game mode (`src/game/icons.gen.ts`) are from [game-icons.net](https://game-icons.net)
+by Lorc, Delapouite and contributors, licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
+All other game-mode drawings are original to this project.
