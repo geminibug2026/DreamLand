@@ -48,7 +48,7 @@ export function Weather({ air, onFlash }: { air: Air; onFlash?: () => void }) {
   useEffect(() => {
     const cv = ref.current; if (!cv || still || air.indoor) return;
     const g = cv.getContext('2d')!; let W = 0, H = 0, raf = 0, last = performance.now(), alive = true, gust = 0, nextBolt = rnd(4, 11), tm = 0;
-    const dpr = Math.min(2, devicePixelRatio || 1);
+    const dpr = Math.min(1.5, devicePixelRatio || 1);   // 비 · 눈 · 안개는 흐릿한 것이라 이보다 촘촘해도 차이가 없다 (그릴 넓이만 는다)
     const fit = () => { W = cv.clientWidth; H = cv.clientHeight; cv.width = W * dpr; cv.height = H * dpr; g.setTransform(dpr, 0, 0, dpr, 0, 0); };
     fit(); const ro = new ResizeObserver(fit); ro.observe(cv);
     const wet = air.sky === 'rain' || air.sky === 'storm', snowy = air.sky === 'snow', foggy = air.sky === 'fog' || (wet && air.power > .8) || (snowy && air.power > .8);
@@ -69,6 +69,8 @@ export function Weather({ air, onFlash }: { air: Air; onFlash?: () => void }) {
     const fog = foggy ? fogTexture() : null, soft = snowy ? glow(16, 'rgba(255,255,255,1)') : null, spark = flies.length ? glow(16, 'rgba(214,255,140,1)') : null;
     const splashes: Splash[] = [];
     const LEAF = ['#b5541f', '#c98a2b', '#8f3b1b', '#a9772a'];
+    // 그릴 것이 없는 맑은 날에는 화면을 돌리지 않는다
+    const idle = !fog && !rain.length && !snow.length && !drift.length && !petals.length && !flies.length && air.sky !== 'storm';
     const frame = (now: number) => {
       if (!alive) return; const dt = Math.min(.05, (now - last) / 1000); last = now; tm += dt;
       g.clearRect(0, 0, W, H);
@@ -79,13 +81,23 @@ export function Weather({ air, onFlash }: { air: Air; onFlash?: () => void }) {
         g.globalAlpha = 1; const gr = g.createLinearGradient(0, H * .45, 0, H); gr.addColorStop(0, 'rgba(225,230,235,0)'); gr.addColorStop(1, `rgba(225,230,235,${base * .45})`); g.fillStyle = gr; g.fillRect(0, H * .45, W, H * .55);
       }
       if (rain.length) {
+        // 멀고 가까운 정도로 넷으로 묶어, 묶음마다 한 번에 긋는다. 빗줄기는 옅은 꼬리 + 짙은 머리 두 토막으로 (줄기마다 그러데이션을 만들지 않는다)
         g.lineCap = 'round';
         for (const p of rain) {
-          const vx = p.vx * (1 + gust * .5); p.x += vx * dt; p.y += p.vy * dt;
-          if (p.y > H * (.72 + p.z * .28)) { if (p.z > .55 && splashes.length < 60 && Math.random() < .5) splashes.push({ x: p.x, y: H * (.74 + p.z * .26), age: 0 }); Object.assign(p, mk('rain')); continue; }
-          const k = p.len / p.vy, x2 = p.x - vx * k, y2 = p.y - p.len, gr = g.createLinearGradient(x2, y2, p.x, p.y);
-          gr.addColorStop(0, 'rgba(205,220,238,0)'); gr.addColorStop(1, `rgba(205,220,238,${p.a})`);
-          g.strokeStyle = gr; g.lineWidth = p.r; g.beginPath(); g.moveTo(x2, y2); g.lineTo(p.x, p.y); g.stroke();
+          const vx = p.vx * (1 + gust * .5); p.x += vx * dt; p.y += p.vy * dt; p.hue = vx;
+          if (p.y > H * (.72 + p.z * .28)) { if (p.z > .55 && splashes.length < 60 && Math.random() < .5) splashes.push({ x: p.x, y: H * (.74 + p.z * .26), age: 0 }); Object.assign(p, mk('rain')); }
+        }
+        for (let b = 0; b < 4; b++) {
+          const z = (b + .5) / 4, a = .14 + z * .3;
+          for (let part = 0; part < 2; part++) {
+            g.strokeStyle = `rgba(205,220,238,${part ? a : a * .38})`; g.lineWidth = .6 + z; g.beginPath();
+            for (const p of rain) {
+              if (Math.min(3, Math.floor(p.z * 4)) !== b || p.y < -40) continue;
+              const k = p.len / p.vy, x2 = p.x - p.hue * k, y2 = p.y - p.len, mx = (x2 + p.x) / 2, my = (y2 + p.y) / 2;
+              if (part) { g.moveTo(mx, my); g.lineTo(p.x, p.y); } else { g.moveTo(x2, y2); g.lineTo(mx, my); }
+            }
+            g.stroke();
+          }
         }
         for (let i = splashes.length - 1; i >= 0; i--) { const s = splashes[i]; s.age += dt; if (s.age > .28) { splashes.splice(i, 1); continue; } const k = s.age / .28; g.strokeStyle = `rgba(215,228,242,${.3 * (1 - k)})`; g.lineWidth = .8; g.beginPath(); g.ellipse(s.x, s.y, 2 + k * 7, .6 + k * 2, 0, 0, 6.283); g.stroke(); }
       }
@@ -117,7 +129,8 @@ export function Weather({ air, onFlash }: { air: Air; onFlash?: () => void }) {
       }
       raf = requestAnimationFrame(frame);
     };
-    const vis = () => { if (document.hidden) cancelAnimationFrame(raf); else { last = performance.now(); raf = requestAnimationFrame(frame); } };
+    if (idle) { g.clearRect(0, 0, W, H); return () => { alive = false; ro.disconnect(); }; }
+    const vis = () => { cancelAnimationFrame(raf); if (!document.hidden) { last = performance.now(); raf = requestAnimationFrame(frame); } };
     document.addEventListener('visibilitychange', vis); raf = requestAnimationFrame(frame);
     return () => { alive = false; cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener('visibilitychange', vis); };
   }, [air.sky, air.power, air.season, air.tod, air.indoor, still]);

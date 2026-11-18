@@ -47,7 +47,15 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   const seen = useRef(''), box = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null);
   const chat = cur.chat?.id === chatId ? cur.chat : null, msgs = chat ? cur.msgs : [], busy = running();
   // 대화는 바깥에서 바뀐다 (답변이 흘러오는 중에도) — 조금씩 다시 본다
-  useEffect(() => { const tm = window.setInterval(() => { if (cur.chat?.id !== chatId) return closeVn(); bump(n => n + 1); }, 160); return () => clearInterval(tm); }, [chatId, onClose]);
+  useEffect(() => {
+    let sig = '', n = 0;
+    const tm = window.setInterval(() => {
+      if (cur.chat?.id !== chatId) return closeVn();
+      const ms = cur.msgs, l = ms[ms.length - 1], now = `${ms.length}|${l?.id}|${l?.sw}|${(l?.swipes[l.sw]?.text || '').length}|${running() ? 1 : 0}`;
+      if (now !== sig || ++n >= 12) { sig = now; n = 0; bump(x => x + 1); }   // 달라졌을 때만 다시 그린다 (그 밖의 변화는 2초마다)
+    }, 160);
+    return () => clearInterval(tm);
+  }, [chatId, onClose]);
   useEffect(() => { if (chat) void Sprites.load(chat.charIds).then(() => bump(n => n + 1)).catch(() => { }); }, [chat]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const pages = useMemo(() => chat ? build(chat, msgs) : [], [chat, msgs, msgs.length, msgs[msgs.length - 1]?.sw, shownTail(msgs)]);
