@@ -1,0 +1,1 @@
+export{t as go}from"./router-DUw871eL.js";

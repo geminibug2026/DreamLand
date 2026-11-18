@@ -1335,7 +1335,7 @@ async function streamChatRaw(conn: Conn | null | undefined, Pin: Params, message
       const body: Obj = { model, prompt, stream, max_tokens: P.maxTokens || 512, stop: stops.slice(0, 16) };
       if (num(P.temperature)) body.temperature = +P.temperature; if (num(P.topP)) body.top_p = +P.topP; if (num(P.topK)) body.top_k = +P.topK;
       if (num(P.minP)) body.min_p = +P.minP; if (num(P.topA)) body.top_a = +P.topA; if (num(P.repPen)) body.repetition_penalty = +P.repPen; if (num(P.seed)) body.seed = +P.seed;
-      Object.assign(body, extra);
+      Object.assign(body, moreSamplers(P), logitBiasOf(P), extra);
       const res = await call(conn, base + '/completions', { headers: { 'Content-Type': 'application/json', ...(conn.apiKey ? { Authorization: 'Bearer ' + conn.apiKey } : {}) }, body, signal });
       if (!stream) { const j: OaiJson = await res.json(); put(j.choices?.[0]?.text || ''); return { text, think, finish: j.choices?.[0]?.finish_reason, usage: j.usage }; }
       for await (const evRaw of sse(res)) { const ev = evRaw as OaiJson; if (ev.error) throw new Error(tr('engine.err.api', { why: ev.error.message || JSON.stringify(ev.error) })); put(ev.choices?.[0]?.text || ''); if (ev.choices?.[0]?.finish_reason) finish = ev.choices[0].finish_reason; }
@@ -1380,7 +1380,9 @@ async function streamChatRaw(conn: Conn | null | undefined, Pin: Params, message
     if (num(P.minP)) body.min_p = +P.minP;
     if (num(P.topA)) body.top_a = +P.topA;
     if (num(P.repPen)) body.repetition_penalty = +P.repPen;
+    Object.assign(body, moreSamplers(P));
   }
+  Object.assign(body, logitBiasOf(P));
   if (P.effort) { if (conn.provider === 'openrouter') body.reasoning = { effort: P.effort }; else body.reasoning_effort = P.effort; }
   else if (P.lowThink && conn.provider === 'openrouter') body.reasoning = { effort: 'low' };   // OpenRouter 는 추론하지 않는 모델이면 이 값을 그냥 넘긴다
   if (stream && official) body.stream_options = { include_usage: true };
@@ -1441,6 +1443,15 @@ export async function listModels(conn: Conn): Promise<string[]> {
 }
 
 /** 보조 호출(요약·트래커·번역): 스트리밍 없이 한 번에 */
+/** 프리셋의 추가 샘플러 (로컬 · 모음 서비스용). 비워 둔 것은 보내지 않는다 */
+const MORE_SAMPLERS: [string, string][] = [['typicalP', 'typical_p'], ['tfs', 'tfs'], ['topNSigma', 'top_n_sigma'], ['smoothing', 'smoothing_factor'], ['mirostat', 'mirostat_mode'], ['mirostatTau', 'mirostat_tau'], ['mirostatEta', 'mirostat_eta'],
+  ['dryMultiplier', 'dry_multiplier'], ['dryBase', 'dry_base'], ['dryLength', 'dry_allowed_length'], ['xtcThreshold', 'xtc_threshold'], ['xtcProbability', 'xtc_probability']];
+function moreSamplers(P: Params): Obj { const o: Obj = {}; for (const [k, name] of MORE_SAMPLERS) { const v = (P as Record<string, unknown>)[k]; if (v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v))) o[name] = Number(v); } return o; }
+/** 로짓 바이어스: 프리셋에 적은 { "토큰 번호": 값 } (JSON). 올바르지 않으면 보내지 않는다 */
+function logitBiasOf(P: Params): Obj {
+  const raw = String((P as Record<string, unknown>).logitBias || '').trim(); if (!raw) return {};
+  try { const j = JSON.parse(raw); if (!j || typeof j !== 'object' || Array.isArray(j)) return {}; const o: Record<string, number> = {}; for (const [k, v] of Object.entries(j)) if (/^\d+$/.test(k) && Number.isFinite(Number(v))) o[k] = Math.max(-100, Math.min(100, Number(v))); return Object.keys(o).length ? { logit_bias: o } : {}; } catch { return {}; }
+}
 /** 생각을 적게 하라는 요청을 거절한 모델 (이번 실행 동안은 다시 보내지 않는다) */
 const noLowThink = new Set<string>();
 export async function quickCall(system: string, user: string, { maxTokens = 1500, signal, conn, lowThink = false }: { maxTokens?: number; signal?: AbortSignal; conn?: Conn | null; lowThink?: boolean } = {}): Promise<string> {

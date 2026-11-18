@@ -50,6 +50,11 @@ function PresetEditor({ p, api }: { p: Preset; api: EditorApi }) {
       { k: 'params.freqPen', label: t('presets.p.freqPen'), type: 'num', nullable: true, step: 0.05, third: true, ph: NONE() }, { k: 'params.presPen', label: t('presets.p.presPen'), type: 'num', nullable: true, step: 0.05, third: true, ph: NONE() }, { k: 'params.stop', label: t('presets.p.stop'), type: 'tags', third: true },
       { k: 'params.minP', label: 'Min P', type: 'num', nullable: true, step: 0.01, third: true, ph: NONE() }, { k: 'params.topA', label: 'Top A', type: 'num', nullable: true, step: 0.01, third: true, ph: NONE() }, { k: 'params.repPen', label: t('presets.p.repPen'), type: 'num', nullable: true, step: 0.01, third: true, ph: NONE() },
       { k: 'params.seed', label: t('presets.p.seed'), type: 'num', nullable: true, third: true, ph: t('presets.p.seedPh') },
+      { section: t('presets.more.title') }, { el: <p className="hint">{t('presets.more.hint')}</p> },
+      ...([['typicalP', 'Typical P', 0.01], ['tfs', 'TFS', 0.01], ['topNSigma', 'Top nσ', 0.1], ['smoothing', 'Smoothing', 0.01], ['mirostat', 'Mirostat (0/1/2)', 1], ['mirostatTau', 'Mirostat τ', 0.1], ['mirostatEta', 'Mirostat η', 0.01],
+        ['dryMultiplier', 'DRY multiplier', 0.05], ['dryBase', 'DRY base', 0.05], ['dryLength', 'DRY length', 1], ['xtcThreshold', 'XTC threshold', 0.01], ['xtcProbability', 'XTC probability', 0.01]] as [string, string, number][])
+        .map(([k, label, step]) => ({ k: 'params.' + k, label, type: 'num', nullable: true, step, third: true, ph: NONE() })),
+      { k: 'params.logitBias', label: t('presets.more.logitBias'), type: 'area', rows: 2, ph: '{"1234": -100, "5678": 5}', hint: t('presets.more.logitBiasHint') },
       { k: 'params.prefill', label: t('presets.p.prefill'), type: 'area', rows: 2, hint: t('presets.p.prefillHint') },
       { k: 'params.stream', label: t('presets.p.stream'), type: 'check' }, { k: 'params.squash', label: t('presets.p.squash'), type: 'check' }, { k: 'params.cardOverrides', label: t('presets.p.cardOverrides'), type: 'check' }, { k: 'params.namesInGroup', label: t('presets.p.namesInGroup'), type: 'check' },
       { section: t('presets.sec.nudges') },

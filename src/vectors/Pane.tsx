@@ -1,4 +1,5 @@
 // 기능 화면 › 벡터 검색 (div.card.vec-card 안)
+import { DOC_ACCEPT, fileToText } from '../lib/doctext';
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { Btn, IconBtn } from '../kit';
 import { Form, type FormDefs, confirmBox, promptBox, toast } from '../ui';
@@ -97,7 +98,7 @@ function DataBank() {
     <p className="hint">{t('vectors.bank.hint')}</p>
     <div className="row wrap">
       <select className="inp" value={src} aria-label={t('vectors.bank.where')} onChange={e => setSrc(e.target.value as typeof src)}>{SRC.map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
-      <Btn label={t('vectors.bank.addFile')} ic="upload" cls="ghost" onClick={() => void run(async () => { for (const f of await pickFiles({ accept: '.txt,.md,.json,.csv,.html,.log', multiple: true })) await dataBank.add(src, f.name, await f.text()); })} />
+      <Btn label={t('vectors.bank.addFile')} ic="upload" cls="ghost" onClick={() => void run(async () => { for (const f of await pickFiles({ accept: DOC_ACCEPT, multiple: true })) await dataBank.add(src, f.name, await fileToText(f)); })} />
       <Btn label={t('vectors.bank.addText')} ic="plus" cls="ghost" onClick={() => void run(async () => { const v = await promptBox(t('vectors.bank.addText'), '', { area: true }); if (v?.trim()) await dataBank.add(src, v.trim().slice(0, 30).replace(/\s+/g, ' ') + '….txt', v); })} />
     </div>
     {list.length ? <ul className="vec-bank-list">{list.map(f => <li key={f.url} className={f.disabled ? 'off' : ''}>
