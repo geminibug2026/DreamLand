@@ -13,7 +13,7 @@ import { fmt, pagesOf } from '../vn/Screen';
 import { Ambience, Music, setSfx, sfx } from './sfx';
 import { Weather, airOf } from './Weather';
 import { gameOf, pendingAsk, pendingFate, sceneOf, sheetOf, trackOf, type GameMsg, type GameRec } from './state';
-import { GameCard, askLabel, openSheet, resolveAsk, settleFate } from './ui';
+import { GameCard, askLabel, openSheet, resolveAsk, rewindTo, settleFate } from './ui';
 import { bgFor, loadMedia, trackFor } from './media';
 import { ClockDial, Glyph, Keystone, Rule, type GlyphName } from './Art';
 
@@ -156,6 +156,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
         {busy ? <button type="button" className="gs-mini" title={t('vn.stop')} aria-label={t('vn.stop')} onClick={() => stopAll()}><Glyph name="stop" size={18} /></button>
           : canAct && lastAi ? <button type="button" className="gs-mini" title={t('vn.regen')} aria-label={t('vn.regen')} onClick={() => void generate('regen')}><Glyph name="redo" size={18} /></button>
             : canAct && !fate && pages.length ? <button type="button" className="gs-retry" onClick={() => void generate('normal')}><Glyph name="redo" size={16} />{t('game.stage.retry')}</button> : null}
+        {page && !busy && !atEnd ? <button type="button" className="gs-mini" title={t('game.rewind.tip')} aria-label={t('game.rewind.tip')} onClick={() => void rewindTo(page.msgId)}><Glyph name="rewind" size={18} /></button> : null}
         <button type="button" className={`gs-auto${auto ? ' on' : ''}`} title={t('game.stage.autoTip')} onClick={() => { g.auto = auto ? 0 : 4; void S.save('chats', chat, true); bump(n => n + 1); }}>AUTO</button>
         {!atEnd ? <span className="gs-next">{t('game.stage.next')}</span> : null}
       </div>

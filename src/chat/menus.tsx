@@ -33,6 +33,7 @@ export function chatMenu(anchor: Element, c: Room, top: TopHooks | null = null) 
   menu(anchor, [
     ...(N ? [
       { label: talk ? t('chat.menu.toRp') : t('chat.menu.toTalk'), ic: talk ? 'feather' : 'chat', hint: talk ? t('chat.menu.likeNovel') : t('chat.menu.likeMessenger'), onclick: () => N.setMode(talk ? 'rp' : 'talk') },
+      { label: t('game.menu.enter'), ic: 'dice', hint: t('game.menu.enterHint'), onclick: () => emit('game:enter', c) },
       talk ? { label: t('chat.menu.charStatus'), ic: 'moon', onclick: () => N.pres(anchor) } : null,
       talk ? { label: t('chat.menu.myStatus'), ic: 'user', hint: Live.userStatus().label, onclick: () => N.me(anchor) } : null,
       { label: t('chat.menu.diary'), ic: 'book', onclick: () => emit('diary:open', c) },

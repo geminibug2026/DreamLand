@@ -365,3 +365,16 @@
 .msg-memo { display: flex; align-items: flex-start; gap: 6px; margin: 4px 0 0; padding: 5px 9px; border: 1px dashed var(--line); color: var(--dim); font-size: .82em; line-height: 1.5; white-space: pre-wrap; } .msg-memo svg { flex: none; margin-top: 3px; } .msg-head .badge.pin { color: var(--accent); border-color: var(--accent); }
 .choices { display: flex; flex-wrap: wrap; gap: 6px; } .choice { max-width: 100%; padding: 6px 11px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font: inherit; font-size: .88em; line-height: 1.45; text-align: left; cursor: pointer; } .choice:hover { border-color: var(--accent); } .choice.ghost { display: inline-flex; align-items: center; padding: 6px 8px; color: var(--dim); } .choice.busy { color: var(--dim); border-style: dashed; cursor: default; }
 .stats-top { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; } .stats-top > div { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); } .stats-top b { font-size: 1.4em; font-variant-numeric: tabular-nums; } .stats-top span { color: var(--dim); font-size: .8em; } .stats-table { width: 100%; border-collapse: collapse; font-size: .88em; font-variant-numeric: tabular-nums; } .stats-table th, .stats-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; } .stats-table th:first-child, .stats-table td:first-child { text-align: left; white-space: normal; } .stats-table th { color: var(--dim); font-weight: 600; } .stats { overflow-x: auto; }
+
+/* 좁은 화면의 홈: 제목 줄이 꺾이지 않게, 통계 표는 이름이 세로로 서지 않게 */
+.sec-head h2, .sec-head .count { white-space: nowrap; flex: none; }
+.stats-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.stats-table th:first-child, .stats-table td:first-child { white-space: nowrap; max-width: 9em; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 600px) {
+  .sec-head { gap: 6px; flex-wrap: wrap; row-gap: 4px; } .sec-head > i { min-width: 12px; }
+  .sec-head .btn { padding: 4px 8px; min-height: 32px; gap: 5px; font-size: .86em; } .sec-head .size-btn span { display: none; }
+  .stats-table { font-size: .82em; } .stats-table th, .stats-table td { padding: 6px 5px; }
+  .stats-table th:nth-child(4), .stats-table td:nth-child(4), .stats-table th:nth-child(6), .stats-table td:nth-child(6) { display: none; }
+  .stats-table th:first-child, .stats-table td:first-child { max-width: 6.500em; }
+  .stats-top b { font-size: 1.15em; }
+}

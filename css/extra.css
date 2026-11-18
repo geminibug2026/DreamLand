@@ -633,3 +633,20 @@ html.gs-on .modal-wrap:has(.gm) .gm-cell.is-foe b { color: var(--gs-paper); }
 .modal-wrap:has(.gm) .modal-body { overflow-x: hidden; } .gm, .gm-sheet, .gm-setup, .gm-media { min-width: 0; max-width: 100%; } .gm-row { min-width: 0; } .gm-row .gm-bar, .gm-fates { min-width: 0; }
 .gm-note { margin: -6px 0 0; } .gm-tabs { min-width: 0; } .gm-tabs button { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gm-foot .btn { white-space: nowrap; } .gm-statline span { min-width: 0; }
+/* 입체 지도 */
+.gm-map svg { color: var(--ink); overflow: visible; }
+.gm-road { fill: none; stroke: currentColor; stroke-width: 1.400; stroke-dasharray: 1 5; stroke-linecap: round; } .gm-road.is-faint { opacity: .45; }
+.gm-shadow { fill: #000; opacity: .22; }
+.gm-top { fill: var(--surface2); stroke: currentColor; stroke-width: 1; stroke-linejoin: round; }
+.gm-side-l { fill: color-mix(in srgb, var(--text) 16%, var(--surface)); stroke: currentColor; stroke-width: 1; stroke-linejoin: round; } .gm-side-r { fill: color-mix(in srgb, var(--text) 7%, var(--surface)); stroke: currentColor; stroke-width: 1; stroke-linejoin: round; }
+.gm-spot.is-new .gm-top, .gm-spot.is-new .gm-side-l, .gm-spot.is-new .gm-side-r { stroke-dasharray: 3 3; opacity: .7; }
+.gm-spot.is-here .gm-top { fill: var(--accent); } .gm-spot.is-here .gm-icon { color: var(--on-accent); }
+.gm-icon { color: var(--text); } .gm-q { font: 700 15px var(--display); fill: var(--dim); }
+.gm-label { font: 600 10.500px var(--display); fill: var(--text); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; stroke-linejoin: round; } .gm-spot.is-new .gm-label { fill: var(--dim); }
+.gm-pin path { fill: var(--accent); stroke: var(--surface); stroke-width: 1; } .gm-pin circle { fill: var(--surface); } .gm-pin { animation: gm-bob 1.800s ease-in-out infinite; } @keyframes gm-bob { 50% { transform: translateY(-4px); } }
+.gm-spot.is-can { cursor: pointer; } .gm-spot.is-can:hover .gm-top { fill: color-mix(in srgb, var(--accent) 40%, var(--surface2)); } .gm-spot.is-can .gm-label { text-decoration: underline; text-underline-offset: 2px; }
+.gm-compass circle { fill: none; stroke: currentColor; stroke-width: .800; opacity: .6; } .gm-compass path { fill: var(--surface2); stroke: currentColor; stroke-width: .800; } .gm-compass path.is-n { fill: currentColor; } .gm-compass text { font: 600 8px var(--display); fill: currentColor; }
+.gm-map g.is-here rect, .gm-map g.is-here text { fill: inherit; }
+.gm-journal li { grid-template-columns: 5.500em minmax(0, 1fr) auto auto; } .gm-back { border: 0; background: none; color: var(--dim); font-size: 15px; line-height: 1; padding: 2px 4px; cursor: pointer; } .gm-back:hover { color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { .gm-pin { animation: none; } }
+.gm-label.is-new { fill: var(--dim); } .gm-label { pointer-events: none; }

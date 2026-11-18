@@ -669,7 +669,7 @@ async function afterReply(chat: Room, msgs: Msg[]) {
   if (st.tracker.enabled && st.tracker.mode !== 'inline') await track(chat, msgs);
   maybeChime(chat, msgs);
   if (tail?.role === 'assistant' && cur.chat === chat) armGroupAuto(chat);
-  if (tail?.role === 'assistant' && cur.chat === chat && st.modes.choices && !chat.groupAuto?.on) void makeChoices(chat, msgs, tail);
+  if (tail?.role === 'assistant' && cur.chat === chat && st.modes.choices && !chat.groupAuto?.on && !(chat as { game?: { on?: boolean } }).game?.on) void makeChoices(chat, msgs, tail);
 }
 // ── 선택지: 답장 뒤에 내가 할 만한 말 · 행동을 몇 개 제안한다 (설정에서 켠다 · 답장마다 호출 1회) ──
 export function clearChoices() { if (cur.choices) { cur.choices = null; bump('choices'); } }

@@ -21,8 +21,8 @@ function showStats() {
   const total = S.chats.reduce((n, x) => n + (x.count || 0), 0), day = (ts: number) => ts ? new Date(ts).toLocaleDateString() : '—';
   openModal({ title: t('home.stats.title'), wide: true, body: <div className="stats">
     <div className="stats-top"><div><b>{S.chars.length.toLocaleString()}</b><span>{t('home.stats.chars')}</span></div><div><b>{S.chats.length.toLocaleString()}</b><span>{t('home.stats.rooms')}</span></div><div><b>{total.toLocaleString()}</b><span>{t('home.stats.msgs')}</span></div></div>
-    {rows.length ? <table className="stats-table"><thead><tr><th>{t('home.stats.char')}</th><th>{t('home.stats.msgs')}</th><th>{t('home.stats.rooms')}</th><th>{t('home.stats.met')}</th><th>{t('home.stats.days')}</th><th>{t('home.stats.last')}</th></tr></thead>
-      <tbody>{rows.map(r => <tr key={r.c.id}><td>{r.c.name}</td><td>{r.msgs.toLocaleString()}</td><td>{r.rooms}</td><td>{day(r.met)}</td><td>{r.days ? t('together.badge', { days: r.days }) : '—'}</td><td>{day(r.last)}</td></tr>)}</tbody></table> : <p className="dim">{t('home.stats.none')}</p>}
+    {rows.length ? <div className="stats-scroll"><table className="stats-table"><thead><tr><th>{t('home.stats.char')}</th><th>{t('home.stats.msgs')}</th><th>{t('home.stats.rooms')}</th><th>{t('home.stats.met')}</th><th>{t('home.stats.days')}</th><th>{t('home.stats.last')}</th></tr></thead>
+      <tbody>{rows.map(r => <tr key={r.c.id}><td>{r.c.name}</td><td>{r.msgs.toLocaleString()}</td><td>{r.rooms}</td><td>{day(r.met)}</td><td>{r.days ? t('together.badge', { days: r.days }) : '—'}</td><td>{day(r.last)}</td></tr>)}</tbody></table></div> : <p className="dim">{t('home.stats.none')}</p>}
   </div> });
 }
 
@@ -169,7 +169,7 @@ function Home() {
         <Btn label={t('common.import')} ic="import" cls="ghost" onClick={() => void importDialog()} />
         <IconBtn ic="more" title={t('home.bulk.title')} onClick={e => menu(e.currentTarget, [
           { label: t('home.stats.title'), ic: 'sparkle', onclick: showStats },
-          { label: t('home.bulk.export'), ic: 'import', hint: t('home.bulk.exportHint'), onclick: () => charPicker({ title: t('home.bulk.export'), selected: [], onDone: async ids => { if (!ids.length) return; const n = await exportChars(ids); toast(t('home.bulk.exported', { count: n }), 'ok'); } }) },
+          { label: t('home.bulk.export'), ic: 'import', onclick: () => charPicker({ title: t('home.bulk.export'), selected: [], onDone: async ids => { if (!ids.length) return; const n = await exportChars(ids); toast(t('home.bulk.exported', { count: n }), 'ok'); } }) },
           { label: t('home.bulk.delete'), ic: 'trash', danger: true, onclick: () => charPicker({ title: t('home.bulk.delete'), selected: [], onDone: async ids => {
             if (!ids.length) return; const rooms = chatsOnlyOf(ids).length;
             if (!(await confirmBox(t('home.bulk.deleteConfirm', { count: ids.length, rooms }), t('common.delete'), true))) return;

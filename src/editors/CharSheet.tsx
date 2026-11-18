@@ -62,6 +62,7 @@ function Sheet({ c, close }: { c: XChar; close: () => void }) {
     <div className="row wrap">
       <Btn label={t('editors.sheet.startRp')} ic="book" cls="primary" onClick={() => { close(); void startChat([c.id], { mode: 'rp' }); }} />
       <Btn label={t('editors.sheet.startTalk')} ic="chat" onClick={() => { close(); void startChat([c.id], { mode: 'talk' }); }} />
+      <Btn label={t('game.startWith')} ic="dice" onClick={() => { close(); void startChat([c.id], { mode: 'rp' }).then(chat => { if (chat) core.emit('game:enter', chat); }); }} />
       {chats[0] && <Btn label={t('editors.sheet.resume')} ic="play" onClick={() => { close(); go('chat', chats[0].id); }} />}
       <Btn label={t('common.edit')} ic="edit" onClick={() => { close(); charEditor(c); }} />
       <IconBtn ic="more" title={t('editors.sheet.more')} onClick={e => more(e.currentTarget)} />
