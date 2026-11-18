@@ -341,3 +341,72 @@
 .vn-write textarea { flex: 1; min-width: 0; min-height: 42px; resize: none; padding: 10px 8px; border: 0; background: none; color: inherit; font: inherit; font-size: 16px; line-height: 1.4; outline: none; user-select: text; -webkit-user-select: text; }
 .vn.is-bare .vn-box, .vn.is-bare .vn-bar { visibility: hidden; }
 @media (prefers-reduced-motion: reduce) { .vn-next { animation: none; } }
+
+/* ── 게임 모드 · 미니게임 ── */
+.gm { display: flex; flex-direction: column; gap: 12px; }
+.gm-strip { display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch; }
+.gm-status { display: flex; gap: 14px; align-items: center; padding: 5px 12px; border: 1px solid var(--ink-line); background: var(--surface); color: var(--text); font: inherit; cursor: pointer; min-width: 0; }
+.gm-status:hover { border-color: var(--ink); }
+.gm-status span { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.gm-status small, .gm-statline small, .gm-score small, .gm-sides small, .gm-hands small { font: 500 10px var(--display); letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+.gm-status b { font: 700 .92em var(--display); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gm-status b.is-low { color: var(--bad, #c0392b); }
+.gm-where { flex: 1; }
+.gm-ask { flex: 1 1 200px; display: flex; align-items: center; gap: 9px; padding: 6px 12px; border: 1px solid var(--ink); background: var(--ink); color: var(--bg); font: inherit; text-align: left; cursor: pointer; }
+.gm-ask:hover { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.gm-ask span { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; } .gm-ask b { font-size: .9em; } .gm-ask small { font-size: .78em; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 기록 카드 */
+.gm-card-rec { width: min(100%, 26rem); margin: 0 auto; position: relative; display: flex; flex-direction: column; gap: 4px; padding: 12px 16px; border: 1px solid var(--ink); background: var(--surface); }
+.gm-card-rec::before { content: ""; position: absolute; inset: -4px; background: var(--handles); pointer-events: none; }
+.gm-card-rec .eyebrow { color: var(--dim); } .gm-card-rec > b { font: 700 1.05em var(--display); } .gm-card-rec small { color: var(--dim); font-size: .84em; }
+.gm-roll { display: flex; align-items: center; gap: 8px; font: 500 1em var(--display); color: var(--dim); }
+.gm-die { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--ink); font: 800 1.05em var(--display); font-style: normal; color: var(--text); }
+.gm-roll strong { font: 800 1.7em/1 var(--display); color: var(--text); }
+.gm-roll em { margin-left: auto; font-style: normal; padding: 2px 8px; font-size: .78em; letter-spacing: .06em; background: var(--ink); color: var(--bg); }
+.gm-card-rec.is-lose .gm-roll em { background: none; color: var(--text); outline: 1px solid var(--ink); }
+/* 시트 */
+.gm-sheet { display: flex; flex-direction: column; gap: 12px; }
+.gm-row { display: flex; align-items: center; gap: 10px; } .gm-row .eyebrow { min-width: 4.2em; white-space: nowrap; color: var(--dim); }
+.gm-n { font: 800 1.25em var(--display); font-variant-numeric: tabular-nums; } .gm-n i, .gm-sides b i { font: 500 .6em var(--display); font-style: normal; color: var(--dim); }
+.gm-bar { flex: 1; height: 6px; border: 1px solid var(--ink); background: var(--surface); } .gm-bar i { display: block; height: 100%; background: var(--ink); transition: width .25s; } .gm-fill { flex: 1; }
+.gm-step { width: 26px; height: 26px; flex: none; border: 1px solid var(--ink-line); background: var(--surface); color: var(--text); font: 600 15px/1 var(--display); cursor: pointer; } .gm-step:hover { border-color: var(--ink); }
+.gm-statline { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--ink-line); } .gm-statline span { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; } .gm-statline span + span { border-left: 1px solid var(--ink-line); } .gm-statline b { font: 800 1.1em var(--display); }
+.gm-sec { display: flex; flex-direction: column; gap: 4px; } .gm-sec .eyebrow { color: var(--dim); } .gm-sec p { margin: 0; }
+.gm-items, .gm-quests, .gm-log, .gm-tries { list-style: none; margin: 0; padding: 0; }
+.gm-items li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--ink-line); } .gm-items em { font-style: normal; color: var(--dim); }
+.gm-items button { border: 0; background: none; color: var(--dim); font-size: 16px; line-height: 1; padding: 2px 6px; cursor: pointer; } .gm-items button:hover { color: var(--text); }
+.gm-quests li { display: flex; gap: 8px; padding: 3px 0; } .gm-quests i { font-style: normal; color: var(--dim); } .gm-quests .is-done { color: var(--dim); text-decoration: line-through; }
+.gm-link { align-self: flex-start; padding: 2px 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: .88em; cursor: pointer; }
+.gm-foot { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; padding-top: 4px; }
+/* 시작 창 */
+.gm-setup { display: flex; flex-direction: column; gap: 10px; } .gm-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } .gm-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.gm-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+/* 미니게임 고르기 */
+.gm-pick { display: flex; flex-direction: column; gap: 6px; }
+.gm-pick-row { display: flex; flex-direction: column; gap: 2px; padding: 10px 14px; border: 1px solid var(--ink-line); background: var(--surface); color: var(--text); font: inherit; text-align: left; cursor: pointer; }
+.gm-pick-row:hover { border-color: var(--ink); } .gm-pick-row b { font: 700 1em var(--display); } .gm-pick-row span { color: var(--dim); font-size: .86em; }
+/* 미니게임 판 */
+.gm-mini { display: flex; flex-direction: column; gap: 14px; align-items: stretch; }
+.gm-score, .gm-sides { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--ink-line); }
+.gm-sides { grid-template-columns: 1fr 1fr; align-items: start; }
+.gm-score span, .gm-sides div { display: flex; flex-direction: column; gap: 2px; min-width: 0; } .gm-score span:last-child { align-items: flex-end; text-align: right; }
+.gm-score b, .gm-sides b { font: 800 1.9em/1 var(--display); font-variant-numeric: tabular-nums; } .gm-score > i { font: 500 1.2em var(--display); font-style: normal; color: var(--dim); }
+.gm-sides .gm-bar { flex: none; margin-top: 6px; }
+.gm-table { min-height: 96px; display: flex; align-items: center; justify-content: center; gap: 18px; } .gm-table em { font: 600 .8em var(--display); font-style: normal; letter-spacing: .08em; color: var(--dim); } .gm-table p { margin: 0; text-align: center; }
+.gm-big { font-size: 3rem; line-height: 1; }
+.gm-pips { display: flex; gap: 6px; } .gm-pips i { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid var(--ink); font: 800 1.2em var(--display); font-style: normal; }
+.gm-acts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; } .gm-hand { flex: 1 1 0; flex-direction: column; gap: 2px; min-height: 64px; } .gm-hand span { font-size: 1.5rem; line-height: 1; }
+.gm-done { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 10px; border-top: 1px solid var(--ink-line); }
+.gm-verdict { font: 800 1.15em var(--display); } .gm-verdict.is-lose { color: var(--dim); }
+.gm-line { margin: 0; min-height: 1.4em; color: var(--dim); font-size: .9em; text-align: center; }
+.gm-hands { display: flex; flex-direction: column; gap: 12px; } .gm-hands p { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; }
+.gm-card { display: flex; flex-direction: column; justify-content: space-between; width: 44px; height: 62px; padding: 4px 6px; border: 1px solid var(--ink); background: var(--surface); font-family: var(--display); line-height: 1; }
+.gm-card b { font-weight: 800; } .gm-card i { font-style: normal; align-self: flex-end; font-size: 1.1em; } .gm-card.is-red { color: var(--accent); }
+.gm-card.is-down { background: repeating-linear-gradient(45deg, var(--ink) 0 2px, var(--surface) 2px 7px); }
+.gm-grid { display: grid; grid-template-columns: repeat(3, 72px); gap: 0; margin: 0 auto; border: 1px solid var(--ink); }
+.gm-grid button { width: 72px; height: 72px; border: 0; border-right: 1px solid var(--ink-line); border-bottom: 1px solid var(--ink-line); background: var(--surface); color: var(--text); font: 500 2rem/1 var(--display); cursor: pointer; }
+.gm-grid button:nth-child(3n) { border-right: 0; } .gm-grid button:nth-child(n+7) { border-bottom: 0; } .gm-grid button:not(:disabled):hover { background: var(--surface2); } .gm-grid button:disabled { cursor: default; }
+.gm-tries li { display: flex; justify-content: space-between; padding: 4px 2px; border-bottom: 1px solid var(--ink-line); font-family: var(--display); } .gm-tries b { letter-spacing: .3em; } .gm-tries span { color: var(--dim); }
+.gm-num { width: 7em; text-align: center; font: 700 1.1em var(--display); letter-spacing: .3em; }
+.gm-log { min-height: 8.4em; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; font-size: .9em; } .gm-log li:not(:last-child) { color: var(--dim); }
+.gm-fight .gm-acts { display: grid; grid-template-columns: 1fr 1fr; } .gm-fight .gm-acts .btn { min-width: 0; white-space: normal; }
