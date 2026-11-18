@@ -7422,13 +7422,6 @@
   "game.bag.slot.body": "身体",
   "game.bag.slot.head": "头部",
   "game.bag.slot.charm": "饰品",
-  "game.bag.bonus.weapon": "装备后伤害 +1",
-  "game.bag.bonus.big": "装备后伤害 +2",
-  "game.bag.bonus.staff": "装备后伤害 +1、命中 +1",
-  "game.bag.bonus.off": "装备后更难被击中",
-  "game.bag.bonus.head": "装备后更难被击中",
-  "game.bag.bonus.body": "装备后受到伤害 -1",
-  "game.bag.bonus.charm": "装备后命中 +1",
   "game.bag.g.dmg": "伤害 +{n}",
   "game.bag.g.aim": "命中 +{n}",
   "game.bag.g.soak": "受到伤害 -{n}",
@@ -7501,5 +7494,7 @@
   "game.loot.mat.spark": "魔力余烬",
   "game.loot.mat.dust": "妖精之尘",
   "game.loot.mat.coin": "带牙印的金币",
-  "game.loot.mat.any": "战利品"
+  "game.loot.mat.any": "战利品",
+  "game.bag.whenWorn": "装备后 {what}",
+  "game.bag.tier": "品级 +{n}"
 }

@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { t } from '../i18n';
 import { ItemGlyph } from './Art';
-import { SHAPE, SLOTS, SLOT_OF, fits, gearOf, itemKind, packBag, posOf, type BagCfg, type Slot } from './bag';
+import { SHAPE, SLOTS, SLOT_OF, bonusOf, fits, gearOf, tierOf, itemKind, packBag, posOf, type BagCfg, type Slot } from './bag';
 import type { GameCfg, Sheet } from './state';
 
 export function Bag({ g, sheet, onSave, onDrop, onAdd }: { g: GameCfg; sheet: Sheet; onSave(): void; onDrop(name: string): void; onAdd(): void }) {
@@ -27,7 +27,8 @@ export function Bag({ g, sheet, onSave, onDrop, onAdd }: { g: GameCfg; sheet: Sh
   };
   const wear = () => { if (!item || !slot) return; commit(b => { b.eq![slot] = item.name; delete b.pos![low(item.name)]; }); };
   const takeOff = (s: Slot) => commit(b => { delete b.eq![s]; });
-  const bonus = (k: ReturnType<typeof itemKind>) => { const s = SLOT_OF[k]; return s ? t('game.bag.bonus.' + (s === 'weapon' ? (['axe', 'bow', 'gun'].includes(k) ? 'big' : k === 'staff' ? 'staff' : 'weapon') : s)) : ''; };
+  /** 걸쳤을 때의 수치를 글로 (등급이 반영된 실제 값) */
+  const bonus = (k: ReturnType<typeof itemKind>, name = '') => { if (!SLOT_OF[k]) return ''; const b = bonusOf(name, k); return t('game.bag.whenWorn', { what: [b.dmg ? t('game.bag.g.dmg', { n: b.dmg }) : '', b.aim ? t('game.bag.g.aim', { n: b.aim }) : '', b.soak ? t('game.bag.g.soak', { n: b.soak }) : '', b.def ? t('game.bag.g.def', { n: b.def }) : ''].filter(Boolean).join(', ') }); };
   const cells = [];
   for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) { const ok = !!item && !wornIn && canDrop(x, y); cells.push(<button key={`${x},${y}`} type="button" className={`gm-bcell${ok ? ' is-ok' : ''}`} style={{ gridColumn: x + 1, gridRow: y + 1 }} disabled={!ok} aria-label={`${x + 1},${y + 1}`} onClick={() => moveTo(x, y)} />); }
   return <div className="gm-bag">
@@ -42,7 +43,7 @@ export function Bag({ g, sheet, onSave, onDrop, onAdd }: { g: GameCfg; sheet: Sh
     <p className="gm-bcount">{t('game.bag.count', { used: p.used, all: p.w * p.h })}</p>
     {p.over.length ? <div className="gm-over"><small>{t('game.bag.over')}</small>{p.over.map(o => <button key={o.name} type="button" className={same(o.name, sel) ? 'is-sel' : ''} onClick={() => setSel(same(o.name, sel) ? '' : o.name)}><ItemGlyph name={o.name} kind={o.kind} size={18} />{o.name}{o.n > 1 ? ` ×${o.n}` : ''}</button>)}</div> : null}
     {item && kind ? <div className="gm-pick">
-      <div><b>{item.name}{item.n > 1 ? ` ×${item.n}` : ''}</b><small>{t('game.bag.kind.' + kind)} · {t('game.bag.size', { w: SHAPE[kind][0], h: SHAPE[kind][1] })}{bonus(kind) ? ' · ' + bonus(kind) : ''}</small></div>
+      <div><b>{item.name}{item.n > 1 ? ` ×${item.n}` : ''}</b><small>{t('game.bag.kind.' + kind)} · {t('game.bag.size', { w: SHAPE[kind][0], h: SHAPE[kind][1] })}{SLOT_OF[kind] && tierOf(item.name) ? ' · ' + t('game.bag.tier', { n: tierOf(item.name) }) : ''}{bonus(kind, item.name) ? ' · ' + bonus(kind, item.name) : ''}</small></div>
       <div className="gm-pick-acts">
         {wornIn ? <button type="button" className="btn sm" onClick={() => takeOff(wornIn)}>{t('game.bag.off')}</button> : slot ? <button type="button" className="btn sm primary" onClick={wear}>{t('game.bag.wear')}</button> : null}
         {here && SHAPE[kind][0] !== SHAPE[kind][1] ? <button type="button" className="btn sm" onClick={rotate}>{t('game.bag.rotate')}</button> : null}
