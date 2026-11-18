@@ -61,18 +61,18 @@ def('note-depth', {
 });
 def('note-frequency', {
   help: '', alias: ['freq', 'note-freq'],
-  run: (a, c) => {
-    const v = str(a.unnamed).trim();
-    if (v) { const n = Number(v); if (Number.isNaN(n)) { c.host.echo(K('notNumber'), 'error'); return ''; } if (Math.abs(n) !== 1) warn(c, 'noteEveryTurn'); }
-    return '1';
+  run: async (a, c) => {
+    const { chat } = need(), v = str(a.unnamed).trim();
+    if (v) { const n = Number(v); if (Number.isNaN(n)) { c.host.echo(K('notNumber'), 'error'); return ''; } noteOf(chat).freq = Math.abs(Math.round(n)); await noteSaved(chat); }
+    return String(noteOf(chat).freq ?? 1);
   },
 });
 def('note-position', {
   help: '', alias: ['pos', 'note-pos'],
-  run: (a, c) => {
-    const v = str(a.unnamed).trim().toLowerCase();
-    if (v) { if (!['after', 'scenario', 'chat', 'before_scenario', 'before'].includes(v)) { c.host.echo(K('badPosition'), 'error'); return ''; } if (v !== 'chat') warn(c, 'noteInChat'); }
-    return 'chat';
+  run: async (a, c) => {
+    const { chat } = need(), v = str(a.unnamed).trim().toLowerCase();
+    if (v) { if (!['after', 'scenario', 'chat', 'before_scenario', 'before'].includes(v)) { c.host.echo(K('badPosition'), 'error'); return ''; } noteOf(chat).pos = v === 'chat' ? 'chat' : v.startsWith('before') ? 'before' : 'after'; await noteSaved(chat); }
+    return noteOf(chat).pos || 'chat';
   },
 });
 def('note-role', {

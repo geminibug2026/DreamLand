@@ -571,6 +571,12 @@ export const TALK_CALL_COMMAND = `\n[call: reason="why you are calling"] — pho
 const hhmm = (t: number) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 export interface BuildInput { chat: Chat; char: Char; chars: Char[]; persona?: Persona | null; preset: Preset; msgs: Msg[]; type?: string; commit?: boolean; proactive?: boolean }
 type Inj = PromptMsg & { depth: Num; order: Num };
+/** 이번 턴에 작가 노트를 넣을 차례인가 — freq 1(기본)은 매번, N 은 내 메시지 N 번마다, 0 은 넣지 않음 */
+function noteDue(chat: Chat, msgs: Msg[]): boolean {
+  if (!chat.note?.text) return false;
+  const f = Math.round(Number(chat.note.freq ?? 1)); if (!Number.isFinite(f) || f === 1) return true; if (f <= 0) return false;
+  const n = msgs.filter(m => m.role === 'user' && !m.hidden).length; return n > 0 && n % f === 0;
+}
 function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'normal', commit = false, proactive = false }: BuildInput): Built {
   const P: Params = preset.params || {}, M = S.settings.modes || {};
   const ctx = makeCtx({ chat, char, chars, persona, msgs }); ctx.type = type;
@@ -602,9 +608,9 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
   for (const p of X.prompt) {
     if (p.owner === 'mode' || p.owner === 'illust') continue;
     let parts: PromptPart[] = []; try { parts = p.fn({ chat, char, chars, persona, history, msgs, type, commit, ctx }) || []; } catch (e) { console.warn('[프롬프트 조각]', p.owner, e); }
-    for (const part of parts) if (part?.content) (part.where === 'top' ? before : part.where === 'before' ? before : late).push({ role: 'system', content: part.content, src: part.src || p.owner });
+    for (const part of parts) if (part?.content) (part.where === 'top' ? before : part.where === 'before' ? before : late).push({ role: 'system', content: mx(part.content), src: part.src || p.owner });   // 기능이 덧붙이는 조각도 {{user}} · {{char}} 같은 매크로를 푼다
   }
-  if (chat.note?.text) late.push({ role: 'system', content: mx(chat.note.text), src: '작가 노트' });
+  if (chat.note?.text && noteDue(chat, msgs)) late.push({ role: 'system', content: mx(chat.note.text), src: '작가 노트' });
   // 지금 상황: 상태 · 시각 · 먼저 말 거는 경우의 안내
   const pr: { status?: string; activity?: string } = chat.presence || {};
   const quiet = source.length ? Math.round((Date.now() - (source[source.length - 1].ts || Date.now())) / 60000) : 0;
@@ -691,8 +697,11 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
   // 3) 깊이 삽입: 로어북 · 작가 노트 · 캐릭터 노트 · 트래커 · 확장이 덧붙이는 조각
   const inject: Inj[] = [], extBefore: (PromptMsg & { own: string })[] = [], extTop: PromptMsg[] = [], tail: PromptMsg[] = [];
   for (const e of lore) if (e.position === 'depth') inject.push({ role: e.role || 'system', content: e.text, depth: e.depth ?? 4, order: e.order as Num, src: '로어북: ' + (e.name || e.book) });
-  const noteParts = [at('an_top'), mx(chat.note?.text), at('an_bottom')].filter(Boolean);
-  if (noteParts.length) inject.push({ role: chat.note?.role || 'system', content: noteParts.join('\n'), depth: chat.note?.depth ?? 4, order: 200, src: '작가 노트' });
+  const noteParts = [at('an_top'), noteDue(chat, msgs) ? mx(chat.note?.text) : '', at('an_bottom')].filter(Boolean);
+  if (noteParts.length) {
+    const item = { role: chat.note?.role || 'system', content: noteParts.join('\n'), src: '작가 노트' }, pos = chat.note?.pos || 'chat';
+    if (pos === 'before') extTop.push(item); else if (pos === 'after') extBefore.push({ ...item, own: 'note' }); else inject.push({ ...item, depth: chat.note?.depth ?? 4, order: 200 });
+  }
   if (char.depthPrompt?.prompt) inject.push({ role: char.depthPrompt.role || 'system', content: mx(char.depthPrompt.prompt), depth: char.depthPrompt.depth ?? 4, order: 150, src: '캐릭터 노트' });
   const tr = chat.tracker || {};
   if (S.settings.tracker.enabled && S.settings.tracker.inject && Object.keys(tr).length) {
@@ -700,7 +709,7 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
   }
   for (const p of X.prompt) {
     let parts: PromptPart[] = []; try { parts = p.fn({ chat, char, chars, persona, history, msgs, type, commit, ctx }) || []; } catch (e) { console.warn('[프롬프트 조각]', p.owner, e); }
-    for (const part of parts) { if (!part?.content) continue; const item = { role: part.role || 'system', content: part.content, src: part.src || p.owner }; if (part.where === 'top') extTop.push(item); else if (part.where === 'before') extBefore.push({ ...item, own: p.owner }); else if (part.where === 'end') tail.push(item); else inject.push({ ...item, depth: part.depth ?? 1, order: part.order ?? 100 }); }
+    for (const part of parts) { if (!part?.content) continue; const item = { role: part.role || 'system', content: mx(part.content), src: part.src || p.owner }; if (part.where === 'top') extTop.push(item); else if (part.where === 'before') extBefore.push({ ...item, own: p.owner }); else if (part.where === 'end') tail.push(item); else inject.push({ ...item, depth: part.depth ?? 1, order: part.order ?? 100 }); }
   }
 
   const over = P.cardOverrides !== false;

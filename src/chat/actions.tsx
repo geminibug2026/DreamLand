@@ -63,7 +63,7 @@ export async function trackScript<T>(run: () => Promise<T>): Promise<T> {
 }
 /** 멈추기 단추 · Esc: 답변, 답변 전 준비, 스크립트를 모두 멈춘다 */
 export function stopAll() {
-  cur.abort?.abort(); cur.prepAbort?.abort();
+  cur.abort?.abort(); cur.prepAbort?.abort(); stopGroupAuto();
   if (cur.qr > 0) { qrEpoch++; cur.qr = 0; }
   scriptStop?.(); bump('busy');
 }
@@ -286,8 +286,24 @@ export async function send() {
     inp.value = ''; inp.style.height = 'auto'; toBottom();
     await save();
   }
+  groupAutoRun = 0; clearTimeout(groupAutoTimer);
+  // 수동 순서인 그룹 방: 내가 보낸 뒤 아무도 저절로 답하지 않는다 — 입력창의 "다음에 말할 사람"으로 고른다
+  if (cur.chat && cur.chat.groupOrder === 'manual' && charsOf(cur.chat).length > 1 && (raw || cur.msgs[cur.msgs.length - 1]?.role === 'user')) return;
   void generate('normal');
 }
+// ── 그룹 자동 진행: 답이 끝나면 잠시 뒤 다음 사람이 이어서 말한다 (입력 중이거나 연속 횟수를 채우면 멈춘다) ──
+let groupAutoTimer = 0, groupAutoRun = 0;
+function armGroupAuto(chat: Room) {
+  clearTimeout(groupAutoTimer);
+  const g = chat.groupAuto; if (!g?.on || charsOf(chat).length < 2 || modeOf(chat) === 'talk' || chat.groupOrder === 'manual') return;
+  const max = Math.max(1, +(g.max ?? 5) || 5); if (groupAutoRun >= max) { groupAutoRun = 0; return void toast(t('chat.group.autoPaused', { count: max })); }
+  groupAutoTimer = window.setTimeout(() => {
+    if (cur.chat !== chat || cur.busy || cur.prep || cur.qr > 0 || ui.input?.value.trim() || !onChat() || !chat.groupAuto?.on) return;
+    groupAutoRun++; void generate('normal');
+  }, Math.max(1, +(g.delay ?? 5) || 5) * 1000);
+}
+/** 자동 진행을 멈춘다 (멈추기 단추 · 설정을 껐을 때) */
+export function stopGroupAuto() { clearTimeout(groupAutoTimer); groupAutoRun = 0; }
 
 // [명령, 인자 키, 설명 키] — 인자 이름 · 설명은 그릴 때 t() 로
 const HELP_KEYS: [string, string, string][] = [['/roll', '', 'roll'], ['/sys', 'text', 'sys'], ['/continue', '', 'continue'], ['/regen', '', 'regen'], ['/imp', '', 'imp'],
@@ -497,6 +513,11 @@ function pickSpeaker(chars: Cast[]) {
   const lastAi = [...cur.msgs].reverse().find(m => m.role === 'assistant'), tail = cur.msgs[cur.msgs.length - 1];
   const lastText = tail ? msgText(tail) : '';
   if (chat.groupOrder === 'list') { const i = chars.findIndex(c => c.id === lastAi?.charId); return chars[(i + 1) % chars.length]; }
+  if (chat.groupOrder === 'pooled') {   // 돌아가며: 내 마지막 말 뒤로 아직 말하지 않은 사람 가운데 한 명. 모두 말했으면 방금 말한 사람만 빼고
+    const spoke = new Set<string>(); for (let i = cur.msgs.length - 1; i >= 0 && cur.msgs[i].role !== 'user'; i--) if (cur.msgs[i].role === 'assistant') spoke.add(cur.msgs[i].charId);
+    const fresh = chars.filter(c => !spoke.has(c.id)), rest = chars.filter(c => c.id !== lastAi?.charId), from = fresh.length ? fresh : rest.length ? rest : chars;
+    return from[Math.floor(Math.random() * from.length)];
+  }
   const lastSpeaker = tail?.charId;
   const named = chars.filter(c => c.id !== lastSpeaker && lastText.includes(c.name));
   if (named.length) return named[0];
@@ -638,6 +659,7 @@ async function afterReply(chat: Room, msgs: Msg[]) {
   if (st.translate.auto && tail?.role === 'assistant' && !tail.swipes[tail.sw].tr) await translate(tail, { chat, msgs });
   if (st.tracker.enabled && st.tracker.mode !== 'inline') await track(chat, msgs);
   maybeChime(chat, msgs);
+  if (tail?.role === 'assistant' && cur.chat === chat) armGroupAuto(chat);
 }
 
 /** 예전 자동 요약 글을 장기기억의 기억 한 장으로 옮긴다 */

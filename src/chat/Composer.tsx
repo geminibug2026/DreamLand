@@ -1,5 +1,5 @@
 // 입력창: 글상자 · / 명령 목록 · 빠른 버튼 · 화자 고르기 · 이미지 첨부 · 보내기/멈추기
-import { useEffect, useLayoutEffect, useReducer, useRef, type MouseEvent } from 'react';
+import { useEffect, useLayoutEffect, useReducer, useRef, useState, type MouseEvent } from 'react';
 import { Avatar, Icon, IconBtn } from '../kit';
 import { menu, promptBox } from '../ui';
 import { bump, cur, ui, useCh } from './store';
@@ -10,6 +10,24 @@ import { S, pickFiles, readDataURL, shrinkImage } from '../lib/core';
 import { X } from '../lib/hooks';
 import { t } from '../i18n';
 import { QrBar } from '../stscript/QrBar';
+import { listen, sttSupported } from '../lib/stt';
+import { toast } from '../ui';
+import { I } from '../lib/icons';
+
+if (!I.mic) I.mic = 'M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3';
+/** 말로 입력: 누르면 듣고, 말을 마치면 입력창에 이어 붙인다 (다시 누르면 멈춘다) */
+function MicBtn() {
+  const [on, setOn] = useState(false), stop = useRef<(() => void) | null>(null), base = useRef('');
+  useEffect(() => () => stop.current?.(), []);
+  if (!sttSupported() || S.settings.ux?.mic === false) return null;
+  const put = (text: string) => { const el = ui.input; if (!el) return; el.value = base.current + (base.current && text && !/\s$/.test(base.current) ? ' ' : '') + text; el.dispatchEvent(new Event('input')); };
+  const toggle = () => {
+    if (on) return void stop.current?.();
+    base.current = ui.input?.value || ''; setOn(true);
+    stop.current = listen({ onText: (f, i) => put(f + i), onEnd: txt => { put(txt); setOn(false); stop.current = null; ui.input?.focus(); }, onError: why => toast(t('chat.composer.micError', { why }), 'err') });
+  };
+  return <IconBtn ic="mic" cls={on ? 'mic-on' : ''} title={on ? t('chat.composer.micStop') : t('chat.composer.mic')} onClick={toggle} />;
+}
 
 /**
  * 입력창에 / 를 치면 뜨는 명령어 목록. attach 는 반드시 보내기 단축키보다 먼저 붙여야 한다 —
@@ -111,6 +129,7 @@ export function Composer() {
       <IconBtn ic="plus" title={t('chat.composer.more')} onClick={plus} />
       <IconBtn ic="image" title={t('chat.composer.attach')} onClick={async () => addImages(await pickFiles({ accept: 'image/*', multiple: true }))} />
       <textarea className="composer-input" ref={input} rows={1} spellCheck={false} placeholder={talk ? t('chat.composer.placeholderTalk') : t('chat.composer.placeholderRp')} />
+      <MicBtn />
       <SendBtn />
     </div>
     {slash.node}

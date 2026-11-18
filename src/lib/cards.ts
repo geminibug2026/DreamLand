@@ -5,6 +5,7 @@ import { S, uid, now, arr, bool, parseMaybe, parseDate, bytesToDataURL, dataURLT
 import type { Chat, Msg, Regex } from './types';
 import { t } from '../i18n';
 import { Server } from './server';
+import { unzip } from './assets';
 
 // ── 자료 꼴 ──
 type O = Record<string, unknown>;
@@ -942,6 +943,16 @@ export async function importFiles(files: File[], progress: Progress = () => { })
         const bytes = new Uint8Array(await f.arrayBuffer()); const card = readPngCard(bytes);
         if (!card) throw new Error(t('cards.err.noCard'));
         await saveCard(card, await avatarFrom(bytes, f.name), '', T); return;
+      }
+      if (ext === 'charx') {   // CharX: ZIP 안의 card.json (V3 카드) + 그림 파일들. 대표 그림(icon)을 아바타로 쓴다
+        const files = await unzip(await f.arrayBuffer()), cj = files.find(x => /(^|\/)card\.json$/i.test(x.name));
+        if (!cj) throw new Error(t('cards.err.noCard'));
+        const card = JSON.parse(new TextDecoder().decode(cj.data)) as Card;
+        const list = ((card as { data?: { assets?: { type?: string; uri?: string; name?: string }[] } }).data?.assets || []).filter(a => a.type === 'icon' && a.uri);
+        const pathOf = (uri: string) => uri.replace(/^embedd?ed:\/\//i, '').replace(/^\/+/, '');
+        const icon = list.find(a => a.name === 'main') || list[0], isImg = (n: string) => /\.(png|webp|jpe?g|gif|avif)$/i.test(n);
+        const pic = (icon && files.find(x => x.name === pathOf(icon.uri!))) || files.find(x => isImg(x.name) && /icon/i.test(x.name)) || files.find(x => isImg(x.name));
+        await saveCard(card, pic ? await avatarFrom(pic.data, pic.name) : '', '', T); return;
       }
       const text = await f.text();
       if (ext === 'jsonl') {

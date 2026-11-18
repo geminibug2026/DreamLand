@@ -54,11 +54,22 @@ function Body({ c }: { c: Room }) {
         {chars.length > 1 && <IconBtn ic={muted(ch) ? 'eyeoff' : 'eye'} title={t('chat.drawer.mute')} onClick={() => { const mu = new Set(c.muted || []); if (!mu.delete(ch.id)) mu.add(ch.id); c.muted = [...mu]; saveChat(); drawDrawer(); }} />}
         {chars.length > 1 && <IconBtn ic="x" title={t('chat.drawer.removeChar')} onClick={async () => { c.charIds = c.charIds.filter(i => i !== ch.id); await S.save('chats', c, true); drawMain(); drawDrawer(); drawSide(); }} />}</div>)}</div>
       <div className="row"><Btn label={t('chat.drawer.invite')} ic="plus" cls="ghost" onClick={e => menu(e.currentTarget, S.chars.filter(x => !c.charIds.includes(x.id)).map(x => ({ label: x.name, onclick: async () => { c.charIds.push(x.id); await S.save('chats', c, true); drawMain(); drawDrawer(); drawSide(); } })))} /></div>
-      {chars.length > 1 && <Sel label={t('chat.drawer.order')} value={c.groupOrder || ''} opts={[['natural', t('chat.drawer.orderNatural')], ['list', t('chat.drawer.orderList')]]} onChange={v => { c.groupOrder = v; saveChat(); }} />}
+      {chars.length > 1 && <Sel label={t('chat.drawer.order')} value={c.groupOrder || ''} opts={[['natural', t('chat.drawer.orderNatural')], ['list', t('chat.drawer.orderList')], ['pooled', t('chat.drawer.orderPooled')], ['manual', t('chat.drawer.orderManual')]]} onChange={v => { c.groupOrder = v; saveChat(); drawDrawer(); }} />}
+      {chars.length > 1 && c.mode !== 'talk' && c.groupOrder !== 'manual' && <>
+        <label className="check"><input type="checkbox" defaultChecked={!!c.groupAuto?.on} onChange={e => { c.groupAuto = { delay: 5, max: 5, ...c.groupAuto, on: e.target.checked }; saveChat(); drawDrawer(); }} /><i /><span>{t('chat.drawer.groupAuto')}</span></label>
+        {c.groupAuto?.on && <div className="row">
+          <label className="field half"><span className="field-label">{t('chat.drawer.groupAutoDelay')}</span><input className="inp" type="number" min={1} max={120} defaultValue={c.groupAuto.delay ?? 5} onChange={e => { c.groupAuto = { ...c.groupAuto, delay: Math.max(1, +e.target.value || 5) }; saveChat(); }} /></label>
+          <label className="field half"><span className="field-label">{t('chat.drawer.groupAutoMax')}</span><input className="inp" type="number" min={1} max={50} defaultValue={c.groupAuto.max ?? 5} onChange={e => { c.groupAuto = { ...c.groupAuto, max: Math.max(1, +e.target.value || 5) }; saveChat(); }} /></label>
+        </div>}
+        <small className="hint">{t('chat.drawer.groupAutoHint')}</small>
+      </>}
     </Sec>
     <Sec title={t('chat.drawer.noteSec')} ic="note" open={!!c.note?.text}>
       <textarea className="inp" rows={4} defaultValue={c.note?.text || ''} placeholder={t('chat.drawer.notePh')} onChange={e => { c.note = c.note ? { ...c.note, text: e.target.value } : { depth: 4, role: 'system', text: e.target.value }; saveChat(); }} />
       <label className="field inline"><span className="field-label">{t('chat.drawer.noteDepth')}</span><input className="inp" type="number" min={0} defaultValue={c.note?.depth ?? 4} onChange={e => { c.note = c.note ? { ...c.note, depth: +e.target.value || 0 } : { text: '', role: 'system', depth: +e.target.value || 0 }; saveChat(); }} /></label>
+      <label className="field inline"><span className="field-label">{t('chat.drawer.notePos')}</span><select className="inp" defaultValue={c.note?.pos || 'chat'} onChange={e => { c.note = { ...(c.note || { text: '', depth: 4, role: 'system' }), pos: e.target.value as 'chat' | 'before' | 'after' }; saveChat(); }}>
+        <option value="chat">{t('chat.drawer.notePosChat')}</option><option value="before">{t('chat.drawer.notePosBefore')}</option><option value="after">{t('chat.drawer.notePosAfter')}</option></select></label>
+      <label className="field inline" title={t('chat.drawer.noteFreqHint')}><span className="field-label">{t('chat.drawer.noteFreq')}</span><input className="inp" type="number" min={0} defaultValue={c.note?.freq ?? 1} onChange={e => { c.note = { ...(c.note || { text: '', depth: 4, role: 'system' }), freq: Math.max(0, Math.round(+e.target.value || 0)) }; saveChat(); }} /></label>
     </Sec>
     {c.summary ? <Sec title={t('chat.drawer.oldSummarySec')} ic="sparkle" open={false}>
       <textarea className="inp" rows={5} defaultValue={c.summary} onChange={e => { c.summary = e.target.value; saveChat(); }} />

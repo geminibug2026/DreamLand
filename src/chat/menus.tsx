@@ -46,6 +46,14 @@ export function chatMenu(anchor: Element, c: Room, top: TopHooks | null = null) 
     parent ? { label: t('chat.menu.toParent'), ic: 'branch', onclick: () => go('chat', parent.id) } : null,
     { label: t('chat.menu.rename'), ic: 'edit', onclick: async () => { const v = await promptBox(t('chat.menu.renamePrompt'), c.name); if (v !== null) { c.name = v; await S.save('chats', c, true); drawSide(); if (c.id === cur.chat?.id) drawTop(); } } },
     { label: t('chat.menu.exportJsonl'), ic: 'import', hint: t('chat.menu.stCompat'), onclick: async () => { const ms = await S.msgs(c.id); download(`${titleOf(c)}-${c.id}.jsonl`, chatToStJsonl(c, ms, S.persona(c).name, charsOf(c)[0]?.name || 'Character'), 'application/jsonl'); } },
+    { label: t('chat.menu.exportMd'), ic: 'note', onclick: async () => {   // 읽기 좋은 문서(Markdown): 제목 · 날짜 · 화자별 문단. 숨긴 메시지는 뺀다
+      const ms = await S.msgs(c.id), me = S.persona(c).name, day = (ts: number) => new Date(ts).toLocaleDateString();
+      let out = `# ${titleOf(c)}\n\n`, last = '';
+      for (const m of ms) { if (m.hidden) continue; const txt = msgText(m).trim(); if (!txt) continue;
+        const d = day(m.ts); if (d !== last) { out += `## ${d}\n\n`; last = d; }
+        out += m.role === 'system' ? `> ${txt.replace(/\n/g, '\n> ')}\n\n` : `**${m.role === 'user' ? me : (m.name || titleOf(c))}**\n\n${txt}\n\n`; }
+      download(`${titleOf(c)}.md`, out, 'text/markdown');
+    } },
     { label: t('chat.menu.exportTxt'), ic: 'note', onclick: async () => { const ms = await S.msgs(c.id); download(`${titleOf(c)}.txt`, ms.filter(m => !m.hidden).map(m => `${m.role === 'user' ? S.persona(c).name : m.role === 'system' ? '나레이션' : (m.name || titleOf(c))}: ${msgText(m)}`).join('\n\n'), 'text/plain'); } },
     '-',
     { label: t('chat.menu.delete'), ic: 'trash', danger: true, onclick: async () => {

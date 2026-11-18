@@ -12,7 +12,7 @@ export { PresetVarsEditor, ChatPanel as PresetVarsPanel } from './PresetVars';
 export { chatPicker, roomLabel } from './ChatPicker';
 
 /** 파일을 골라 가져온다. after 를 주지 않으면 지금 화면을 다시 그린다 */
-export async function importDialog(accept = '.png,.json,.jsonl,.webp', after: () => void = pageRefresh) {
+export async function importDialog(accept = '.png,.json,.jsonl,.webp,.charx', after: () => void = pageRefresh) {
   const files = await core.pickFiles({ accept, multiple: true }); if (!files.length) return;
   const T = await cards.importFiles(files);
   toast(cards.summarize(T), T.errors.length ? 'err' : 'ok');

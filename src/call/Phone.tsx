@@ -5,6 +5,7 @@ import { Emblem, Icon } from '../kit';
 import { I } from '../lib/icons';
 import { tt } from './strings';
 import * as C from './logic';
+import { listen, sttSupported } from '../lib/stt';
 
 // 전화 아이콘들 (아이콘 표에 더한다)
 Object.assign(I, {
@@ -80,12 +81,19 @@ function Phone() {
   const box = useRef<HTMLDivElement>(null), inp = useRef<HTMLInputElement>(null), count = s?.lines.length || 0, tail = s?.lines[count - 1]?.text.length || 0;
   useEffect(() => { const b = box.current; if (b && picked < 0) b.scrollTop = b.scrollHeight; }, [count, tail, picked]);
   useEffect(() => { if (s?.phase === 'connected') inp.current?.focus(); else { setPicked(-1); setAdding(false); } }, [s?.phase]);
+  const stopMic = useRef<(() => void) | null>(null), [hearing, setHearing] = useState(false);   // (훅은 아래의 이른 반환보다 앞에 둔다)
   if (!s) return p ? <PickerScreen p={p} t={t} /> : null;
   const ch = s.char, ringing = s.phase === 'ringing', dialing = s.phase === 'dialing', live = s.phase === 'connected', ended = s.phase === 'ended';
   const party = live || ended ? s.chars : s.chars, group = party.length > 1, canAdd = live && s.chat.charIds.length > 1 && s.chars.length < C.MAX_PARTY, addable = canAdd ? C.membersOf(s.chat).filter(c => !s.chars.includes(c)) : [];
   const state = ringing ? tt('call.state.ringing') : dialing ? tt('call.state.dialing') : ended ? (s.result === 'answered' ? tt('call.state.ended') : tt('call.result.' + (s.result || 'missed'))) : s.hold ? tt('call.state.hold') : C.fmtDur(t - s.startedAt);
   const speakingId = s.talking ? [...s.lines].reverse().find(l => l.who === 'c' && !l.note)?.by : '';
   const send = () => { const v = text.trim(); setText(''); setPicked(-1); void C.userSays(v); };
+  // 말로 하기: 누르면 듣고, 말을 마치면 그대로 보낸다 (전화처럼)
+  const mic = () => {
+    if (hearing) return void stopMic.current?.();
+    setHearing(true);
+    stopMic.current = listen({ onText: (f, i) => setText(f + i), onEnd: said => { setHearing(false); stopMic.current = null; if (said) { setText(''); setPicked(-1); void C.userSays(said); } } });
+  };
   const ghost = async () => { if (ghosting) return; setGhosting(true); try { const g = await C.ghost(text.trim()); if (g) { setText(g); inp.current?.focus(); } } finally { setGhosting(false); } };
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
   const title = group ? party.map(c => c.name).join(' · ') : ch.name;
@@ -111,7 +119,8 @@ function Phone() {
       {live && s.keypad ? <div className="call-pad">{keys.map(k => <button key={k} type="button" onClick={() => { C.press(k); setText(x => x + k); }}>{k}</button>)}</div> : null}
       {live ? <form className="call-say" onSubmit={e => { e.preventDefault(); send(); }}>
         <button type="button" className={`ibtn call-ghost${ghosting ? ' busy' : ''}`} title={tt('call.do.ghostHint')} aria-label={tt('call.do.ghost')} disabled={s.muted || s.hold || ghosting} onClick={() => void ghost()}><Icon name="sparkle" /></button>
-        <input ref={inp} className="inp" value={text} disabled={s.muted || s.hold} placeholder={s.muted ? tt('call.input.muted') : ghosting ? tt('call.input.ghosting') : tt('call.input.ph')} onChange={e => setText(e.target.value)} />
+        {sttSupported() ? <button type="button" className={`ibtn call-mic${hearing ? ' on' : ''}`} title={hearing ? tt('call.do.micStop') : tt('call.do.mic')} aria-label={tt('call.do.mic')} aria-pressed={hearing} disabled={s.muted || s.hold} onClick={mic}><Icon name="mic" /></button> : null}
+        <input ref={inp} className="inp" value={text} disabled={s.muted || s.hold} placeholder={s.muted ? tt('call.input.muted') : hearing ? tt('call.input.hearing') : ghosting ? tt('call.input.ghosting') : tt('call.input.ph')} onChange={e => setText(e.target.value)} />
         <button type="submit" className="ibtn" title={text.trim() ? tt('call.do.send') : tt('call.do.nudge')} aria-label={text.trim() ? tt('call.do.send') : tt('call.do.nudge')} disabled={s.muted || s.hold}><Icon name={text.trim() ? 'send' : 'right'} /></button>
       </form> : null}
       {live ? <div className={`call-grid${s.chat.charIds.length > 1 ? ' six' : ''}`}>

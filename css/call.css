@@ -197,3 +197,4 @@
 .call-script p.can-play { cursor: pointer; }
 .call-script p.playing { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 14%, transparent); }
 .call-card.is-overheard .call-card-ic { color: var(--dim); border-style: dashed; }
+.call-mic.on, .ibtn.mic-on { color: var(--accent); animation: call-blink 1.2s steps(2) infinite; }

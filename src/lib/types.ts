@@ -63,10 +63,13 @@ export interface Later { id: string; at: number; about: string; made: number }
 export interface AutoState { day: string; count: number; streak: number; chime?: number; lastAt?: number; awayAt?: number; cd?: Record<string, Record<string, number>>; last?: { kind: string; at: number; charId: string } | null }
 export interface ClockCfg { mode?: 'real' | 'story' | 'none'; at?: number; setAt?: number; flow?: 'real' | 'step' | 'hold'; step?: number; ai?: boolean }
 export interface Diff { from: string; d?: number | null; at: number }
-export interface Note { text: string; depth: number; role: string }
+/** 작가 노트. freq: 내 메시지 몇 번마다 넣나 (1 = 매번 · 0 = 넣지 않음) · pos: 넣는 자리 (chat = 대화 안 depth 자리 · before = 프롬프트 맨 앞 · after = 캐릭터 정의 뒤, 대화 기록 앞) */
+export interface Note { text: string; depth: number; role: string; freq?: number; pos?: 'chat' | 'before' | 'after' }
 export interface Chat {
   id: string; name: string; charIds: string[]; personaId: string; personaAuto?: boolean; note: Note; summary: string; summaryAt: number; vars: Record<string, string>; loreIds: string[];
   tracker: Record<string, string>; bg: string; mode: 'rp' | 'talk'; diary: DiaryEntry[]; diaryAt: number; dreams?: Dream[]; keepsakes?: Keepsake[]; letters?: Letter[]; promises?: PromiseRec[]; groupOrder: string; count: number; preview: string; createdAt: number; updatedAt: number;
+  /** 그룹 자동 진행: 답이 끝나면 delay 초 뒤 다음 사람이 이어 말한다 (연속 max 번까지) */
+  groupAuto?: { on?: boolean; delay?: number; max?: number };
   pinned?: boolean; unread?: number; src?: string; muted?: string[]; folder?: string;
   scene?: { on: boolean; title?: string; place?: string; at?: number }; scenes?: number; parent?: { id: string; at: number };
   cast?: Record<string, Record<string, string>>; trackHide?: Record<string, boolean>; trackLock?: Record<string, boolean>; trackDiff?: Record<string, Diff>; castDiff?: Record<string, Diff>;

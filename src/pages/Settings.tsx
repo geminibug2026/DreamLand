@@ -56,6 +56,7 @@ function SettingsPage() {
     <div className="card"><Form obj={st} defs={[{ section: t('settings.chat.section') }, { k: 'showMeta', label: t('settings.chat.showMeta'), type: 'check' }, { k: 'chatTruncation', label: t('settings.chat.truncation'), type: 'num', min: 0, max: 1000, step: 5, ph: '100', nullable: true, half: true, hint: t('settings.chat.truncationHint') }, { k: 'defaultMode', label: t('settings.chat.defaultMode'), type: 'select', opts: [['rp', t('settings.chat.modeRp')], ['talk', t('settings.chat.modeTalk')]], half: true }, { k: 'modes.talkTokens', label: t('settings.chat.talkTokens'), type: 'num', half: true },
       { k: 'format.reasoning.show', label: t('advanced.rs.show'), type: 'check', hint: t('advanced.rs.showHint') },
       { el: <TalkPromptField /> },
+      { k: 'modes.together', label: t('together.setting'), type: 'check', hint: t('together.settingHint') },
       { k: 'modes.stagger', label: t('settings.chat.stagger'), type: 'check' }, { k: 'modes.commands', label: t('settings.chat.commands'), type: 'check' },
       { k: 'modes.presenceDelay', label: t('settings.chat.presenceDelay'), type: 'check' },
       { k: 'modes.scenes', label: t('settings.chat.scenes'), type: 'check' }, { k: 'modes.sceneStart', label: t('settings.chat.sceneStart'), type: 'check' },

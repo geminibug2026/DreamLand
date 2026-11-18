@@ -6,6 +6,7 @@ import { cur, ui, useCh } from './store';
 import { armAuto, charsOf, daysOf, drawMain, generate, modeOf, presenceOf, roomName, setDrawer, setSide, titleOf } from './actions';
 import { chatMenu, findInChat, meItems, presItems } from './menus';
 import { inspector } from './Inspector';
+import { firstMet, togetherOf } from '../lib/together';
 import { tint } from '../lib/tone';
 import { S, emit } from '../lib/core';
 import { go } from '../lib/router';
@@ -35,12 +36,14 @@ export const Top = memo(function Top() {
   const branchBtn = parent ? <button className="top-branch" title={t('chat.top.toParent')} onClick={() => { if (S.get('chats', parent.id)) go('chat', parent.id); else toast(t('chat.top.parentGone')); }}><Icon name="branch" size={12} /></button> : null;
   const connText = conn ? `${conn.name}${conn.model ? ' · ' + conn.model : ''}` : t('chat.drawer.noConn');
   const u = talk ? Live.userStatus() : null;
+  const tg = togetherOf(c);
   return <header className="chat-top">
     <button className="ibtn" title={t('chat.top.chatList')} onClick={() => setSide(!cur.sideOpen)}><Icon name="menu" /></button>
     <div className="av-stack">{chars.slice(0, 3).map(ch => <Avatar key={ch.id} o={ch} cls="sm" />)}</div>
     <div className="top-title" title={t('chat.top.titleTip', { room: roomName(c), count: cur.msgs.length, conn: connText })}><b>{titleOf(c)}</b>
       {p0 ? <div className="top-sub">{branchBtn}
         <button type="button" className="top-pres" title={t('chat.top.pres')} onClick={e => menu(e.currentTarget, presItems(c, chars))}>{chars.slice(0, 3).map(ch => <i key={ch.id} className={'presence ' + presenceOf(c, ch).status} />)}<span>{[chars.length > 1 ? t('chat.top.people', { count: chars.length }) : (p0.activity || STATUS[p0.status]), label].filter(Boolean).join(' · ')}</span></button>
+        {tg ? <span className={'top-days' + (tg.mark ? ' mark' : '')} title={t('together.tip', { days: tg.days, date: new Date(firstMet(tg.charId)).toLocaleDateString() })}>{tg.mark ? '✦ ' : ''}{t('together.badge', { days: tg.days })}</span> : null}
         <span className="top-room">{t('chat.top.roomCount', { room: roomName(c), count: cur.msgs.length })}</span></div>
         : <small className="top-meta">{branchBtn}{talk && label ? <span className="top-clock">{label}</span> : null}{t('chat.top.roomCountConn', { room: roomName(c), count: cur.msgs.length, conn: connText })}</small>}</div>
     <Status /><Gauge />
