@@ -650,3 +650,11 @@ html.gs-on .modal-wrap:has(.gm) .gm-cell.is-foe b { color: var(--gs-paper); }
 .gm-journal li { grid-template-columns: 5.500em minmax(0, 1fr) auto auto; } .gm-back { border: 0; background: none; color: var(--dim); font-size: 15px; line-height: 1; padding: 2px 4px; cursor: pointer; } .gm-back:hover { color: var(--accent); }
 @media (prefers-reduced-motion: reduce) { .gm-pin { animation: none; } }
 .gm-label.is-new { fill: var(--dim); } .gm-label { pointer-events: none; }
+/* 글 상자의 단추 자리: 조작은 위 오른쪽, 넘기기는 아래 */
+.gs-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; min-height: 44px; } .gs-bar .gs-name { padding-top: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-ctl { display: flex; align-items: center; gap: 10px; flex: none; cursor: auto; padding: 4px 0 4px 12px; }
+.gs-ctl .gs-mini { width: 40px; height: 40px; border: 1px solid var(--gs-line); border-radius: 50%; opacity: .9; } .gs-ctl .gs-mini.is-stop { border-color: var(--gs-gold); color: var(--gs-gold); }
+.gs-auto { display: inline-flex; align-items: center; gap: 7px; height: 40px; margin: 0; padding: 0 13px; border-radius: 20px; } .gs-auto i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .45; } .gs-auto.on i { opacity: 1; box-shadow: 0 0 0 3px rgb(217 184 119 / .22); }
+.gs-rail { min-height: 44px; margin: 0 -6px; } .gs-rail .gs-mini { width: 44px; height: 44px; }
+.gs-next { display: inline-flex; align-items: center; gap: 4px; padding-right: 2px; } .gs-next svg { display: block; }
+.gs-rail .gs-end { margin-left: 8px; }

@@ -100,7 +100,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
       if (document.querySelector('.modal-wrap, .menu, .palette-wrap, .call-veil')) return;
       const el = e.target as HTMLElement | null; if (el?.matches?.('textarea, input, [contenteditable]')) return;
       if ((e.key === ' ' || e.key === 'Enter') && el?.closest?.('button')) return;
-      if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowRight') { e.preventDefault(); step(1); } else if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
+      if (e.key === ' ' || e.key === 'Enter' || e.key === 'ArrowRight') { e.preventDefault(); step(1); } else if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); } else if (e.key === 'End') { e.preventDefault(); setPos(total.current - 1); } else if (e.key === 'Home') { e.preventDefault(); setPos(0); }
     };
     window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
   }, []);
@@ -145,20 +145,26 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
     <div className="gs-figure" onClick={() => step(1)}>
       {sprite?.data ? <img className="gs-sprite" src={sprite.data} alt="" /> : stand?.avatar ? <div className="gs-arch"><Keystone /><i style={{ backgroundImage: `url("${stand.avatar}")` }} /></div> : null}
     </div>
-    <section className="gs-panel" onClick={e => { if (!(e.target as HTMLElement).closest('button, textarea, .gs-acts')) step(1); }}>
+    <section className="gs-panel" onClick={e => { if (!(e.target as HTMLElement).closest('button, textarea, .gs-acts, .gs-ctl')) step(1); }}>
       <Rule />
-      {page?.name ? <div className="gs-name"><i />{page.name}</div> : page?.who === 'e' ? <div className="gs-name is-event"><i />{t('game.stage.event')}</div> : null}
+      <div className="gs-bar">
+        {page?.name ? <div className="gs-name"><i />{page.name}</div> : page?.who === 'e' ? <div className="gs-name is-event"><i />{t('game.stage.event')}</div> : <span />}
+        {/* 넘기기와 헷갈리지 않게, 조작 단추는 글 위 오른쪽에 따로 모아 둔다 */}
+        <div className="gs-ctl">
+          {page && !busy && !atEnd ? <button type="button" className="gs-mini" title={t('game.rewind.tip')} aria-label={t('game.rewind.tip')} onClick={() => void rewindTo(page.msgId)}><Glyph name="rewind" size={18} /></button> : null}
+          {busy ? <button type="button" className="gs-mini is-stop" title={t('vn.stop')} aria-label={t('vn.stop')} onClick={() => stopAll()}><Glyph name="stop" size={18} /></button>
+            : canAct && lastAi ? <button type="button" className="gs-mini" title={t('vn.regen')} aria-label={t('vn.regen')} onClick={() => void generate('regen')}><Glyph name="redo" size={18} /></button> : null}
+          <button type="button" className={`gs-auto${auto ? ' on' : ''}`} title={t('game.stage.autoTip')} aria-pressed={!!auto} onClick={() => { g.auto = auto ? 0 : 4; void S.save('chats', chat, true); bump(n => n + 1); }}><i />AUTO</button>
+        </div>
+      </div>
       <div className="gs-scroll" ref={box}>{body}</div>
       <div className="gs-rail">
         <button type="button" className="gs-mini" title={t('vn.back')} aria-label={t('vn.back')} disabled={at <= 0} onClick={e => { e.currentTarget.blur(); step(-1); }}><Glyph name="back" size={18} /></button>
         <span className="gs-count">{pages.length ? `${at + 1} / ${pages.length}` : ''}</span>
+        <button type="button" className="gs-mini gs-end" title={t('game.stage.toEnd')} aria-label={t('game.stage.toEnd')} disabled={atEnd} onClick={e => { e.currentTarget.blur(); setPos(pages.length - 1); }}><Glyph name="end" size={18} /></button>
         <i />
-        {busy ? <button type="button" className="gs-mini" title={t('vn.stop')} aria-label={t('vn.stop')} onClick={() => stopAll()}><Glyph name="stop" size={18} /></button>
-          : canAct && lastAi ? <button type="button" className="gs-mini" title={t('vn.regen')} aria-label={t('vn.regen')} onClick={() => void generate('regen')}><Glyph name="redo" size={18} /></button>
-            : canAct && !fate && pages.length ? <button type="button" className="gs-retry" onClick={() => void generate('normal')}><Glyph name="redo" size={16} />{t('game.stage.retry')}</button> : null}
-        {page && !busy && !atEnd ? <button type="button" className="gs-mini" title={t('game.rewind.tip')} aria-label={t('game.rewind.tip')} onClick={() => void rewindTo(page.msgId)}><Glyph name="rewind" size={18} /></button> : null}
-        <button type="button" className={`gs-auto${auto ? ' on' : ''}`} title={t('game.stage.autoTip')} onClick={() => { g.auto = auto ? 0 : 4; void S.save('chats', chat, true); bump(n => n + 1); }}>AUTO</button>
-        {!atEnd ? <span className="gs-next">{t('game.stage.next')}</span> : null}
+        {canAct && !lastAi && !fate && pages.length ? <button type="button" className="gs-retry" onClick={() => void generate('normal')}><Glyph name="redo" size={16} />{t('game.stage.retry')}</button> : null}
+        {!atEnd ? <span className="gs-next">{t('game.stage.next')}<Glyph name="fwd" size={14} /></span> : null}
       </div>
       {canAct ? <div className="gs-acts">
         {fate ? <div className="gs-fate"><button type="button" className="gs-ask" onClick={() => void settleFate(chat, true)}><b>{t('game.fate.reroll')}</b><small>{t('game.fate.left', { n: sheet.fate })}</small></button><button type="button" className="gs-plain" onClick={() => void settleFate(chat, false)}>{t('game.fate.accept')}</button></div> : null}

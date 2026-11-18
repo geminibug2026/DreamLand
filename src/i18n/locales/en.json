@@ -7302,5 +7302,6 @@
   "game.rewind.go": "Go back",
   "game.rewind.hint": "Tap ↺ to go back to the scene where it happened (as a new branch).",
   "settings.input.mic": "Show the voice input button",
-  "settings.input.micHint": "Puts a microphone button in the message box and on the call screen; speak and it is written down. Appears only where the browser supports it."
+  "settings.input.micHint": "Puts a microphone button in the message box and on the call screen; speak and it is written down. Appears only where the browser supports it.",
+  "game.stage.toEnd": "Jump to the end"
 }

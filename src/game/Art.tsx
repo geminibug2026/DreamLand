@@ -15,7 +15,7 @@ const Svg = ({ size, box = 24, children, cls }: { size?: number; box?: number; c
   <svg viewBox={`0 0 ${box} ${box}`} width={size} height={size} className={cls} aria-hidden="true">{children}</svg>;
 
 // ── 도구 아이콘 (24칸) ──
-export type GlyphName = 'rewind' | 'map' | 'journal' | 'sheet' | 'soundOn' | 'soundOff' | 'back' | 'exit' | 'stop' | 'redo' | 'send';
+export type GlyphName = 'end' | 'fwd' | 'rewind' | 'map' | 'journal' | 'sheet' | 'soundOn' | 'soundOff' | 'back' | 'exit' | 'stop' | 'redo' | 'send';
 export function Glyph({ name, size = 20 }: { name: GlyphName; size?: number }) {
   const g: Record<GlyphName, ReactNode> = {
     // 접힌 지도: 가운데 면만 옅게, 길은 점선, 목적지에 점
@@ -27,6 +27,9 @@ export function Glyph({ name, size = 20 }: { name: GlyphName; size?: number }) {
     soundOn: <><Tone d="M4 9.500h3.200L12 5.500v13l-4.800-4H4z" /><Out d="M4 9.500h3.200L12 5.500v13l-4.800-4H4z" /><In d="M15.200 9.200a4 4 0 0 1 0 5.600" /><Out d="M17.800 6.600a7.600 7.600 0 0 1 0 10.800" w={1.250} /></>,
     soundOff: <><Tone d="M4 9.500h3.200L12 5.500v13l-4.800-4H4z" /><Out d="M4 9.500h3.200L12 5.500v13l-4.800-4H4z" /><Out d="M15.500 9.500l5 5M20.500 9.500l-5 5" w={1.250} /></>,
     back: <Out d="M14.500 5.500 8 12l6.500 6.500" />,
+    fwd: <Out d="M9.500 5.500 16 12l-6.500 6.500" />,
+    // 끝으로: 겹친 화살과 벽
+    end: <><Out d="M5.500 6 11.500 12l-6 6" /><Out d="M11.500 6 17.500 12l-6 6" w={1.250} /><Out d="M19.500 5.500v13" /></>,
     // 되돌아가기: 갈라지는 길
     rewind: <><Out d="M6.500 4v9.500a4 4 0 0 0 4 4H17" /><Out d="M14 14.500l3 3-3 3" /><In d="M6.500 9.500h7a3.500 3.500 0 0 0 3.500-3.500V4" /><circle cx="6.500" cy="4" r="1.500" fill="currentColor" /></>,
     exit: <Out d="M6 6l12 12M18 6 6 18" />,
