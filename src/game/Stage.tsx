@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { Chat, Msg } from '../lib/types';
 import type { ChatX } from '../addons/types';
-import { S } from '../lib/core';
+import { S, on as listenTo } from '../lib/core';
 import { t } from '../i18n';
 import { cur } from '../chat/store';
 import { chatApi, generate, running, shownText, stopAll } from '../chat/actions';
@@ -12,7 +12,7 @@ import { Sprites, charIdOf, currentOf } from '../expressions/store';
 import { fmt, pagesOf } from '../vn/Screen';
 import { Ambience, Music, setSfx, sfx } from './sfx';
 import { Weather, airOf } from './Weather';
-import { gameOf, pendingAsk, pendingFate, sceneOf, sheetOf, trackOf, type GameMsg, type GameRec } from './state';
+import { elapsedOf, gameOf, pendingAsk, pendingFate, sceneOf, sheetOf, trackOf, type GameMsg, type GameRec } from './state';
 import { GameCard, askLabel, openSheet, resolveAsk, rewindTo, settleFate } from './ui';
 import { bgFor, loadMedia, trackFor } from './media';
 import { ClockDial, Glyph, Keystone, Rule, type GlyphName } from './Art';
@@ -32,6 +32,9 @@ function build(chat: Chat, msgs: Msg[]): Page[] {
   return out;
 }
 const tail = (msgs: Msg[]) => { const m = msgs[msgs.length - 1]; return m ? `${m.id}:${m.sw}:${(m.swipes[m.sw]?.text || '').length}` : ''; };
+
+// 화면을 다시 그릴 때마다 새로 만들어지지 않게 바깥에 둔다 (안에 두면 누르는 도중에 단추가 바뀌어 눌리지 않고 깜빡인다)
+const Tool = ({ d, label, onClick }: { d: GlyphName; label: string; onClick(): void }) => <button type="button" title={label} aria-label={label} onClick={onClick}><Glyph name={d} /></button>;
 
 function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   const [, bump] = useState(0), [pos, setPos] = useState(-1), [draft, setDraft] = useState(''), [sound, setSound] = useState(true);
@@ -105,8 +108,12 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auto, page?.key, atEnd]);
   const total = useRef(0); total.current = pages.length;
+  // 세션 다시 보기 등: 그 메시지의 첫 문단으로 간다
+  const pagesRef = useRef(pages); pagesRef.current = pages;
+  useEffect(() => listenTo<string>('game:goto', id => { const i = pagesRef.current.findIndex(p => p.msgId === id); if (i >= 0) setPos(i); }), []);
+  const [toWhom, setToWhom] = useState<'' | 'party' | 'ooc'>('');
   const step = (d: number) => setPos(p => Math.min(Math.max(Math.min(Math.max(p, 0), Math.max(total.current - 1, 0)) + d, 0), Math.max(total.current - 1, 0)));
-  const send = (text = draft) => { const v = text.trim(); if (!v || busy) return; setDraft(''); void chatApi.send(v); };
+  const send = (text = draft, plain = false) => { const v = text.trim(); if (!v || busy) return; setDraft(''); void chatApi.send(plain || !toWhom ? v : toWhom === 'ooc' ? `[OOC] ${v}` : `[To companions] ${v}`); };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (document.querySelector('.modal-wrap, .menu, .palette-wrap, .call-veil')) return;
@@ -121,9 +128,8 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   let standId = ''; for (let i = at; i >= 0 && !standId; i--) if (pages[i]?.who === 'c') standId = pages[i].charId;
   standId ||= chat.charIds[0] || '';
   const stand = S.get('chars', standId), sprite = standId && Sprites.has(standId) ? currentOf(chat as ChatX, msgs, standId).sprite : null;
-  const bg = chat.bg || bgFor(scene, sheet.place), when = [sheet.time, sheet.weather].filter(Boolean).join(' · ');
+  const bg = chat.bg || bgFor(scene, sheet.place), el = sheet.mins ? elapsedOf(sheet.mins) : null, when = [sheet.time || (el ? t('game.elapsed', { day: el.day, time: `${String(el.h).padStart(2, '0')}:${String(el.m).padStart(2, '0')}` }) : ''), sheet.weather].filter(Boolean).join(' · ');
   const hpLow = sheet.hp <= sheet.hpMax / 4, lastAi = lastMsg?.role === 'assistant';
-  const Tool = ({ d, label, onClick }: { d: GlyphName; label: string; onClick(): void }) => <button type="button" title={label} aria-label={label} onClick={onClick}><Glyph name={d} /></button>;
   let body: ReactNode;
   if (!page) body = <p className="gs-text gs-faint">{busy ? '' : t('game.stage.empty')}</p>;
   else if (page.who === 'e') body = <div className="gs-event" key={page.key}><GameCard m={page.msg} /></div>;
@@ -151,6 +157,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
         <span className="gs-meter"><i style={{ width: `${sheet.hp / sheet.hpMax * 100}%` }} className={hpLow ? 'is-low' : ''} /></span>
       </button>
       <div className="gs-stats"><span title={t('game.fate.hint')}><small>{t('game.fate')}</small>{sheet.fate}</span><span><small>LV</small>{sheet.level}</span><span><small>{t('game.gold')}</small>{sheet.gold}</span></div>
+      {sheet.meters.map(m => <div key={m.name} className="gs-clock gs-mbar"><small>{m.name}</small><span className="gs-meter"><i style={{ width: `${m.v / m.max * 100}%` }} /></span><em>{m.v}/{m.max}</em></div>)}
       {sheet.clocks.map(c => <div key={c.name} className={`gs-clock${c.v >= c.max ? ' is-full' : ''}`}><ClockDial v={c.v} max={c.max} /><small>{c.name}</small><em>{c.v}/{c.max}</em></div>)}
       {sheet.party.length ? <div className="gs-party">{sheet.party.map(n => { const c = S.chars.find(x => x.name.toLowerCase() === n.toLowerCase()); return <span key={n} title={n} style={c?.avatar ? { backgroundImage: `url("${c.avatar}")` } : undefined}>{c?.avatar ? '' : n.slice(0, 1)}</span>; })}</div> : null}
     </aside>
@@ -182,9 +189,10 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
       {canAct ? <div className="gs-acts">
         {fate ? <div className="gs-fate"><button type="button" className="gs-ask" onClick={() => void settleFate(chat, true)}><b>{t('game.fate.reroll')}</b><small>{t('game.fate.left', { n: sheet.fate })}</small></button><button type="button" className="gs-plain" onClick={() => void settleFate(chat, false)}>{t('game.fate.accept')}</button></div> : null}
         {ask ? <button type="button" className="gs-ask" onClick={() => resolveAsk(chat, ask)}><b>{askLabel(ask)}</b>{'why' in ask && ask.why ? <small>{ask.why}</small> : 'stake' in ask && ask.stake ? <small>{ask.stake}</small> : null}</button> : null}
-        {picks.length ? <ol className="gs-picks">{picks.map((x, i) => <li key={i}><button type="button" onClick={() => send(x)}><small>{['I', 'II', 'III', 'IV', 'V'][i]}</small>{x}</button></li>)}</ol> : null}
+        {picks.length ? <ol className="gs-picks">{picks.map((x, i) => <li key={i}><button type="button" onClick={() => send(x, true)}><small>{['I', 'II', 'III', 'IV', 'V'][i]}</small>{x}</button></li>)}</ol> : null}
+        {!ask && !fate ? <div className="gs-whom">{([['', 'act'], ...(sheet.party.length ? [['party', 'party']] : []), ['ooc', 'ooc']] as ['' | 'party' | 'ooc', string][]).map(([k, n]) => <button key={n} type="button" className={toWhom === k ? 'on' : ''} onClick={() => setToWhom(k)}>{t('game.whom.' + n)}</button>)}</div> : null}
         {!ask && !fate ? <div className="gs-write">
-          <textarea ref={input} rows={1} value={draft} placeholder={t('game.stage.placeholder')} onChange={e => { setDraft(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 132) + 'px'; }}
+          <textarea ref={input} rows={1} value={draft} placeholder={t(toWhom === 'ooc' ? 'game.whom.oocPh' : toWhom === 'party' ? 'game.whom.partyPh' : 'game.stage.placeholder')} onChange={e => { setDraft(e.target.value); e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 132) + 'px'; }}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} />
           <button type="button" className="gs-send" title={t('vn.send')} aria-label={t('vn.send')} disabled={!draft.trim()} onClick={() => send()}><Glyph name="send" size={18} /></button>
         </div> : null}

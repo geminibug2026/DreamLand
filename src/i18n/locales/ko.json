@@ -7243,5 +7243,20 @@
   "game.fight.log.slam": "{name}의 일격이 떨어졌다! 피해 {n}.",
   "game.fight.log.slamMiss": "{name}의 일격이 빈 땅을 내리쳤다.",
   "game.loot.potion": "회복 물약",
-  "game.loot.fate": "운명 점 +1"
+  "game.loot.fate": "운명 점 +1",
+  "game.meters": "수치",
+  "game.docs": "읽을거리",
+  "game.memo": "내 메모",
+  "game.memoPh": "기억해 둘 것을 적어 두세요. 진행자에게는 보내지 않습니다.",
+  "game.journal.doc": "문서",
+  "game.setup.secret": "진행자만 아는 것 (선택)",
+  "game.setup.secretPh": "예: 길잡이 노인이 사실은 흑막이다. 셋째 날 밤에 정체가 드러난다.",
+  "game.setup.secretHint": "반전이나 숨은 줄거리를 적어 두면 진행자가 그것을 향해 이야기를 끌고 갑니다. 게임 화면에는 나오지 않습니다.",
+  "game.session.replay": "다시 보기",
+  "game.elapsed": "{day}일째 {time}",
+  "game.whom.act": "행동",
+  "game.whom.party": "동료에게",
+  "game.whom.ooc": "진행자에게",
+  "game.whom.oocPh": "이야기 밖에서 진행자에게 할 말",
+  "game.whom.partyPh": "동료들에게 할 말"
 }

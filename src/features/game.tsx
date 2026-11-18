@@ -48,6 +48,8 @@ function setup() {
     }
     redrawGame();
     // 삽화: 새 장소에 도착했거나, 전투 결과를 이어받은 답변만 그린다 (답변마다 그리지 않는다)
+    // 새 장소에 닿으면 체크포인트를 남긴다 (그 장면으로 돌아오기 쉽게)
+    { const place = r.fx.find(f => f.k === 'place'); if (place && place.k === 'place' && here()?.id === chat.id) void import('../flow/logic').then(f => f.addCheckpoint(msg, place.name)).catch(() => { }); }
     if (here()?.id === chat.id) { const msgs = chatApi.current().msgs, before = msgs[msgs.indexOf(msg) - 1] as (Msg & { gm?: { kind?: string } }) | undefined; if (r.fx.some(f => f.k === 'place') || before?.gm?.kind === 'fight') void drawFor(chat, msg); }
   });
   for (const ev of ['generate:end', 'message:deleted', 'message:swiped', 'message:edited', 'message:sent', 'chat:open']) on(ev, redrawGame);
