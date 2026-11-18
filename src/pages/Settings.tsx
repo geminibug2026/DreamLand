@@ -8,6 +8,7 @@ import { DataFolderCard } from '../datafolder/Panel';
 import { go } from '../lib/router';
 import { errMsg } from '../editors/refresh';
 import { S } from '../lib/core';
+import { searchCfg } from '../lib/websearch';
 import * as theme from '../lib/theme';
 import * as engine from '../lib/engine';
 import * as core from '../lib/core';
@@ -41,6 +42,7 @@ function SettingsPage() {
   useLang();
   const { Vault, Secrets, DB, download, pickFiles } = core, st = S.settings, F = adv.AF();
   (st as { termLog?: string }).termLog ||= 'full';
+  const sc = searchCfg();
   if (F.reasoning && F.reasoning.show === undefined) F.reasoning.show = true;   // 생각 과정: 기본은 보임
   const refresh = useBump(), timer = useRef(0);
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -65,6 +67,12 @@ function SettingsPage() {
       { k: 'modes.auto', label: t('settings.chat.auto'), type: 'check' }, { k: 'modes.autoMinutes', label: t('settings.chat.autoMinutes'), type: 'num', min: 1, half: true },
       { k: 'autoScroll', label: t('settings.chat.autoScroll'), type: 'check' }]} onChange={apply} />
       <p className="hint">{t('settings.chat.lookBefore')}<a href="#" onClick={e => { e.preventDefault(); go('themes'); }}>{t('settings.chat.lookLink')}</a>{t('settings.chat.lookAfter')}</p></div>
+    <div className="card"><Form obj={st} defs={[{ section: t('websearch.section') },
+      { k: 'search.mode', label: t('websearch.mode'), type: 'select', half: true, opts: [['off', t('websearch.mode.off')], ['auto', t('websearch.mode.auto')]] },
+      { k: 'search.provider', label: t('websearch.provider'), type: 'select', half: true, opts: [['ddg', 'DuckDuckGo'], ['wiki', t('websearch.provider.wiki')], ['searxng', 'SearXNG']] },
+      sc.provider === 'searxng' && { k: 'search.url', label: t('websearch.url'), type: 'text', ph: 'http://127.0.0.1:8080' },
+      { k: 'search.count', label: t('websearch.count'), type: 'num', min: 1, max: 10, half: true }]} onChange={() => { apply(); refresh(); }} />
+      <p className="hint">{t('websearch.hint')}</p></div>
     <div className="card"><Form obj={st} defs={[{ section: t('settings.input.section') },
       { el: <label className="field"><span className="field-label">{t('settings.input.enterSend')}</span>
         <select className="inp" defaultValue={st.enterSend === 'auto' ? 'auto' : st.enterSend ? 'on' : 'off'} onChange={e => { const v = e.target.value; S.set({ enterSend: v === 'auto' ? 'auto' : v === 'on' }); }}>

@@ -6897,5 +6897,21 @@
   "settings.term.brief": "요약 (모델 · 설정 · 메시지 목록 · 결과)",
   "settings.term.full": "요청 · 응답 전체 (실리태번처럼)",
   "settings.term.hint.app": "아이폰 앱에서는 쓰지 않는 설정입니다. (PC 에서 서버를 켰을 때 그 창에 기록을 남기는 기능)",
-  "settings.term.hint": "모델을 부를 때마다 서버를 켠 터미널에 기록을 남깁니다. 전체는 실리태번처럼 업체에 실제로 보낸 요청(메시지 · 설정)과 받은 응답을 그대로 펼쳐 찍고, 요약은 연결 · 모델 · 설정, 메시지마다 한 줄, 걸린 시간 · 토큰 · 오류만 보여 줍니다. API 키는 찍지 않습니다. 업데이트한 뒤에는 서버를 한 번 다시 켜야 새 형식으로 나옵니다."
+  "settings.term.hint": "모델을 부를 때마다 서버를 켠 터미널에 기록을 남깁니다. 전체는 실리태번처럼 업체에 실제로 보낸 요청(메시지 · 설정)과 받은 응답을 그대로 펼쳐 찍고, 요약은 연결 · 모델 · 설정, 메시지마다 한 줄, 걸린 시간 · 토큰 · 오류만 보여 줍니다. API 키는 찍지 않습니다. 업데이트한 뒤에는 서버를 한 번 다시 켜야 새 형식으로 나옵니다.",
+  "websearch.section": "웹 검색",
+  "websearch.mode": "자동 검색",
+  "websearch.mode.off": "끔 (직접 켤 때만)",
+  "websearch.mode.auto": "AI가 필요할 때 알아서",
+  "websearch.provider": "검색하는 곳",
+  "websearch.provider.wiki": "위키백과",
+  "websearch.url": "SearXNG 주소",
+  "websearch.count": "가져올 결과 수",
+  "websearch.hint": "답장 전에 인터넷에서 찾아본 내용을 AI에게 함께 알려 줍니다. 한 번만 쓰려면 입력창의 + 메뉴에서 「이번 답은 웹 검색」을 누르세요. 「AI가 필요할 때 알아서」는 답장마다 찾아볼지 묻는 짧은 요청이 한 번 더 나갑니다. 검색어는 고른 검색 사이트로 전송됩니다.",
+  "websearch.once.on": "이번 답은 웹 검색",
+  "websearch.once.off": "웹 검색 취소",
+  "websearch.once.armed": "다음 메시지를 보내면 먼저 웹에서 찾아봅니다.",
+  "websearch.once.cancelled": "웹 검색을 취소했습니다.",
+  "websearch.found": "웹 검색: \"{query}\" · 결과 {count}개",
+  "websearch.none": "웹 검색: \"{query}\" 의 결과가 없습니다.",
+  "websearch.failed": "웹 검색을 하지 못했습니다: {error}"
 }
