@@ -7029,7 +7029,7 @@
   "game.num.guess": "맞히기",
   "game.num.answer": "정답: {n}",
   "game.fight.title": "전투 — {name}",
-  "game.fight.hint": "색칠된 칸을 눌러 움직이고(3칸까지), 적을 눌러 공격합니다. 붙어 있으면 칼, 떨어져 있으면 사격 — 바위는 길과 시야를 막습니다.",
+  "game.fight.hint": "공격 단추를 누르거나 적을 직접 눌러 공격합니다. 색칠된 칸을 누르면 움직입니다(3칸까지). 붙어 있으면 칼, 떨어져 있으면 사격 — 바위는 길과 시야를 막습니다.",
   "game.fight.guard": "막기",
   "game.fight.noPotion": "물약 없음",
   "game.fight.flee": "도망",
@@ -7364,5 +7364,10 @@
   "game.chess.gave": "{name}의 킹에 체크!",
   "game.chess.mate": "체크메이트",
   "game.chess.stale": "스테일메이트 — 둘 곳이 없어 비겼습니다.",
-  "game.chess.draw": "수가 너무 길어져 비겼습니다."
+  "game.chess.draw": "수가 너무 길어져 비겼습니다.",
+  "game.fight.attack": "공격 — {name}",
+  "game.fight.approach": "다가가기 (닿는 적이 없음)",
+  "game.fight.noTarget": "닿는 적이 없음 — 막거나 다른 행동을",
+  "game.fight.spOnce": "전투당 한 번",
+  "game.fight.spUsed": "이미 씀"
 }

@@ -192,6 +192,7 @@ export function readTags(text: string): { text: string; fx: Fx[]; ask: Ask | nul
   const opts = (v: string) => v.split(/\s*[|｜]\s*/).map(x => x.trim().replace(/^["“](.*)["”]$/, '$1')).filter(Boolean).slice(0, 5).map(x => x.slice(0, 120));
   const out = String(text || '').replace(TAG, (all, key: string, rest: string) => {
     const k = key.toLowerCase(), v = rest.trim();
+    if (k === 'hp' && /^\+?\s*(full|max|all|전부|완전|가득|全|满)/i.test(v.trim())) { fx.push({ k: 'hp', n: 9999 }); return ''; }
     if (k === 'hp' || k === 'gold' || k === 'maxhp' || k === 'xp') { const n = num(v); if (!isFinite(n) || !n) return ''; fx.push({ k: k === 'maxhp' ? 'hpmax' : k, n: clampN(n, -9999, 9999) }); return ''; }
     if (k === 'item') {
       const m = v.match(/^([+-−–])\s*(.+?)(?:\s*[x×*]\s*(\d+))?$/); if (!m) return all;
@@ -295,6 +296,7 @@ Describe the scene, offer real choices with consequences, and let {{user}} decid
 ${RULE_TEXT[ruleOf(g)].stats}${g.secret?.trim() ? `\nFor your eyes only — never state these outright; use them to steer events and to foreshadow:\n${g.secret.trim().slice(0, 3000)}` : ''}${g.sessions?.length ? `\nThe story so far (earlier sessions, oldest first):\n${g.sessions.map((x, i) => `Session ${i + 1}: ${x.text}`).join('\n')}` : ''}
 When something changes, write the matching tag on its own line at the end of the reply. The app applies it to {{user}}'s sheet and hides it:
 [hp -3]  [hp +5]  [gold +10]  [gold -4]  [xp +20] (for clever play or a finished quest; 100 XP is a level)  [item +Torch]  [item +Arrow x5]  [item -Rusty key]  [quest +Find the missing bell]  [quest done: Find the missing bell]
+HP changes only through these tags, so never skip them: whenever {{user}} is hurt in the story write [hp -N], and whenever {{user}} recovers — resting, sleeping, eating a proper meal, being bandaged or treated, healing magic, a potion, a healer — write [hp +N] in that same reply (a short rest about a quarter of max HP, treatment or magic about half, a full night's sleep [hp full]).
 [place Old Mill] when {{user}} arrives somewhere (keep place names short and reuse the exact same name later).  [path Old Mill - River Dock] to reveal a route to a place {{user}} has heard of or can see. The app draws the map from these.
 [rep Mira +10] / [rep Mira -15] when someone's opinion of {{user}} shifts (-100 enemy … +100 devoted).  [party +Mira] / [party -Mira] when someone joins or leaves as a companion (they fight alongside {{user}}; at most three).  [time Day 2, dusk]  [weather Heavy rain]  [backdrop forest] to change the backdrop when the setting changes — one of: ${SCENES.join(', ')}.  [clock Guards alerted 2/6] for a danger or countdown that fills step by step ([clock Guards alerted clear] to drop it).
 [fx shake] for an impact or explosion, [fx flash] for lightning or magic, [fx dark] when the lights go out, [fx letterbox] for a dramatic reveal — at most one, only for big moments.  [fate +1] rewards daring or selfless play ({{user}} spends fate points to re-roll a failed check).

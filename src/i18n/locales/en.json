@@ -7109,7 +7109,7 @@
   "game.num.guess": "Guess",
   "game.num.answer": "Answer: {n}",
   "game.fight.title": "Fight — {name}",
-  "game.fight.hint": "Tap a tinted square to move (up to 3), tap an enemy to attack: melee when adjacent, a shot from a distance. Rocks block movement and sight.",
+  "game.fight.hint": "Press Attack or tap an enemy to strike. Tap a tinted square to move (up to 3). Adjacent is a blade, farther is a shot — rocks block paths and sight.",
   "game.fight.guard": "Guard",
   "game.fight.noPotion": "No potion",
   "game.fight.flee": "Flee",
@@ -7444,5 +7444,10 @@
   "game.chess.gave": "Check on {name}'s king!",
   "game.chess.mate": "Checkmate",
   "game.chess.stale": "Stalemate — no legal move, so it's a draw.",
-  "game.chess.draw": "Drawn — the game ran too long."
+  "game.chess.draw": "Drawn — the game ran too long.",
+  "game.fight.attack": "Attack — {name}",
+  "game.fight.approach": "Close in (no one in reach)",
+  "game.fight.noTarget": "No one in reach — guard or do something else",
+  "game.fight.spOnce": "once per fight",
+  "game.fight.spUsed": "used"
 }

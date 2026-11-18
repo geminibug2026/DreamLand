@@ -7029,7 +7029,7 @@
   "game.num.guess": "猜",
   "game.num.answer": "答案：{n}",
   "game.fight.title": "战斗 — {name}",
-  "game.fight.hint": "点击着色的格子移动（最多 3 格），点击敌人进行攻击：相邻为近战，远处为射击。岩石会阻挡移动和视线。",
+  "game.fight.hint": "按“攻击”或直接点敌人进行攻击。点着色的格子移动(最多3格)。相邻用刀，远处射击——岩石会挡住道路和视线。",
   "game.fight.guard": "防御",
   "game.fight.noPotion": "没有药水",
   "game.fight.flee": "逃跑",
@@ -7364,5 +7364,10 @@
   "game.chess.gave": "将了 {name} 的王！",
   "game.chess.mate": "将死",
   "game.chess.stale": "逼和——无子可动，和棋。",
-  "game.chess.draw": "回合过多，和棋。"
+  "game.chess.draw": "回合过多，和棋。",
+  "game.fight.attack": "攻击 — {name}",
+  "game.fight.approach": "靠近 (够不到敌人)",
+  "game.fight.noTarget": "够不到敌人 — 请防御或采取其他行动",
+  "game.fight.spOnce": "每场一次",
+  "game.fight.spUsed": "已使用"
 }
