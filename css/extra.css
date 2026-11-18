@@ -669,3 +669,38 @@ html.gs-on .modal-wrap:has(.gm) .gm-cell.is-foe b { color: var(--gs-paper); }
 .gs-bar { min-height: 38px; padding-top: 10px; }
 .gs-rail .gs-mini { width: 38px; height: 38px; } .gs-rail { min-height: 38px; }
 .gm-map svg { display: block; margin: 0 auto; }
+/* 넓은 화면: 게임 화면의 글 · 숫자 · 인물 · 창을 키운다 */
+@media (min-width: 900px) {
+  .gs-top { padding: 30px 44px 0; } .gs-vitals { padding: 22px 44px 0; gap: 12px 26px; }
+  .gs-eyebrow { font-size: 12px; } .gs-loc h1 { font-size: clamp(1.9rem, 2.600vw, 2.7rem); } .gs-loc h1.is-long { font-size: clamp(1.6rem, 2.100vw, 2.2rem); } .gs-loc h1.is-xlong { font-size: clamp(1.3rem, 1.700vw, 1.8rem); }
+  .gs-loc h1::after { width: 56px; margin-top: 13px; }
+  .gs-tools { gap: 6px; } .gs-tools button { width: 46px; height: 46px; } .gs-tools button svg { width: 24px; height: 24px; }
+  .gs-hp b { font-size: 1.4rem; } .gs-meter { width: 210px; height: 6px; } .gs-stats { gap: 22px; font-size: 1.2rem; } .gs-stats small, .gs-clock small { font-size: 11.500px; }
+  .gs-clock svg { width: 28px; height: 28px; } .gs-clock em { font-size: 13px; } .gs-party span { width: 36px; height: 36px; font-size: 14px; }
+  .gs-figure { height: clamp(260px, calc(100% - var(--gs-head, 150px) - 34vh), 640px); } .gs-arch { max-width: 44%; }
+  .gs-panel { width: min(1080px, calc(100% - 96px)); padding: 22px 28px 34px; }
+  .gs-name { font-size: .98rem; gap: 12px; } .gs-name i { width: 7px; height: 7px; }
+  .gs-text { font-size: clamp(1.22rem, 1.350vw, 1.42rem); line-height: 1.9; } .gs-scroll { height: clamp(8.200em, 20vh, 12.500em); }
+  .gs-ctl { gap: 10px; } .gs-ctl .gs-mini { width: 38px; height: 38px; } .gs-ctl .gs-mini svg { width: 19px; height: 19px; } .gs-auto { height: 36px; padding: 0 14px; font-size: 11px; border-radius: 18px; }
+  .gs-rail { min-height: 46px; } .gs-rail .gs-mini { width: 44px; height: 44px; } .gs-rail .gs-mini svg { width: 21px; height: 21px; } .gs-count { font-size: 13px; } .gs-next { font-size: 12.500px; }
+  .gs-ask { padding: 16px 22px; } .gs-ask b { font-size: 1.12rem; } .gs-ask small { font-size: .95rem; }
+  .gs-picks button { padding: 13px 4px; font-size: 1.16rem; } .gs-picks small { font-size: .82rem; width: 2em; }
+  .gs-write textarea { font-size: 1.14rem; min-height: 48px; padding: 12px 0; } .gs-send { width: 48px; height: 48px; } .gs-send svg { width: 23px; height: 23px; }
+  .gs-retry { padding: 9px 16px; font-size: .95rem; } .gs-plain { font-size: 1.02rem; padding: 0 24px; }
+  .gs-event .gm-card-rec { padding: 18px 22px; font-size: 1.1em; } .gs-event .gm-d20 { transform: scale(1.2); transform-origin: left center; margin-right: 12px; }
+  .gs-rule svg { width: 56px; height: 15px; }
+  /* 이 화면 위의 게임 창도 함께 */
+  html.gs-on .modal-wrap:has(.gm) .modal { width: min(640px, 100%); font-size: 1.06em; } html.gs-on .modal-wrap:has(.gm) .modal-head h2 { font-size: 1.4rem; }
+  html.gs-on .modal-wrap:has(.gm) .modal-body { padding: 12px 30px 28px; } html.gs-on .modal-wrap:has(.gm) .modal-head { padding: 22px 20px 8px 30px; }
+  html.gs-on .gm-board { width: min(100%, 520px); } html.gs-on .gm-go { width: min(100%, 460px); } html.gs-on .gm-grid { grid-template-columns: repeat(3, 92px); } html.gs-on .gm-grid button { width: 92px; height: 92px; font-size: 2.5rem; }
+  html.gs-on .gm-card { width: 56px; height: 80px; font-size: 1.15em; } html.gs-on .gm-map svg { max-height: 60vh; }
+}
+@media (min-width: 1500px) { .gs-panel { width: min(1180px, calc(100% - 160px)); } .gs-text { font-size: 1.5rem; } .gs-loc h1 { font-size: 3rem; } .gs-figure { height: clamp(300px, calc(100% - var(--gs-head, 150px) - 32vh), 720px); } }
+@media (min-width: 900px) {
+  /* 상태 표시는 왼쪽에 세로로 — 가운데의 인물과 겹치지 않으므로 인물은 머리글 높이와 상관없이 위에서 시작한다 */
+  .gs-vitals { flex-direction: column; align-items: flex-start; max-width: 300px; }
+  .gs-figure { top: 64px; height: clamp(240px, calc(100% - 64px - 470px), 640px); } .gs-arch { max-width: none; }
+  .gs-picks { flex-direction: row; flex-wrap: wrap; column-gap: 28px; } .gs-picks li { flex: 1 1 calc(50% - 14px); min-width: 0; border-top: 1px solid var(--gs-line); } .gs-picks li + li { border-top: 1px solid var(--gs-line); }
+  .gs-scroll { height: clamp(7em, 17vh, 10.500em); }
+}
+@media (min-width: 900px) and (min-height: 1000px) { .gs-figure { height: clamp(300px, calc(100% - 64px - 500px), 720px); } }
