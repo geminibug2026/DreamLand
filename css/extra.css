@@ -451,3 +451,13 @@
 .gm-shake { animation: gm-shake .26s ease-in-out infinite; } @keyframes gm-shake { 50% { transform: translateY(-8px); } }
 .gm-pips.is-spin i { animation: gm-shake .14s linear infinite; }
 @media (prefers-reduced-motion: reduce) { .gm-pop, .gm-shake, .gm-pips.is-spin i { animation: none; } }
+/* 규칙서 · 지형 · 성장 */
+.gm-die.is-hit { background: var(--ink); color: var(--bg); } .gm-die.is-off { opacity: .35; text-decoration: line-through; } .gm-roll { flex-wrap: wrap; }
+.gm-xp { font: 500 .78em var(--display); color: var(--dim); white-space: nowrap; }
+.gm-cell.is-high { box-shadow: inset 0 0 0 2px var(--ink-line), inset 0 0 0 4px var(--surface), inset 0 0 0 5px var(--ink-line); }
+.gm-cell.is-bush { background-image: radial-gradient(circle, var(--ink-line) 1.2px, transparent 1.6px); background-size: 7px 7px; }
+.gm-cell.is-bush.is-go { background-color: color-mix(in srgb, var(--accent) 16%, transparent); }
+.gm-cell.is-ranged b { border-radius: 50% 50% 0 0; }
+.gm-legend { display: flex; flex-direction: column; gap: 3px; margin: 0; font-size: .78em; color: var(--dim); }
+.gm-legend span { display: flex; align-items: center; gap: 7px; } .gm-legend i { width: 14px; height: 14px; flex: none; border: 1px solid var(--ink-line); }
+.gm-legend .is-rock { background: repeating-linear-gradient(45deg, var(--ink-line) 0 2px, transparent 2px 6px); } .gm-legend .is-high { box-shadow: inset 0 0 0 2px var(--surface), inset 0 0 0 3px var(--ink-line); } .gm-legend .is-bush { background: radial-gradient(circle, var(--ink-line) 1.2px, transparent 1.6px) 0 0 / 5px 5px; }
