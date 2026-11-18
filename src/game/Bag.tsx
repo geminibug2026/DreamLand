@@ -5,8 +5,8 @@ import { ItemGlyph } from './Art';
 import { SHAPE, SLOTS, SLOT_OF, bonusOf, fits, gearOf, tierOf, itemKind, packBag, posOf, type BagCfg, type Slot } from './bag';
 import type { GameCfg, Sheet } from './state';
 
-export function Bag({ g, sheet, onSave, onDrop, onAdd }: { g: GameCfg; sheet: Sheet; onSave(): void; onDrop(name: string): void; onAdd(): void }) {
-  const [sel, setSel] = useState(''), [, draw] = useState(0);
+export function Bag({ g, sheet, onSave, onDrop, onUndo, onAdd }: { g: GameCfg; sheet: Sheet; onSave(): void; onDrop(name: string, n: number): void; /** 방금 뺀 것을 되돌린다 */ onUndo(name: string, n: number): void; onAdd(): void }) {
+  const [sel, setSel] = useState(''), [, draw] = useState(0), [gone, setGone] = useState<{ name: string; n: number; at?: { x: number; y: number; r?: boolean }; slot?: Slot } | null>(null);
   const bag = (g.bag ||= {}) as BagCfg, p = packBag(bag, sheet.items, sheet.level), gear = gearOf(p);
   const low = (s: string) => s.trim().toLowerCase(), same = (a: string, b: string) => low(a) === low(b);
   const item = sel ? sheet.items.find(i => same(i.name, sel)) : null, kind = item ? itemKind(item.name) : null;
@@ -29,6 +29,13 @@ export function Bag({ g, sheet, onSave, onDrop, onAdd }: { g: GameCfg; sheet: Sh
   const takeOff = (s: Slot) => commit(b => { delete b.eq![s]; });
   /** 걸쳤을 때의 수치를 글로 (등급이 반영된 실제 값) */
   const bonus = (k: ReturnType<typeof itemKind>, name = '') => { if (!SLOT_OF[k]) return ''; const b = bonusOf(name, k); return t('game.bag.whenWorn', { what: [b.dmg ? t('game.bag.g.dmg', { n: b.dmg }) : '', b.aim ? t('game.bag.g.aim', { n: b.aim }) : '', b.soak ? t('game.bag.g.soak', { n: b.soak }) : '', b.def ? t('game.bag.g.def', { n: b.def }) : ''].filter(Boolean).join(', ') }); };
+  /** 빼기: 하나 또는 전부. 놓여 있던 자리와 걸친 자리를 기억해 두었다가 되돌릴 때 그대로 돌려놓는다 */
+  const drop = (all: boolean) => {
+    if (!item) return; const n = all ? item.n : 1, prev = gone && same(gone.name, item.name) ? gone : null;
+    setGone({ name: item.name, n: n + (prev?.n || 0), at: here ? { x: here.x, y: here.y, r: here.r } : prev?.at, slot: wornIn || prev?.slot });
+    onDrop(item.name, n); if (item.n - n <= 0) setSel('');
+  };
+  const undo = () => { if (!gone) return; const g0 = gone; setGone(null); onUndo(g0.name, g0.n); commit(b => { if (g0.slot) b.eq![g0.slot] = g0.name; else if (g0.at) b.pos![low(g0.name)] = g0.at; }); setSel(g0.name); };
   const cells = [];
   for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) { const ok = !!item && !wornIn && canDrop(x, y); cells.push(<button key={`${x},${y}`} type="button" className={`gm-bcell${ok ? ' is-ok' : ''}`} style={{ gridColumn: x + 1, gridRow: y + 1 }} disabled={!ok} aria-label={`${x + 1},${y + 1}`} onClick={() => moveTo(x, y)} />); }
   return <div className="gm-bag">
@@ -47,10 +54,12 @@ export function Bag({ g, sheet, onSave, onDrop, onAdd }: { g: GameCfg; sheet: Sh
       <div className="gm-pick-acts">
         {wornIn ? <button type="button" className="btn sm" onClick={() => takeOff(wornIn)}>{t('game.bag.off')}</button> : slot ? <button type="button" className="btn sm primary" onClick={wear}>{t('game.bag.wear')}</button> : null}
         {here && SHAPE[kind][0] !== SHAPE[kind][1] ? <button type="button" className="btn sm" onClick={rotate}>{t('game.bag.rotate')}</button> : null}
-        <button type="button" className="btn sm ghost" onClick={() => { onDrop(item.name); if (item.n <= 1) setSel(''); }}>{t('game.sheet.drop')}</button>
+        <button type="button" className="btn sm ghost" onClick={() => drop(false)}>{t('game.sheet.drop')}</button>
+        {item.n > 1 ? <button type="button" className="btn sm ghost" onClick={() => drop(true)}>{t('game.bag.dropAll', { n: item.n })}</button> : null}
       </div>
       {!wornIn ? <small className="hint">{t('game.bag.moveHint')}</small> : null}
     </div> : <p className="hint">{sheet.items.length ? t('game.bag.hint') : t('game.items.none')}</p>}
+    {gone ? <p className="gm-undo"><span>{t('game.bag.dropped', { item: gone.n > 1 ? `${gone.name} ×${gone.n}` : gone.name })}</span><button type="button" className="btn sm" onClick={undo}>{t('game.bag.undo')}</button></p> : null}
     <button type="button" className="gm-link" onClick={onAdd}>{t('game.sheet.addItem')}</button>
   </div>;
 }

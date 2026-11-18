@@ -7505,5 +7505,8 @@
   "game.loot.badge": "낡은 휘장",
   "game.loot.whet": "숫돌",
   "game.loot.flask": "독한 술이 든 휴대용 술병",
-  "game.loot.lockpick": "자물쇠 따개"
+  "game.loot.lockpick": "자물쇠 따개",
+  "game.bag.dropAll": "전부 빼기 (×{n})",
+  "game.bag.dropped": "{item} — 뺐습니다.",
+  "game.bag.undo": "되돌리기"
 }

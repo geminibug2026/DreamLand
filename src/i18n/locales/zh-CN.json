@@ -7505,5 +7505,8 @@
   "game.loot.badge": "旧徽章",
   "game.loot.whet": "磨刀石",
   "game.loot.flask": "装着烈酒的随身酒壶",
-  "game.loot.lockpick": "开锁工具"
+  "game.loot.lockpick": "开锁工具",
+  "game.bag.dropAll": "全部移除 (×{n})",
+  "game.bag.dropped": "{item} — 已移除。",
+  "game.bag.undo": "撤销"
 }
