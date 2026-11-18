@@ -10,7 +10,9 @@ import { bump, cur, useCh } from '../chat/store';
 import { chatApi, generate, running } from '../chat/actions';
 import { Combat } from './Combat';
 import { Mini } from './Minis';
-import { MINIS, PRESETS, STATS, gameOf, newGame, pendingAsk, recText, rollCheck, sheetOf, type Ask, type Fx, type GameCfg, type GameChat, type GameMsg, type GameRec, type MiniId, type StatKey } from './state';
+import { quickCall } from '../lib/engine';
+import { msgText } from '../lib/core';
+import { MINIS, PRESETS, SESSION_PROMPT, STATS, gameOf, journalOf, layoutMap, newGame, pendingAsk, recText, rollCheck, sheetOf, tallyOf, type Ask, type Fx, type GameCfg, type GameChat, type GameMsg, type GameRec, type MiniId, type Sheet as SheetData, type StatKey } from './state';
 
 const foeName = (chat: Chat) => S.get('chars', chat.charIds[0])?.name || t('game.foe');
 const userName = (chat: Chat) => S.persona(chat).name || 'User';
@@ -29,12 +31,14 @@ async function record(chat: Chat, rec: GameRec, reply = true) {
 
 // ── 미니게임 ──
 export function playMini(chat: Chat, game: MiniId, stake = '') {
-  const box = openModal({ title: t('game.mini.' + game), spec: 'div.gm' }, close => <Mini game={game} foe={foeName(chat)} onDone={r => { close(); void record(chat, { kind: 'play', game, outcome: r.outcome, score: r.score, ...(stake ? { stake } : {}) }); }} />);
+  const g = gameOf(chat);
+  const box = openModal({ title: t('game.mini.' + game), spec: 'div.gm' }, close => <Mini game={game} foe={foeName(chat)} gold={g ? sheetOf(g, cur.chat === chat ? cur.msgs : []).gold : 0} onDone={r => { close(); void record(chat, { kind: 'play', game, outcome: r.outcome, score: r.score, ...(stake ? { stake } : {}), ...(r.fx ? { fx: r.fx } : {}) }); }} />);
   return box;
 }
 export function openMiniPicker(chat: Chat) {
   openModal({ title: t('game.mini.title'), spec: 'div.gm' }, close => <div className="gm-pick">
     <p className="hint">{t('game.mini.pickHint', { name: foeName(chat) })}</p>
+    {(() => { const n = tallyOf(cur.chat === chat ? cur.msgs : []); return n.win + n.lose + n.draw ? <p className="gm-tally"><span className="eyebrow">{t('game.mini.tally')}</span><b>{t('game.mini.tallyLine', n)}</b></p> : null; })()}
     {MINIS.map(id => <button key={id} type="button" className="gm-pick-row" onClick={() => { close(); playMini(chat, id); }}><b>{t('game.mini.' + id)}</b><span>{t('game.mini.' + id + '.rule')}</span></button>)}
   </div>);
 }
@@ -44,8 +48,9 @@ export function resolveAsk(chat: Chat, ask: Ask) {
   const g = gameOf(chat); if (!g || running()) return;
   if (ask.k === 'check') { const r = rollCheck(g, ask.stat, ask.dc); return void record(chat, { kind: 'check', stat: ask.stat, dc: ask.dc, ...r, ...(ask.why ? { why: ask.why } : {}) }); }
   if (ask.k === 'play') return void playMini(chat, ask.game, ask.stake);
-  const sheet = sheetOf(g, cur.msgs);
-  openModal({ title: t('game.fight.title', { name: ask.name }), spec: 'div.gm' }, close => <Combat g={g} sheet={sheet} foe={ask} onDone={r => { close(); void record(chat, { kind: 'fight', name: ask.name, outcome: r.outcome, rounds: r.rounds, took: r.took, hp: r.hp, hpMax: sheet.hpMax, fx: r.fx }); }} />);
+  const sheet = sheetOf(g, cur.msgs), foes = ask.foes?.length ? ask.foes : [{ name: (ask as unknown as { name?: string }).name || t('game.foe'), hp: 12, atk: 3 }];
+  const names = [...new Set(foes.map(f => f.name.replace(/ \d+$/, '')))].join(', ');
+  openModal({ title: t('game.fight.title', { name: names }), spec: 'div.gm' }, close => <Combat g={g} sheet={sheet} foes={foes} onDone={r => { close(); void record(chat, { kind: 'fight', name: names, outcome: r.outcome, rounds: r.rounds, took: r.took, hp: r.hp, hpMax: sheet.hpMax, fx: r.fx }); }} />);
 }
 
 // ── 시작 · 설정 창 ──
@@ -89,17 +94,60 @@ export function openSetup(chat: Chat) { openModal({ title: t(gameOf(chat) ? 'gam
 
 // ── 시트 ──
 function adjust(chat: GameChat, fx: Fx) { const g = chat.game; if (!g) return; (g.adj ||= []).push(fx); saveChat(chat); }
+/** 지도: 간 곳은 실선, 들어만 본 곳은 점선. 이어진 곳을 누르면 그리로 간다고 입력창에 적는다 */
+function MapView({ s, onGo }: { s: SheetData; onGo(name: string): void }) {
+  const m = layoutMap(s); if (!m.nodes.length) return <p className="dim">{t('game.map.empty')}</p>;
+  const CW = 108, CH = 64, px = (n: { x: number; y: number }) => ({ x: n.x * CW + CW / 2, y: n.y * CH + CH / 2 });
+  const near = (name: string) => s.paths.some(([a, b]) => (a === s.place && b === name) || (b === s.place && a === name));
+  return <div className="gm-map"><svg viewBox={`0 0 ${m.w * CW} ${m.h * CH}`} style={{ width: `${Math.min(100, m.w * 34)}%`, minWidth: Math.min(m.w * CW, 300) }} role="img" aria-label={t('game.map.title')}>
+    {m.edges.map(([a, b], i) => { const p = px(a), q = px(b); return <line key={i} x1={p.x} y1={p.y} x2={q.x} y2={q.y} className={a.seen && b.seen ? '' : 'is-faint'} />; })}
+    {m.nodes.map(n => { const p = px(n), can = !n.here && near(n.name), label = n.name.length > 12 ? n.name.slice(0, 11) + '…' : n.name;
+      return <g key={n.name} className={`${n.here ? 'is-here' : ''}${n.seen ? '' : ' is-new'}${can ? ' is-can' : ''}`} onClick={() => { if (can) onGo(n.name); }}>
+        <title>{n.name}</title><rect x={p.x - 46} y={p.y - 15} width={92} height={30} /><text x={p.x} y={p.y + 4} textAnchor="middle">{label}</text></g>; })}
+  </svg><p className="hint">{t('game.map.hint')}</p></div>;
+}
+function Journal({ msgs }: { msgs: Msg[] }) {
+  const rows = journalOf(msgs); if (!rows.length) return <p className="dim">{t('game.journal.empty')}</p>;
+  return <ol className="gm-journal">{rows.map((r, i) => <li key={i} className={`is-${r.kind}`}><span className="eyebrow">{t('game.journal.' + r.kind)}</span>
+    <span>{r.kind === 'play' ? t('game.mini.' + r.text) : r.kind === 'session' ? t('game.journal.sessionN', { n: r.text }) : r.text || '—'}</span>{r.ok === undefined ? null : <em>{t(r.ok ? 'game.rec.ok' : 'game.rec.fail')}</em>}</li>)}</ol>;
+}
+/** 세션 마무리: 지금까지를 요약해 두고(요청 한 번), 지난 메시지는 프롬프트에서 뺀다. 시트 · 지도 · 일지는 그대로 이어진다 */
+async function endSession(chat: GameChat, trim: boolean) {
+  const g = chat.game; if (!g || cur.chat !== chat) return false;
+  const msgs = cur.msgs, from = Math.max(0, ...msgs.map((m, i) => (m as GameMsg).gm?.kind === 'session' ? i + 1 : 0));
+  const part = msgs.slice(from).filter(m => !m.hidden || true), lines = part.map(m => `${m.role === 'user' ? userName(chat) : m.role === 'assistant' ? (m.name || foeName(chat)) : 'Event'}: ${msgText(m)}`).join('\n').slice(-60000);
+  if (part.filter(m => m.role === 'assistant').length < 2) { toast(t('game.session.tooShort'), 'err'); return false; }
+  const text = (await quickCall(SESSION_PROMPT, lines, { maxTokens: 1200, lowThink: true })).trim(); if (!text) throw new Error('empty');
+  (g.sessions ||= []).push({ text, at: Date.now() });
+  if (trim) for (const m of part) m.hidden = true;
+  await S.save('chats', chat, true); await chatApi.save(); chatApi.redraw();
+  await record(chat, { kind: 'session', n: g.sessions.length, text }, false);
+  return true;
+}
+function SessionBox({ chat, onClose }: { chat: GameChat; onClose?: () => void }) {
+  const [busy, setBusy] = useState(false), [trim, setTrim] = useState(true), list = chat.game?.sessions || [];
+  const go = async () => { setBusy(true); try { if (await endSession(chat, trim)) { toast(t('game.session.done'), 'ok'); onClose?.(); } } catch (e) { toast(t('game.session.failed', { error: (e instanceof Error ? e.message : String(e)).slice(0, 120) }), 'err'); } finally { setBusy(false); } };
+  return <div className="gm-sec">
+    {list.length ? <ol className="gm-sessions">{list.map((x, i) => <li key={i}><span className="eyebrow">{t('game.journal.sessionN', { n: i + 1 })}</span><p>{x.text}</p></li>)}</ol> : null}
+    <p className="hint">{t('game.session.hint')}</p>
+    <label className="gm-check"><input type="checkbox" checked={trim} onChange={e => setTrim(e.target.checked)} />{t('game.session.trim')}</label>
+    <div className="gm-foot"><button type="button" className="btn primary" disabled={busy} onClick={() => void go()}>{busy ? t('game.session.busy') : t('game.session.end')}</button></div>
+  </div>;
+}
 export function Sheet({ chat, msgs, onClose }: { chat: Chat; msgs: Msg[]; onClose?: () => void }) {
-  useCh('game');
+  useCh('game'); const [tab, setTab] = useState<'sheet' | 'map' | 'journal' | 'session'>('sheet');
   const g = gameOf(chat); if (!g) return <><p className="dim">{t('game.sheet.off')}</p><button type="button" className="btn" onClick={() => openSetup(chat)}>{t('game.setup.title')}</button></>;
   const s = sheetOf(g, msgs), gc = chat as GameChat;
   const Step = ({ fx, label }: { fx: Fx; label: string }) => <button type="button" className="gm-step" aria-label={label} title={label} onClick={() => adjust(gc, fx)}>{'n' in fx && fx.n > 0 ? '+' : '−'}</button>;
   const addItem = async () => { const v = await promptBox(t('game.sheet.addItem'), ''); if (v?.trim()) adjust(gc, { k: 'item', name: v.trim().slice(0, 60), n: 1 }); };
-  return <div className="gm-sheet">
+  const tabs = <div className="gm-tabs">{(['sheet', 'map', 'journal', 'session'] as const).map(k => <button key={k} type="button" className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{t('game.tab.' + k)}</button>)}</div>;
+  if (tab === 'map') return <div className="gm-sheet">{tabs}<MapView s={s} onGo={name => { chatApi.insert(t('game.map.go', { place: name })); onClose?.(); }} /></div>;
+  if (tab === 'journal') return <div className="gm-sheet">{tabs}<Journal msgs={msgs} /></div>;
+  if (tab === 'session') return <div className="gm-sheet">{tabs}<SessionBox chat={gc} onClose={onClose} /></div>;
+  return <div className="gm-sheet">{tabs}
     <div className="gm-row"><span className="eyebrow">HP</span><b className="gm-n">{s.hp}<i>/{s.hpMax}</i></b><span className="gm-bar"><i style={{ width: `${s.hp / s.hpMax * 100}%` }} /></span><Step fx={{ k: 'hp', n: -1 }} label="HP −1" /><Step fx={{ k: 'hp', n: 1 }} label="HP +1" /></div>
     <div className="gm-row"><span className="eyebrow">{t('game.gold')}</span><b className="gm-n">{s.gold}</b><i className="gm-fill" /><Step fx={{ k: 'gold', n: -1 }} label={t('game.gold') + ' −1'} /><Step fx={{ k: 'gold', n: 1 }} label={t('game.gold') + ' +1'} /></div>
     <div className="gm-statline">{STATS.map(k => <span key={k}><small>{t('game.stat.' + k)}</small><b>{sign(g.stats[k])}</b></span>)}</div>
-    {s.place ? <div className="gm-sec"><span className="eyebrow">{t('game.place')}</span><p>{s.place}</p></div> : null}
     <div className="gm-sec"><span className="eyebrow">{t('game.items')}</span>
       {s.items.length ? <ul className="gm-items">{s.items.map(i => <li key={i.name}><span>{i.name}{i.n > 1 ? <em> ×{i.n}</em> : null}</span><button type="button" title={t('game.sheet.drop')} aria-label={t('game.sheet.drop')} onClick={() => adjust(gc, { k: 'item', name: i.name, n: -1 })}>−</button></li>)}</ul> : <p className="dim">{t('game.items.none')}</p>}
       <button type="button" className="gm-link" onClick={() => void addItem()}>{t('game.sheet.addItem')}</button></div>
@@ -121,7 +169,7 @@ export function GameBar() {
   useCh('game'); useCh('busy');
   const chat = cur.chat, g = gameOf(chat); if (!chat || !g) return null;
   const s = sheetOf(g, cur.msgs), ask = pendingAsk(cur.msgs), busy = running();
-  const label = !ask ? '' : ask.k === 'check' ? t('game.ask.check', { stat: t('game.stat.' + ask.stat), dc: ask.dc }) : ask.k === 'fight' ? t('game.ask.fight', { name: ask.name }) : t('game.ask.play', { game: t('game.mini.' + ask.game) });
+  const label = !ask ? '' : ask.k === 'check' ? t('game.ask.check', { stat: t('game.stat.' + ask.stat), dc: ask.dc }) : ask.k === 'fight' ? t('game.ask.fight', { name: [...new Set((ask.foes || []).map(f => f.name.replace(/ \d+$/, '')))].join(', ') }) : t('game.ask.play', { game: t('game.mini.' + ask.game) });
   const why = ask && (ask.k === 'check' ? ask.why : ask.k === 'play' ? ask.stake : '');
   return <div className="gm-strip">
     <button type="button" className="gm-status" title={t('game.sheet.title')} onClick={() => openSheet(chat)}>
@@ -135,6 +183,7 @@ export function GameBar() {
 export function GameCard({ m }: { m: Msg }) {
   const r = (m as GameMsg).gm; if (!r) return null;
   if (r.kind === 'start') return <div className="gm-card-rec is-start"><span className="eyebrow">game</span><b>{t('game.rec.start')}</b></div>;
+  if (r.kind === 'session') return <div className="gm-card-rec is-start"><span className="eyebrow">{t('game.journal.sessionN', { n: r.n })}</span><b>{t('game.rec.session')}</b><small>{r.text}</small></div>;
   if (r.kind === 'check') return <div className={`gm-card-rec is-${r.ok ? 'win' : 'lose'}`}>
     <span className="eyebrow">{t('game.rec.check', { stat: t('game.stat.' + r.stat) })} · DC {r.dc}</span>
     <div className="gm-roll"><i className="gm-die">{r.die}</i><span>{sign(r.mod)}</span><span>=</span><strong>{r.total}</strong><em>{t(r.crit === 'hit' ? 'game.rec.crit' : r.crit === 'miss' ? 'game.rec.fumble' : r.ok ? 'game.rec.ok' : 'game.rec.fail')}</em></div>
