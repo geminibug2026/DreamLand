@@ -72,6 +72,8 @@ export interface Chat {
   tracker: Record<string, string>; bg: string; mode: 'rp' | 'talk'; diary: DiaryEntry[]; diaryAt: number; dreams?: Dream[]; keepsakes?: Keepsake[]; letters?: Letter[]; promises?: PromiseRec[]; groupOrder: string; count: number; preview: string; createdAt: number; updatedAt: number;
   /** 그룹 자동 진행: 답이 끝나면 delay 초 뒤 다음 사람이 이어 말한다 (연속 max 번까지) */
   groupAuto?: { on?: boolean; delay?: number; max?: number };
+  /** 임시 채팅: 다른 방으로 가거나 앱을 다시 열면 지운다 ("남겨 두기"를 누르면 보통 방이 된다) */
+  temp?: boolean;
   pinned?: boolean; unread?: number; src?: string; muted?: string[]; folder?: string;
   scene?: { on: boolean; title?: string; place?: string; at?: number }; scenes?: number; parent?: { id: string; at: number };
   cast?: Record<string, Record<string, string>>; trackHide?: Record<string, boolean>; trackLock?: Record<string, boolean>; trackDiff?: Record<string, Diff>; castDiff?: Record<string, Diff>;

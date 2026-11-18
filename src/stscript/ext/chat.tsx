@@ -181,7 +181,7 @@ def('renamechat', {
 });
 def('getchatname', { help: '', run: () => { const { chat } = chatApi.current(); return chat ? roomName(chat) : ''; } });
 def('closechat', { help: '', run: () => { cur.chat = null; S.set({ lastChat: '' }); go('home'); return ''; } });
-def('tempchat', { help: '', run: (_a, c) => warn(c, 'noTemp') });
+def('tempchat', { help: '', run: async () => { const { chat } = need(); const { startChat } = await import('../../chat/start'); await startChat(chat.charIds, { temp: true }); return ''; } });
 def('forcesave', {
   help: '',
   run: async (_a, c) => { S.saveSettings(); if (chatApi.current().chat) await chatApi.save(); c.host.echo(K('saved'), 'success'); return ''; },
