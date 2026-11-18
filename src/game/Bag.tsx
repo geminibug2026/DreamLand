@@ -32,15 +32,15 @@ export function Bag({ g, sheet, onSave, onDrop, onAdd }: { g: GameCfg; sheet: Sh
   for (let y = 0; y < p.h; y++) for (let x = 0; x < p.w; x++) { const ok = !!item && !wornIn && canDrop(x, y); cells.push(<button key={`${x},${y}`} type="button" className={`gm-bcell${ok ? ' is-ok' : ''}`} style={{ gridColumn: x + 1, gridRow: y + 1 }} disabled={!ok} aria-label={`${x + 1},${y + 1}`} onClick={() => moveTo(x, y)} />); }
   return <div className="gm-bag">
     <div className="gm-worn">{SLOTS.map(s => { const w = p.worn[s]; return <button key={s} type="button" className={`gm-slot${w ? ' is-on' : ''}${w && same(w.name, sel) ? ' is-sel' : ''}${!w && slot === s && !wornIn ? ' is-want' : ''}`} onClick={() => w ? setSel(same(w.name, sel) ? '' : w.name) : slot === s && !wornIn ? wear() : undefined}>
-      <small>{t('game.bag.slot.' + s)}</small>{w ? <><ItemGlyph kind={w.kind} /><em>{w.name}</em></> : <i>—</i>}</button>; })}</div>
+      <small>{t('game.bag.slot.' + s)}</small>{w ? <><ItemGlyph name={w.name} kind={w.kind} /><em>{w.name}</em></> : <i>—</i>}</button>; })}</div>
     <p className="gm-gear">{gear.dmg || gear.aim || gear.soak || gear.def ? [gear.dmg ? t('game.bag.g.dmg', { n: gear.dmg }) : '', gear.aim ? t('game.bag.g.aim', { n: gear.aim }) : '', gear.soak ? t('game.bag.g.soak', { n: gear.soak }) : '', gear.def ? t('game.bag.g.def', { n: gear.def }) : ''].filter(Boolean).join(' · ') : t('game.bag.g.none')}</p>
     <div className="gm-bgrid" style={{ gridTemplateColumns: `repeat(${p.w}, 1fr)`, gridTemplateRows: `repeat(${p.h}, 1fr)`, aspectRatio: `${p.w} / ${p.h}` }}>
       {cells}
-      {p.placed.map(it => <button key={it.name} type="button" className={`gm-item is-${it.kind}${same(it.name, sel) ? ' is-sel' : ''}${it.w > it.h ? ' is-wide' : ''}`} style={{ gridColumn: `${it.x + 1} / span ${it.w}`, gridRow: `${it.y + 1} / span ${it.h}` }} title={it.name} aria-label={it.name} onClick={() => setSel(same(it.name, sel) ? '' : it.name)}>
-        <ItemGlyph kind={it.kind} />{it.n > 1 ? <em>×{it.n}</em> : null}<span>{it.name}</span></button>)}
+      {p.placed.map(it => <button key={it.name} type="button" className={`gm-item is-${it.kind}${same(it.name, sel) ? ' is-sel' : ''}${it.w > it.h ? ' is-wide' : ''}${it.h === 1 ? ' is-short' : ''}`} style={{ gridColumn: `${it.x + 1} / span ${it.w}`, gridRow: `${it.y + 1} / span ${it.h}` }} title={it.name} aria-label={it.name} onClick={() => setSel(same(it.name, sel) ? '' : it.name)}>
+        <ItemGlyph name={it.name} kind={it.kind} />{it.n > 1 ? <em>×{it.n}</em> : null}<span>{it.name}</span></button>)}
     </div>
     <p className="gm-bcount">{t('game.bag.count', { used: p.used, all: p.w * p.h })}</p>
-    {p.over.length ? <div className="gm-over"><small>{t('game.bag.over')}</small>{p.over.map(o => <button key={o.name} type="button" className={same(o.name, sel) ? 'is-sel' : ''} onClick={() => setSel(same(o.name, sel) ? '' : o.name)}><ItemGlyph kind={o.kind} size={18} />{o.name}{o.n > 1 ? ` ×${o.n}` : ''}</button>)}</div> : null}
+    {p.over.length ? <div className="gm-over"><small>{t('game.bag.over')}</small>{p.over.map(o => <button key={o.name} type="button" className={same(o.name, sel) ? 'is-sel' : ''} onClick={() => setSel(same(o.name, sel) ? '' : o.name)}><ItemGlyph name={o.name} kind={o.kind} size={18} />{o.name}{o.n > 1 ? ` ×${o.n}` : ''}</button>)}</div> : null}
     {item && kind ? <div className="gm-pick">
       <div><b>{item.name}{item.n > 1 ? ` ×${item.n}` : ''}</b><small>{t('game.bag.kind.' + kind)} · {t('game.bag.size', { w: SHAPE[kind][0], h: SHAPE[kind][1] })}{bonus(kind) ? ' · ' + bonus(kind) : ''}</small></div>
       <div className="gm-pick-acts">
