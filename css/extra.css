@@ -615,3 +615,21 @@ html.gs-on .modal-wrap:has(.gm) .gm-cell.is-foe b { color: var(--gs-paper); }
 .gs-plain { padding: 0 18px; border: 1px solid var(--gs-line); background: none; color: var(--gs-paper); font: 500 .92rem var(--display); cursor: pointer; } .gs-plain:hover { border-color: var(--gs-gold); color: var(--gs-gold); }
 .gm-fates { flex: 1; display: flex; gap: 5px; } .gm-fates i { width: 9px; height: 9px; transform: rotate(45deg); border: 1px solid var(--ink); } .gm-fates i.on { background: var(--accent); border-color: var(--accent); }
 @media (prefers-reduced-motion: reduce) { .gs.fx-shake .gs-bg, .gs.fx-shake .gs-figure, .gs.fx-hurt .gs-figure, .gs.fx-hurt .gs-bg { animation: none; } }
+/* 게임 화면: 자리를 고정한다 — 글이 길어지거나 선택지가 나와도 인물과 머리글은 움직이지 않는다 */
+.gs { display: block; }
+.gs-head { position: absolute; left: 0; right: 0; top: 0; z-index: 2; }
+.gs-top, .gs-vitals { grid-row: auto; }
+.gs-figure { position: absolute; left: 0; right: 0; top: calc(128px + var(--safe-t, 0px)); height: clamp(170px, 36vh, 400px); display: grid; place-items: center; }
+.gs-arch { height: 100%; max-width: 62%; margin: 0; } .gs-sprite { height: 100%; }
+.gs-panel { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); max-height: calc(100% - 128px - var(--safe-t, 0px)); overflow-y: auto; scrollbar-width: none; padding-top: 18px; background: linear-gradient(180deg, rgb(12 10 8 / 0) 0, rgb(12 10 8 / .78) 34px, rgb(12 10 8 / .9) 100%); }
+.gs-panel::-webkit-scrollbar { display: none; }
+.gs-rule { top: 12px; }
+.gs-scroll { height: clamp(6.6em, 20vh, 10.5em); min-height: 0; max-height: none; }
+.gs .typing { display: inline-flex; gap: 5px; padding: 0; margin-left: 8px; border: 0; border-radius: 0; background: none; vertical-align: middle; } .gs .typing i { width: 5px; height: 5px; background: var(--gs-gold); }
+.gs-retry { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border: 1px solid var(--gs-gold); background: none; color: var(--gs-gold); font: 500 .84rem var(--display); cursor: pointer; } .gs-retry:hover { background: var(--gs-gold); color: #1a150c; }
+.gs-auto { margin-left: 6px; padding: 5px 9px; border: 1px solid var(--gs-line); background: none; color: var(--gs-mute); font: 500 10px var(--display); letter-spacing: .2em; cursor: pointer; } .gs-auto.on { border-color: var(--gs-gold); color: var(--gs-gold); }
+@media (min-width: 900px) { .gs-figure { top: 96px; height: clamp(240px, 50vh, 520px); } .gs-vitals { position: static; padding: 22px 34px 0; } .gs-scroll { height: clamp(7em, 18vh, 11em); } }
+/* 게임 창이 옆으로 밀리지 않게 */
+.modal-wrap:has(.gm) .modal-body { overflow-x: hidden; } .gm, .gm-sheet, .gm-setup, .gm-media { min-width: 0; max-width: 100%; } .gm-row { min-width: 0; } .gm-row .gm-bar, .gm-fates { min-width: 0; }
+.gm-note { margin: -6px 0 0; } .gm-tabs { min-width: 0; } .gm-tabs button { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gm-foot .btn { white-space: nowrap; } .gm-statline span { min-width: 0; }

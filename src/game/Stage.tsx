@@ -84,6 +84,14 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
     if (list?.length && !played.current.has(page.msgId)) { played.current.add(page.msgId); play(list[0]); } else if (!list?.length && cine === 'letterbox') setCine('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page?.msgId]);
+  // 자동 넘김: 다 읽을 만한 시간이 지나면 다음 문단으로 (글이 길수록 조금 더 기다린다)
+  const auto = g?.auto || 0;
+  useEffect(() => {
+    if (!auto || atEnd || !page) return;
+    const tm = window.setTimeout(() => { if (!document.querySelector('.modal-wrap, .menu')) step(1); }, auto * 1000 + (page.text?.length || 40) * 55);
+    return () => clearTimeout(tm);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auto, page?.key, atEnd]);
   const total = useRef(0); total.current = pages.length;
   const step = (d: number) => setPos(p => Math.min(Math.max(Math.min(Math.max(p, 0), Math.max(total.current - 1, 0)) + d, 0), Math.max(total.current - 1, 0)));
   const send = (text = draft) => { const v = text.trim(); if (!v || busy) return; setDraft(''); void chatApi.send(v); };
@@ -113,6 +121,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
     <div className={`gs-bg${bg ? '' : ' is-plain'}`} key={bg} style={bg ? { backgroundImage: `url("${bg}")` } : undefined} />
     {air ? <Weather air={air} onFlash={() => { if (ambOn) window.setTimeout(() => Ambience.thunder(false), 500 + Math.random() * 2200); }} /> : null}
     <div className="gs-shade" /><div className="gs-cine" />
+    <div className="gs-head">
     <header className="gs-top">
       <div className="gs-loc">{when ? <span className="gs-eyebrow">{when}</span> : null}<h1>{sheet.place || chatApi.roomName(chat)}</h1></div>
       <nav className="gs-tools">
@@ -132,6 +141,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
       {sheet.clocks.map(c => <div key={c.name} className={`gs-clock${c.v >= c.max ? ' is-full' : ''}`}><ClockDial v={c.v} max={c.max} /><small>{c.name}</small><em>{c.v}/{c.max}</em></div>)}
       {sheet.party.length ? <div className="gs-party">{sheet.party.map(n => { const c = S.chars.find(x => x.name.toLowerCase() === n.toLowerCase()); return <span key={n} title={n} style={c?.avatar ? { backgroundImage: `url("${c.avatar}")` } : undefined}>{c?.avatar ? '' : n.slice(0, 1)}</span>; })}</div> : null}
     </aside>
+    </div>
     <div className="gs-figure" onClick={() => step(1)}>
       {sprite?.data ? <img className="gs-sprite" src={sprite.data} alt="" /> : stand?.avatar ? <div className="gs-arch"><Keystone /><i style={{ backgroundImage: `url("${stand.avatar}")` }} /></div> : null}
     </div>
@@ -144,7 +154,9 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
         <span className="gs-count">{pages.length ? `${at + 1} / ${pages.length}` : ''}</span>
         <i />
         {busy ? <button type="button" className="gs-mini" title={t('vn.stop')} aria-label={t('vn.stop')} onClick={() => stopAll()}><Glyph name="stop" size={18} /></button>
-          : canAct && lastAi ? <button type="button" className="gs-mini" title={t('vn.regen')} aria-label={t('vn.regen')} onClick={() => void generate('regen')}><Glyph name="redo" size={18} /></button> : null}
+          : canAct && lastAi ? <button type="button" className="gs-mini" title={t('vn.regen')} aria-label={t('vn.regen')} onClick={() => void generate('regen')}><Glyph name="redo" size={18} /></button>
+            : canAct && !fate && pages.length ? <button type="button" className="gs-retry" onClick={() => void generate('normal')}><Glyph name="redo" size={16} />{t('game.stage.retry')}</button> : null}
+        <button type="button" className={`gs-auto${auto ? ' on' : ''}`} title={t('game.stage.autoTip')} onClick={() => { g.auto = auto ? 0 : 4; void S.save('chats', chat, true); bump(n => n + 1); }}>AUTO</button>
         {!atEnd ? <span className="gs-next">{t('game.stage.next')}</span> : null}
       </div>
       {canAct ? <div className="gs-acts">

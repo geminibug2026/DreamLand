@@ -7204,5 +7204,11 @@
   "game.fate.left": "剩余命运点 {n}",
   "game.fate.accept": "接受",
   "game.fate.pending": "失败…？",
-  "game.fate.used": "使用命运点重掷"
+  "game.fate.used": "使用命运点重掷",
+  "game.stage.retry": "重试",
+  "game.stage.autoTip": "自动翻页开关",
+  "game.setup.auto": "自动翻页",
+  "game.setup.autoOff": "关闭（点击继续）",
+  "game.setup.autoN": "每段约 {n} 秒后",
+  "illust.q.resumeSoon": "稍等片刻后队列会自动继续。"
 }

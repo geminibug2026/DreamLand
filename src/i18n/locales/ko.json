@@ -7204,5 +7204,11 @@
   "game.fate.left": "운명 점 {n}",
   "game.fate.accept": "받아들이기",
   "game.fate.pending": "실패…?",
-  "game.fate.used": "운명 점으로 다시 굴림"
+  "game.fate.used": "운명 점으로 다시 굴림",
+  "game.stage.retry": "다시 시도",
+  "game.stage.autoTip": "자동 넘김 켜기 · 끄기",
+  "game.setup.auto": "자동 넘김",
+  "game.setup.autoOff": "끔 (눌러서 넘김)",
+  "game.setup.autoN": "문단마다 약 {n}초 뒤",
+  "illust.q.resumeSoon": "잠시 쉬었다가 대기 중인 그림부터 자동으로 다시 시작합니다."
 }

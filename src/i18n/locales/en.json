@@ -7284,5 +7284,11 @@
   "game.fate.left": "{n} fate left",
   "game.fate.accept": "Accept",
   "game.fate.pending": "Failure…?",
-  "game.fate.used": "re-rolled with a fate point"
+  "game.fate.used": "re-rolled with a fate point",
+  "game.stage.retry": "Try again",
+  "game.stage.autoTip": "Auto-advance on or off",
+  "game.setup.auto": "Auto-advance",
+  "game.setup.autoOff": "Off (tap to continue)",
+  "game.setup.autoN": "About {n} seconds per paragraph",
+  "illust.q.resumeSoon": "The queue will pick up again by itself after a short wait."
 }
