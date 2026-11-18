@@ -26,6 +26,8 @@ export function showStage(chat: Chat) {
 function setup() {
   on<Chat>('chat:open', chat => { const g = gameOf(chat); if (g && g.stage !== false) showStage(chat); else if (stageOpenFor()) closeStage(); });
   on<Chat>('game:start', chat => showStage(chat));
+  // 진행자에게 알려 줄 내 음악 목록을 미리 읽어 둔다
+  void import('../game/media').then(m => m.loadMedia()).catch(() => { });
   // 게임 모드로 들어가기: 하던 게임이 있으면 이어서, 없으면 시작 창. 게임은 RP 방식으로 진행한다 (대화 모드의 기능이 섞이지 않게)
   on<Chat>('game:enter', chat => {
     const g = (chat as GameChat).game;
