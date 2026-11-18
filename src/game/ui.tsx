@@ -72,7 +72,7 @@ export function resolveAsk(chat: Chat, ask: Ask) {
   const sheet = sheetOf(g, cur.msgs), foes = ask.foes?.length ? ask.foes : [{ name: (ask as unknown as { name?: string }).name || t('game.foe'), hp: 12, atk: 3 }];
   const names = [...new Set(foes.map(f => f.name.replace(/ \d+$/, '')))].join(', ');
   const faces: Record<string, string> = {}; { const me = S.persona(chat).avatar; if (me) faces.me = me; for (const n of sheet.party) { const c = S.chars.find(x => x.name.toLowerCase() === n.toLowerCase()); if (c?.avatar) faces[n.toLowerCase()] = c.avatar; } }
-  openModal({ title: t('game.fight.title', { name: names }), spec: 'div.gm' }, close => <Combat g={g} sheet={sheet} foes={foes} faces={faces} onDone={r => { close(); void record(chat, { kind: 'fight', name: names, outcome: r.outcome, rounds: r.rounds, took: r.took, hp: r.hp, hpMax: sheet.hpMax, fx: r.fx, ...(r.gold || r.xp ? { loot: `${r.gold} gold and ${r.xp} XP` } : {}), ...(r.fallen.length ? { fallen: r.fallen } : {}) }); }} />);
+  openModal({ title: t('game.fight.title', { name: names }), spec: 'div.gm' }, close => <Combat g={g} sheet={sheet} foes={foes} faces={faces} onDone={r => { close(); void record(chat, { kind: 'fight', name: names, outcome: r.outcome, rounds: r.rounds, took: r.took, hp: r.hp, hpMax: sheet.hpMax, fx: r.fx, ...(r.gold || r.xp ? { loot: `${r.gold} gold and ${r.xp} XP${r.loot ? ' and ' + r.loot : ''}` } : {}), ...(r.fallen.length ? { fallen: r.fallen } : {}) }); }} />);
 }
 
 /** 순간 반응: 시간이 줄어드는 동안 하나를 고른다. 빨리 고를수록 유리하고, 놓치면 나쁘게 흘러간다 */

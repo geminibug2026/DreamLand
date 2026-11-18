@@ -34,7 +34,13 @@ export type Fx =
   | { k: 'rep'; name: string; n: number } | { k: 'party'; name: string; add: boolean } | { k: 'time'; text: string } | { k: 'weather'; text: string } | { k: 'scene'; key: string } | { k: 'fate'; n: number } | { k: 'clock'; name: string; v: number; max: number };
 export type MiniId = 'rps' | 'dice' | 'blackjack' | 'tictactoe' | 'numbers' | 'gomoku';
 export const MINIS: MiniId[] = ['rps', 'dice', 'blackjack', 'tictactoe', 'gomoku', 'numbers'];
-export interface Foe { name: string; hp: number; atk: number; ranged?: boolean }
+export type Element = 'fire' | 'ice' | 'bolt' | 'poison';
+export const ELEMENTS: Element[] = ['fire', 'ice', 'bolt', 'poison'];
+/** 이름에서 원소를 짐작한다 (적의 이름 · 가진 물건의 이름) */
+export const elementOf = (text: string): Element | '' => /fire|flame|burn|torch|ember|불|화염|횃불|불꽃|火|炎/i.test(text) ? 'fire' : /ice|frost|snow|cold|얼음|서리|냉기|빙|冰|霜/i.test(text) ? 'ice' : /bolt|lightning|thunder|shock|spark|번개|전기|뇌|雷|电/i.test(text) ? 'bolt' : /poison|venom|toxic|독|맹독|毒/i.test(text) ? 'poison' : '';
+/** 불과 얼음은 서로의 약점이다 */
+export const WEAK: Partial<Record<Element, Element>> = { fire: 'ice', ice: 'fire' };
+export interface Foe { name: string; hp: number; atk: number; ranged?: boolean; el?: Element; boss?: boolean }
 /** 진행자가 앱에 맡긴 일: 판정 · 전투 · 미니게임 */
 export type Ask =
   | { k: 'check'; stat: StatKey; dc: number; why: string; adv?: 'adv' | 'dis'; prof?: boolean; hard?: 'hard' | 'extreme' }
@@ -191,10 +197,12 @@ export function readTags(text: string): { text: string; fx: Fx[]; ask: Ask | nul
       // 여럿이면 ; 로 나눈다. "Goblin x3 hp=8 atk=2" 는 셋으로 편다
       const foes: Foe[] = [];
       for (const part of v.split(/\s*[;；]\s*/)) {
-        const hp = part.match(/\bhp\s*[=:]?\s*(\d+)/i), atk = part.match(/\batk\s*[=:]?\s*(\d+)/i), ranged = /\branged\b/i.test(part), many = part.match(/(?:^|\s)[x×*]\s*(\d+)\b/i);
-        const name = part.replace(/\b(hp|atk)\s*[=:]?\s*\d+/gi, '').replace(/\branged\b/gi, '').replace(/(?:^|\s)[x×*]\s*\d+\b/i, ' ').replace(/[,·|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40); if (!name) continue;
+        // 이름은 수치(hp · atk) 앞까지, 꼬리표(ranged · boss · 원소)는 그 뒤에서만 읽는다 — "Fire Imp" 의 Fire 가 지워지지 않게
+        const cut = part.search(/\b(hp|atk)\s*[=:]?\s*\d/i), head = cut >= 0 ? part.slice(0, cut) : part, tail = cut >= 0 ? part.slice(cut) : '';
+        const hp = part.match(/\bhp\s*[=:]?\s*(\d+)/i), atk = part.match(/\batk\s*[=:]?\s*(\d+)/i), ranged = /\branged\b/i.test(tail), boss = /\bboss\b/i.test(tail), elWord = tail.match(/\b(fire|ice|bolt|poison)\b/i)?.[1].toLowerCase() as Element | undefined, many = part.match(/(?:^|\s)[x×*]\s*(\d+)\b/i);
+        const name = head.replace(/(?:^|\s)[x×*]\s*\d+\b/i, ' ').replace(/[,·|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40); if (!name) continue;
         const n = clampN(parseInt(many?.[1] || '1', 10), 1, 6);
-        for (let i = 0; i < n && foes.length < 6; i++) foes.push({ name: n > 1 ? `${name} ${i + 1}` : name, hp: clampN(parseInt(hp?.[1] || '12', 10), 1, 200), atk: clampN(parseInt(atk?.[1] || '3', 10), 0, 20), ...(ranged ? { ranged: true } : {}) });
+        for (let i = 0; i < n && foes.length < 6; i++) foes.push({ name: n > 1 ? `${name} ${i + 1}` : name, hp: clampN(parseInt(hp?.[1] || '12', 10), 1, 200), atk: clampN(parseInt(atk?.[1] || '3', 10), 0, 20), ...(ranged ? { ranged: true } : {}), ...(boss ? { boss: true } : {}), ...(elWord || elementOf(name) ? { el: elWord || elementOf(name) as Element } : {}) });
       }
       if (!foes.length) return all; ask = { k: 'fight', foes }; return '';
     }
@@ -262,7 +270,7 @@ When something changes, write the matching tag on its own line at the end of the
 [choices Sneak around | Talk to the guard | Wait for night] — optional: two to four suggested actions shown as buttons; {{user}} may still type anything.
 To hand something to the app, use ONE of these as the very last line, then stop — do not narrate what happens next:
 ${RULE_TEXT[ruleOf(g)].check}
-[fight Goblin x2 hp=8 atk=2; Orc Chief hp=24 atk=5] — a tactical fight the app runs on a grid (up to 6 enemies; x2 means two of them; add the word ranged for archers and casters). The app also hands out gold and XP for a win. Guide: weak hp 8 atk 2, tough hp 18 atk 4, boss hp 30 atk 6.
+[fight Goblin x2 hp=8 atk=2; Orc Chief hp=24 atk=5] — a tactical fight the app runs on a grid (up to 6 enemies; x2 means two of them; add the word ranged for archers and casters, boss for a leader with a telegraphed heavy attack, and fire, ice, bolt or poison for an elemental enemy — e.g. [fight Frost Wolf hp=10 atk=3 ice; Lich hp=30 atk=5 boss ranged]). The app also hands out gold and XP for a win. Guide: weak hp 8 atk 2, tough hp 18 atk 4, boss hp 30 atk 6.
 [play rps: who pays for dinner] — settle something with a quick game against you: rps, dice, blackjack, tictactoe, gomoku or numbers.
 [qte 6: Dive aside | Raise the shield | Grab the rope] — a split-second moment: {{user}} has that many seconds to pick. Use sparingly, for sudden danger.
 ${diff}
