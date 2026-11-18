@@ -11,6 +11,9 @@ import { bump, cur, useCh } from '../chat/store';
 import { chatApi, generate, running } from '../chat/actions';
 import { Combat } from './Combat';
 import { ClockDial, D20 } from './Art';
+import { BUILTIN_BG, MAX_AUDIO, TRACKS, addMedia, loadMedia, myMedia, removeMedia } from './media';
+import { SCENES } from './state';
+import { pickFiles } from '../lib/core';
 import { Mini } from './Minis';
 import { quickCall } from '../lib/engine';
 import { msgText } from '../lib/core';
@@ -170,16 +173,49 @@ function SessionBox({ chat, onClose }: { chat: GameChat; onClose?: () => void })
     <div className="gm-foot"><button type="button" className="btn primary" disabled={busy} onClick={() => void go()}>{busy ? t('game.session.busy') : t('game.session.end')}</button></div>
   </div>;
 }
-type Tab = 'sheet' | 'map' | 'journal' | 'session';
+/** 배경 · 음악: 장면마다 내 사진을, 분위기마다 내 음악을 올린다. 올린 것이 있으면 그 장면 · 분위기는 내 것만 쓴다 */
+function MediaBox() {
+  const [, draw] = useState(0), [scene, setScene] = useState('forest'), [busy, setBusy] = useState(false), audio = useRef<HTMLAudioElement | null>(null), [playing, setPlaying] = useState('');
+  useEffect(() => { void loadMedia().then(() => draw(n => n + 1)); return () => audio.current?.pause(); }, []);
+  const mine = myMedia(), pics = mine.filter(m => m.kind === 'gamebg' && m.label === scene), built = BUILTIN_BG[scene] || [];
+  const add = async (kind: 'gamebg' | 'gamebgm', label: string) => {
+    const files = await pickFiles({ accept: kind === 'gamebg' ? 'image/*' : 'audio/*', multiple: true }); if (!files?.length) return;
+    setBusy(true);
+    try { for (const f of files) { if (kind === 'gamebgm' && f.size > MAX_AUDIO) { toast(t('game.media.tooBig', { name: f.name }), 'err'); continue; } await addMedia(kind, label, f); } }
+    catch (e) { toast(t('game.media.failed', { error: (e instanceof Error ? e.message : String(e)).slice(0, 100) }), 'err'); }
+    finally { setBusy(false); draw(n => n + 1); redrawGame(); }
+  };
+  const drop = async (id: string) => { await removeMedia(id); draw(n => n + 1); redrawGame(); };
+  const listen = (key: string, src: string) => { audio.current?.pause(); if (playing === key) return setPlaying(''); const a = audio.current = new Audio(src); a.volume = .5; a.onended = () => setPlaying(''); void a.play().catch(() => setPlaying('')); setPlaying(key); };
+  return <div className="gm-media">
+    <div className="gm-sec"><span className="eyebrow">{t('game.media.bg')}</span>
+      <p className="hint">{t('game.media.bgHint')}</p>
+      <select className="inp" value={scene} onChange={e => setScene(e.target.value)}>{SCENES.map(k => { const n = mine.filter(m => m.kind === 'gamebg' && m.label === k).length; return <option key={k} value={k}>{t('game.scene.' + k)}{n ? ` · ${t('game.media.mineN', { n })}` : ''}</option>; })}</select>
+      <div className="gm-thumbs">
+        {pics.map(m => <figure key={m.id}><img src={m.data} alt={m.name} /><button type="button" title={t('game.media.remove')} aria-label={t('game.media.remove')} onClick={() => void drop(m.id)}>×</button></figure>)}
+        {!pics.length ? built.map(b => <figure key={b} className="is-built"><img src={`game/bg/${b}.jpg`} alt="" /><figcaption>{t('game.media.builtin')}</figcaption></figure>) : null}
+        {!pics.length && !built.length ? <p className="dim">{t('game.media.none')}</p> : null}
+        <button type="button" className="gm-add" disabled={busy} onClick={() => void add('gamebg', scene)}><b>+</b>{t('game.media.addPic')}</button>
+      </div></div>
+    <div className="gm-sec"><span className="eyebrow">{t('game.media.music')}</span>
+      <p className="hint">{t('game.media.musicHint')}</p>
+      <ul className="gm-tracks">{TRACKS.map(k => { const own = mine.filter(m => m.kind === 'gamebgm' && m.label === k);
+        return <li key={k}><div><b>{t('game.track.' + k)}</b><button type="button" className="gm-link" disabled={busy} onClick={() => void add('gamebgm', k)}>{t('game.media.addMusic')}</button></div>
+          {own.length ? own.map(m => <p key={m.id}><button type="button" className="gm-play" aria-label={t('game.media.listen')} onClick={() => listen(m.id, m.data)}>{playing === m.id ? '■' : '▶'}</button><span>{m.name}</span><button type="button" className="gm-x" title={t('game.media.remove')} aria-label={t('game.media.remove')} onClick={() => void drop(m.id)}>×</button></p>)
+            : <p className="is-built"><button type="button" className="gm-play" aria-label={t('game.media.listen')} onClick={() => listen(k, `game/music/${k}.mp3`)}>{playing === k ? '■' : '▶'}</button><span>{t('game.media.builtin')}</span></p>}</li>; })}</ul></div>
+  </div>;
+}
+type Tab = 'sheet' | 'map' | 'journal' | 'session' | 'media';
 export function Sheet({ chat, msgs, onClose, first = 'sheet' }: { chat: Chat; msgs: Msg[]; onClose?: () => void; first?: Tab }) {
   useCh('game'); const [tab, setTab] = useState<Tab>(first);
   const g = gameOf(chat); if (!g) return <><p className="dim">{t('game.sheet.off')}</p><button type="button" className="btn" onClick={() => openSetup(chat)}>{t('game.setup.title')}</button></>;
   const s = sheetOf(g, msgs), gc = chat as GameChat;
   const Step = ({ fx, label }: { fx: Fx; label: string }) => <button type="button" className="gm-step" aria-label={label} title={label} onClick={() => adjust(gc, fx)}>{'n' in fx && fx.n > 0 ? '+' : '−'}</button>;
   const addItem = async () => { const v = await promptBox(t('game.sheet.addItem'), ''); if (v?.trim()) adjust(gc, { k: 'item', name: v.trim().slice(0, 60), n: 1 }); };
-  const tabs = <div className="gm-tabs">{(['sheet', 'map', 'journal', 'session'] as const).map(k => <button key={k} type="button" className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{t('game.tab.' + k)}</button>)}</div>;
+  const tabs = <div className="gm-tabs">{(['sheet', 'map', 'journal', 'session', 'media'] as const).map(k => <button key={k} type="button" className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{t('game.tab.' + k)}</button>)}</div>;
   if (tab === 'map') return <div className="gm-sheet">{tabs}<MapView s={s} onGo={name => { chatApi.insert(t('game.map.go', { place: name })); onClose?.(); }} /></div>;
   if (tab === 'journal') return <div className="gm-sheet">{tabs}<Journal msgs={msgs} /></div>;
+  if (tab === 'media') return <div className="gm-sheet">{tabs}<MediaBox /></div>;
   if (tab === 'session') return <div className="gm-sheet">{tabs}<SessionBox chat={gc} onClose={onClose} /></div>;
   return <div className="gm-sheet">{tabs}
     <div className="gm-row"><span className="eyebrow">HP</span><b className="gm-n">{s.hp}<i>/{s.hpMax}</i></b><span className="gm-bar"><i style={{ width: `${s.hp / s.hpMax * 100}%` }} /></span><Step fx={{ k: 'hp', n: -1 }} label="HP −1" /><Step fx={{ k: 'hp', n: 1 }} label="HP +1" /></div>

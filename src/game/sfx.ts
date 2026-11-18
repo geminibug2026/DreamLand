@@ -28,7 +28,7 @@ export function sfx(kind: Sfx) {
 // ── 배경 음악: 장면이 바뀌면 부드럽게 넘어간다 ──
 export type Track = 'explore' | 'town' | 'battle' | 'dark' | 'rest';
 const VOL = .32;
-let now: { key: Track; el: HTMLAudioElement } | null = null, musicOn = true;
+let now: { key: string; el: HTMLAudioElement } | null = null, musicOn = true;
 function fade(el: HTMLAudioElement, to: number, ms: number, then?: () => void) {
   const from = el.volume, t0 = performance.now();
   const step = () => { const k = Math.min(1, (performance.now() - t0) / ms); el.volume = Math.max(0, Math.min(1, from + (to - from) * k)); if (k < 1) requestAnimationFrame(step); else then?.(); };
@@ -38,10 +38,11 @@ export const Music = {
   on: () => musicOn,
   playing: () => now?.key || null,
   set(on: boolean) { musicOn = on; if (!on) this.stop(); },
-  play(key: Track) {
-    if (!musicOn || now?.key === key) return;
+  /** src 를 주면 그 주소를 튼다 (사용자가 올린 음악) */
+  play(track: Track, src = `game/music/${track}.mp3`) {
+    const key = src; if (!musicOn || now?.key === key) return;
     const old = now; if (old) fade(old.el, 0, 1200, () => old.el.pause());
-    try { const el = new Audio(`game/music/${key}.mp3`); el.loop = true; el.volume = 0; now = { key, el }; void el.play().then(() => fade(el, VOL, 1600)).catch(() => { if (now?.el === el) now = null; }); } catch { now = null; }
+    try { const el = new Audio(src); el.loop = true; el.volume = 0; now = { key, el }; void el.play().then(() => fade(el, VOL, 1600)).catch(() => { if (now?.el === el) now = null; }); } catch { now = null; }
   },
   stop() { const old = now; now = null; if (old) fade(old.el, 0, 600, () => old.el.pause()); },
 };

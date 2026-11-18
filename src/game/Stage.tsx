@@ -13,6 +13,7 @@ import { fmt, pagesOf } from '../vn/Screen';
 import { Music, setSfx, sfx } from './sfx';
 import { gameOf, pendingAsk, sceneOf, sheetOf, trackOf, type GameMsg, type GameRec } from './state';
 import { GameCard, askLabel, openSheet, resolveAsk } from './ui';
+import { bgFor, loadMedia, trackFor } from './media';
 import { ClockDial, Glyph, Keystone, Rule, type GlyphName } from './Art';
 
 interface Page { key: string; msgId: string; who: 'c' | 'u' | 'n' | 'e'; charId: string; name: string; text: string; rec?: GameRec; msg: Msg }
@@ -35,6 +36,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   const box = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null), lastEnd = useRef(''), was = useRef({ gold: -1, scene: '', ask: false });
   const chat = cur.chat?.id === chatId ? cur.chat : null, msgs = chat ? cur.msgs : [], busy = running(), g = gameOf(chat);
   useEffect(() => { const tm = window.setInterval(() => { if (cur.chat?.id !== chatId || !gameOf(cur.chat)) return closeStage(); bump(n => n + 1); }, 160); return () => clearInterval(tm); }, [chatId]);
+  useEffect(() => { void loadMedia().then(() => bump(n => n + 1)); }, []);
   useEffect(() => { if (chat) void Sprites.load(chat.charIds).then(() => bump(n => n + 1)).catch(() => { }); }, [chat]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const pages = useMemo(() => chat ? build(chat, msgs) : [], [chat, msgs, msgs.length, tail(msgs)]);
@@ -58,7 +60,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
 
   // 소리: 장면에 맞는 음악, 장소가 바뀌거나 돈이 생기거나 할 일이 생기면 짧은 소리
   const fighting = !!document.querySelector('.gm-fight'), scene = sheet ? sceneOf(sheet) : 'road', on = sound && g?.music !== false;
-  useEffect(() => { setSfx(sound && g?.sfx !== false); Music.set(on); if (on && sheet && g) Music.play(trackOf(sheet, g, fighting)); }, [on, sound, g, sheet, fighting]);
+  useEffect(() => { setSfx(sound && g?.sfx !== false); Music.set(on); if (on && sheet && g) { const tr = trackOf(sheet, g, fighting); Music.play(tr, trackFor(tr, sheet.place)); } }, [on, sound, g, sheet, fighting]);
   useEffect(() => () => Music.stop(), []);
   useEffect(() => {
     if (!sheet) return; const w = was.current;
@@ -83,7 +85,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   let standId = ''; for (let i = at; i >= 0 && !standId; i--) if (pages[i]?.who === 'c') standId = pages[i].charId;
   standId ||= chat.charIds[0] || '';
   const stand = S.get('chars', standId), sprite = standId && Sprites.has(standId) ? currentOf(chat as ChatX, msgs, standId).sprite : null;
-  const bg = chat.bg || (scene ? `game/bg/${scene}.jpg` : ''), when = [sheet.time, sheet.weather].filter(Boolean).join(' · ');
+  const bg = chat.bg || bgFor(scene, sheet.place), when = [sheet.time, sheet.weather].filter(Boolean).join(' · ');
   const hpLow = sheet.hp <= sheet.hpMax / 4, lastAi = lastMsg?.role === 'assistant';
   const Tool = ({ d, label, onClick }: { d: GlyphName; label: string; onClick(): void }) => <button type="button" title={label} aria-label={label} onClick={onClick}><Glyph name={d} /></button>;
   let body: ReactNode;

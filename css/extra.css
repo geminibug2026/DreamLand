@@ -579,3 +579,14 @@ html.gs-on .modal-wrap:has(.gm) .gm-cell.is-foe b { color: var(--gs-paper); }
 .gs-tools button svg, .gs-mini svg { display: block; }
 .gm-d20 b { text-shadow: 0 0 2px var(--surface), 0 0 4px var(--surface), 0 0 6px var(--surface); font-size: .86rem; }
 .gs-bg.is-plain { background: radial-gradient(90% 70% at 50% 34%, #3a3024 0, #1c1812 55%, #100e0b 100%); animation: gs-fade 1.4s ease both; }
+/* 배경 · 음악 올리기 */
+.gm-tabs button { font-size: .8em; padding-inline: 2px; }
+.gm-media { display: flex; flex-direction: column; gap: 18px; }
+.gm-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; margin-top: 8px; }
+.gm-thumbs figure { position: relative; margin: 0; aspect-ratio: 16 / 10; border: 1px solid var(--ink-line); overflow: hidden; } .gm-thumbs img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gm-thumbs figcaption { position: absolute; left: 0; bottom: 0; padding: 1px 6px; background: var(--surface); font: 500 10px var(--display); letter-spacing: .1em; color: var(--dim); }
+.gm-thumbs figure button, .gm-x { position: absolute; right: 3px; top: 3px; width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid var(--ink); background: var(--surface); color: var(--text); font-size: 15px; line-height: 1; cursor: pointer; }
+.gm-add { aspect-ratio: 16 / 10; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px dashed var(--ink); background: none; color: var(--text); font: inherit; font-size: .82em; cursor: pointer; } .gm-add b { font: 300 1.6em/1 var(--display); } .gm-add:hover { background: var(--surface2); } .gm-add:disabled { opacity: .5; }
+.gm-tracks { list-style: none; margin: 6px 0 0; padding: 0; } .gm-tracks li { padding: 8px 0; border-bottom: 1px solid var(--ink-line); } .gm-tracks li > div { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; } .gm-tracks b { font: 700 .95em var(--display); }
+.gm-tracks p { position: relative; display: flex; align-items: center; gap: 10px; margin: 6px 0 0; font-size: .9em; } .gm-tracks p span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .gm-tracks p.is-built span { color: var(--dim); }
+.gm-play { width: 26px; height: 26px; flex: none; display: grid; place-items: center; border: 1px solid var(--ink); background: none; color: var(--text); font-size: 10px; cursor: pointer; } .gm-x { position: static; flex: none; }

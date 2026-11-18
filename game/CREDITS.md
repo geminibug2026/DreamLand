@@ -21,30 +21,30 @@ Re-encoded to 96 kbps MP3.
 
 Converted to mono 64 kbps MP3.
 
+## Backgrounds — game art (CC0, via OpenGameArt)
+
+| Files | Pack | Author | Source |
+| --- | --- | --- | --- |
+| `bg/forest.jpg`, `forest-2.jpg`, `meadow.jpg`, `winter.jpg`, `desert.jpg`, `street.jpg`, `hall.jpg`, `hall-2.jpg`, `arena.jpg` | Backgrounds (battle backs) | Nidhoggn | https://opengameart.org/content/backgrounds-3 |
+| `bg/room.jpg`, `tavern.jpg`, `city.jpg`, `station.jpg` | Mixed Fantasy Backgrounds | art by olracadejup, commissioned and released by ulfus | https://opengameart.org/content/mixed-fantasy-backgrounds |
+| `bg/meadow-2.jpg`, `mountain.jpg`, `lake.jpg`, `desert-2.jpg` | Oil painting landscapes | JAP | https://opengameart.org/content/oil-painting-landscapes |
+
+Converted to JPEG; letterbox borders cropped.
+
 ## Backgrounds (public domain paintings)
 
 Art Institute of Chicago, Open Access (CC0 Public Domain Designation) — https://www.artic.edu/open-access/open-access-images
 
 | File | Title | Artist | Date |
 | --- | --- | --- | --- |
-| `bg/forest.jpg` | Landscape at Chailly | Frédéric Bazille | 1865 |
-| `bg/mountain.jpg` | View of Cotopaxi | Frederic Edwin Church | 1857 |
 | `bg/harbor.jpg` | York Harbor, Coast of Maine | Martin Johnson Heade | 1877 |
-| `bg/city.jpg` | The Grand Canal, Venice | Francesco Guardi | c. 1760 |
-| `bg/street.jpg` | Street in Moret | Alfred Sisley | c. 1890 |
-| `bg/winter.jpg` | Sandvika, Norway | Claude Monet | 1895 |
 | `bg/ruins.jpg` | Ruined Archway | Francesco Guardi | 1775–93 |
 | `bg/castle.jpg` | Landscape with the Ruins of the Castle of Egmond | Jacob van Ruisdael | 1650–55 |
 | `bg/peak.jpg` | The Rock of Hautepierre | Gustave Courbet | c. 1869 |
 | `bg/garden.jpg` | The Poet's Garden | Vincent van Gogh | 1888 |
-| `bg/lake.jpg` | Autumn River Scene, The Brook | David Bates | 1889 |
 | `bg/night.jpg` | Nocturne: Blue and Gold—Southampton Water | James McNeill Whistler | 1872 |
-| `bg/tavern.jpg` | A Roadside Tavern | Johan Barthold Jongkind | 1863 |
 | `bg/road.jpg` | A Turn in the Road | Alfred Sisley | 1873 |
-| `bg/meadow.jpg` | Poppy Field (Giverny) | Claude Monet | 1890–91 |
 | `bg/bridge.jpg` | Charing Cross Bridge, London | Claude Monet | 1901 |
-| `bg/desert.jpg` | On the Nile | Eugène Fromentin | 1871 |
-| `bg/hall.jpg` | The Cloisters, San Lorenzo fuori le mura | Christoffer Wilhelm Eckersberg | 1824 |
 
 Wikimedia Commons (public domain; the artists died more than 100 years ago)
 

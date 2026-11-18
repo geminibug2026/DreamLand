@@ -119,7 +119,7 @@ export function pendingAsk(msgs: Msg[]): Ask | null {
 }
 
 /** 배경 그림의 이름들 (game/bg/<이름>.jpg). 진행자가 [scene 이름] 으로 고르고, 없으면 장소 이름에서 짐작한다 */
-export const SCENES = ['forest', 'mountain', 'road', 'peak', 'sea', 'winter', 'ruins', 'meadow', 'castle', 'garden', 'night', 'city', 'street', 'hall', 'tavern', 'desert', 'bridge', 'harbor', 'lake'];
+export const SCENES = ['forest', 'mountain', 'road', 'peak', 'sea', 'winter', 'ruins', 'meadow', 'castle', 'garden', 'night', 'city', 'street', 'hall', 'tavern', 'room', 'desert', 'bridge', 'harbor', 'lake', 'station', 'arena'];
 const SCENE_WORDS: [string, RegExp][] = [
   ['hall', /cave|cavern|dungeon|mine|crypt|tomb|sewer|cloister|corridor|hall|vault|cellar|prison|church|chapel|동굴|던전|지하|광산|무덤|하수|회랑|복도|감옥|성당|교회|예배당|洞|地牢|地下|走廊|教堂/i], ['tavern', /tavern|inn|pub|bar\b|주점|여관|술집|선술집|酒馆|旅店/i], 
   ['castle', /castle|keep|fortress|palace|citadel|성\b|성채|요새|궁전|왕궁|城堡|宫殿/i], ['ruins', /ruin|temple|shrine|폐허|유적|신전|사원|废墟|遗迹|神殿/i], ['harbor', /harbor|harbour|port|dock|canal|항구|부두|선착장|운하|港|码头/i],
@@ -127,9 +127,10 @@ const SCENE_WORDS: [string, RegExp][] = [
   ['desert', /desert|dune|oasis|사막|오아시스|沙漠/i], ['peak', /peak|summit|cliff|ridge|정상|절벽|봉우리|山顶|悬崖/i], ['mountain', /mountain|valley|pass\b|canyon|산\b|산맥|계곡|협곡|山|峡谷/i],
   ['forest', /forest|wood|grove|jungle|숲|삼림|밀림|森林|树林/i], ['garden', /garden|park|courtyard|orchard|정원|공원|뜰|과수원|花园|庭院/i], 
   ['city', /city|downtown|station|office|tower|도시|시내|역\b|빌딩|사무실|城市|车站/i], ['street', /street|alley|avenue|town|village|cafe|café|restaurant|market|plaza|square|카페|식당|시장|광장|咖啡|市场|广场|거리|골목|마을|시가|街|巷|村/i], ['bridge', /bridge|gate|다리|성문|관문|桥|城门/i],
-  ['', /room|house|home|apartment|school|class|hospital|chamber|librar|archive|study|bedroom|서재|도서관|서고|침실|书房|图书|卧室|방\b|집\b|교실|학교|병원|저택|房间|学校|医院/i], ['meadow', /meadow|field|plain|farm|hill|초원|들판|평원|농장|언덕|草原|田野/i], ['road', /road|path|trail|camp|길\b|야영|오솔길|도로|路|营地/i],
+  ['station', /station|spaceport|hangar|starship|laborator|우주|정거장|격납고|연구소|함선|太空|飞船|实验室/i], ['arena', /arena|colise|training ground|duel|경기장|투기장|훈련장|결투장|竞技场|训练场/i],
+  ['room', /room|house|home|apartment|school|class|hospital|chamber|librar|archive|study|bedroom|서재|도서관|서고|침실|书房|图书|卧室|방\b|집\b|교실|학교|병원|저택|房间|学校|医院/i], ['meadow', /meadow|field|plain|farm|hill|초원|들판|평원|농장|언덕|草原|田野/i], ['road', /road|path|trail|camp|길\b|야영|오솔길|도로|路|营地/i],
 ];
-/** 지금 깔 배경: 진행자가 고른 것 → 장소 이름에서 짐작 → 밤이면 밤 그림 → 길. 집 · 교실 같은 실내는 그림 없이 둔다('') */
+/** 지금 깔 배경: 진행자가 고른 것 → 장소 이름에서 짐작 → 밤이면 밤 그림 → 길. */
 export function sceneOf(s: Sheet): string {
   if (s.scene && SCENES.includes(s.scene)) return s.scene;
   for (const [key, re] of SCENE_WORDS) if (re.test(s.place)) return key;
@@ -139,7 +140,7 @@ export function sceneOf(s: Sheet): string {
 export function trackOf(s: Sheet, g: GameCfg, fighting: boolean): 'explore' | 'town' | 'battle' | 'dark' | 'rest' {
   if (fighting) return 'battle';
   const sc = sceneOf(s), dark = /horror|호러|공포|恐怖/i.test(g.genre) || ['hall', 'ruins', 'night'].includes(sc) || /night|midnight|밤|자정|夜/i.test(s.time);
-  if (['tavern', ''].includes(sc) || /rest|camp|sleep|휴식|야영|쉬/i.test(s.place)) return 'rest';
+  if (['tavern', 'room'].includes(sc) || /rest|camp|sleep|휴식|야영|쉬/i.test(s.place)) return 'rest';
   if (dark) return 'dark';
   return ['street', 'city', 'harbor', 'garden', 'castle', 'bridge'].includes(sc) ? 'town' : 'explore';
 }
