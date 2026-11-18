@@ -704,3 +704,7 @@ html.gs-on .modal-wrap:has(.gm) .gm-cell.is-foe b { color: var(--gs-paper); }
   .gs-scroll { height: clamp(7em, 17vh, 10.500em); }
 }
 @media (min-width: 900px) and (min-height: 1000px) { .gs-figure { height: clamp(300px, calc(100% - 64px - 500px), 720px); } }
+/* 스탠딩 그림: 액자와 달리 머리글 아래부터 화면 아래까지 크게 세우고, 글 상자가 그 앞을 지난다 */
+.gs-figure.is-sprite { top: calc(var(--gs-head, 128px) - 6px); bottom: 0; height: auto; place-items: end center; }
+.gs-figure.is-sprite .gs-sprite { height: min(100%, 86vh); max-width: 96%; object-fit: contain; object-position: bottom center; }
+@media (min-width: 900px) { .gs-figure.is-sprite { top: 40px; height: auto; } .gs-figure.is-sprite .gs-sprite { height: 100%; } }

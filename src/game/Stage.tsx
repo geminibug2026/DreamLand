@@ -155,7 +155,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
       {sheet.party.length ? <div className="gs-party">{sheet.party.map(n => { const c = S.chars.find(x => x.name.toLowerCase() === n.toLowerCase()); return <span key={n} title={n} style={c?.avatar ? { backgroundImage: `url("${c.avatar}")` } : undefined}>{c?.avatar ? '' : n.slice(0, 1)}</span>; })}</div> : null}
     </aside>
     </div>
-    <div className="gs-figure" onClick={() => step(1)}>
+    <div className={`gs-figure${sprite?.data ? ' is-sprite' : ''}`} onClick={() => step(1)}>
       {sprite?.data ? <img className="gs-sprite" src={sprite.data} alt="" /> : stand?.avatar ? <div className="gs-arch"><Keystone /><i style={{ backgroundImage: `url("${stand.avatar}")` }} /></div> : null}
     </div>
     <section className="gs-panel" onClick={e => { if (!(e.target as HTMLElement).closest('button, textarea, .gs-acts, .gs-ctl')) step(1); }}>
