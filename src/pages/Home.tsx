@@ -10,6 +10,21 @@ import { startMenu } from '../chat/start';
 import { tint } from '../lib/tone';
 import { charEditor, charSheet, importDialog } from '../editors';
 import { locale, t, tn } from '../i18n';
+import { chatsOnlyOf, deleteChars, exportChars } from '../lib/bulk';
+import { openModal, toast } from '../ui';
+import { daysTogether, firstMet } from '../lib/together';
+
+/** 통계: 캐릭터마다 대화방 · 메시지 수 · 처음 만난 날 · 함께한 날 · 마지막 대화 (저장된 숫자만 쓴다 — 메시지를 다시 읽지 않는다) */
+function showStats() {
+  const rows = S.chars.map(c => { const rooms = S.chats.filter(x => x.charIds.includes(c.id)); return { c, rooms: rooms.length, msgs: rooms.reduce((n, x) => n + (x.count || 0), 0), met: firstMet(c.id), days: daysTogether(c.id), last: rooms.reduce((n, x) => Math.max(n, x.updatedAt || 0), 0) }; })
+    .filter(r => r.rooms).sort((a, b) => b.msgs - a.msgs);
+  const total = S.chats.reduce((n, x) => n + (x.count || 0), 0), day = (ts: number) => ts ? new Date(ts).toLocaleDateString() : '—';
+  openModal({ title: t('home.stats.title'), wide: true, body: <div className="stats">
+    <div className="stats-top"><div><b>{S.chars.length.toLocaleString()}</b><span>{t('home.stats.chars')}</span></div><div><b>{S.chats.length.toLocaleString()}</b><span>{t('home.stats.rooms')}</span></div><div><b>{total.toLocaleString()}</b><span>{t('home.stats.msgs')}</span></div></div>
+    {rows.length ? <table className="stats-table"><thead><tr><th>{t('home.stats.char')}</th><th>{t('home.stats.msgs')}</th><th>{t('home.stats.rooms')}</th><th>{t('home.stats.met')}</th><th>{t('home.stats.days')}</th><th>{t('home.stats.last')}</th></tr></thead>
+      <tbody>{rows.map(r => <tr key={r.c.id}><td>{r.c.name}</td><td>{r.msgs.toLocaleString()}</td><td>{r.rooms}</td><td>{day(r.met)}</td><td>{r.days ? t('together.badge', { days: r.days }) : '—'}</td><td>{day(r.last)}</td></tr>)}</tbody></table> : <p className="dim">{t('home.stats.none')}</p>}
+  </div> });
+}
 
 // 화면을 떠났다 돌아와도 남는 보기 상태. folder: '' 전체 · '-' 폴더 없음 · 폴더 id
 const view = { q: '', sort: 'recent' as 'recent' | 'new' | 'name', tag: '', fav: false, pick: 0, folder: '' };
@@ -152,6 +167,15 @@ function Home() {
       <SecHead title={t('home.chars')}><span className="count">{tn('home.charCount', list.length)}</span>
         <button className="btn ghost size-btn" title={t('home.size.title', { size: t(SIZES[size][1]) })} onClick={() => { S.set({ homeCols: (size + 1) % SIZES.length }); redraw(); }}><Icon name="grip" size={15} /><span>{t(SIZES[size][1])}</span></button>
         <Btn label={t('common.import')} ic="import" cls="ghost" onClick={() => void importDialog()} />
+        <IconBtn ic="more" title={t('home.bulk.title')} onClick={e => menu(e.currentTarget, [
+          { label: t('home.stats.title'), ic: 'sparkle', onclick: showStats },
+          { label: t('home.bulk.export'), ic: 'import', hint: t('home.bulk.exportHint'), onclick: () => charPicker({ title: t('home.bulk.export'), selected: [], onDone: async ids => { if (!ids.length) return; const n = await exportChars(ids); toast(t('home.bulk.exported', { count: n }), 'ok'); } }) },
+          { label: t('home.bulk.delete'), ic: 'trash', danger: true, onclick: () => charPicker({ title: t('home.bulk.delete'), selected: [], onDone: async ids => {
+            if (!ids.length) return; const rooms = chatsOnlyOf(ids).length;
+            if (!(await confirmBox(t('home.bulk.deleteConfirm', { count: ids.length, rooms }), t('common.delete'), true))) return;
+            const n = await deleteChars(ids); toast(t('home.bulk.deleted', { count: n }), 'ok'); redraw();
+          } }) },
+        ])} />
       </SecHead>
       <div className="filter-row">
         {([['recent', t('home.sort.recent')], ['new', t('home.sort.new')], ['name', t('common.name')]] as const).map(([k, l]) => <button key={k} className={'chip' + (view.sort === k && !view.fav && !view.tag ? ' on' : '')} onClick={() => set({ sort: k, fav: false, tag: '' })}>{l}</button>)}

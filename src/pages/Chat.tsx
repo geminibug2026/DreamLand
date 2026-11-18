@@ -1,4 +1,5 @@
 // 대화 화면: 왼쪽 대화방 목록 · 옆 프로필 · 메시지와 입력창 · 장면 패널
+import { sweepTemp } from '../chat/start';
 import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Btn, Icon } from '../kit';
@@ -65,7 +66,8 @@ function ChatPage({ arg }: { arg?: unknown }) {
       await loading;
       if (!live || cur.chat !== chat) return;
       if (!had.assets || !had.mem || !had.illust) fillLate(had, owners);
-      emit('chat:open', chat); const awayFor = Date.now() - (chat.seenAt || chat.updatedAt || Date.now()); if (chat.unread) { chat.unread = 0; void S.save('chats', chat, true); drawSide(); }
+      emit('chat:open', chat); if (S.chats.some(c => c.temp && c.id !== chat.id)) void sweepTemp(chat.id).then(() => drawSide());   // 다른 방을 열면 임시 채팅은 지운다
+      const awayFor = Date.now() - (chat.seenAt || chat.updatedAt || Date.now()); if (chat.unread) { chat.unread = 0; void S.save('chats', chat, true); drawSide(); }
       if (!(await catchUp(chat, awayFor))) armAuto();
     })();
     return () => { live = false; ui.layout = ui.scroll = ui.msgs = ui.side = null; ui.input = null; };

@@ -44,6 +44,14 @@ export function chatMenu(anchor: Element, c: Room, top: TopHooks | null = null) 
     { label: t('chat.menu.talkSettings'), ic: 'sliders', hint: t('chat.menu.talkSettingsHint'), onclick: () => { liveSettings(modeOf(c) === 'talk' ? 'auto' : 'tracker', c); } },
     { label: c.pinned ? t('chat.menu.unpin') : t('chat.menu.pin'), ic: 'star', onclick: async () => { c.pinned = !c.pinned; await S.save('chats', c, true); drawSide(); } },
     parent ? { label: t('chat.menu.toParent'), ic: 'branch', onclick: () => go('chat', parent.id) } : null,
+    { label: t('chat.menu.folder'), ic: 'folder', hint: c.folder || '', onclick: () => {   // 폴더로 옮기기: 있는 폴더 가운데 고르거나 새로 만든다
+      const names = [...new Set(S.chats.map(x => (x.folder || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+      const move = async (name: string) => { if (name) c.folder = name; else delete c.folder; await S.save('chats', c, true); if (name) S.set({ sideView: 'folders' }); drawSide(); };
+      menu(anchor, [...names.map(n => ({ label: n, ic: n === c.folder ? 'check' : 'folder', onclick: () => void move(n) })),
+        { label: t('chat.menu.folderNew'), ic: 'plus', onclick: async () => { const v = await promptBox(t('chat.menu.folderAsk'), ''); if (v?.trim()) void move(v.trim().slice(0, 40)); } },
+        ...(c.folder ? [{ label: t('chat.menu.folderNone'), ic: 'x', onclick: () => void move('') }] : [])]);
+    } },
+    ...(c.temp ? [{ label: t('chat.menu.keepTemp'), ic: 'check', hint: t('chat.menu.keepTempHint'), onclick: async () => { delete c.temp; await S.save('chats', c, true); drawSide(); toast(t('chat.menu.keptTemp'), 'ok'); } }] : []),
     { label: t('chat.menu.rename'), ic: 'edit', onclick: async () => { const v = await promptBox(t('chat.menu.renamePrompt'), c.name); if (v !== null) { c.name = v; await S.save('chats', c, true); drawSide(); if (c.id === cur.chat?.id) drawTop(); } } },
     { label: t('chat.menu.exportJsonl'), ic: 'import', hint: t('chat.menu.stCompat'), onclick: async () => { const ms = await S.msgs(c.id); download(`${titleOf(c)}-${c.id}.jsonl`, chatToStJsonl(c, ms, S.persona(c).name, charsOf(c)[0]?.name || 'Character'), 'application/jsonl'); } },
     { label: t('chat.menu.exportMd'), ic: 'note', onclick: async () => {   // 읽기 좋은 문서(Markdown): 제목 · 날짜 · 화자별 문단. 숨긴 메시지는 뺀다

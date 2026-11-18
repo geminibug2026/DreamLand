@@ -20,7 +20,7 @@ function room(c: Room, max: number, depth = 0, isFlat = false) {
   return <button key={c.id} className={['room', c.id === cur.chat?.id && 'on', depth > 0 && 'sub'].filter(Boolean).join(' ')} style={depth ? { marginLeft: Math.min(depth, 3) * 14 + 'px' } : undefined}
     onClick={() => { setSide(false); go('chat', c.id); }} onContextMenu={e => { e.preventDefault(); chatMenu(e.currentTarget, c); }}>
     <div className="room-top">{depth ? <Icon name="branch" size={13} /> : null}<i className={'room-mode ' + mode}>{mode === 'talk' ? t('chat.side.talk') : 'RP'}</i><b>{isFlat ? `${titleOf(c)} · ${roomName(c)}` : roomName(c)}</b>
-      {c.pinned ? <i className="room-pin">✦</i> : null}{c.unread ? <i className="room-unread">{String(c.unread)}</i> : null}{c.scene?.on ? <i className="room-scene">{t('chat.side.scene')}</i> : null}<time>{ago(c.updatedAt)}</time></div>
+      {c.temp ? <i className="room-scene">{t('chat.side.temp')}</i> : null}{c.pinned ? <i className="room-pin">✦</i> : null}{c.unread ? <i className="room-unread">{String(c.unread)}</i> : null}{c.scene?.on ? <i className="room-scene">{t('chat.side.scene')}</i> : null}<time>{ago(c.updatedAt)}</time></div>
     <small className="room-prev">{c.preview || t('chat.side.noMsgs')}</small>
     <div className="room-meta"><span className="room-bar" title={t('chat.side.msgCount', { count: n })}><i style={{ width: Math.max(n ? 6 : 0, Math.round(n / Math.max(30, max) * 100)) + '%' }} /></span><span>{t('chat.side.count', { count: n })}</span><span>{t('chat.side.days', { count: daysOf(c) })}</span>
       {(c.diary || []).length ? <span>{t('chat.side.diary', { count: (c.diary || []).length })}</span> : null}{c.parent ? <span title={parent ? t('chat.side.branchedFrom', { name: roomName(parent) }) : ''}>{t('chat.side.branchAt', { n: c.parent.at })}</span> : null}</div>
@@ -62,6 +62,22 @@ function ByChar({ term }: { term: string }) {
   })}{sorted.length ? null : empty(term)}</div>;
 }
 
+/** 폴더별: 내가 만든 폴더로 방을 묶는다 (폴더는 방 메뉴의 "폴더로 옮기기"로 정한다) */
+function ByFolder({ term }: { term: string }) {
+  const [, redraw] = useState(0), fold = cur.fold, hit = matcher(term);
+  const groups = new Map<string, Room[]>(); for (const c of S.chats) { if (!hit(c)) continue; const k = (c.folder || '').trim(), g = groups.get(k); if (g) g.push(c); else groups.set(k, [c]); }
+  const names = [...groups.keys()].sort((a, b) => (a ? 0 : 1) - (b ? 0 : 1) || a.localeCompare(b));   // 폴더 없는 방은 맨 아래
+  return <div className="chat-list">{names.map(name => {
+    const rooms = groups.get(name)!.sort(pin), max = Math.max(1, ...rooms.map(c => c.count || 0)), k = 'folder:' + name;
+    const here = rooms.some(c => c.id === cur.chat?.id), open = term ? true : fold.has(k) ? false : fold.has('+' + k) ? true : (here || names.length <= 2);
+    return <section key={k} className={['cgroup', open && 'open', here && 'here'].filter(Boolean).join(' ')}>
+      <div className="cgroup-head"><button className="cgroup-main" onClick={() => { if (open) { fold.delete('+' + k); fold.add(k); } else { fold.delete(k); fold.add('+' + k); } redraw(x => x + 1); }}>
+        <Icon name="folder" size={18} /><div className="cgroup-text"><b>{name || t('chat.side.noFolder')}</b><small>{t('chat.side.rooms', { count: rooms.length })}</small></div><Icon name={open ? 'down' : 'right'} size={15} /></button></div>
+      {open ? <div className="cgroup-rooms">{rooms.map(c => room(c, max, 0, true))}</div> : null}
+    </section>;
+  })}{names.length ? null : empty(term)}</div>;
+}
+
 export const Side = memo(function Side() {
   useCh('side');
   const [term, setTerm] = useState(''), timer = useRef(0), kept = useRef<ReactNode>(null), was = useRef(false), opened = useRef(0);
@@ -73,9 +89,9 @@ export const Side = memo(function Side() {
     <header className="side-head">
       <input className="inp search" placeholder={t('chat.side.search')} onChange={e => { const v = e.target.value.trim().toLowerCase(); clearTimeout(timer.current); timer.current = window.setTimeout(() => setTerm(v), 140); }} />
       <IconBtn ic="users" title={t('chat.side.newGroup')} onClick={groupDialog} /><IconBtn ic="x" title={t('common.close')} onClick={() => setSide(false)} /></header>
-    <div className="side-view">{([['chars', t('chat.side.byChar')], ['recent', t('chat.side.recent')]] as const).map(([k, l]) => <button key={k} className={view === k ? 'on' : undefined} onClick={() => { S.set({ sideView: k }); drawSide(); }}>{l}</button>)}
+    <div className="side-view">{([['chars', t('chat.side.byChar')], ['recent', t('chat.side.recent')], ['folders', t('chat.side.byFolder')]] as const).map(([k, l]) => <button key={k} className={view === k ? 'on' : undefined} onClick={() => { S.set({ sideView: k }); drawSide(); }}>{l}</button>)}
       <span>{t('chat.side.rooms', { count: S.chats.length })}</span></div>
-    {view === 'recent' ? <Flat key={'r' + opened.current} term={term} /> : <ByChar key={'c' + opened.current} term={term} />}
+    {view === 'recent' ? <Flat key={'r' + opened.current} term={term} /> : view === 'folders' ? <ByFolder key={'f' + opened.current} term={term} /> : <ByChar key={'c' + opened.current} term={term} />}
   </>;
 });
 export const sideRef = (el: HTMLElement | null) => { ui.side = el; };
