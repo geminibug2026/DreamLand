@@ -7404,5 +7404,13 @@
   "game.pool.scratch": "You scratched; the turn passes.",
   "game.pool.foeScratch": "{name} scratched.",
   "game.pool.again": "Potted! Go again.",
-  "game.pool.foeAgain": "{name} pots one and shoots again."
+  "game.pool.foeAgain": "{name} pots one and shoots again.",
+  "game.story.title": "Storyboard",
+  "game.story.loading": "Loading the pictures…",
+  "game.story.empty": "No illustrations in this chat yet.",
+  "game.story.draw": "Draw {n} missing key scenes",
+  "game.story.drawing": "Drawing… {n} to go",
+  "game.story.queued": "Queued. The panels appear here as they finish.",
+  "game.story.failed": "Could not draw: {error}",
+  "game.story.hint": "Draws the arrivals and after-fight scenes that have no picture yet. Needs illustration settings; each scene costs one analysis request and one image. Tap a panel to go to that scene."
 }

@@ -1,1 +1,0 @@
-export{t as go}from"./router-KAy0JiTF.js";

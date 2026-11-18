@@ -14,6 +14,7 @@ import { ClockDial, D20, PlaceGlyph } from './Art';
 import { BUILTIN_BG, MAX_AUDIO, TRACKS, addMedia, loadMedia, myMedia, removeMedia } from './media';
 import { SCENES, sceneOf } from './state';
 import { pickFiles } from '../lib/core';
+import { Illust } from '../lib/illust';
 import { Mini } from './Minis';
 import { quickCall } from '../lib/engine';
 import { msgText } from '../lib/core';
@@ -255,6 +256,42 @@ function MediaBox() {
             : <p className="is-built"><button type="button" className="gm-play" aria-label={t('game.media.listen')} onClick={() => listen(k, `game/music/${k}.mp3`)}>{playing === k ? '■' : '▶'}</button><span>{t('game.media.builtin')}</span></p>}</li>; })}</ul></div>
   </div>;
 }
+/** 스토리보드: 이 대화에 그려 둔 삽화를 이야기 차례대로 만화 컷처럼 늘어놓는다. 빠진 주요 장면(새 장소 · 전투 뒤)은 여기서 그릴 수 있다 */
+interface Panel { msgId: string; src: string; caption: string; place: string }
+function storyPanels(msgs: Msg[]): { panels: Panel[]; missing: Msg[] } {
+  const panels: Panel[] = [], missing: Msg[] = []; let place = '';
+  msgs.forEach((m, i) => {
+    const sw = m.swipes[m.sw] as (Msg['swipes'][number] & { gfx?: Fx[] }) | undefined; if (!sw) return;
+    const moved = sw.gfx?.find(f => f.k === 'place'); if (moved && moved.k === 'place') place = moved.name;
+    if (m.role !== 'assistant') return;
+    const pics = (sw.illust || []).map(it => { const s = Illust.slot(it as never) as unknown as { versions: { id?: string }[]; sel: number; id?: string }; return Illust.data(s.versions[s.sel]?.id || s.id || ''); }).filter(Boolean);
+    const caption = msgText(m).replace(/[*_`#]/g, '').replace(/\s+/g, ' ').trim().slice(0, 110);
+    for (const src of pics) panels.push({ msgId: m.id, src, caption, place });
+    const key = !!moved || (msgs[i - 1] as GameMsg | undefined)?.gm?.kind === 'fight' || (msgs[i - 1] as GameMsg | undefined)?.gm?.kind === 'start';
+    if (key && !pics.length && !m.hidden) missing.push(m);
+  });
+  return { panels, missing: missing.slice(-6) };
+}
+function Storyboard({ chat, close }: { chat: Chat; close(): void }) {
+  const [ready, setReady] = useState(false), [busy, setBusy] = useState(0), [, tick] = useState(0);
+  useEffect(() => { void Illust.load(chat.id).then(() => setReady(true)).catch(() => setReady(true)); const tm = window.setInterval(() => tick(n => n + 1), 1500); return () => clearInterval(tm); }, [chat.id]);
+  if (!ready) return <p className="dim">{t('game.story.loading')}</p>;
+  const { panels, missing } = storyPanels(cur.chat === chat ? cur.msgs : []);
+  const drawAll = async () => {
+    setBusy(missing.length);
+    try { const { quickDraw } = await import('../scenebook/work'); for (const m of missing) { await quickDraw(m as never); setBusy(n => n - 1); } toast(t('game.story.queued'), 'ok'); }
+    catch (e) { toast(t('game.story.failed', { error: (e instanceof Error ? e.message : String(e)).slice(0, 140) }), 'err'); }
+    finally { setBusy(0); }
+  };
+  return <div className="gm-story">
+    {panels.length ? <div className="gm-strip-grid">{panels.map((p, i) => <figure key={i} className={i % 5 === 0 ? 'is-wide' : ''} onClick={() => { close(); emit('game:enter', chat); window.setTimeout(() => emit('game:goto', p.msgId), 500); }}>
+      <img src={p.src} alt="" loading="lazy" />{p.place ? <span className="gm-where-tag">{p.place}</span> : null}<figcaption>{p.caption}</figcaption></figure>)}</div>
+      : <p className="dim">{t('game.story.empty')}</p>}
+    <div className="gm-foot">{missing.length ? <button type="button" className="btn primary" disabled={!!busy} onClick={() => void drawAll()}>{busy ? t('game.story.drawing', { n: busy }) : t('game.story.draw', { n: missing.length })}</button> : null}</div>
+    {missing.length ? <p className="hint">{t('game.story.hint')}</p> : null}
+  </div>;
+}
+export function openStoryboard(chat: Chat) { openModal({ title: t('game.story.title'), wide: true, spec: 'div.gm' }, close => <Storyboard chat={chat} close={close} />); }
 type Tab = 'sheet' | 'map' | 'journal' | 'session' | 'media';
 const StepBtn = ({ chat, fx, label }: { chat: GameChat; fx: Fx; label: string }) => <button type="button" className="gm-step" aria-label={label} title={label} onClick={() => adjust(chat, fx)}>{'n' in fx && fx.n > 0 ? '+' : '−'}</button>;
 export function Sheet({ chat, msgs, onClose, first = 'sheet' }: { chat: Chat; msgs: Msg[]; onClose?: () => void; first?: Tab }) {
@@ -267,6 +304,7 @@ export function Sheet({ chat, msgs, onClose, first = 'sheet' }: { chat: Chat; ms
   if (tab === 'journal') return <div className="gm-sheet">{tabs}
     <div className="gm-sec"><span className="eyebrow">{t('game.memo')}</span><textarea className="inp" rows={3} defaultValue={g.memo || ''} placeholder={t('game.memoPh')} onBlur={e => { if ((g.memo || '') !== e.target.value) { g.memo = e.target.value; saveChat(chat); } }} /></div>
     {s.docs.length ? <div className="gm-sec"><span className="eyebrow">{t('game.docs')}</span>{s.docs.map(d => <details key={d.title} className="gm-doc"><summary>{d.title}</summary><p>{d.text}</p></details>)}</div> : null}
+    <div className="gm-foot"><button type="button" className="btn sm" onClick={() => { onClose?.(); openStoryboard(chat); }}>{t('game.story.title')}</button></div>
     <p className="hint">{t('game.rewind.hint')}</p><Journal msgs={msgs} onClose={onClose} /></div>;
   if (tab === 'media') return <div className="gm-sheet">{tabs}<MediaBox /></div>;
   if (tab === 'session') return <div className="gm-sheet">{tabs}<SessionBox chat={gc} onClose={onClose} /></div>;
