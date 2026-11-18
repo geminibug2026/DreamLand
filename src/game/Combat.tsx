@@ -72,7 +72,7 @@ export function Combat({ g, sheet, foes, onDone, faces = {} }: { g: GameCfg; she
   const potion = potions0.find(p => left(p.name) > 0);
   const occupied = (foesNow: Unit[], except = -1) => (k: string) => rocks.has(k) || foesNow.some(f => f.hp > 0 && f.id !== except && key(f.x, f.y) === k) || st.allies.some(a => a.hp > 0 && key(a.x, a.y) === k);
   const reach = st.end || st.moved ? new Map<string, number>() : walk(st.x, st.y, occupied(st.foes), st.ail.chill ? 1 : MOVE, high);
-  const canHit = (f: Unit) => { const n = dist(st.x, st.y, f.x, f.y); return n <= 1 ? 'melee' : n <= RANGE + (high.has(key(st.x, st.y)) ? 1 : 0) && clear(st.x, st.y, f.x, f.y, rocks) ? 'shot' : ''; };
+  const canHit = (f: Unit, x = st.x, y = st.y) => { const n = dist(x, y, f.x, f.y); return n <= 1 ? 'melee' : n <= RANGE + (high.has(key(x, y)) ? 1 : 0) && clear(x, y, f.x, f.y, rocks) ? 'shot' : ''; };
 
   /** 동료의 차례: 붙어 있는 적을 치고, 없으면 가장 가까운 적에게 두 칸 다가간다 */
   const alliesTurn = (s: St): St => {
@@ -160,6 +160,17 @@ export function Combat({ g, sheet, foes, onDone, faces = {} }: { g: GameCfg; she
     } else { log.push(t('game.fight.log.miss', { name: f.name })); sfx('miss'); }
     after({ ...st, foes: foesNow, log, sure: false });
   };
+  // 공격 단추: 닿는 적 가운데 가장 약한 쪽을 친다. 닿는 적이 없으면 칠 수 있는 자리(없으면 가장 가까운 자리)로 다가간다
+  const living = st.foes.filter(f => f.hp > 0);
+  const target = living.filter(f => canHit(f)).sort((a, b) => a.hp - b.hp || dist(st.x, st.y, a.x, a.y) - dist(st.x, st.y, b.x, b.y))[0] || null;
+  const approach = (() => {
+    if (target || st.end || !living.length) return null;
+    let best: { x: number; y: number; v: number } | null = null;
+    for (const [k, steps] of reach) { const [x, y] = k.split(',').map(Number); if (x === st.x && y === st.y) continue;
+      const near = Math.min(...living.map(f => dist(x, y, f.x, f.y))), v = (living.some(f => canHit(f, x, y)) ? 0 : 100) + near * 10 + steps + (st.mark?.cells.includes(k) ? 500 : 0);
+      if (!best || v < best.v) best = { x, y, v }; }
+    return best;
+  })();
   const guard = () => after({ ...st, guard: true, log: [...st.log, t('game.fight.log.guard')] });
   const drink = () => { if (!potion) return; const heal = d(8) + 2; after({ ...st, hp: Math.min(sheet.hpMax, st.hp + heal), used: [...st.used, potion.name], log: [...st.log, t('game.fight.log.potion', { item: potion.name, n: heal })] }); };
   const flee = () => { if (st.x === 0 || d(20) + M.dex >= 12) setSt({ ...st, end: 'fled', log: [...st.log, t('game.fight.log.fled')] }); else after({ ...st, log: [...st.log, t('game.fight.log.noFlee')] }); };
@@ -203,9 +214,12 @@ export function Combat({ g, sheet, foes, onDone, faces = {} }: { g: GameCfg; she
     <ol className="gm-log">{st.log.length ? st.log.map((l, i) => <li key={i}>{l}</li>) : <li className="dim">{t('game.fight.hint')}</li>}</ol>
     {st.end ? <div className="gm-done"><b className={`gm-verdict is-${st.end === 'win' ? 'win' : st.end === 'lose' ? 'lose' : 'draw'}`}>{t('game.fight.end.' + st.end)}</b><button type="button" className="btn primary" onClick={finish}>{t('game.mini.finish')}</button></div>
       : <div className="gm-acts">
+        {target ? <button type="button" className="btn primary gm-strike" onClick={() => attack(target)}>{t('game.fight.attack', { name: living.length > 1 ? `${target.id + 1} · ${target.name}` : target.name })}</button>
+          : approach ? <button type="button" className="btn primary gm-strike" onClick={() => moveTo(approach.x, approach.y)}>{t('game.fight.approach')}</button>
+            : <button type="button" className="btn gm-strike" disabled>{t('game.fight.noTarget')}</button>}
         <button type="button" className="btn" onClick={guard}>{t('game.fight.guard')}</button>
         <button type="button" className="btn" disabled={!potion} onClick={drink}>{potion ? `${potion.name} ×${left(potion.name)}` : t('game.fight.noPotion')}</button>
-        <button type="button" className="btn" disabled={st.special} title={t('game.fight.sp.' + top + '.tip')} onClick={special}>{t('game.fight.sp.' + top)}</button>
+        <button type="button" className="btn" disabled={st.special} title={t('game.fight.sp.' + top + '.tip')} onClick={special}>{t('game.fight.sp.' + top)}<small>{t(st.special ? 'game.fight.spUsed' : 'game.fight.spOnce')}</small></button>
         <button type="button" className="btn ghost" title={t('game.fight.fleeTip')} onClick={flee}>{t('game.fight.flee')}</button>
       </div>}
   </div>;

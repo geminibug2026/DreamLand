@@ -776,3 +776,7 @@ html.gs-on .modal-wrap:has(.gm) .gm-chess button.is-w { color: #f4ecdb; } html.g
 .gm-chess button.is-can { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 80%, transparent); }
 @keyframes gm-check { 50% { background: #e2574a; } }
 @media (prefers-reduced-motion: reduce) { .gm-chess button.is-check { animation: none; } }
+
+/* 전투: 공격 단추는 맨 위에 넓게 */
+.gm-fight .gm-acts .gm-strike { grid-column: 1 / -1; }
+.gm-fight .gm-acts .btn small { display: block; font-size: .72em; font-weight: 400; opacity: .7; letter-spacing: 0; }
