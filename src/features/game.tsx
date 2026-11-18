@@ -9,6 +9,7 @@ import { reactNode } from '../addons/parts';
 import { toast } from '../ui';
 import { t } from '../i18n';
 import { def, str } from '../stscript/run';
+import { bagPrompt, packBag, type BagCfg } from '../game/bag';
 import { MINIS, gameOf, hideTags, readTags, rulesPrompt, sheetOf, sheetPrompt, type GameSwipe, type MiniId } from '../game/state';
 import { Sheet, drawFor, openGame, openMiniPicker, playMini, redrawGame } from '../game/ui';
 import { closeStage, openStage, stageOpenFor } from '../game/Stage';
@@ -59,7 +60,7 @@ function setup() {
   X.prompt = X.prompt.filter(p => p.owner !== OWNER);
   X.prompt.push({ owner: OWNER, fn: info => {
     const g = gameOf(info.chat); if (!g || info.type === 'impersonate') return [];
-    return [{ where: 'before', content: rulesPrompt(g), src: '게임 규칙' }, { where: 'end', content: sheetPrompt(g, sheetOf(g, info.msgs)), src: '게임 시트' }];
+    return [{ where: 'before', content: rulesPrompt(g), src: '게임 규칙' }, { where: 'end', content: (() => { const sh = sheetOf(g, info.msgs); return sheetPrompt(g, sh, bagPrompt(packBag(g.bag as BagCfg | undefined, sh.items, sh.level))); })(), src: '게임 시트' }];
   } });
   // 화면에서는 표시를 가린다 (받는 중인 글에도)
   X.filters = X.filters.filter(f => f.owner !== OWNER);

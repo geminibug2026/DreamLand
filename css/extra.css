@@ -786,3 +786,42 @@ html.gs-on .modal-wrap:has(.gm) .gm-chess button.is-w { color: #f4ecdb; } html.g
 .gm-traits { display: flex; flex-direction: column; gap: 2px; margin: 0; font-size: .78em; line-height: 1.5; color: var(--dim); } .gm-traits b { color: var(--text); font-weight: 700; margin-right: 4px; }
 .gm-cell.is-boom { cursor: pointer; outline: 2px dashed var(--bad, #c0392b); outline-offset: -3px; } .gm-cell.is-boom > svg { color: var(--bad, #c0392b); opacity: 1; }
 .gm-cell .gm-land.is-herb { color: #6f9a3c; opacity: 1; } .gm-cell.is-herb.is-go { background: color-mix(in srgb, #6f9a3c 24%, transparent); }
+
+/* 전투: 방금 내가 한 일 · 칸 위에 떠오르는 피해 */
+.gm-mine { display: flex; flex-direction: column; gap: 1px; margin: 0; padding: 7px 10px; border: 1px solid var(--ink); border-left: 4px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); font-size: .92em; font-weight: 600; animation: gm-mine .35s ease both; }
+.gm-mine.is-miss { border-left-color: var(--dim); background: none; font-weight: 500; }
+.gm-mine small { font: 700 9.5px var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+@keyframes gm-mine { from { transform: translateY(4px); opacity: 0; } }
+.gm-pop { position: absolute; left: 50%; top: 8%; z-index: 5; transform: translateX(-50%); padding: 0 5px; background: var(--bad, #c0392b); color: #fff; font: 800 13px/18px var(--display); white-space: nowrap; pointer-events: none; animation: gm-pop 1.1s ease-out both; }
+.gm-pop.is-miss { background: var(--surface); color: var(--dim); border: 1px solid var(--ink-line); font-weight: 600; font-size: 10px; }
+@keyframes gm-pop { 0% { transform: translate(-50%, 8px) scale(.6); opacity: 0; } 18% { transform: translate(-50%, 0) scale(1.15); opacity: 1; } 70% { opacity: 1; } 100% { transform: translate(-50%, -16px) scale(1); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .gm-pop { animation: none; } .gm-mine { animation: none; } }
+
+/* 가방: 칸에 맞춰 넣는 소지품과 걸친 것 */
+.gm-bag { display: flex; flex-direction: column; gap: 10px; min-width: 0; } .gm-carry { margin: 0; font-size: .9em; line-height: 1.6; }
+.gm-worn { display: grid; grid-template-columns: repeat(5, 1fr); gap: 5px; }
+.gm-slot { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; min-height: 66px; padding: 4px 2px; border: 1px dashed var(--ink-line); background: none; color: var(--dim); cursor: default; }
+.gm-slot small { font: 700 9px var(--display); letter-spacing: .08em; text-transform: uppercase; } .gm-slot i { font-style: normal; opacity: .5; }
+.gm-slot svg { width: 30px; height: 30px; color: var(--text); } .gm-slot em { max-width: 100%; font: 500 9.5px var(--body, inherit); font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.gm-slot.is-on { border-style: solid; border-color: var(--ink); cursor: pointer; } .gm-slot.is-sel { box-shadow: inset 0 0 0 2px var(--accent); }
+.gm-slot.is-want { border-color: var(--accent); color: var(--accent); cursor: pointer; background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.gm-gear { margin: 0; font-size: .82em; color: var(--dim); }
+.gm-bgrid { display: grid; width: min(100%, 420px); margin: 0 auto; border: 2px solid var(--ink); background: var(--surface2, var(--surface)); }
+.gm-bcell { padding: 0; border: 0; border-right: 1px solid var(--ink-line); border-bottom: 1px solid var(--ink-line); background: none; cursor: default; min-width: 0; }
+.gm-bcell.is-ok { background: color-mix(in srgb, var(--accent) 18%, transparent); cursor: pointer; }
+.gm-item { position: relative; z-index: 1; display: grid; place-items: center; margin: 2px; padding: 0; min-width: 0; min-height: 0; border: 1px solid var(--ink); background: var(--surface); color: var(--text); cursor: pointer; overflow: hidden; }
+.gm-item svg { width: min(100%, 44px); height: min(100%, 44px); max-height: 80%; } .gm-item:not(.is-wide) svg { width: 86%; height: auto; max-width: 46px; }
+.gm-item em { position: absolute; right: 2px; bottom: 1px; font: 700 10px var(--display); font-style: normal; }
+.gm-item span { position: absolute; left: 0; right: 0; top: 0; padding: 0 2px; font-size: 8.5px; line-height: 12px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--dim); }
+.gm-item.is-sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); z-index: 2; }
+.gm-item.is-sword, .gm-item.is-dagger, .gm-item.is-axe, .gm-item.is-bow, .gm-item.is-gun, .gm-item.is-staff { background: color-mix(in srgb, var(--bad, #c0392b) 9%, var(--surface)); }
+.gm-item.is-shield, .gm-item.is-armor, .gm-item.is-helm { background: color-mix(in srgb, #4a7fb0 12%, var(--surface)); }
+.gm-item.is-potion, .gm-item.is-food { background: color-mix(in srgb, #6f9a3c 12%, var(--surface)); } .gm-item.is-charm, .gm-item.is-gem { background: color-mix(in srgb, #c9a227 14%, var(--surface)); }
+.gm-bcount { margin: -4px 0 0; text-align: center; font-size: .78em; color: var(--dim); }
+.gm-over { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; padding: 6px 8px; border: 1px dashed var(--bad, #c0392b); } .gm-over small { width: 100%; font: 700 10px var(--display); letter-spacing: .06em; color: var(--bad, #c0392b); }
+.gm-over button { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border: 1px solid var(--ink-line); background: none; color: var(--text); font-size: .82em; cursor: pointer; } .gm-over button.is-sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.gm-pick { display: flex; flex-direction: column; gap: 7px; padding: 9px 10px; border: 1px solid var(--ink); } .gm-pick b { display: block; } .gm-pick small { color: var(--dim); font-size: .8em; }
+.gm-pick-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+@media (max-width: 420px) { .gm-slot { min-height: 58px; } .gm-slot svg { width: 24px; height: 24px; } }
+.gm-item.is-sel { pointer-events: none; }
+.gm-slot em { font-size: 9.5px; line-height: 1.2; font-weight: 500; }
