@@ -187,6 +187,12 @@ export function promptPieces(chat: Chat): PromptPiece[] {
     // 단체 통화 · 중간에 들어온 사람 (프롬프트 설정과 별개로 덧붙인다)
     const me = active.ch, others = s.chars.filter(c => c !== me).map(c => c.name);
     if (others.length) parts.push(`This is a group call. On the line right now: ${[me.name, ...others].join(', ')} and {{user}}. You are ${me.name}: say only ${me.name}'s own next spoken turn, keep it short, react to what the others just said, and never speak for anyone else.`);
+    // 같은 말로 시작하는 버릇을 끊는다: 이 사람이 최근에 한 말의 첫머리를 알려 주고 피하게 한다
+    if (active.kind === 'reply') {
+      const mine = s.lines.filter(l => l.who === 'c' && !l.note && (!l.by || l.by === me.id) && l.text).slice(-4).map(l => l.text.trim());
+      const heads = [...new Set(mine.map(x => x.replace(/^[\s.…·,!?~\-—"'“”]+/, '').split(/[\s,.…!?~]/)[0]).filter(Boolean))].slice(0, 4), dots = mine.filter(x => /^[.…]/.test(x)).length;
+      if (mine.length >= 2 && heads.length) parts.push(`Your last turns on this call began with: ${heads.map(h => `"${h}"`).join(', ')}${dots ? ' (and ' + dots + ' of them opened on "...")' : ''}. Begin this turn with a different word${dots ? ' and without a leading "..."' : ''}, build the sentence differently, and bring in something that has not been said yet.`);
+    }
     if (active.kind === 'join') parts.push(`You were just added to this call while it was already going on. Say hello in ${me.name}'s own way and catch up naturally.`);
     return [{ where: 'end', content: parts.join('\n\n'), src: 'call' }];
   }
