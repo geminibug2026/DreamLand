@@ -5,14 +5,14 @@ import type { Chat, Msg } from '../lib/types';
 import { Icon } from '../kit';
 import { S, emit, newMsg } from '../lib/core';
 import { openModal } from '../addons/parts';
-import { promptBox, toast } from '../ui';
+import { confirmBox, promptBox, toast } from '../ui';
 import { t } from '../i18n';
 import { bump, cur, useCh } from '../chat/store';
-import { chatApi, generate, running } from '../chat/actions';
+import { chatApi, drawMain, generate, running } from '../chat/actions';
 import { Combat } from './Combat';
-import { ClockDial, D20 } from './Art';
+import { ClockDial, D20, PlaceGlyph } from './Art';
 import { BUILTIN_BG, MAX_AUDIO, TRACKS, addMedia, loadMedia, myMedia, removeMedia } from './media';
-import { SCENES } from './state';
+import { SCENES, sceneOf } from './state';
 import { pickFiles } from '../lib/core';
 import { Mini } from './Minis';
 import { quickCall } from '../lib/engine';
@@ -115,7 +115,8 @@ function Setup({ chat, close }: { chat: GameChat; close(): void }) {
   const preset = PRESET_IDS.find(k => { const p = presetStats(rule, k); return keys.every(s => p[s] === g.stats[s]); }) || '';
   const done = () => {
     const next: GameCfg = { ...g, on: true, hpMax: Math.max(1, Math.round(g.hpMax) || 20), gold: Math.max(0, Math.round(g.gold) || 0), items: items.split(/[,\n]/).map(s => s.trim()).filter(Boolean).slice(0, 20), adj: editing ? g.adj || [] : [] };
-    chat.game = next; saveChat(chat); close();
+    if (!editing && chat.mode !== 'rp') { next.prev = chat.mode; chat.mode = 'rp'; }
+    chat.game = next; saveChat(chat); close(); drawMain();
     if (!editing) { emit('game:start', chat); void record(chat, { kind: 'start' }); }
   };
   return <div className="gm-setup">
@@ -154,22 +155,44 @@ export function openSetup(chat: Chat) { openModal({ title: t(gameOf(chat) ? 'gam
 
 // ── 시트 ──
 function adjust(chat: GameChat, fx: Fx) { const g = chat.game; if (!g) return; (g.adj ||= []).push(fx); saveChat(chat); }
-/** 지도: 간 곳은 실선, 들어만 본 곳은 점선. 이어진 곳을 누르면 그리로 간다고 입력창에 적는다 */
+/** 지도: 비스듬히 내려다본 판. 장소마다 블록이 하나씩 솟아 있고, 간 곳은 그림이 얹히고 들어만 본 곳은 낮고 흐리다. 이어진 곳을 누르면 그리로 간다고 적는다 */
 function MapView({ s, onGo }: { s: SheetData; onGo(name: string): void }) {
   const m = layoutMap(s); if (!m.nodes.length) return <p className="dim">{t('game.map.empty')}</p>;
-  const CW = 108, CH = 64, px = (n: { x: number; y: number }) => ({ x: n.x * CW + CW / 2, y: n.y * CH + CH / 2 });
+  const TW = 74, TH = 44, iso = (n: { x: number; y: number }) => ({ x: (n.x - n.y) * TW, y: (n.x + n.y) * TH });   // 블록 사이에 이름이 들어갈 틈을 둔다
+  const pts = m.nodes.map(n => ({ n, ...iso(n), h: n.here ? 20 : n.seen ? 13 : 6, scene: sceneOf({ ...s, scene: '', place: n.name, time: '' }) }));
+  const minX = Math.min(...pts.map(p => p.x)) - 78, maxX = Math.max(...pts.map(p => p.x)) + 78, minY = Math.min(...pts.map(p => p.y)) - 86, maxY = Math.max(...pts.map(p => p.y)) + 58;
   const near = (name: string) => s.paths.some(([a, b]) => (a === s.place && b === name) || (b === s.place && a === name));
-  return <div className="gm-map"><svg viewBox={`0 0 ${m.w * CW} ${m.h * CH}`} style={{ width: `${Math.min(100, m.w * 34)}%`, minWidth: Math.min(m.w * CW, 300) }} role="img" aria-label={t('game.map.title')}>
-    {m.edges.map(([a, b], i) => { const p = px(a), q = px(b); return <line key={i} x1={p.x} y1={p.y} x2={q.x} y2={q.y} className={a.seen && b.seen ? '' : 'is-faint'} />; })}
-    {m.nodes.map(n => { const p = px(n), can = !n.here && near(n.name), label = n.name.length > 12 ? n.name.slice(0, 11) + '…' : n.name;
-      return <g key={n.name} className={`${n.here ? 'is-here' : ''}${n.seen ? '' : ' is-new'}${can ? ' is-can' : ''}`} onClick={() => { if (can) onGo(n.name); }}>
-        <title>{n.name}</title><rect x={p.x - 46} y={p.y - 15} width={92} height={30} /><text x={p.x} y={p.y + 4} textAnchor="middle">{label}</text></g>; })}
+  const at = (name: string) => pts.find(p => p.n.name === name)!;
+  const W = 40, D = 21;   // 블록 윗면의 반너비 · 반높이
+  return <div className="gm-map"><svg viewBox={`${minX} ${minY} ${maxX - minX} ${maxY - minY}`} style={{ width: '100%', maxHeight: '52vh' }} role="img" aria-label={t('game.map.title')}>
+    <defs><pattern id="gm-hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><line x1="0" y1="0" x2="0" y2="5" stroke="currentColor" strokeWidth=".8" opacity=".5" /></pattern></defs>
+    {m.edges.map(([a, b], i) => { const p = at(a.name), q = at(b.name), mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2 + 6; return <path key={i} d={`M${p.x} ${p.y + 2}Q${mx} ${my} ${q.x} ${q.y + 2}`} className={`gm-road${a.seen && b.seen ? '' : ' is-faint'}`} />; })}
+    {[...pts].sort((p, q) => p.y - q.y).map(p => { const { n, x, y, h } = p, can = !n.here && near(n.name), top = y - h;
+      return <g key={n.name} className={`gm-spot${n.here ? ' is-here' : ''}${n.seen ? '' : ' is-new'}${can ? ' is-can' : ''}`} onClick={() => { if (can) onGo(n.name); }}>
+        <title>{n.name}</title>
+        <ellipse cx={x} cy={y + D + 5} rx={W * .9} ry={D * .55} className="gm-shadow" />
+        <path d={`M${x - W} ${top}L${x} ${top + D}V${y + D}L${x - W} ${y}z`} className="gm-side-l" />
+        <path d={`M${x + W} ${top}L${x} ${top + D}V${y + D}L${x + W} ${y}z`} className="gm-side-r" />
+        <path d={`M${x} ${top - D}L${x + W} ${top}L${x} ${top + D}L${x - W} ${top}z`} className="gm-top" />
+        {!n.seen ? <path d={`M${x} ${top - D}L${x + W} ${top}L${x} ${top + D}L${x - W} ${top}z`} fill="url(#gm-hatch)" /> : null}
+        {n.seen ? <g transform={`translate(${x - 13} ${top - 14}) scale(1.08)`} className="gm-icon"><PlaceGlyph scene={p.scene} /></g> : <text x={x} y={top + 5} textAnchor="middle" className="gm-q">?</text>}
+        {n.here ? <g className="gm-pin"><path d={`M${x} ${top - D - 14}c-6.500 -8 -8.500 -11.500 -8.500 -15.500a8.500 8.500 0 0 1 17 0c0 4 -2 7.500 -8.500 15.500z`} /><circle cx={x} cy={top - D - 30} r="3" /></g> : null}
+      </g>; })}
+    {/* 이름은 블록에 가리지 않게 맨 위에 그린다 */}
+    {pts.map(p => <text key={'l' + p.n.name} x={p.x} y={p.y + D + 15} textAnchor="middle" className={`gm-label${p.n.seen ? '' : ' is-new'}`}>{p.n.name.length > 14 ? p.n.name.slice(0, 13) + '…' : p.n.name}</text>)}
+    <g transform={`translate(${maxX - 30} ${minY + 30})`} className="gm-compass"><circle r="15" /><path d="M0 -12 3.500 0 0 12 -3.500 0z" /><path d="M0 -12 3.500 0H-3.500z" className="is-n" /><text y="-18" textAnchor="middle">N</text></g>
   </svg><p className="hint">{t('game.map.hint')}</p></div>;
 }
-function Journal({ msgs }: { msgs: Msg[] }) {
+/** 그 메시지까지만 남긴 새 갈래를 만들어 그리로 간다 (지금 대화는 그대로 남는다). 시트 · 지도는 그 시점의 것으로 저절로 맞는다 */
+export async function rewindTo(msgId: string, onClose?: () => void) {
+  const i = cur.msgs.findIndex(m => m.id === msgId); if (i < 0 || running()) return;
+  if (!(await confirmBox(t('game.rewind.ask'), t('game.rewind.go')))) return;
+  onClose?.(); const { branch } = await import('../chat/actions'); await branch(i);
+}
+function Journal({ msgs, onClose }: { msgs: Msg[]; onClose?: () => void }) {
   const rows = journalOf(msgs); if (!rows.length) return <p className="dim">{t('game.journal.empty')}</p>;
   return <ol className="gm-journal">{rows.map((r, i) => <li key={i} className={`is-${r.kind}`}><span className="eyebrow">{t('game.journal.' + r.kind)}</span>
-    <span>{r.kind === 'party' ? r.text : r.kind === 'play' ? t('game.mini.' + r.text) : r.kind === 'session' ? t('game.journal.sessionN', { n: r.text }) : r.text || '—'}</span>{r.ok === undefined ? null : <em>{r.kind === 'party' ? t(r.ok ? 'game.journal.joined' : 'game.journal.left') : t(r.ok ? 'game.rec.ok' : 'game.rec.fail')}</em>}</li>)}</ol>;
+    <span>{r.kind === 'party' ? r.text : r.kind === 'play' ? t('game.mini.' + r.text) : r.kind === 'session' ? t('game.journal.sessionN', { n: r.text }) : r.text || '—'}</span>{r.ok === undefined ? <em /> : <em>{r.kind === 'party' ? t(r.ok ? 'game.journal.joined' : 'game.journal.left') : t(r.ok ? 'game.rec.ok' : 'game.rec.fail')}</em>}<button type="button" className="gm-back" title={t('game.rewind.tip')} aria-label={t('game.rewind.tip')} onClick={() => void rewindTo(r.id, onClose)}>↺</button></li>)}</ol>;
 }
 /** 세션 마무리: 지금까지를 요약해 두고(요청 한 번), 지난 메시지는 프롬프트에서 뺀다. 시트 · 지도 · 일지는 그대로 이어진다 */
 async function endSession(chat: GameChat, trim: boolean) {
@@ -235,7 +258,7 @@ export function Sheet({ chat, msgs, onClose, first = 'sheet' }: { chat: Chat; ms
   const addItem = async () => { const v = await promptBox(t('game.sheet.addItem'), ''); if (v?.trim()) adjust(gc, { k: 'item', name: v.trim().slice(0, 60), n: 1 }); };
   const tabs = <div className="gm-tabs">{(['sheet', 'map', 'journal', 'session', 'media'] as const).map(k => <button key={k} type="button" className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{t('game.tab.' + k)}</button>)}</div>;
   if (tab === 'map') return <div className="gm-sheet">{tabs}<MapView s={s} onGo={name => { chatApi.insert(t('game.map.go', { place: name })); onClose?.(); }} /></div>;
-  if (tab === 'journal') return <div className="gm-sheet">{tabs}<Journal msgs={msgs} /></div>;
+  if (tab === 'journal') return <div className="gm-sheet">{tabs}<p className="hint">{t('game.rewind.hint')}</p><Journal msgs={msgs} onClose={onClose} /></div>;
   if (tab === 'media') return <div className="gm-sheet">{tabs}<MediaBox /></div>;
   if (tab === 'session') return <div className="gm-sheet">{tabs}<SessionBox chat={gc} onClose={onClose} /></div>;
   return <div className="gm-sheet">{tabs}
@@ -258,7 +281,7 @@ export function Sheet({ chat, msgs, onClose, first = 'sheet' }: { chat: Chat; ms
     <div className="gm-foot">
       <button type="button" className="btn sm" onClick={() => { onClose?.(); openMiniPicker(chat); }}>{t('game.mini.title')}</button>
       <button type="button" className="btn sm" onClick={() => { onClose?.(); openSetup(chat); }}>{t('game.sheet.settings')}</button>
-      <button type="button" className="btn sm ghost" onClick={() => { g.on = false; saveChat(chat); onClose?.(); toast(t('game.ended')); }}>{t('game.sheet.end')}</button>
+      <button type="button" className="btn sm ghost" onClick={() => { g.on = false; saveChat(chat); onClose?.(); drawMain(); toast(t('game.ended')); }}>{t('game.sheet.end')}</button>
     </div>
   </div>;
 }

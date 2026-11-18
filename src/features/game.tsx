@@ -4,7 +4,7 @@ import type { FeatureDef } from '../main';
 import type { Chat, Msg } from '../lib/types';
 import { S, on } from '../lib/core';
 import { X } from '../lib/hooks';
-import { chatApi } from '../chat/actions';
+import { chatApi, drawMain } from '../chat/actions';
 import { reactNode } from '../addons/parts';
 import { toast } from '../ui';
 import { t } from '../i18n';
@@ -26,6 +26,15 @@ export function showStage(chat: Chat) {
 function setup() {
   on<Chat>('chat:open', chat => { const g = gameOf(chat); if (g && g.stage !== false) showStage(chat); else if (stageOpenFor()) closeStage(); });
   on<Chat>('game:start', chat => showStage(chat));
+  // 게임 모드로 들어가기: 하던 게임이 있으면 이어서, 없으면 시작 창. 게임은 RP 방식으로 진행한다 (대화 모드의 기능이 섞이지 않게)
+  on<Chat>('game:enter', chat => {
+    const g = (chat as GameChat).game;
+    if (!g) return openGame(chat);
+    if (!g.on) { g.on = true; g.stage = true; if (chat.mode !== 'rp') { g.prev = chat.mode; chat.mode = 'rp'; } void S.save('chats', chat, true); drawMain(); toast(t('game.resumed'), 'ok'); }
+    showStage(chat); redrawGame();
+  });
+  // 잠시 멈추기: 시트 · 지도 · 일지는 그대로 두고 규칙과 표시 읽기만 끈다
+  on<Chat>('game:pause', chat => { const g = (chat as GameChat).game; if (!g?.on) return; g.on = false; void S.save('chats', chat, true); closeStage(); redrawGame(); toast(t('game.paused')); });
   // 답변을 받으면 표시를 읽어 변화와 맡긴 일을 그 답변에 붙이고, 글에서는 지운다 (기다림 없이 — 뒤이어 도는 기억 기록 · 번역이 깨끗한 글을 보도록)
   on('message:received', data => {
     const { msg, chat } = data as { msg: Msg; chat: Chat };

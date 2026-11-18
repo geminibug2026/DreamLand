@@ -31,7 +31,9 @@ export const Top = memo(function Top() {
   const c = cur.chat!, chars = charsOf(c), conn = S.connFor(c);
   useEffect(() => { if (ui.layout) tint(ui.layout, chars[0] ?? null); });   // 대화 화면 전체가 주인공 초상의 색을 띤다
   const talk = modeOf(c) === 'talk', p0 = talk && chars[0] ? presenceOf(c, chars[0]) : null, label = clockLabel(c);
-  const setMode = async (k: 'rp' | 'talk') => { if (modeOf(c) === k) return; if (cur.busy) return toast(t('chat.top.busyMode')); c.mode = k; await S.save('chats', c, true); drawMain(); armAuto(); if (k === 'rp' && c.scene?.on) toast(t('chat.top.sceneKept')); };
+  const gaming = !!(c as { game?: { on?: boolean } }).game?.on;
+  // RP · 대화 · 게임은 한 번에 하나만: 게임 중에 RP · 대화를 고르면 게임은 잠시 멈추고(시트는 그대로), 게임을 고르면 이어서 한다
+  const setMode = async (k: 'rp' | 'talk') => { if (modeOf(c) === k && !gaming) return; if (cur.busy) return toast(t('chat.top.busyMode')); if (gaming) emit('game:pause', c); c.mode = k; await S.save('chats', c, true); drawMain(); armAuto(); if (k === 'rp' && c.scene?.on) toast(t('chat.top.sceneKept')); };
   const parent = c.parent;
   const branchBtn = parent ? <button className="top-branch" title={t('chat.top.toParent')} onClick={() => { if (S.get('chats', parent.id)) go('chat', parent.id); else toast(t('chat.top.parentGone')); }}><Icon name="branch" size={12} /></button> : null;
   const connText = conn ? `${conn.name}${conn.model ? ' · ' + conn.model : ''}` : t('chat.drawer.noConn');
@@ -48,7 +50,7 @@ export const Top = memo(function Top() {
         : <small className="top-meta">{branchBtn}{talk && label ? <span className="top-clock">{label}</span> : null}{t('chat.top.roomCountConn', { room: roomName(c), count: cur.msgs.length, conn: connText })}</small>}</div>
     <Status /><Gauge />
     {u ? <button type="button" className={`me-btn top-wide is-${u.status}`} title={u.auto ? t('chat.top.meAuto', { status: u.label }) : t('chat.top.me', { status: u.label })} onClick={e => menu(e.currentTarget, meItems())}><i /><span>{t('chat.top.meShort')}</span></button> : null}
-    <div className="mode-switch top-wide" title={t('chat.top.modeSwitch')}>{([['rp', 'RP'], ['talk', t('chat.side.talk')]] as const).map(([k, l]) => <button key={k} className={modeOf(c) === k ? 'on' : undefined} onClick={() => void setMode(k)}>{l}</button>)}</div>
+    <div className="mode-switch top-wide" title={t('chat.top.modeSwitch')}>{([['rp', 'RP'], ['talk', t('chat.side.talk')]] as const).map(([k, l]) => <button key={k} className={modeOf(c) === k && !gaming ? 'on' : undefined} onClick={() => void setMode(k)}>{l}</button>)}<button className={gaming ? 'on' : undefined} onClick={() => { if (cur.busy) return toast(t('chat.top.busyMode')); emit('game:enter', c); }}>{t('game.mode')}</button></div>
     {talk ? <IconBtn ic="phone" title={t('call.btn')} cls="top-call" onClick={() => emit('call:dial', c)} /> : null}
     <IconBtn ic="book" title={t('chat.top.diary')} cls="top-wide" onClick={() => emit('diary:open', c)} />
     <IconBtn ic="search" title={t('chat.top.find')} cls="top-wide" onClick={findInChat} />

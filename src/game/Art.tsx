@@ -15,7 +15,7 @@ const Svg = ({ size, box = 24, children, cls }: { size?: number; box?: number; c
   <svg viewBox={`0 0 ${box} ${box}`} width={size} height={size} className={cls} aria-hidden="true">{children}</svg>;
 
 // ── 도구 아이콘 (24칸) ──
-export type GlyphName = 'map' | 'journal' | 'sheet' | 'soundOn' | 'soundOff' | 'back' | 'exit' | 'stop' | 'redo' | 'send';
+export type GlyphName = 'rewind' | 'map' | 'journal' | 'sheet' | 'soundOn' | 'soundOff' | 'back' | 'exit' | 'stop' | 'redo' | 'send';
 export function Glyph({ name, size = 20 }: { name: GlyphName; size?: number }) {
   const g: Record<GlyphName, ReactNode> = {
     // 접힌 지도: 가운데 면만 옅게, 길은 점선, 목적지에 점
@@ -27,6 +27,8 @@ export function Glyph({ name, size = 20 }: { name: GlyphName; size?: number }) {
     soundOn: <><Tone d="M4 9.500h3.200L12 5.500v13l-4.800-4H4z" /><Out d="M4 9.500h3.200L12 5.500v13l-4.800-4H4z" /><In d="M15.200 9.200a4 4 0 0 1 0 5.600" /><Out d="M17.800 6.600a7.600 7.600 0 0 1 0 10.800" w={1.250} /></>,
     soundOff: <><Tone d="M4 9.500h3.200L12 5.500v13l-4.800-4H4z" /><Out d="M4 9.500h3.200L12 5.500v13l-4.800-4H4z" /><Out d="M15.500 9.500l5 5M20.500 9.500l-5 5" w={1.250} /></>,
     back: <Out d="M14.500 5.500 8 12l6.500 6.500" />,
+    // 되돌아가기: 갈라지는 길
+    rewind: <><Out d="M6.500 4v9.500a4 4 0 0 0 4 4H17" /><Out d="M14 14.500l3 3-3 3" /><In d="M6.500 9.500h7a3.500 3.500 0 0 0 3.500-3.500V4" /><circle cx="6.500" cy="4" r="1.500" fill="currentColor" /></>,
     exit: <Out d="M6 6l12 12M18 6 6 18" />,
     stop: <><Tone d="M7 7h10v10H7z" o={.3} /><Out d="M7.500 6.500h9a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1z" /></>,
     redo: <><Out d="M19.500 12a7.500 7.500 0 1 1-2.400-5.500" /><Out d="M19.800 3.800v4.400h-4.400" /></>,
@@ -111,4 +113,22 @@ export function Rule() {
 /** 아치 액자의 머릿돌 */
 export function Keystone() {
   return <svg className="gs-key" viewBox="0 0 40 20" width="40" height="20" aria-hidden="true"><path d="M20 2l6 6-6 6-6-6z" fill="var(--gs-night, #100e0b)" {...{ stroke: 'currentColor', strokeWidth: 1, strokeLinejoin: 'round' }} /><path d="M20 5.200 22.800 8 20 10.800 17.200 8z" fill="currentColor" /><path d="M2 8h8M30 8h8" {...S} strokeWidth={1} /><circle cx="12" cy="8" r=".900" fill="currentColor" /><circle cx="28" cy="8" r=".900" fill="currentColor" /></svg>;
+}
+
+// ── 지도의 장소 그림 (24칸): 블록 위에 얹는 작은 상징 ──
+export function PlaceGlyph({ scene }: { scene: string }) {
+  const k = ['forest', 'garden'].includes(scene) ? 'tree' : ['mountain', 'peak', 'winter'].includes(scene) ? 'peak' : ['street', 'city', 'room', 'tavern', 'station'].includes(scene) ? 'house' : ['castle', 'arena'].includes(scene) ? 'tower'
+    : ['hall', 'ruins'].includes(scene) ? 'arch' : ['sea', 'harbor', 'lake', 'bridge'].includes(scene) ? 'wave' : scene === 'desert' ? 'dune' : scene === 'night' ? 'moon' : 'post';
+  const g: Record<string, ReactNode> = {
+    tree: <><Tone d="M12 3 6 12h3l-3.500 5.500h13L15 12h3z" o={.3} /><Out d="M12 3 6 12h3l-3.500 5.500h13L15 12h3z" w={1.250} /><Out d="M12 17.500V21" w={1.500} /></>,
+    peak: <><Tone d="M3 20 9.500 7l3.500 6 2.500-3.500L21 20z" o={.3} /><Out d="M3 20 9.500 7l3.500 6 2.500-3.500L21 20z" w={1.250} /><In d="M8 10.200l1.500 1.300 1.500-1.300M14.300 11.300l1.200 1 1.300-1" /></>,
+    house: <><Tone d="M4.500 11 12 4.500 19.500 11v9h-15z" o={.3} /><Out d="M3 11.500 12 4l9 7.500M5 10v10h14V10" w={1.250} /><In d="M10 20v-5h4v5M15.500 6.500V4.500h2v3.700" /></>,
+    tower: <><Tone d="M7 20V8.500h10V20z" o={.3} /><Out d="M7 20V8.500M17 20V8.500M5.500 8.500V4.500h2.500v1.800h2.200V4.500h3.600v1.800H16V4.500h2.500v4zM4 20h16" w={1.250} /><In d="M10.500 20v-4a1.500 1.500 0 0 1 3 0v4M12 11v2" /></>,
+    arch: <><Tone d="M5 20V11a7 7 0 0 1 14 0v9h-4v-8.500a3 3 0 0 0-6 0V20z" o={.3} /><Out d="M5 20V11a7 7 0 0 1 14 0v9M9 20v-8.500a3 3 0 0 1 6 0V20M3.500 20h17" w={1.250} /><Hatch d="M6.500 8l1.500 1M17.500 8 16 9M12 4v2" /></>,
+    wave: <><Out d="M3 9c2-2 4-2 6 0s4 2 6 0 4-2 6 0M3 14c2-2 4-2 6 0s4 2 6 0 4-2 6 0M3 19c2-2 4-2 6 0s4 2 6 0 4-2 6 0" w={1.250} /></>,
+    dune: <><Tone d="M2.500 20c4-7 8-7 11-2.500 2-3 4.500-3 8 2.500z" o={.3} /><Out d="M2.500 20c4-7 8-7 11-2.500 2-3 4.500-3 8 2.500" w={1.250} /><circle cx="17" cy="6.500" r="2.300" {...S} strokeWidth={1.250} /></>,
+    moon: <><Tone d="M15.500 3.500a8.500 8.500 0 1 0 5 12.500 7 7 0 0 1-5-12.500z" o={.3} /><Out d="M15.500 3.500a8.500 8.500 0 1 0 5 12.500 7 7 0 0 1-5-12.500z" w={1.250} /></>,
+    post: <><Out d="M12 21V4M12 6h6.500L20.500 8.500 18.500 11H12M12 12.500H6L4 15l2 2.500h6" w={1.250} /><Tone d="M12 6h6.500L20.500 8.500 18.500 11H12zM12 12.500H6L4 15l2 2.500h6z" o={.3} /></>,
+  };
+  return <>{g[k]}</>;
 }
