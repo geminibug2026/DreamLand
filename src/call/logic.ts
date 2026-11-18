@@ -175,6 +175,8 @@ let queued = false;
 
 const pendText = (p: Pending) => prompt(p.kind).replace(/\{\{last\}\}/g, p.last || '').replace(/\{\{activity\}\}/g, p.activity || 'busy');
 let active: { chat: Chat; kind: 'open' | 'reply' | 'voicemail' | 'join'; ch: Char } | null = null;
+/** 지금 이 방의 통화 대사를 받고 있는가 — 통화 중에는 삽화 · 게임 지시를 싣지 않는다 (말로 하는 대사에 태그가 섞이지 않게) */
+export const inCall = (chat?: unknown) => !!active && (!chat || active.chat === chat);
 /** 통화 중일 때만 프롬프트 끝에 붙는 조각 (X.prompt) */
 export function promptPieces(chat: Chat): PromptPiece[] {
   const c = chat as CallChat;
@@ -194,6 +196,8 @@ export function promptPieces(chat: Chat): PromptPiece[] {
 
 const strip = (raw: string, name: string) => {
   let t = E.splitThink(raw).text.replace(/<think(ing)?>[\s\S]*$/i, '');
+  // 삽화 계획 같은 숨은 주석은 말이 아니다 (받는 도중이라 아직 닫히지 않은 것도 지운다)
+  t = t.replace(/<!--[\s\S]*?-->/g, '').replace(/<!--[\s\S]*$/, '').replace(/<!?-?-?$/, '');
   t = t.replace(/\[(react|status|schedule_update|selfie|memory|time|later|scene|scene_end|call)\b[^\]]*\]?/gi, '').replace(/\[hangup\]?/gi, '');
   t = t.replace(new RegExp('^\\s*' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*:\\s*'), '').replace(/\[$|\[[a-z_]*$/i, '').replace(/<\/?[a-z]*$/i, '');
   // 따옴표로 감싼 말은 벗긴다
