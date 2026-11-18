@@ -97,7 +97,7 @@ PC 에서 켜 두고 휴대폰으로 접속하려면 `start-lan.bat` (또는 `sh
 git pull
 ```
 
-Windows 에서는 `update-and-start.bat` 을 두 번 누르면 업데이트를 받은 뒤 바로 켜집니다. (`git clone` 으로 받은 폴더에서만 됩니다)
+Windows 에서는 `update-and-start.bat` 을 두 번 누르면 업데이트를 받은 뒤 바로 켜집니다. 휴대폰에서도 접속하려면 `update-and-start-lan.bat` 을 씁니다. (`git clone` 으로 받은 폴더에서만 됩니다)
 
 ZIP 으로 받았다면 새 ZIP 을 풀어 덮어쓰되 `data/` 폴더는 그대로 두세요.
 
