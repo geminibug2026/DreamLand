@@ -1,0 +1,220 @@
+// ════════ 장면 편집기 ════════ 장면 · 인물 배치 · 최종 프롬프트 + 이번 작업의 생성 설정
+import { useEffect, useRef, useState } from 'react';
+import { Form, type FieldDef, confirmBox, menu, toast } from '../ui';
+import { Area, Btn, Chk, Empty, Fld, IBtn, Sel, Seg, Text, openModal, useBump, type Box } from './parts';
+import { Board } from './Board';
+import { orientations } from './framing';
+import { draw } from './work';
+import { schedule } from './decorate';
+import { guide } from './dialogs';
+import type { Chat, GenConfig, Msg, Person, Scene, Swipe } from './types';
+
+import { chatApi } from '../chat/actions';
+import * as IL from '../lib/illust';
+import * as C from '../lib/core';
+import { blankScene, clone, configLine, cur, errText, flat, guard, mustBeOpen, pickKeys } from './util';
+import { Illust } from './illust';
+import { t as tr } from '../i18n';
+
+// ════════ 이번 작업의 생성 설정 ════════
+function genFields(d: GenConfig): (FieldDef | false)[] {
+  const { MODELS, SAMPLERS, SCHEDULERS } = IL, nai = d.backend === 'nai', v5 = MODELS[d.model]?.family === 5, sd = d.backend === 'a1111';
+  return [
+    nai && { k: 'model', label: tr('scenebook.gen.model'), type: 'select', opts: Object.entries(MODELS).map(([id, m]) => [id, m.label]), half: true, live: true },
+    { k: 'width', label: tr('scenebook.gen.width'), type: 'num', min: 64, max: 4096, step: 64, third: true }, { k: 'height', label: tr('scenebook.gen.height'), type: 'num', min: 64, max: 4096, step: 64, third: true },
+    (nai || sd) && { k: 'steps', label: 'Steps', type: 'num', min: 1, max: 150, step: 1, third: true }, (nai || sd) && { k: 'scale', label: 'Guidance', type: 'num', min: 0, max: 30, step: 0.1, third: true },
+    (nai || sd) && { k: 'seed', label: 'Seed', type: 'num', min: -1, max: 4294967295, step: 1, third: true, hint: tr('scenebook.gen.seedHint') },
+    nai && { k: 'sampler', label: tr('scenebook.gen.sampler'), type: 'select', opts: SAMPLERS, half: true }, nai && !v5 && { k: 'scheduler', label: tr('scenebook.gen.scheduler'), type: 'select', opts: SCHEDULERS, half: true },
+    sd && { k: 'sdSampler', label: tr('scenebook.gen.sampler'), half: true, ph: 'Euler a' },
+    nai && { k: 'cfgRescale', label: 'CFG rescale', type: 'num', min: 0, max: 1, step: 0.05, third: true },
+    nai && v5 && { k: 'transparent', label: tr('scenebook.gen.transparent'), type: 'check' },
+    nai && { k: 'budgetGuard', label: tr('scenebook.gen.budget'), type: 'check', hint: tr('scenebook.gen.budgetHintFull') },
+  ];
+}
+export function fixModel(d: GenConfig) { if (d.backend !== 'nai') return; if (IL.MODELS[d.model]?.family === 5) d.scheduler = 'karras'; else d.transparent = false; }
+function GenForm({ d, hold }: { d: GenConfig; hold: { redo: () => void } }) {
+  const [ver, setVer] = useState(0), last = useRef(d.model);
+  hold.redo = () => setVer(v => v + 1);
+  return <><p className="hint">{tr('scenebook.ed.genOnly')}</p><Form key={ver} obj={d} defs={genFields(d)} onChange={() => { fixModel(d); if (d.model !== last.current) { last.current = d.model; setVer(v => v + 1); } }} /></>;
+}
+function genEditor(config: GenConfig, onApply: (c: GenConfig) => void) {
+  const d = clone(config), hold = { redo: () => { } };
+  openModal({ title: tr('scenebook.ed.genSettings'), cls: 'col', actions: [
+    { label: tr('scenebook.ed.randomSeed'), cls: 'ghost', onclick: () => { d.seed = -1; hold.redo(); return false; } },
+    { label: tr('common.apply'), cls: 'primary', onclick: () => { try { fixModel(d); onApply(Illust.validate(d)); } catch (e) { toast(errText(e), 'err'); return false; } } }] }, () => <GenForm d={d} hold={hold} />);
+}
+
+// ════════ 장면 편집기 ════════
+const LIMIT = 6;
+type Tab = 'scene' | 'cast' | 'final';
+interface Snap { drafts: Scene[]; cfg: GenConfig; at: number; person: number }
+interface Ctx {
+  chat: Chat; msg: Msg; sw: Swipe; slot: string | null; preview: string; inline: boolean; blocks: { index: number; content: string }[];
+  /** 편집 중인 값 (옛 편집기의 let 변수들) */
+  st: Snap & { tab: Tab; dirty: boolean; undo: Snap[] };
+  saveDraft(quiet: boolean): Promise<void>; close(): void;
+}
+/** 편집기 안쪽 탭들이 쓰는 것 */
+interface Tools { x: Ctx; s: Scene; snap(): void; touch(): void; redo(): void; note(t: string): void }
+
+function ParaPicker({ t, pickAt }: { t: Tools; pickAt: (b: { index: number; content: string } | null) => void }) {
+  const SIZE = 20, [q, setQ] = useState(''), [page0, setPage] = useState(0), list = useRef<HTMLDivElement>(null);
+  const { blocks } = t.x, s = t.s;
+  const here = s.anchor ? blocks.find(b => flat(b.content).includes(flat(s.anchor).slice(0, 40)))?.index : 0;
+  const k = flat(q).toLowerCase(), hits = blocks.filter(b => !k || flat(b.content).toLowerCase().includes(k)), pages = Math.max(1, Math.ceil(hits.length / SIZE)), page = Math.max(0, Math.min(page0, pages - 1));
+  useEffect(() => { if (list.current) list.current.scrollTop = 0; }, [q, page]);
+  return <>
+    <input className="inp" type="search" placeholder={tr('scenebook.para.search')} value={q} onChange={e => { setQ(e.target.value); setPage(0); }} />
+    <small className="hint" role="status">{tr('scenebook.para.count', { total: blocks.length, hits: hits.length })}</small>
+    <div className="sb-para-list" aria-label={tr('scenebook.para.list')} ref={list}>
+      {page === 0 && !k ? <button type="button" className={'sb-para' + (here ? '' : ' on')} onClick={() => pickAt(null)}><b>{here ? tr('scenebook.para.end') : tr('scenebook.para.endHere')}</b><span>{tr('scenebook.para.endHint')}</span></button> : null}
+      {hits.slice(page * SIZE, (page + 1) * SIZE).map(b => <button key={b.index} type="button" className={'sb-para' + (b.index === here ? ' on' : '')} aria-pressed={b.index === here} onClick={() => pickAt(b)}><b>{b.index === here ? tr('scenebook.para.nHere', { n: b.index }) : tr('scenebook.para.n', { n: b.index })}</b><span>{b.content}</span></button>)}
+      {!hits.length ? <Empty>{tr('scenebook.para.none')}</Empty> : null}
+    </div>
+    <div className="sb-pager" hidden={pages < 2}><Btn label={tr('scenebook.prev')} cls="ghost" disabled={page === 0} onClick={() => setPage(page - 1)} /><span className="hint">{`${page + 1} / ${pages}`}</span><Btn label={tr('scenebook.next')} cls="ghost" disabled={page >= pages - 1} onClick={() => setPage(page + 1)} /></div>
+  </>;
+}
+function AnchorPicker({ t }: { t: Tools }) {
+  const bump = useBump(), s = t.s, b = s.anchor ? t.x.blocks.find(x => flat(x.content).includes(flat(s.anchor).slice(0, 40))) : undefined;
+  const choose = () => { const m: Box = openModal({ title: tr('scenebook.anchor'), wide: true, cls: 'col' }, () => <ParaPicker t={t} pickAt={p => { t.snap(); s.anchor = p ? p.content.slice(0, 200) : ''; bump(); m.close(); }} />); };
+  return <section className="sb-anchor"><div className="row"><b>{b ? tr('scenebook.anchor.after', { n: b.index }) : tr('scenebook.anchor.end')}</b><Btn label={tr('scenebook.anchor.change')} cls="ghost" onClick={choose} /></div><blockquote className="sb-excerpt" hidden={!b}>{b ? b.content : ''}</blockquote></section>;
+}
+
+function SceneTab({ t }: { t: Tools }) {
+  const { x, s } = t, st = x.st, [dir, setDir] = useState(''), [busy, setBusy] = useState(false), scope = useRef('all'), [showFinal] = useState(!!s.finalPrompt), alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
+  const reanalyze = async () => {
+    const before = JSON.stringify(st.drafts); setBusy(true); t.note(tr('scenebook.analyzing'));
+    try {
+      mustBeOpen(x.msg);
+      const out = await Illust.analyze(x.chat, cur().msgs as Msg[], x.msg, null, { existing: clone(st.drafts), direction: dir, scope: scope.current, manual: true });
+      if (JSON.stringify(st.drafts) !== before) throw new Error(tr('scenebook.ed.editedDuring'));
+      t.snap(); st.drafts = out; t.redo(); toast(tr('scenebook.ed.analyzed'), 'ok');
+    } catch (err) { t.note(''); toast(tr('scenebook.ed.analyzeFail', { error: errText(err) }), 'err'); } finally { if (alive.current) setBusy(false); }
+  };
+  return <div className="col sb-ed-pane">
+    {x.inline ? <AnchorPicker t={t} /> : null}
+    <div className="sb-shape"><span className="field-label">{tr('scenebook.ratio')}</span><Seg label={tr('scenebook.ratio')} choices={orientations()} value={s.size ?? ''} onChange={val => { t.snap(); if (val) s.size = val; else delete s.size; }} /></div>
+    <Area obj={s} k="prompt" label={tr('scenebook.ed.scenePrompt')} rows={5} ph={tr('scenebook.ed.scenePromptPh')} onInput={t.touch} />
+    {showFinal ? <Chk label={tr('scenebook.ed.finalDirect')} checked onChange={v => { s.finalPrompt = v; t.touch(); }} hint={tr('scenebook.ed.finalDirectHint')} /> : null}
+    <div className="sb-two"><Area obj={s} k="camera" label={tr('scenebook.camera')} rows={3} ph="medium shot, from the side …" onInput={t.touch} /><Area obj={s} k="negative" label={tr('scenebook.ed.sceneNeg')} rows={3} onInput={t.touch} /></div>
+    <details className="sb-fold"><summary>{tr('scenebook.ed.common')}</summary><div className="col"><Area obj={st.cfg} k="style" label={tr('scenebook.style')} rows={3} onInput={t.touch} /><Area obj={st.cfg} k="negative" label={tr('scenebook.ed.commonNeg')} rows={2} onInput={t.touch} /><Chk label={tr('scenebook.ed.quality')} checked={st.cfg.quality} onChange={v => { st.cfg.quality = v; t.touch(); }} /></div></details>
+    <details className="sb-fold"><summary>{tr('scenebook.ed.askAi')}</summary><div className="col">
+      <Fld label={tr('scenebook.ed.direction')}><textarea className="inp" rows={2} placeholder={tr('scenebook.ed.directionPh')} value={dir} onChange={e => setDir(e.target.value)} /></Fld>
+      <Fld label={tr('scenebook.ed.scope')}><Sel opts={[['all', tr('scenebook.ed.scopeAll')], ['camera', tr('scenebook.camera')], ['background', tr('scenebook.ed.scopeBg')], ['characters', tr('scenebook.cast')]]} value="all" onChange={v => { scope.current = v; }} /></Fld>
+      <div className="row"><Btn label={tr('scenebook.ed.reanalyze')} ic="sparkle" disabled={busy} onClick={() => void reanalyze()} /><small className="hint">{tr('scenebook.ed.extraCall')}</small></div></div></details>
+  </div>;
+}
+
+function CastTab({ t }: { t: Tools }) {
+  const bump = useBump(), { x, s } = t, st = x.st, cfg = st.cfg, { MODELS } = IL;
+  const cast: Person[] = (s.characters ||= []); st.person = Math.max(0, Math.min(st.person, cast.length - 1));
+  const person = st.person, c: Person | undefined = cast[person], fx = useRef<HTMLInputElement>(null), fy = useRef<HTMLInputElement>(null);
+  const castMax = () => cfg.backend === 'nai' ? (MODELS[cfg.model]?.characters || 6) : 4;
+  const boardModel = cfg.backend !== 'nai' || MODELS[cfg.model]?.family === 5 ? 'nai-diffusion-5-full' : cfg.model;
+  const moved = () => { cfg.useCoords = true; t.touch(); bump(); };
+  const swap = (d: number) => { const to = person + d; if (to < 0 || to >= cast.length) return; t.snap(); [cast[person], cast[to]] = [cast[to], cast[person]]; st.person = to; t.redo(); };
+  const del = async () => { if (!c || !(await confirmBox(tr('scenebook.ed.removePersonAsk', { name: c.name || tr('scenebook.ed.selectedPerson') }), tr('scenebook.ed.remove'), true))) return; t.snap(); cast.splice(person, 1); st.person = Math.max(0, person - 1); t.redo(); };
+  const lib = Illust.library(x.chat).filter(p => !cast.some(q => q.name === p.name));
+  const add = (base?: Person | null) => { if (cast.length >= castMax()) return toast(tr('scenebook.ed.castMax', { n: castMax() })); t.snap(); cast.push(base || { name: tr('scenebook.person.n', { n: cast.length + 1 }), prompt: '', negative: '', x: 0.5, y: 0.5 }); st.person = cast.length - 1; t.redo(); };
+  const num = (k: 'x' | 'y', ref: typeof fx) => <input ref={ref} className="inp" type="number" min={0} max={1} step={0.01} defaultValue={c?.[k] ?? 0.5} onChange={e => { if (c) c[k] = Math.min(1, Math.max(0, +e.target.value || 0)); moved(); }} />;
+  return <div className="sb-cast">
+    <div className="sb-cast-visual">
+      <Board model={boardModel} width={cfg.width} height={cfg.height} bg={x.preview} selected={person} onMove={moved} onSelect={i => { st.person = i; bump(); }}
+        entries={cast.map((p, i) => ({ name: p.name, x: p.x ?? 0.5, y: p.y ?? 0.5, set: (px: number, py: number) => { p.x = px; p.y = py; if (i === st.person) { if (fx.current) fx.current.value = String(px); if (fy.current) fy.current.value = String(py); } } }))} />
+      <div className="col"><Chk label={tr('scenebook.ed.useCoords')} checked={cfg.useCoords !== false} onChange={v => { cfg.useCoords = v; t.touch(); }} /><Chk label={tr('scenebook.useOrder')} checked={cfg.useOrder !== false} onChange={v => { cfg.useOrder = v; t.touch(); }} /></div>
+    </div>
+    <div className="sb-cast-editor">
+      <div className="sb-cast-list">{cast.map((p, i) => <button key={i} type="button" className={'chip' + (i === person ? ' on' : '')} title={p.name || tr('scenebook.person.n', { n: i + 1 })} onClick={() => { st.person = i; bump(); }}>{`${i + 1}. ${p.name || tr('scenebook.person.n', { n: i + 1 })}`}</button>)}</div>
+      <div className="sb-cast-fields col" key={person}>
+        <div className="row sb-cast-actions">
+          <Btn label={tr('scenebook.addPerson')} ic="plus" cls="ghost" onClick={e => lib.length ? menu(e.currentTarget, [{ label: tr('scenebook.ed.blankPerson'), ic: 'plus', onclick: () => add() }, '-', ...lib.map(p => ({ label: p.name, ic: 'user', hint: p.player ? tr('scenebook.myChar') : '', onclick: () => add(Illust.compileCharacter({ name: p.name, id: p.id }, Illust.library(x.chat), 'always')) }))]) : add()} />
+          <span className="sb-grow" /><IBtn ic="up" title={tr('scenebook.ed.personUp')} disabled={person === 0 || !c} onClick={() => swap(-1)} /><IBtn ic="down" title={tr('scenebook.ed.personDown')} disabled={person >= cast.length - 1} onClick={() => swap(1)} /><IBtn ic="trash" title={tr('scenebook.deletePerson')} disabled={!c} onClick={() => void del()} />
+        </div>
+        {!c ? <Empty>{tr('scenebook.ed.castEmpty')}</Empty> : <>
+          <Text obj={c} k="name" label={tr('common.name')} onInput={() => { t.touch(); bump(); }} />
+          <Area obj={c} k="prompt" label={tr('scenebook.ed.personPrompt')} rows={5} ph={tr('scenebook.ed.personPromptPh')} onInput={t.touch} />
+          <Area obj={c} k="negative" label={tr('scenebook.personNeg')} rows={2} onInput={t.touch} />
+          <div className="sb-two"><Fld label={tr('scenebook.ed.posX')}>{num('x', fx)}</Fld><Fld label={tr('scenebook.ed.posY')}>{num('y', fy)}</Fld></div></>}
+      </div>
+    </div>
+  </div>;
+}
+
+function FinalTab({ t }: { t: Tools }) {
+  const { x, s } = t, cfg = x.st.cfg, { MODELS, snapPoint } = IL;
+  const [made] = useState(() => { try { return { p: Illust.compose(x.chat, s, cfg), err: '' }; } catch (e) { return { p: null, err: errText(e) }; } });
+  const [pos, setPos] = useState(made.p?.base ?? ''), [neg, setNeg] = useState(made.p?.negative ?? '');
+  if (!made.p) return <p className="err">{made.err}</p>;
+  const p = made.p, boardModel = cfg.backend !== 'nai' || MODELS[cfg.model]?.family === 5 ? 'nai-diffusion-5-full' : cfg.model;
+  const lock = (prompt: string, negative: string) => { Object.assign(s, { prompt, negative, camera: '', finalPrompt: true }); t.touch(); };
+  return <div className="col sb-ed-pane">
+    <p className="hint">{tr('scenebook.ed.finalHint')}</p>
+    <Fld label={tr('scenebook.ed.finalPrompt')}><textarea className="inp" rows={7} spellCheck={false} value={pos} onChange={e => { setPos(e.target.value); lock(e.target.value, neg); }} /></Fld>
+    <Fld label={tr('scenebook.ed.finalNeg')}><textarea className="inp" rows={4} spellCheck={false} value={neg} onChange={e => { setNeg(e.target.value); lock(pos, e.target.value); }} /></Fld>
+    {p.looks.length ? <div className="col"><span className="field-label">{tr('scenebook.ed.looksCount', { n: p.looks.length })}</span>{p.looks.map((l, i) => { const pt = snapPoint(l.x, l.y, boardModel);
+      return <div className="sb-caption" key={i}><b>{`${i + 1}. ${l.name || tr('scenebook.person')}`}</b><span>{l.caption}</span><small>{`${p.coords ? tr('scenebook.ed.pos', { x: pt.x, y: pt.y }) : tr('scenebook.ed.noCoords')}${l.negative ? tr('scenebook.ed.excl', { neg: l.negative }) : ''}`}</small></div>; })}</div>
+      : <small className="hint">{tr('scenebook.ed.noCast')}</small>}
+  </div>;
+}
+
+function Composer({ x }: { x: Ctx }) {
+  const bump = useBump(), [ver, setVer] = useState(0), [busyNote, setNote] = useState(''), st = x.st, { MODELS, RENDER_KEYS } = IL;
+  st.at = Math.max(0, Math.min(st.at, st.drafts.length - 1));
+  const s: Scene | undefined = st.drafts[st.at];
+  const redo = () => { setNote(''); setVer(v => v + 1); };
+  const touch = () => { st.dirty = true; };
+  const snap = () => { st.undo.push(clone({ drafts: st.drafts, cfg: st.cfg, at: st.at, person: st.person })); if (st.undo.length > 20) st.undo.shift(); st.dirty = true; bump(); };
+  const move = (d: number) => { const to = st.at + d; if (to < 0 || to >= st.drafts.length) return; snap(); [st.drafts[st.at], st.drafts[to]] = [st.drafts[to], st.drafts[st.at]]; st.at = to; redo(); };
+  const undo = () => { const u = st.undo.pop(); if (!u) return; Object.assign(st, u); st.dirty = true; redo(); };
+  const add = () => { if (st.drafts.length >= LIMIT) return toast(tr('scenebook.ed.sceneMax', { n: LIMIT })); snap(); st.drafts.push(blankScene(st.drafts.length + 1)); st.at = st.drafts.length - 1; st.person = 0; redo(); };
+  const del = async () => { if (!s || !(await confirmBox(tr('scenebook.ed.deleteSceneAsk', { n: st.at + 1 }), tr('scenebook.delete'), true))) return; snap(); st.drafts.splice(st.at, 1); st.at = Math.max(0, st.at - 1); st.person = 0; redo(); };
+  const gen = guard(async () => { draw(x.msg, st.drafts, st.cfg, x.slot); if (!x.slot) { x.sw.illustDraft = []; delete x.sw.illustDraftConfig; } st.dirty = false; await chatApi.save(); x.close(); });
+  const fileMenu = (anchor: Element) => menu(anchor, [
+    { label: tr('scenebook.ed.exportScenes'), ic: 'import', onclick: () => C.download('scenebook-scenes.json', JSON.stringify({ kind: 'scenebook-scenes', schema: 1, config: pickKeys(st.cfg, RENDER_KEYS.filter(k => !['references', 'connId', 'a1111'].includes(k))), scenes: st.drafts.map(({ anchor: _a, ...rest }) => rest) }, null, 2)) },
+    { label: tr('scenebook.ed.importScenes'), ic: 'upload', onclick: guard(async () => {
+      const [f] = await C.pickFiles({ accept: '.json,application/json' }); if (!f) return; if (f.size > 300000) throw new Error(tr('scenebook.ed.pickScenes'));
+      const v = JSON.parse(await f.text()) as { kind?: string; scenes?: Scene[]; config?: object } | null; if (v?.kind !== 'scenebook-scenes' || !Array.isArray(v.scenes) || !v.scenes.length) throw new Error(tr('scenebook.ed.notScenes'));
+      const next = Illust.validate({ ...st.cfg, ...pickKeys(v.config || {}, RENDER_KEYS.filter(k => !['references', 'connId', 'a1111', 'budgetGuard', 'backend'].includes(k))) });
+      snap(); st.drafts = v.scenes.slice(0, LIMIT).map(sc => Illust.compileScene(x.chat, { ...sc, anchor: '' })); st.cfg = next; st.at = st.person = 0; redo(); toast(tr('scenebook.ed.scenesLoaded'), 'ok');
+    }) },
+    { label: tr('scenebook.guide'), ic: 'note', onclick: guide },
+  ]);
+  const applyGen = (next: GenConfig) => {
+    if (next.backend === 'nai' && st.drafts.some(d => d.characters.length > MODELS[next.model].characters)) throw new Error(tr('scenebook.ed.castMaxDot', { n: MODELS[next.model].characters }));
+    snap(); if (next.width !== st.cfg.width || next.height !== st.cfg.height) for (const d of st.drafts) delete d.size; st.cfg = next; redo();
+  };
+  const t: Tools | null = s ? { x, s, snap, touch, redo, note: setNote } : null, tab = st.tab;
+  return <>
+    <div className="sb-ed-bar"><div className="row wrap">
+      <div className="sb-scenes">{st.drafts.map((_d, i) => <button key={i} type="button" className={'chip' + (i === st.at ? ' on' : '')} onClick={() => { st.at = i; st.person = 0; redo(); }}>{tr('scenebook.ed.sceneChip', { n: i + 1, total: st.drafts.length })}</button>)}</div>
+      <span className="sb-grow" />
+      <IBtn ic="left" title={tr('scenebook.ed.sceneUp')} hidden={st.drafts.length < 2} disabled={st.at === 0 || !st.drafts.length} onClick={() => move(-1)} /><IBtn ic="right" title={tr('scenebook.ed.sceneDown')} hidden={st.drafts.length < 2} disabled={st.at >= st.drafts.length - 1} onClick={() => move(1)} />
+      <Btn label={tr('scenebook.ed.addScene')} ic="plus" cls="ghost" onClick={add} /><IBtn ic="trash" title={tr('scenebook.ed.deleteScene')} disabled={!s} onClick={() => void del()} />
+    </div></div>
+    <div className="row sb-ed-status"><span className="sb-state">{busyNote || configLine(st.cfg)}</span><span className="sb-grow" /><Btn label={tr('scenebook.ed.genSettings')} ic="sliders" cls="ghost" onClick={() => genEditor(st.cfg, applyGen)} /></div>
+    <div className="tabs sb-tabs">{([['scene', tr('scenebook.scene')], ['cast', tr('scenebook.ed.tabCast')], ['final', tr('scenebook.prompt')]] as [Tab, string][]).map(([k, l]) => <button key={k} type="button" className={'tab' + (k === tab ? ' on' : '')} onClick={() => { st.tab = k; redo(); }}>{l}</button>)}</div>
+    <div className="sb-ed-content" key={ver}>{!t ? <Empty>{tr('scenebook.ed.empty')}</Empty> : tab === 'scene' ? <SceneTab t={t} /> : tab === 'cast' ? <CastTab t={t} /> : <FinalTab t={t} />}</div>
+    <div className="sb-ed-foot"><Btn label={tr('scenebook.undo')} ic="left" cls="ghost" disabled={!st.undo.length} onClick={undo} /><IBtn ic="more" title={tr('scenebook.ed.fileMenu')} onClick={e => fileMenu(e.currentTarget)} /><span className="sb-grow" /><Btn label={tr('scenebook.ed.saveDraft')} ic="check" onClick={guard(() => x.saveDraft(false))} /><Btn label={tr('scenebook.draw')} ic="image" cls="primary" disabled={!st.drafts.length} onClick={gen} /></div>
+  </>;
+}
+
+export function openComposer({ chat, msg, scenes, config, slot = null, preview = '' }: { chat: Chat; msg: Msg; scenes: Scene[]; config: GenConfig; slot?: string | null; preview?: string }) {
+  const sw = msg.swipes[msg.sw], st: Ctx['st'] = { drafts: clone(scenes), cfg: clone(config), at: 0, person: 0, tab: 'scene', dirty: false, undo: [] };
+  const saveDraft = async (quiet: boolean) => { mustBeOpen(msg); sw.illustDraft = clone(st.drafts); sw.illustDraftConfig = clone(st.cfg); st.dirty = false; await chatApi.save(); schedule(); toast(quiet ? tr('scenebook.ed.autoSaved') : tr('scenebook.ed.draftSaved')); };
+  let asking = false;
+  const askClose = () => {   // 저장하지 않은 변경이 있으면 닫기 전에 물어본다
+    if (!st.dirty) return box.close(); if (asking) return; asking = true;
+    openModal({ title: tr('scenebook.ed.unsavedTitle'), tag: 'p', onClose: () => { asking = false; }, actions: [
+      { label: tr('scenebook.ed.keepEditing'), cls: 'ghost' },
+      { label: tr('scenebook.ed.closeNoSave'), cls: 'ghost', onclick: () => { st.dirty = false; box.close(); } },
+      { label: tr('scenebook.ed.saveClose'), cls: 'primary', onclick: async () => { try { await saveDraft(true); box.close(); } catch (e) { toast(errText(e), 'err'); return false; } } }] }, () => tr('scenebook.ed.unsaved'));
+  };
+  const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape' && box.el === document.getElementById('modals')?.lastElementChild) { e.stopImmediatePropagation(); e.preventDefault(); askClose(); } };
+  const box: Box = openModal({ title: slot ? tr('scenebook.ed.titleRedraw') : tr('scenebook.compose'), wide: true, cls: 'sb-ed', onClose: () => { document.removeEventListener('keydown', onEsc, true); if (st.dirty && !slot) saveDraft(true).catch(e => toast(errText(e), 'err')); } },
+    b => <Composer x={{ chat, msg, sw, slot, preview, inline: Illust.cfg().placement === 'inline', blocks: Illust.blocks(C.msgText(msg)), st, saveDraft, close: () => b.close() }} />);
+  document.addEventListener('keydown', onEsc, true);
+  box.el.addEventListener('mousedown', e => { if (e.target === box.el) e.stopImmediatePropagation(); }, true);   // 바깥을 잘못 눌러도 편집하던 내용이 사라지지 않게
+  box.el.querySelector('.modal-head .ibtn')?.addEventListener('click', e => { e.stopImmediatePropagation(); e.stopPropagation(); askClose(); }, true);   // 닫기 단추도 물어보고 닫는다
+  box.el.querySelector('.modal')?.classList.add('sb-editor');
+}

@@ -1,0 +1,134 @@
+// ── Dreamland qr-data: 빠른 버튼 세트의 자료 구조 · Quick Reply 세트 변환 (화면 없음, 옛 js/qr-data.js 그대로) ──
+// S.settings.qr = { v, sets: [세트], bar, migrated }
+// 세트 = { id, name, scope: 'global'|'char'|'chat', on, charIds, chatIds, items: [버튼] }
+// 버튼 = { id, label, icon, title, text, kind: 'insert'(입력창에 넣기)|'send'(바로 보내기)|'script'(명령 실행), hidden, auto: { start, open, newChat, user, ai, gen }, automationId }
+import { S, uid, arr, emit } from './core';
+import { t } from '../i18n';
+
+export interface QrAuto { start?: boolean; open?: boolean; newChat?: boolean; user?: boolean; ai?: boolean; gen?: boolean }
+export interface QrItem { id: string; label: string; icon: string; title: string; text: string; kind: 'insert' | 'send' | 'script'; hidden: boolean; auto: QrAuto; automationId: string; stIcon?: string; showLabel?: boolean; contextList?: { set: string; isChained: boolean }[]; /** 입력창 위 줄에 바로 꺼내 둔다 */ pinned?: boolean }
+export interface QrSet { id: string; name: string; scope: 'global' | 'char' | 'chat'; on: boolean; charIds: string[]; chatIds: string[]; items: QrItem[]; /** 실리태번 세트 옵션: 보내지 않고 입력창에만 · 입력한 글 앞에 놓기 · 입력한 글과 합치기 */ nosend?: boolean; before?: boolean; inject?: boolean; legacy?: boolean; src?: string; /** 줄에 버튼을 늘어놓을지 (없으면 보이는 버튼 4개 이하일 때만) */ inline?: boolean; /** 서랍에서 버튼을 누르면 서랍을 닫는다 (기본 켜짐) */ trayClose?: boolean }
+export interface QrStore { v: number; sets: QrSet[]; bar: boolean; migrated?: boolean }
+/** Quick Reply 세트 파일의 한 버튼 */
+interface StQr { showLabel?: boolean; contextList?: { set: string; isChained: boolean }[]; label?: string; title?: string; message?: string; isHidden?: boolean; icon?: string; automationId?: string; executeOnStartup?: boolean; executeOnChatChange?: boolean; executeOnNewChat?: boolean; executeOnUser?: boolean; executeOnAi?: boolean; executeBeforeGeneration?: boolean }
+/** 옛 형식(퀵 리플라이 v1)의 칸 */
+interface StQrSlot { mes?: string; label?: string; title?: string; enabled?: boolean; hidden?: boolean; autoExecute_appStartup?: boolean; autoExecute_chatLoad?: boolean; autoExecute_userMessage?: boolean; autoExecute_botMessage?: boolean; [k: string]: unknown }
+export interface StQrSet { name?: string; disableSend?: boolean; placeBeforeInput?: boolean; injectInput?: boolean; qrList?: StQr[] | StQr | null; quickReplySlots?: StQrSlot[]; AutoInputInject?: boolean }
+const fromSlot = (s: StQrSlot): StQr => ({ label: s.label, title: s.title, message: s.mes, isHidden: s.hidden === true || s.enabled === false, executeOnStartup: s.autoExecute_appStartup, executeOnChatChange: s.autoExecute_chatLoad, executeOnUser: s.autoExecute_userMessage, executeOnAi: s.autoExecute_botMessage });
+interface Loose { label?: string; text?: string }
+interface QChat { id?: string; charIds?: string[]; qrOff?: string[] }
+interface QStore { settings: { qr?: QrStore; [k: string]: unknown }; set(patch: object): void; saveSettings?: () => void }
+const St = S as unknown as QStore;
+const mkId = uid as unknown as () => string;
+const toArr = arr as unknown as <T>(v: T | T[] | null | undefined | '') => T[];
+
+// 표시 이름: 읽을 때마다 지금 언어로 (키 · 순서는 그대로)
+export const QR_KINDS = { get insert() { return t('qr.kind.insert'); }, get send() { return t('qr.kind.send'); }, get script() { return t('qr.kind.script'); } };
+export const QR_AUTO = { get open() { return t('qr.auto.open'); }, get newChat() { return t('qr.auto.newChat'); }, get user() { return t('qr.auto.user'); }, get ai() { return t('qr.auto.ai'); }, get gen() { return t('qr.auto.gen'); }, get start() { return t('qr.auto.start'); } };
+export const QR_SCOPES = { get global() { return t('qr.scope.global'); }, get char() { return t('qr.scope.char'); }, get chat() { return t('qr.scope.chat'); } };
+
+export const newQrItem = (o: Partial<QrItem> = {}): QrItem => ({ id: mkId(), label: t('qr.newItem'), icon: '', title: '', text: '', kind: 'insert', hidden: false, auto: {}, automationId: '', ...o });
+export const newQrSet = (o: Partial<QrSet> = {}): QrSet => ({ id: mkId(), name: t('qr.newSet'), scope: 'global', on: true, charIds: [], chatIds: [], items: [], ...o });
+const kindOf = (text?: string) => /^\s*\//.test(text || '') ? 'script' : 'insert';
+
+/** 저장소. 예전 빠른 답장(S.settings.quick: [{ label, text }])은 처음 한 번 "기본 버튼" 세트로 옮긴다 */
+export function qrStore(): QrStore {
+  const q = St.settings.qr ||= { v: 1, sets: [], bar: true };
+  if (!Array.isArray(q.sets)) q.sets = [];
+  if (!q.migrated) {
+    const d = Object.getOwnPropertyDescriptor(St.settings, 'quick'), old: Loose[] = d && 'value' in d && Array.isArray(d.value) ? d.value : [];
+    const items = old.filter(x => x && x.text).map(x => newQrItem({ label: String(x.label || t('qr.button')), text: String(x.text), kind: kindOf(x.text) }));
+    if (items.length && !q.sets.some(s => s.legacy)) q.sets.unshift(newQrSet({ name: t('qr.defaultSet'), legacy: true, items }));
+    q.migrated = true; St.saveSettings?.();
+  }
+  return q;
+}
+export const qrSave = () => { St.set({ qr: St.settings.qr }); emit('qr:changed'); };
+/** 이 대화에서 켜져 있는 세트 */
+export function qrActive(chat?: QChat | null): QrSet[] {
+  const off = new Set(chat?.qrOff || []);
+  return qrStore().sets.filter(s => s.on !== false && !off.has(s.id) && (s.scope === 'char' ? (chat?.charIds || []).some(id => (s.charIds || []).includes(id)) : s.scope === 'chat' ? (s.chatIds || []).includes(chat?.id as string) : true));
+}
+/** 이름 비교용: 이모지 · 기호 · 공백 차이를 무시한다 */
+const qrNorm = (x: string) => x.normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, '').toLowerCase();
+/** 버튼 찾기: id · 이름, 또는 "세트.이름" (세트 이름은 이모지 · 공백 차이를 봐준다. 그 세트가 없으면 켜진 세트들에서 이름으로 찾는다) */
+export const qrFind = (key: unknown, chat?: QChat | null) => {
+  const k = String(key || '').trim(); if (!k) return null;
+  const sets = qrStore().sets, act = chat ? qrActive(chat) : sets;
+  for (const list of [act, sets]) for (const s of list) { const it = s.items.find(i => i.id === k) || s.items.find(i => i.label === k); if (it) return { set: s, item: it }; }
+  for (let i = k.indexOf('.'); i > 0; i = k.indexOf('.', i + 1)) {
+    const sn = k.slice(0, i).trim(), label = k.slice(i + 1).trim(); if (!label) continue;
+    const pick = (ok: (s: QrSet) => boolean) => { for (const list of [act, sets]) for (const s of list) if (ok(s)) { const it = s.items.find(x => x.label === label) || s.items.find(x => qrNorm(x.label) === qrNorm(label)); if (it) return { set: s, item: it }; } return null; };
+    const f = pick(s => s.name === sn) || pick(s => qrNorm(s.name) === qrNorm(sn)) || pick(() => true);
+    if (f) return f;
+    // 이름이 맞는 세트에 그 버튼이 없으면: 마지막 낱말(예: "… 대필")이 같은 버튼이 그 세트에 딱 하나일 때 그것을 쓴다 (세트 판이 바뀌며 버튼 이름만 달라진 경우)
+    const tail = (x: string) => qrNorm(x.trim().split(/\s+/).pop() || '');
+    const want = tail(label);
+    if (want) for (const list of [act, sets]) for (const st of list) {
+      if (qrNorm(st.name) !== qrNorm(sn)) continue;
+      const hit = st.items.filter(x => tail(x.label) === want);
+      if (hit.length === 1) return { set: st, item: hit[0] };
+    }
+  }
+  return null;
+};
+
+/** Quick Reply 세트(.json) → 세트 */
+export function stQrToSet(j: StQrSet, name?: string): QrSet {
+  const noSend = !!j.disableSend;
+  const list = j.qrList != null ? toArr(j.qrList) : toArr(j.quickReplySlots).map(fromSlot);
+  return newQrSet({
+    name: j.name || name || t('qr.importedSet'), src: 'st', nosend: noSend, before: !!j.placeBeforeInput, inject: !!j.injectInput,
+    items: list.filter(x => x && (x.message || x.label)).map(x => newQrItem({
+      label: String(x.label || x.title || t('qr.button')), title: x.title || '', text: x.message || '', kind: /^\s*\//.test(x.message || '') ? 'script' : (noSend ? 'insert' : 'send'), hidden: !!x.isHidden,
+      auto: { start: !!x.executeOnStartup, open: !!x.executeOnChatChange, newChat: !!x.executeOnNewChat, user: !!x.executeOnUser, ai: !!x.executeOnAi, gen: !!x.executeBeforeGeneration },
+      automationId: x.automationId || '', stIcon: x.icon || '', ...(x.showLabel !== undefined ? { showLabel: !!x.showLabel } : {}),
+      ...(Array.isArray(x.contextList) && x.contextList.length ? { contextList: x.contextList.filter(c => c && c.set).map(c => ({ set: String((c.set as unknown as { name?: string }).name ?? c.set), isChained: !!c.isChained })) } : {}),
+    })),
+  });
+}
+/** 세트 → Quick Reply 세트(.json) */
+export function setToStQr(set: QrSet) {
+  return {
+    version: 2, name: set.name, disableSend: set.nosend ?? (set.items.length > 0 && set.items.every(i => i.kind !== 'send')), placeBeforeInput: !!set.before, injectInput: !!set.inject, color: 'transparent', onlyBorderColor: false,
+    qrList: set.items.map((it, i) => ({ id: i + 1, icon: it.stIcon || '', showLabel: it.showLabel ?? !it.stIcon, label: it.label, title: it.title || '', message: it.text || '', contextList: Array.isArray(it.contextList) ? it.contextList : [], preventAutoExecute: true, isHidden: !!it.hidden,
+      executeOnStartup: !!it.auto?.start, executeOnUser: !!it.auto?.user, executeOnAi: !!it.auto?.ai, executeOnChatChange: !!it.auto?.open, executeOnGroupMemberDraft: false, executeOnNewChat: !!it.auto?.newChat, executeBeforeGeneration: !!it.auto?.gen, automationId: it.automationId || '' })),
+    idIndex: set.items.length + 1,
+  };
+}
+/** 세트를 넣는다. 같은 이름이 있으면 그 세트의 버튼을 새로 받은 것으로 바꾼다. 넣은 버튼 수를 돌려준다 */
+export function qrAddSet(set: QrSet): number {
+  const q = qrStore(), old = q.sets.find(s => s.name === set.name && !s.legacy);
+  if (old) old.items = set.items; else q.sets.push(set);
+  qrSave(); return set.items.length;
+}
+/** 낱개 버튼들을 기본 세트에 더한다 (다른 코드가 예전 방식으로 넣을 때) */
+export function qrAddLoose(list: Loose[] | Loose | null | undefined): number {
+  const q = qrStore(); let base = q.sets.find(s => s.legacy); const add = toArr(list).filter(x => x && x.text);
+  if (!add.length) return 0;
+  if (!base) { base = newQrSet({ name: t('qr.defaultSet'), legacy: true }); q.sets.unshift(base); }
+  const have = base;
+  const fresh = add.filter(a => !have.items.some(i => i.text === a.text));
+  have.items.push(...fresh.map(x => newQrItem({ label: String(x.label || t('qr.button')), text: String(x.text), kind: kindOf(x.text) })));
+  qrSave(); return fresh.length;
+}
+
+/** 줄에 늘어놓는 세트인가 (따로 정하지 않았으면 보이는 버튼이 4개 이하일 때) */
+export const qrInline = (s: QrSet) => s.inline ?? s.items.filter(i => !i.hidden).length <= 4;
+/** 서랍에서 누른 뒤 닫을까 */
+export const qrTrayClose = (s: QrSet) => s.trayClose !== false;
+/** 버튼이 든 세트 */
+export const qrSetOf = (it: QrItem) => qrStore().sets.find(s => s.items.includes(it));
+/** 버튼 사본 (새 id, 이어 둔 메뉴 · 자동 실행까지 그대로) */
+export const qrClone = (it: QrItem): QrItem => ({ ...(JSON.parse(JSON.stringify(it)) as QrItem), id: mkId() });
+/** 버튼들을 다른 세트로 옮기거나(copy=false) 베낀다. 저장은 한 번 */
+export function qrTransfer(items: QrItem[], to: QrSet, copy = false): number {
+  const list = items.filter(Boolean); if (!list.length) return 0;
+  if (copy) to.items.push(...list.map(qrClone));
+  else {
+    const ids = new Set(list.map(i => i.id));
+    for (const s of qrStore().sets) if (s !== to) s.items = s.items.filter(i => !ids.has(i.id));
+    to.items.push(...list.filter(i => !to.items.includes(i)));
+  }
+  qrSave(); return list.length;
+}

@@ -1,0 +1,13 @@
+# 내 데이터 (서버에 보관한 API 키 등) — 절대 올리지 않는다
+data/
+
+.claude/
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+
+# 웹 버전 · 아이폰 앱 빌드 결과 (npm run build:web 로 다시 만든다)
+web/
+ios-app/www/
+ios-app/ios/

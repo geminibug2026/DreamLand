@@ -1,0 +1,14 @@
+{
+  "appId": "app.dreamland.ios",
+  "appName": "Dreamland",
+  "webDir": "www",
+  "backgroundColor": "#fbf5f2",
+  "ios": {
+    "backgroundColor": "#fbf5f2"
+  },
+  "plugins": {
+    "Keyboard": {
+      "resize": "native"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+Background sounds for phone calls. All are public domain (free to use, no attribution required).
+Source: Wikimedia Commons
+
+cafe.ogg   - "Restaurant ambience.ogg"                  https://commons.wikimedia.org/wiki/File:Restaurant_ambience.ogg
+rain.ogg   - "Rain (1).ogg"                             https://commons.wikimedia.org/wiki/File:Rain_(1).ogg
+street.ogg - "Sunday in the city street noise1.ogg"     https://commons.wikimedia.org/wiki/File:Sunday_in_the_city_street_noise1.ogg

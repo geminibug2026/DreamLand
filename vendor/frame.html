@@ -1,0 +1,19 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;background:transparent}</style>
+<script>
+// 메시지 속 HTML 화면의 빈 틀. 앱이 내용(dlHtml)과 시작 자료(init)를 보내면 그 앞에 jQuery · lodash · 실리태번 도우미를 깔고 문서를 쓴다
+// 다른 곳(브라우저 확장 등)에서 온 메시지는 무시하고, 앱이 보낸 내용을 받은 뒤에만 귀를 닫는다
+var dlDone = false;
+addEventListener("message", function on(e) {
+  if (dlDone || e.source !== parent || !e.data || typeof e.data.dlHtml !== "string") return;
+  dlDone = true; removeEventListener("message", on);
+  var v = /\/frame$/.test(location.pathname) ? "vendor/" : "", h = e.data.dlHtml, init = JSON.stringify(e.data.init || {}).replace(/</g, "\\u003c");
+  var pre = '<script>window.__dlInit=' + init + '<\/script><script src="' + v + 'jquery.min.js"><\/script><script src="' + v + 'lodash.min.js"><\/script><script src="' + v + 'th-shim.js"><\/script>';
+  var post = '<script src="' + v + 'th-size.js"><\/script>';
+  var m = h.match(/<head[^>]*>/i) || h.match(/<html[^>]*>/i) || h.match(/<!doctype[^>]*>/i);
+  h = m ? h.replace(m[0], function () { return m[0] + pre; }) : pre + h;
+  var i = h.toLowerCase().lastIndexOf("</body>");
+  h = i >= 0 ? h.slice(0, i) + post + h.slice(i) : h + post;
+  document.open(); document.write(h); document.close();
+});
+parent.postMessage({ dlFrameReady: 1 }, "*");
+</script>

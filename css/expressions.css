@@ -1,0 +1,157 @@
+/* ── Dreamland 표정 ── 대화 화면에 얹는 표정 그림 · 스탠딩 · 기능 화면
+   색은 테마 변수만 쓴다. 표정 그림은 어디서든 object-fit: contain 으로 온전하게 보인다. */
+
+/* ════ 대화 화면: 초상 영역 · 메시지 아바타 ════ */
+.exs-img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; object-fit: contain; object-position: center; opacity: 1; transition: opacity .4s var(--ease); -webkit-user-drag: none; user-select: none; }
+.exs-img.in { opacity: 0; }
+.arch.exs-has > .exs-img { background: var(--surface2); z-index: 1; }
+.dossier .sheet-window .arch.exs-has > .exs-img { cursor: zoom-in; }
+.avatar.exs-has { position: relative; overflow: hidden; }
+.avatar.exs-has > .exs-img { background: var(--surface2); border-radius: inherit; transition: none; }
+[data-exs-av="cover"] .avatar.exs-has > .exs-img { object-fit: cover; object-position: center 12%; }
+
+/* 초상 아래 꼬리표 */
+.exs-cap { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.sheet-window + .exs-cap { margin-top: -4px; } .cast-grid + .exs-cap { margin-top: 12px; }
+.exs-cap-label { font: 500 10.5px var(--display); letter-spacing: .2em; color: var(--dim); margin-right: auto; }
+.exs-cap-btn { display: inline-flex; align-items: center; gap: 5px; min-height: 24px; padding: 2px 8px; border: 1px solid var(--ink-line); background: var(--surface); color: var(--dim); font-size: .76em; font-weight: 600; white-space: nowrap; transition: border-color .2s, color .2s, background .2s; }
+.exs-cap-btn:hover { border-color: var(--ink); color: var(--text); }
+.exs-cap-btn i { font-style: normal; font-size: .9em; color: var(--accent); }
+.exs-cap-btn.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.exs-cap-stand { margin-left: auto; }
+
+/* ════ 스탠딩 ════ */
+.exs-stage { position: absolute; inset: 0; z-index: 6; pointer-events: none; overflow: hidden; opacity: 0; transition: opacity .3s; --exs-h: 66%; --exs-ho: 40%; --exs-op: .9; --exs-b: 0px; }
+.exs-stage.ready { opacity: 1; }
+.exs-row { position: absolute; bottom: var(--exs-b); height: var(--exs-h); max-width: 100%; display: flex; align-items: flex-end; padding: 0 16px; transition: height .3s var(--ease), opacity .3s; }
+.exs-stage.right .exs-row { right: 0; flex-direction: row-reverse; } .exs-stage.left .exs-row { left: 0; }
+.exs-stage.over .exs-row { height: var(--exs-ho); opacity: var(--exs-op); padding: 0 6px; }
+.exs-fig { position: relative; height: 100%; flex: 0 1 auto; min-width: 0; display: flex; align-items: flex-end; justify-content: center; transform-origin: 50% 100%; transition: transform .35s var(--ease), filter .35s; }
+.exs-fig.on { z-index: 1; }
+.exs-fig > .exs-img { position: static; inset: auto; width: auto; height: 100%; max-width: 100%; object-position: 50% 100%; }
+.exs-fig > .exs-img.out { position: absolute; left: 50%; bottom: 0; transform: translateX(-50%); opacity: 0; }
+.exs-stage.dimming .exs-fig:not(.on) { transform: scale(.94); filter: brightness(.8) saturate(.86); }
+.exs-x { pointer-events: auto; position: absolute; bottom: calc(var(--exs-b) + 8px); width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid var(--ink-line); background: var(--surface); color: var(--dim); opacity: .75; transition: opacity .2s, color .2s, border-color .2s; }
+.exs-x:hover { opacity: 1; color: var(--text); border-color: var(--ink); }
+.exs-stage.right .exs-x { right: 8px; } .exs-stage.left .exs-x { left: 8px; }
+
+/* ════ 장면 패널 ════ */
+.exs-panel { display: flex; flex-direction: column; gap: 10px; }
+.exs-panel-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.exs-panel-pic { flex: none; width: 60px; height: 80px; display: grid; place-items: center; border: 1px solid var(--ink); background: var(--surface2); color: var(--dim); font: 800 1.3em var(--display); overflow: hidden; }
+.exs-panel-pic img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.exs-panel-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.exs-panel-text b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exs-panel-text .inp { min-height: 34px; padding-top: 4px; padding-bottom: 4px; }
+
+/* ════ 공용 조각: 그림 칸 ════ */
+.exs-thumb { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 3 / 4; overflow: hidden; background-color: var(--surface2); background-image: radial-gradient(var(--line) 1px, transparent 1.2px); background-size: 9px 9px; color: var(--faint); }
+.exs-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.exs-thumb i { font-style: normal; font-size: 1.1em; }
+.exs-thumb.big { cursor: zoom-in; }
+.exs-count, .exs-fb { position: absolute; bottom: 5px; padding: 1px 6px; font-size: .7em; font-weight: 700; font-variant-numeric: tabular-nums; }
+.exs-count { right: 5px; background: var(--ink); color: var(--bg); }
+.exs-fb { left: 5px; background: var(--surface); color: var(--text); border: 1px solid var(--ink); }
+
+/* ════ 기능 › 표정 ════ */
+.exs { display: flex; flex-direction: column; gap: 14px; }
+.exs code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: .86em; padding: 1px 5px; border: 1px solid var(--ink-line); background: var(--surface2); }
+.exs-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 14px; border: 1px solid var(--ink); background: var(--handles), var(--surface); }
+.exs-head-text { flex: 1 1 200px; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.exs-head-text b { font: 800 1.1em var(--display); letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exs-head-text small { color: var(--dim); font-size: .86em; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.exs-tabs { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--ink); }
+.exs-tabs button { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 6px; font-weight: 600; font-size: .92em; color: var(--dim); background: var(--surface); transition: background .2s, color .2s; }
+.exs-tabs button + button { border-left: 1px solid var(--ink); }
+.exs-tabs button:hover { color: var(--text); } .exs-tabs button.on { background: var(--ink); color: var(--bg); }
+.exs-stack { display: flex; flex-direction: column; gap: 14px; }
+.card.exs-card { display: flex; flex-direction: column; gap: 24px; } .card.exs-card > * + * { margin-top: 0; }
+.exs-sec { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.exs-sec-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.exs-sec-head > div:first-child { flex: 1 1 260px; min-width: 0; }
+.exs-sec-head h4, .exs-custom h4 { margin: 0; font-size: 1.02em; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.exs-sec-head h4::before, .exs-custom h4::before { content: ""; width: 7px; height: 7px; background: var(--accent); transform: rotate(45deg); flex: none; }
+.exs-sec-head p { margin: 4px 0 0; color: var(--dim); font-size: .88em; line-height: 1.55; }
+.exs-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.exs-actions .btn { min-height: 34px; padding: 5px 12px; font-size: .88em; }
+.exs-empty { padding: 26px 10px; text-align: center; }
+.exs-drop { margin: 0; }
+.exs-prog { height: 3px; background: var(--surface3); overflow: hidden; visibility: hidden; margin-top: -6px; } .exs-prog.on { visibility: visible; }
+.exs-prog i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+.exs-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.exs-toolbar .search-wrap { flex: 1 1 200px; } .exs-toolbar .search-wrap .inp { min-height: 36px; }
+.exs-seg { display: flex; flex: none; border: 1px solid var(--ink); }
+.exs-seg button { padding: 6px 12px; font-size: .82em; font-weight: 600; color: var(--dim); background: var(--surface); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.exs-seg button + button { border-left: 1px solid var(--ink); } .exs-seg button:hover { color: var(--text); } .exs-seg button.on { background: var(--ink); color: var(--bg); }
+
+/* 감정 카드 */
+.exs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; align-items: start; }
+.exs-label, .exs-pick { display: flex; flex-direction: column; min-width: 0; text-align: left; border: 1px solid var(--ink-line); background: var(--surface); transition: border-color .2s, transform .25s var(--ease); }
+.exs-label:hover, .exs-pick:hover { border-color: var(--ink); transform: translateY(-2px); }
+.exs-label.empty, .exs-label.add { border-style: dashed; } .exs-label.empty .exs-thumb, .exs-label.add .exs-thumb { background-image: none; }
+.exs-label.empty .exs-label-cap b { color: var(--dim); font-weight: 600; }
+.exs-label.add .exs-thumb { color: var(--dim); }
+.exs-label.over { border-style: solid; border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.exs-label-cap, .exs-pick-cap { display: flex; flex-direction: column; min-width: 0; padding: 6px 8px 7px; border-top: 1px solid var(--ink-line); line-height: 1.3; }
+.exs-label.empty .exs-label-cap, .exs-label.add .exs-label-cap { border-top-style: dashed; }
+.exs-label-cap b, .exs-pick-cap b { font-size: .9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exs-label-cap small, .exs-pick-cap small { font: 500 .68em var(--display); letter-spacing: .05em; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exs-fbrow { display: flex; flex-wrap: wrap; gap: 12px; padding-top: 14px; border-top: 1px dashed var(--ink-line); }
+
+/* 판정 */
+.exs-modes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.exs-mode { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; padding: 12px 14px; text-align: left; border: 1px solid var(--ink-line); background: var(--surface); transition: border-color .2s; }
+.exs-mode:hover { border-color: var(--ink); } .exs-mode.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.exs-mode b { font-size: .98em; } .exs-mode.on b::before { content: "✦ "; color: var(--accent); }
+.exs-mode span { color: var(--dim); font-size: .86em; line-height: 1.5; }
+.exs-mode em { margin-top: 2px; font-style: normal; font-size: .74em; font-weight: 700; padding: 1px 7px; border: 1px solid var(--ink-line); color: var(--text); }
+.exs-mode.on em { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.exs-prompt { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: .86em; line-height: 1.6; }
+.exs-test-out { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-height: 30px; font-size: .93em; }
+.exs-test-out b { margin-right: 6px; } .exs-test-out .chip { font-size: .8em; padding: 2px 9px; cursor: default; font-variant-numeric: tabular-nums; }
+.exs-toggles { display: flex; flex-direction: column; gap: 9px; }
+.exs-toggles .check, .exs-sec > .check { align-items: flex-start; flex-wrap: wrap; }
+.exs-toggles .check small, .exs-sec > .check small { flex: 1 1 100%; padding-left: 31px; margin-top: -6px; line-height: 1.5; }
+.exs .range output { width: 54px; }
+.exs-help { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 7px; font-size: .92em; line-height: 1.6; }
+
+/* ════ 창: 한 감정의 그림들 · 고르기 · 올리기 확인 ════ */
+.exs-detail, .exs-picker, .exs-rev { display: flex; flex-direction: column; gap: 14px; }
+.exs-detail-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.exs-detail-top .hint { flex: 1 1 240px; }
+.exs-detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; align-items: start; }
+.exs-fig-card { margin: 0; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--ink-line); background: var(--surface); }
+.exs-fig-card figcaption { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; padding: 6px 6px 6px 8px; border-top: 1px solid var(--ink-line); }
+.exs-fig-card figcaption span { flex: 1 1 100%; min-width: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: .78em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exs-fig-card .exs-move { flex: 1; min-height: 30px; padding: 2px 8px; font-size: .82em; }
+.exs-fig-card .ibtn { width: 30px; height: 30px; border: 1px solid var(--ink-line); } .exs-fig-card .ibtn:hover { color: var(--bad); border-color: var(--bad); }
+.exs-custom { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px dashed var(--ink-line); }
+.exs-picker-now { display: flex; align-items: baseline; gap: 8px; } .exs-picker-now span { font: 500 10.5px var(--display); letter-spacing: .2em; color: var(--dim); }
+.exs-pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; align-items: start; }
+.exs-pick.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); } .exs-pick.on b::before { content: "✦ "; color: var(--accent); }
+.exs-more { border: 1px solid var(--ink-line); padding: 0 12px; } .exs-more summary { cursor: pointer; padding: 9px 0; font-weight: 600; font-size: .93em; } .exs-more .hint { margin-bottom: 8px; }
+.exs-chips { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 12px; }
+.exs-picker-tools { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 12px; border-top: 1px dashed var(--ink-line); }
+.exs-picker-tools .btn { min-height: 34px; padding: 5px 12px; font-size: .88em; }
+.exs-rev-list { display: flex; flex-direction: column; max-height: 56vh; overflow: auto; border-top: 1px solid var(--ink); }
+.exs-rev-row { display: grid; grid-template-columns: 48px minmax(0, 1fr) minmax(150px, 230px); gap: 10px; align-items: center; padding: 6px 2px; border-bottom: 1px solid var(--line); }
+.exs-rev-row .exs-thumb { width: 48px; aspect-ratio: 3 / 4; }
+.exs-rev-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
+.exs-rev-text b { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: .84em; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.exs-rev-text small { font-size: .76em; color: var(--dim); } .exs-rev-row.ask .exs-rev-text small { color: var(--accent); font-weight: 600; }
+.exs-rev-row .inp { min-height: 34px; padding-top: 4px; padding-bottom: 4px; font-size: .9em; }
+
+@media (max-width: 820px) {
+  .exs-tabs button { padding: 9px 2px; font-size: .86em; }
+  .exs-head { padding: 10px 12px; } .exs-head .btn { width: 100%; }
+  .exs-sec-head .exs-actions { width: 100%; } .exs-actions .btn { min-height: 38px; flex: 1 1 auto; }
+  .exs-grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+  .exs-seg { width: 100%; } .exs-seg button { flex: 1; padding: 8px 4px; }
+  .exs-modes { grid-template-columns: 1fr; }
+  .exs-detail-grid { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 8px; }
+  .exs-fig-card .ibtn { width: 34px; height: 34px; } .exs-fig-card .exs-move { min-height: 34px; }
+  .exs-pick-grid { grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 6px; }
+  .exs-rev-row { grid-template-columns: 44px minmax(0, 1fr); row-gap: 6px; } .exs-rev-row .exs-thumb { width: 44px; } .exs-rev-row .inp { grid-column: 1 / -1; min-height: 38px; }
+  .exs-picker-tools .btn { flex: 1 1 auto; min-height: 38px; }
+  .exs-x { width: 30px; height: 30px; }
+}
