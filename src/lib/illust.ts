@@ -106,6 +106,7 @@ const cache = new Map<string, string>();   // 삽화 id → dataURL
 const loaded = new Set<string>();   // 삽화를 이미 읽어 둔 대화
 onX('chat:deleted', (id: string) => loaded.delete(id)); onX('data:imported', () => loaded.clear());
 const Q: { items: Job[]; paused: boolean; running: boolean } = { items: [], paused: false, running: false };
+let resumeTimer: ReturnType<typeof setTimeout> | undefined;
 let sessionRequests = 0, cooldownUntil = 0, askedAt = 0, startedAt = 0, lastPlan: (Plan & { asked: boolean; ts: number }) | null = null;
 onX('generate:start', () => { startedAt = now(); });
 
@@ -433,7 +434,13 @@ export const Illust = {
         } catch (e0) {
           const e = e0 as CodedError;
           console.error(e); job.state = e.uncertain ? 'uncertain' : 'failed'; job.error = e.message;
-          if (PAUSE_CODES.has(e.code as string)) { Q.paused = true; e.message += ' ' + t('illust.q.pausedNow'); }
+          if (PAUSE_CODES.has(e.code as string)) {
+            Q.paused = true;
+            // 잠깐 쉬면 풀리는 오류(요청이 너무 많음)는 기다렸다가 저절로 다시 시작한다. 키 · 결제 문제는 사람이 고칠 때까지 멈춰 둔다
+            const brief = e.code === 'NAI_429' || e.code === 'COOLDOWN';
+            if (brief) { clearTimeout(resumeTimer); resumeTimer = setTimeout(() => { if (!Q.paused) return; Q.paused = false; this.changed(); void this.pump(); }, Math.max(20000, cooldownUntil - now() + 3000)); }
+            e.message += ' ' + t(brief ? 'illust.q.resumeSoon' : 'illust.q.pausedNow');
+          }
           try { await job.onDone?.(e); } catch (x) { console.error(x); }
         }
         this.changed();

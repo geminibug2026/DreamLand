@@ -18,7 +18,7 @@ export const RULES: Record<RuleId, { stats: StatKey[]; min: number; max: number;
 export const STATS: StatKey[] = FOUR;
 export type Diff = 'easy' | 'normal' | 'hard';
 export interface GameCfg {
-  on: boolean; rule?: RuleId; /** 새 장소 · 전투 때 삽화를 그린다 */ art?: boolean; /** 효과음 (기본 켬) */ sfx?: boolean; /** 배경 음악 (기본 켬) */ music?: boolean; /** 게임 화면으로 연다 (기본 켬) */ stage?: boolean; genre: string; tone: string; diff: Diff; hero: string; goal: string;
+  on: boolean; rule?: RuleId; /** 새 장소 · 전투 때 삽화를 그린다 */ art?: boolean; /** 효과음 (기본 켬) */ sfx?: boolean; /** 배경 음악 (기본 켬) */ music?: boolean; /** 게임 화면으로 연다 (기본 켬) */ stage?: boolean; /** 자동 넘김: 문단마다 기다리는 초 (0 = 끔) */ auto?: number; genre: string; tone: string; diff: Diff; hero: string; goal: string;
   stats: Partial<Record<StatKey, number>>; hpMax: number; gold: number; items: string[];
   /** 손으로 고친 값 (시트에서 직접 바꾼 것) */
   adj?: Fx[];
