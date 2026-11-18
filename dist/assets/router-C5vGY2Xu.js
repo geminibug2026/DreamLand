@@ -1,0 +1,1 @@
+export{t as go}from"./router-CV2M_YPb.js";

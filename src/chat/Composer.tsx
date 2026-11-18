@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useReducer, useRef, useState, type MouseEve
 import { Avatar, Icon, IconBtn } from '../kit';
 import { menu, promptBox } from '../ui';
 import { bump, cur, ui, useCh } from './store';
+import { GameBar } from '../game/ui';
 import { charsOf, clearChoices, closeScene, command, commandList, generate, makeChoices, modeOf, openScene, pickChoice, running, send, stopAll, translateInput } from './actions';
 import type { CmdItem } from './types';
 import { enterSends } from '../features/usersettings';
@@ -133,6 +134,7 @@ export function Composer() {
       {talk ? (chat.scene?.on
         ? <button className="chip scene-chip on" title={t('chat.composer.closeSceneHint')} onClick={() => void closeScene()}>{t('chat.composer.closeScene')}</button>
         : <button className="chip scene-chip" title={t('chat.composer.openSceneHint')} onClick={async () => { const v = await promptBox(t('chat.composer.openScenePrompt'), '', { placeholder: t('chat.composer.openScenePlaceholder') }); if (v !== null) void openScene({ title: v.trim() }); }}>{t('chat.composer.openScene')}</button>) : null}</div>
+    <GameBar />
     <Choices />
     <Attach />
     <div className="composer-box">

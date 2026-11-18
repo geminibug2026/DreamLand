@@ -1,4 +1,5 @@
 // 메시지 목록: 필요한 만큼만 그리고, 바뀐 메시지 하나만 다시 그린다
+import { GameCard } from '../game/ui';
 import { memo, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { Avatar, Btn, Icon, IconBtn } from '../kit';
@@ -88,6 +89,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
       <div className="msg-tools">{del}</div></div>);
   }
   if (m.role === 'system' && m.call) return art(<><CallCard m={m} /><div className="msg-tools">{del}</div></>);
+  if (m.role === 'system' && (m as { gm?: unknown }).gm) return art(<><GameCard m={m} /><div className="msg-tools">{del}</div></>);
   if (m.role === 'system' && m.dice) return art(<><DiceCard m={m} /><div className="msg-tools">{del}</div></>);
 
   const streaming = cur.paint.has(m.id);
