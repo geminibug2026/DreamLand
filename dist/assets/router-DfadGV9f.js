@@ -1,1 +1,0 @@
-export{t as go}from"./router-C-cBo_7e.js";
