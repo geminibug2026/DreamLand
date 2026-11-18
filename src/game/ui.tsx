@@ -16,6 +16,7 @@ import { SCENES, sceneOf } from './state';
 import { pickFiles } from '../lib/core';
 import { Illust } from '../lib/illust';
 import { Mini } from './Minis';
+import { Bag } from './Bag';
 import { clipFor, loadClips, makeClip, pingVideo, removeClip, videoCfg } from './video';
 import { quickCall } from '../lib/engine';
 import { msgText } from '../lib/core';
@@ -328,14 +329,15 @@ function Storyboard({ chat, close }: { chat: Chat; close(): void }) {
   </div>;
 }
 export function openStoryboard(chat: Chat) { openModal({ title: t('game.story.title'), wide: true, spec: 'div.gm' }, close => <Storyboard chat={chat} close={close} />); }
-type Tab = 'sheet' | 'map' | 'journal' | 'session' | 'media';
+type Tab = 'sheet' | 'bag' | 'map' | 'journal' | 'session' | 'media';
 const StepBtn = ({ chat, fx, label }: { chat: GameChat; fx: Fx; label: string }) => <button type="button" className="gm-step" aria-label={label} title={label} onClick={() => adjust(chat, fx)}>{'n' in fx && fx.n > 0 ? '+' : '−'}</button>;
 export function Sheet({ chat, msgs, onClose, first = 'sheet' }: { chat: Chat; msgs: Msg[]; onClose?: () => void; first?: Tab }) {
   useCh('game'); const [tab, setTab] = useState<Tab>(first);
   const g = gameOf(chat); if (!g) return <><p className="dim">{t('game.sheet.off')}</p><button type="button" className="btn" onClick={() => openSetup(chat)}>{t('game.setup.title')}</button></>;
   const s = sheetOf(g, msgs), gc = chat as GameChat;
   const addItem = async () => { const v = await promptBox(t('game.sheet.addItem'), ''); if (v?.trim()) adjust(gc, { k: 'item', name: v.trim().slice(0, 60), n: 1 }); };
-  const tabs = <div className="gm-tabs">{(['sheet', 'map', 'journal', 'session', 'media'] as const).map(k => <button key={k} type="button" className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{t('game.tab.' + k)}</button>)}</div>;
+  const tabs = <div className="gm-tabs">{(['sheet', 'bag', 'map', 'journal', 'session', 'media'] as const).map(k => <button key={k} type="button" className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{t('game.tab.' + k)}</button>)}</div>;
+  if (tab === 'bag') return <div className="gm-sheet">{tabs}<Bag g={g} sheet={s} onSave={() => saveChat(chat)} onDrop={name => adjust(gc, { k: 'item', name, n: -1 })} onAdd={() => void addItem()} /></div>;
   if (tab === 'map') return <div className="gm-sheet">{tabs}<MapView s={s} onGo={name => { putDraft(t('game.map.go', { place: name })); onClose?.(); }} /></div>;
   if (tab === 'journal') return <div className="gm-sheet">{tabs}
     <div className="gm-sec"><span className="eyebrow">{t('game.memo')}</span><textarea className="inp" rows={3} defaultValue={g.memo || ''} placeholder={t('game.memoPh')} onBlur={e => { if ((g.memo || '') !== e.target.value) { g.memo = e.target.value; saveChat(chat); } }} /></div>
@@ -358,8 +360,8 @@ export function Sheet({ chat, msgs, onClose, first = 'sheet' }: { chat: Chat; ms
       <ul className="gm-people">{s.party.filter(n => !s.people.some(p => p.name.toLowerCase() === n.toLowerCase())).map(n => <li key={'p' + n}><span>{n}</span><em>{t('game.party')}</em></li>)}
         {s.people.map(p => <li key={p.name}><span>{p.name}</span><i className="gm-rep"><b style={{ left: `${(p.v + 100) / 2}%` }} /></i><em>{s.party.some(n => n.toLowerCase() === p.name.toLowerCase()) ? t('game.party') + ' · ' : ''}{t('game.rep.' + repTier(p.v))} {sign(p.v)}</em></li>)}</ul></div> : null}
     <div className="gm-sec"><span className="eyebrow">{t('game.items')}</span>
-      {s.items.length ? <ul className="gm-items">{s.items.map(i => <li key={i.name}><span>{i.name}{i.n > 1 ? <em> ×{i.n}</em> : null}</span><button type="button" title={t('game.sheet.drop')} aria-label={t('game.sheet.drop')} onClick={() => adjust(gc, { k: 'item', name: i.name, n: -1 })}>−</button></li>)}</ul> : <p className="dim">{t('game.items.none')}</p>}
-      <button type="button" className="gm-link" onClick={() => void addItem()}>{t('game.sheet.addItem')}</button></div>
+      {s.items.length ? <p className="gm-carry">{s.items.map(i => i.n > 1 ? `${i.name} ×${i.n}` : i.name).join(' · ')}</p> : <p className="dim">{t('game.items.none')}</p>}
+      <button type="button" className="gm-link" onClick={() => setTab('bag')}>{t('game.bag.open')}</button></div>
     <div className="gm-sec"><span className="eyebrow">{t('game.quests')}</span>
       {s.quests.length ? <ul className="gm-quests">{s.quests.map(q => <li key={q.title} className={q.done ? 'is-done' : ''}><i>{q.done ? '✓' : '○'}</i>{q.title}</li>)}</ul> : <p className="dim">{t('game.quests.none')}</p>}</div>
     <div className="gm-foot">
