@@ -3,19 +3,23 @@
 import { useMemo, useState } from 'react';
 import { t } from '../i18n';
 import { sfx } from './sfx';
-import { Emblem, Terrain, foeKind } from './Art';
+import { Emblem, Terrain, foeKind, type Kind } from './Art';
 import { DIFF_HIT, WEAK, d, elementOf, isPotion, modOf, statsOf, type Element, type Foe, type Fx, type GameCfg, type Sheet, type StatKey } from './state';
 
 export interface FightResult { outcome: 'win' | 'lose' | 'fled'; rounds: number; took: number; hp: number; fx: Fx[]; gold: number; xp: number; fallen: string[]; loot: string }
 type End = '' | FightResult['outcome'];
 /** 상태 이상: 남은 차례 수. 화상 · 중독 · 출혈은 차례마다 피해, 냉기는 걸음이 줄어든다 */
-type Ail = 'burn' | 'poison' | 'bleed' | 'chill';
+type Ail = 'burn' | 'poison' | 'bleed' | 'chill' | 'web';
+/** 종류마다 타고난 버릇 — 이름에서 알아본 종류로 정해진다 */
+type Trait = 'pack' | 'fly' | 'phase' | 'web' | 'venom' | 'split' | 'armor' | 'root' | 'breath' | 'undying' | 'gaze';
+const TRAIT: Partial<Record<Kind, Trait>> = { beast: 'pack', wing: 'fly', ghost: 'phase', spider: 'web', tentacle: 'web', serpent: 'venom', slime: 'split', golem: 'armor', plant: 'root', dragon: 'breath', skull: 'undying', eye: 'gaze' };
 type Ails = Partial<Record<Ail, number>>;
 const AIL_OF: Record<Element, Ail | 'stun'> = { fire: 'burn', poison: 'poison', ice: 'chill', bolt: 'stun' };
 const AIL_DMG: Partial<Record<Ail, number>> = { burn: 2, poison: 1, bleed: 1 };
-interface Unit extends Foe { id: number; x: number; y: number; max: number; stun: number; ail: Ails }
+interface Unit extends Foe { id: number; x: number; y: number; max: number; stun: number; ail: Ails; kind: Kind; trait: Trait | ''; /** 갈라져 나온 것 · 이미 한 번 되살아난 것 */ spent?: boolean }
+const unitOf = (f: Foe, id: number, x: number, y: number): Unit => { const kind = foeKind(f.name), trait = TRAIT[kind] || ''; return { ...f, id, x, y, max: f.hp, stun: 0, ail: {}, kind, trait, ranged: f.ranged || trait === 'root' || trait === 'gaze' }; };
 interface Ally { name: string; x: number; y: number; hp: number; max: number }
-interface St { ail: Ails; /** 보스가 예고한 일격: 맞는 칸들과 누가 치는지 */ mark: { cells: string[]; by: number } | null; x: number; y: number; hp: number; foes: Unit[]; allies: Ally[]; hurt: number; moved: boolean; guard: boolean; round: number; log: string[]; used: string[]; end: End; special: boolean; sure: boolean; aim: boolean }
+interface St { ail: Ails; /** 보스가 예고한 일격: 맞는 칸들과 누가 치는지 */ mark: { cells: string[]; by: number } | null; x: number; y: number; hp: number; foes: Unit[]; allies: Ally[]; herbs: string[]; kegs: string[]; hurt: number; moved: boolean; guard: boolean; round: number; log: string[]; used: string[]; end: End; special: boolean; sure: boolean; aim: boolean }
 const W = 7, H = 6, MOVE = 3, RANGE = 5;
 const key = (x: number, y: number) => `${x},${y}`;
 const dist = (ax: number, ay: number, bx: number, by: number) => Math.max(Math.abs(ax - bx), Math.abs(ay - by));
@@ -44,11 +48,16 @@ function makeBoard(foes: Foe[]) {
     const hx = 1 + d(W - 3), hy = d(H) - 1; for (const [dx, dy] of [[0, 0], [1, 0], [0, 1]].slice(0, 1 + d(2))) { const k = key(hx + dx, hy + dy); if (hx + dx < W - 1 && hy + dy < H && !rocks.has(k)) high.add(k); }
     for (let i = 0; i < 3; i++) { const k = key(d(W - 2), d(H) - 1); if (!rocks.has(k) && !high.has(k)) bush.add(k); }
     const spots: [number, number][] = []; for (let x = W - 1; x >= W - 2; x--) for (let y = 0; y < H; y++) if (!rocks.has(key(x, y))) spots.push([x, y]);
-    foes.forEach((f, i) => { const at = spots.splice(d(spots.length) - 1, 1)[0]; if (at) units.push({ ...f, id: i, x: at[0], y: at[1], max: f.hp, stun: 0, ail: {} }); });
+    foes.forEach((f, i) => { const at = spots.splice(d(spots.length) - 1, 1)[0]; if (at) units.push(unitOf(f, i, at[0], at[1])); });
     const reach = walk(my.x, my.y, k => rocks.has(k));
-    if (units.length === foes.length && units.every(u => reach.has(key(u.x, u.y)))) return { rocks, high, bush, units, my };
+    // 가끔 약초(밟으면 회복)와 화약통(치면 터진다)이 놓인다
+    const free = (x: number, y: number) => !rocks.has(key(x, y)) && !high.has(key(x, y)) && !bush.has(key(x, y)) && !(x === my.x && y === my.y);
+    const herbs: string[] = [], kegs: string[] = [];
+    if (d(5) > 2) { const x = d(3), y = d(H) - 1; if (free(x, y)) herbs.push(key(x, y)); }
+    if (d(2) === 1) { const x = 2 + d(3), y = d(H) - 1; if (free(x, y) && !herbs.includes(key(x, y))) kegs.push(key(x, y)); }
+    if (units.length === foes.length && units.every(u => reach.has(key(u.x, u.y)))) return { rocks, high, bush, units, my, herbs, kegs };
   }
-  return { rocks: new Set<string>(), high: new Set<string>(), bush: new Set<string>(), units: foes.map((f, i) => ({ ...f, id: i, x: W - 1, y: i % H, max: f.hp, stun: 0, ail: {} })), my };
+  return { rocks: new Set<string>(), high: new Set<string>(), bush: new Set<string>(), units: foes.map((f, i) => unitOf(f, i, W - 1, i % H)), my, herbs: [] as string[], kegs: [] as string[] };
 }
 const Bar = ({ v, max }: { v: number; max: number }) => <span className="gm-bar"><i style={{ width: `${Math.max(0, Math.min(100, v / max * 100))}%` }} /></span>;
 
@@ -64,16 +73,36 @@ export function Combat({ g, sheet, foes, onDone, faces = {} }: { g: GameCfg; she
   /** 높낮이와 엄폐에 따른 명중 보정: 위에서 아래로 +2, 아래에서 위로 -2, 덤불 속 상대를 쏘면 -2 */
   const edge = (ax: number, ay: number, bx: number, by: number, shot: boolean) => (high.has(key(ax, ay)) && !high.has(key(bx, by)) ? 2 : !high.has(key(ax, ay)) && high.has(key(bx, by)) ? -2 : 0) + (shot && bush.has(key(bx, by)) ? -2 : 0);
   const potions0 = sheet.items.filter(i => isPotion(i.name));
-  const [st, setSt] = useState<St>(() => ({ ...board.my, hp: Math.max(1, sheet.hp), foes: board.units, hurt: 0, ail: {}, mark: null,
+  const [st, setSt] = useState<St>(() => ({ ...board.my, hp: Math.max(1, sheet.hp), foes: board.units, herbs: board.herbs, kegs: board.kegs, hurt: 0, ail: {}, mark: null,
     // 동료는 내 곁에서 시작한다
     allies: (sheet.party || []).slice(0, 3).map((name, i) => { const spots = [[0, board.my.y - 1], [0, board.my.y + 1], [1, board.my.y]].filter(([x, y]) => y >= 0 && y < H && !board.rocks.has(key(x, y))); const at = spots[i % Math.max(1, spots.length)] || [1, board.my.y]; return { name, x: at[0], y: at[1], hp: 8 + lv * 2, max: 8 + lv * 2 }; }), moved: false, guard: false, round: 1, log: [], used: [], end: '', special: false, sure: false, aim: false }));
   const alive = st.foes.filter(f => f.hp > 0);
   const left = (name: string) => (potions0.find(p => p.name === name)?.n || 0) - st.used.filter(u => u === name).length;
   const potion = potions0.find(p => left(p.name) > 0);
   const occupied = (foesNow: Unit[], except = -1) => (k: string) => rocks.has(k) || foesNow.some(f => f.hp > 0 && f.id !== except && key(f.x, f.y) === k) || st.allies.some(a => a.hp > 0 && key(a.x, a.y) === k);
-  const reach = st.end || st.moved ? new Map<string, number>() : walk(st.x, st.y, occupied(st.foes), st.ail.chill ? 1 : MOVE, high);
+  const reach = st.end || st.moved || st.ail.web ? new Map<string, number>() : walk(st.x, st.y, occupied(st.foes), st.ail.chill ? 1 : MOVE, high);
   const canHit = (f: Unit, x = st.x, y = st.y) => { const n = dist(x, y, f.x, f.y); return n <= 1 ? 'melee' : n <= RANGE + (high.has(key(x, y)) ? 1 : 0) && clear(x, y, f.x, f.y, rocks) ? 'shot' : ''; };
 
+  /** 쓰러진 뒤에 벌어지는 일: 해골은 한 번 되살아날 수 있고, 슬라임은 둘로 갈라진다 */
+  const aftermath = (list: Unit[], log: string[], s: St): Unit[] => {
+    const out = list.map(f => ({ ...f }));
+    for (const f of [...out]) {
+      if (f.hp > 0 || f.spent) continue;
+      if (f.trait === 'undying') { f.spent = true; if (d(2) === 1) { f.hp = Math.max(2, Math.ceil(f.max / 3)); f.ail = {}; log.push(t('game.fight.log.rise', { name: f.name })); } }
+      else if (f.trait === 'split' && f.max >= 6 && out.filter(o => o.hp > 0).length < 6) {
+        f.spent = true; let made = 0;
+        for (const [dx, dy] of [[0, 0], ...STEPS, [1, 1], [-1, -1], [1, -1], [-1, 1]]) {
+          const x = f.x + dx, y = f.y + dy, k = key(x, y); if (made >= 2) break;
+          if (x < 0 || y < 0 || x >= W || y >= H || rocks.has(k) || (x === s.x && y === s.y) || s.allies.some(a => a.hp > 0 && a.x === x && a.y === y) || out.some(o => o.hp > 0 && o.x === x && o.y === y)) continue;
+          const hp = Math.max(2, Math.ceil(f.max / 3)); out.push({ ...f, id: Math.max(...out.map(o => o.id)) + 1, x, y, hp, max: hp, atk: Math.max(1, f.atk - 1), stun: 0, ail: {}, spent: true, boss: false }); made++;
+        }
+        if (made) log.push(t('game.fight.log.split', { name: f.name }));
+      }
+    }
+    return out;
+  };
+  /** 내가 주는 피해: 골렘은 단단하고(-2), 유령은 원소가 깃들지 않은 공격을 반만 받는다 */
+  const soak = (f: Unit, dmg: number, el: boolean) => Math.max(1, f.trait === 'armor' ? dmg - 2 : f.trait === 'phase' && !el ? Math.ceil(dmg / 2) : dmg);
   /** 동료의 차례: 붙어 있는 적을 치고, 없으면 가장 가까운 적에게 두 칸 다가간다 */
   const alliesTurn = (s: St): St => {
     const log = [...s.log], foesNow = s.foes.map(f => ({ ...f })), allies = s.allies.map(a => ({ ...a }));
@@ -85,45 +114,51 @@ export function Combat({ g, sheet, foes, onDone, faces = {} }: { g: GameCfg; she
         for (let n = 0; n < 2 && dist(a.x, a.y, tgt.x, tgt.y) > 1; n++) { let best: [number, number] | null = null, bestN = from.get(key(a.x, a.y)) ?? 999; for (const [dx, dy] of STEPS) { const v = from.get(key(a.x + dx, a.y + dy)); if (v != null && v > 0 && v < bestN) { best = [a.x + dx, a.y + dy]; bestN = v; } } if (!best) break; a.x = best[0]; a.y = best[1]; }
       }
       if (dist(a.x, a.y, tgt.x, tgt.y) <= 1) {
-        if (d(20) + 2 + Math.floor(lv / 2) >= 10) { const dmg = d(6) + 1; tgt.hp = Math.max(0, tgt.hp - dmg); log.push(t('game.fight.log.allyHit', { ally: a.name, name: tgt.name, n: dmg })); if (tgt.hp <= 0) log.push(t('game.fight.log.down', { name: tgt.name })); }
+        if (d(20) + 2 + Math.floor(lv / 2) >= 10) { const dmg = soak(tgt, d(6) + 1, false); tgt.hp = Math.max(0, tgt.hp - dmg); log.push(t('game.fight.log.allyHit', { ally: a.name, name: tgt.name, n: dmg })); if (tgt.hp <= 0) log.push(t('game.fight.log.down', { name: tgt.name })); }
         else log.push(t('game.fight.log.allyMiss', { ally: a.name, name: tgt.name }));
       }
     }
-    return { ...s, foes: foesNow, allies, log };
+    return { ...s, foes: aftermath(foesNow, log, s), allies, log };
   };
   /** 상대의 차례: 나와 동료 가운데 가까운 쪽을 노린다. 붙어 있으면 치고, 쏘는 적은 보이면 쏘고, 아니면 두 칸까지 다가온다 (한 칸만 움직였으면 이어서 친다) */
   const foesTurn = (s: St): St => {
-    const log = [...s.log]; let hp = s.hp; const list = s.foes.map(f => ({ ...f })), allies = s.allies.map(a => ({ ...a })); let myAil: Ails = { ...s.ail }, mark = s.mark;
+    const log = [...s.log]; let hp = s.hp; let list = s.foes.map(f => ({ ...f })); const allies = s.allies.map(a => ({ ...a })); let myAil: Ails = { ...s.ail }, mark = s.mark;
     // 예고된 일격이 떨어진다: 표시된 칸에 그대로 있으면 크게 다친다
     if (mark) { const by = list.find(f => f.id === mark!.by);
-      if (by && by.hp > 0) { if (mark.cells.includes(key(s.x, s.y))) { const dmg = Math.max(2, Math.round((d(6) + by.atk * 1.5) * DIFF_HIT[g.diff] * (s.guard ? .5 : 1))); hp = Math.max(0, hp - dmg); log.push(t('game.fight.log.slam', { name: by.name, n: dmg })); } else log.push(t('game.fight.log.slamMiss', { name: by.name })); by.stun = Math.max(by.stun, 0); }
+      if (by && by.hp > 0) { if (mark.cells.includes(key(s.x, s.y))) { const dmg = Math.max(2, Math.round((d(6) + by.atk * 1.5) * DIFF_HIT[g.diff] * (s.guard ? .5 : 1))); hp = Math.max(0, hp - dmg); log.push(t('game.fight.log.slam', { name: by.name, n: dmg })); if (by.trait === 'breath' && !by.boss) { myAil = { ...myAil, burn: 2 }; log.push(t('game.fight.ail.got.burn')); } } else log.push(t('game.fight.log.slamMiss', { name: by.name })); by.stun = Math.max(by.stun, 0); }
       mark = null; }
     for (const f of list) {
       if (f.hp <= 0 || hp <= 0) continue;
       { const [na, dmg] = tick(f.ail); f.ail = na; if (dmg) { f.hp = Math.max(0, f.hp - dmg); log.push(t('game.fight.log.ailFoe', { name: f.name, n: dmg })); if (f.hp <= 0) { log.push(t('game.fight.log.down', { name: f.name })); continue; } } }
       // 보스는 세 차례마다 주위를 휩쓰는 일격을 예고한다 — 그 차례에는 다른 공격을 하지 않는다
       if (f.boss && !mark && s.round % 3 === 0 && dist(f.x, f.y, s.x, s.y) <= 4) { const cells: string[] = []; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) cells.push(key(s.x + dx, s.y + dy)); mark = { cells, by: f.id }; log.push(t('game.fight.log.windup', { name: f.name })); continue; }
+      // 용은 세 차례마다 내가 선 줄을 따라 불을 뿜으려 한다
+      if (f.trait === 'breath' && !f.boss && !mark && s.round % 3 === 0) { const row = Math.abs(f.x - s.x) >= Math.abs(f.y - s.y), cells: string[] = []; for (let i = 0; i < (row ? W : H); i++) cells.push(row ? key(i, s.y) : key(s.x, i)); mark = { cells, by: f.id }; log.push(t('game.fight.log.breath', { name: f.name })); continue; }
+      if (f.trait === 'root' && f.hp < f.max) f.hp++;
       if (f.stun > 0) { f.stun--; log.push(t('game.fight.log.stunned', { name: f.name })); continue; }
       const marks = [{ x: s.x, y: s.y, ally: null as Ally | null }, ...allies.filter(a => a.hp > 0).map(a => ({ x: a.x, y: a.y, ally: a as Ally | null }))];
       const tg = marks.reduce((p, c) => dist(f.x, f.y, c.x, c.y) < dist(f.x, f.y, p.x, p.y) ? c : p);
       let stepped = 0; const sees = () => !!f.ranged && dist(f.x, f.y, tg.x, tg.y) <= RANGE && clear(f.x, f.y, tg.x, tg.y, rocks);
       if (dist(f.x, f.y, tg.x, tg.y) > 1 && !sees()) {
-        const taken = (k: string) => rocks.has(k) || list.some(o => o.hp > 0 && o.id !== f.id && key(o.x, o.y) === k) || marks.some(m => m !== tg && key(m.x, m.y) === k);
+        const over = f.trait === 'fly' || f.trait === 'phase', reachN = f.trait === 'root' ? 0 : f.trait === 'armor' ? 1 : f.trait === 'fly' ? 3 : 2;
+        const taken = (k: string) => (!over && rocks.has(k)) || list.some(o => o.hp > 0 && o.id !== f.id && key(o.x, o.y) === k) || marks.some(m => m !== tg && key(m.x, m.y) === k);
         const from = walk(tg.x, tg.y, taken);
-        for (; stepped < 2 && dist(f.x, f.y, tg.x, tg.y) > 1 && !sees(); stepped++) {
+        for (; stepped < reachN && dist(f.x, f.y, tg.x, tg.y) > 1 && !sees(); stepped++) {
           let best: [number, number] | null = null, bestN = from.get(key(f.x, f.y)) ?? 999;
           for (const [dx, dy] of STEPS) { const nx = f.x + dx, ny = f.y + dy, n = from.get(key(nx, ny)); if (n != null && n > 0 && n < bestN) { best = [nx, ny]; bestN = n; } }
           if (!best) break; f.x = best[0]; f.y = best[1];
         }
       }
       const near = dist(f.x, f.y, tg.x, tg.y) <= 1;
-      if ((near || sees()) && stepped <= 1) {
-        const mine = !tg.ally, die = d(20), hit = die === 20 || (die !== 1 && die + f.atk + edge(f.x, f.y, tg.x, tg.y, !near) >= (mine ? 10 + M.dex + (s.guard ? 4 : 0) : 11));
+      if ((near || sees()) && stepped <= (f.trait === 'fly' ? 2 : 1)) {
+        const mine = !tg.ally, die = d(20), pack = f.trait === 'pack' && list.some(o => o.id !== f.id && o.hp > 0 && o.trait === 'pack' && dist(o.x, o.y, tg.x, tg.y) <= 1) ? 2 : 0, hit = die === 20 || (die !== 1 && die + f.atk + pack + edge(f.x, f.y, tg.x, tg.y, !near) >= (mine ? 10 + M.dex + (s.guard ? 4 : 0) : 11));
         const who = tg.ally?.name || '';
         if (!hit) log.push(mine ? t('game.fight.log.foeMiss', { name: f.name }) : t('game.fight.log.foeMissAlly', { name: f.name, ally: who }));
         else {
           const dmg = Math.max(1, Math.round((d(4) + f.atk / 2) * DIFF_HIT[g.diff] * (mine && s.guard ? .5 : 1)));
           if (mine) { hp = Math.max(0, hp - dmg); log.push(t(near ? 'game.fight.log.foeHit' : 'game.fight.log.foeShot', { name: f.name, n: dmg }));
+            if (f.trait === 'venom') { myAil = { ...myAil, poison: 4 }; log.push(t('game.fight.ail.got.poison')); }
+            if ((f.trait === 'web' || f.trait === 'gaze') && d(2) === 1) { myAil = { ...myAil, web: 2 }; log.push(t(f.trait === 'web' ? 'game.fight.ail.got.web' : 'game.fight.ail.got.gaze')); }
             if (f.el && d(3) === 1) { const a = AIL_OF[f.el]; if (a !== 'stun') { myAil = { ...myAil, [a]: a === 'poison' ? 4 : 2 }; log.push(t('game.fight.ail.got.' + a)); } } }
           else { tg.ally!.hp = Math.max(0, tg.ally!.hp - dmg); log.push(t('game.fight.log.foeHitAlly', { name: f.name, ally: who, n: dmg })); if (tg.ally!.hp <= 0) log.push(t('game.fight.log.allyDown', { ally: who })); }
         }
@@ -132,6 +167,7 @@ export function Combat({ g, sheet, foes, onDone, faces = {} }: { g: GameCfg; she
     // 내 차례가 돌아오기 전에 화상 · 중독이 한 번 탄다
     if (hp > 0) { const [na, dmg] = tick(myAil); myAil = na; if (dmg) { hp = Math.max(0, hp - dmg); log.push(t('game.fight.log.ailMe', { n: dmg })); } }
     if (hp < s.hp) sfx('hurt');
+    list = aftermath(list, log, s);
     return { ...s, hp, foes: list, allies, ail: myAil, mark, log: log.slice(-6), moved: false, guard: false, round: s.round + 1, hurt: hp < s.hp ? s.hurt + 1 : s.hurt, end: hp <= 0 ? 'lose' : list.every(f => f.hp <= 0) ? 'win' : s.end };
   };
   const won = (s: St) => s.foes.every(f => f.hp <= 0);
@@ -143,14 +179,29 @@ export function Combat({ g, sheet, foes, onDone, faces = {} }: { g: GameCfg; she
     setSt(next);
   };
 
-  const moveTo = (x: number, y: number) => { if (reach.has(key(x, y)) && (x !== st.x || y !== st.y)) { sfx('place'); setSt({ ...st, x, y, moved: true }); } };
+  const moveTo = (x: number, y: number) => {
+    const k = key(x, y); if (!reach.has(k) || (x === st.x && y === st.y)) return; sfx('place');
+    if (st.herbs.includes(k)) { const heal = d(4) + 2; setSt({ ...st, x, y, moved: true, hp: Math.min(sheet.hpMax, st.hp + heal), herbs: st.herbs.filter(h => h !== k), log: [...st.log, t('game.fight.log.herb', { n: heal })] }); }
+    else setSt({ ...st, x, y, moved: true });
+  };
+  /** 화약통: 붙어 있거나 쏠 수 있으면 터뜨린다. 둘레 한 칸의 모두가 다친다 (나와 동료도) */
+  const canBlast = (k: string) => { const [x, y] = k.split(',').map(Number), n = dist(st.x, st.y, x, y); return n <= 1 || (n <= RANGE && clear(st.x, st.y, x, y, rocks)); };
+  const blast = (k: string) => {
+    if (st.end || !st.kegs.includes(k) || !canBlast(k)) return; const [x, y] = k.split(',').map(Number), log = [...st.log, t('game.fight.log.keg')]; sfx('hit');
+    const foesNow = st.foes.map(f => f.hp > 0 && dist(f.x, f.y, x, y) <= 1 ? { ...f, hp: Math.max(0, f.hp - (5 + d(4))), ail: { ...f.ail, burn: 2 } } : f);
+    for (const f of foesNow) if (f.hp <= 0 && st.foes.find(o => o.id === f.id)!.hp > 0) log.push(t('game.fight.log.down', { name: f.name }));
+    const mine = dist(st.x, st.y, x, y) <= 1 ? 3 + d(3) : 0; if (mine) log.push(t('game.fight.log.kegMe', { n: mine }));
+    const allies = st.allies.map(a => a.hp > 0 && dist(a.x, a.y, x, y) <= 1 ? { ...a, hp: Math.max(0, a.hp - 4) } : a);
+    after({ ...st, hp: Math.max(mine ? 1 : 0, st.hp - mine), foes: aftermath(foesNow, log, st), allies, kegs: st.kegs.filter(q => q !== k), log, hurt: mine ? st.hurt + 1 : st.hurt });
+  };
   const attack = (f: Unit) => {
     const how = canHit(f); if (!how || st.end) return;
     const mod = (how === 'melee' ? M.str : M.dex) + (st.aim ? 4 : 0) + edge(st.x, st.y, f.x, f.y, how === 'shot'), die = d(20), hit = st.sure || die === 20 || (die !== 1 && die + mod >= (how === 'melee' ? 10 : 11));
     const log = [...st.log]; let foesNow = st.foes;
     if (hit) {
       const weak = !!myEl && !!f.el && WEAK[f.el] === myEl, same = !!myEl && f.el === myEl, crit = die === 20 || st.sure;
-      const dmg = Math.max(1, Math.round((d(6) + Math.max(0, how === 'melee' ? M.str + 1 : M.dex)) * (crit ? 2 : 1) * (weak ? 1.5 : same ? .5 : 1)));
+      const raw = Math.max(1, Math.round((d(6) + Math.max(0, how === 'melee' ? M.str + 1 : M.dex)) * (crit ? 2 : 1) * (weak ? 1.5 : same ? .5 : 1))), dmg = soak(f, raw, !!myEl);
+      if (dmg < raw) log.push(t(f.trait === 'armor' ? 'game.fight.log.armor' : 'game.fight.log.phase', { name: f.name }));
       const gain: Ails = { ...f.ail }; if (crit) gain.bleed = 3; if (myEl && !same) { const a = AIL_OF[myEl]; if (a !== 'stun' && d(3) === 1) gain[a] = a === 'poison' ? 4 : 2; }
       foesNow = st.foes.map(o => o.id === f.id ? { ...o, hp: Math.max(0, o.hp - dmg), ail: gain, stun: myEl === 'bolt' && !same && d(4) === 1 ? Math.max(o.stun, 1) : o.stun } : o);
       if (weak) log.push(t('game.fight.log.weak', { name: f.name }));
@@ -158,7 +209,7 @@ export function Combat({ g, sheet, foes, onDone, faces = {} }: { g: GameCfg; she
       if (f.hp - dmg <= 0) log.push(t('game.fight.log.down', { name: f.name }));
       sfx('hit');
     } else { log.push(t('game.fight.log.miss', { name: f.name })); sfx('miss'); }
-    after({ ...st, foes: foesNow, log, sure: false });
+    after({ ...st, foes: aftermath(foesNow, log, st), log, sure: false });
   };
   // 공격 단추: 닿는 적 가운데 가장 약한 쪽을 친다. 닿는 적이 없으면 칠 수 있는 자리(없으면 가장 가까운 자리)로 다가간다
   const living = st.foes.filter(f => f.hp > 0);
@@ -198,19 +249,20 @@ export function Combat({ g, sheet, foes, onDone, faces = {} }: { g: GameCfg; she
 
   const cells = [];
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const k = key(x, y), f = alive.find(o => o.x === x && o.y === y), me = st.x === x && st.y === y, pal = st.allies.find(a => a.hp > 0 && a.x === x && a.y === y), rock = rocks.has(k), can = !st.end && f ? canHit(f) : '', go = !f && !me && !pal && !rock && reach.has(k);
-    cells.push(<button key={k} type="button" disabled={!!st.end || rock || me || !!pal || (!go && !can)} aria-label={f ? f.name : pal ? pal.name : me ? t('game.you') : rock ? t('game.fight.rock') : `${x + 1},${y + 1}`}
-      className={`gm-cell${rock ? ' is-rock' : ''}${high.has(k) ? ' is-high' : ''}${bush.has(k) ? ' is-bush' : ''}${f?.ranged ? ' is-ranged' : ''}${me ? ' is-me' : ''}${pal ? ' is-pal' : ''}${f ? ' is-foe' : ''}${go ? ' is-go' : ''}${can ? ' is-aim' : ''}${f?.stun ? ' is-stun' : ''}${st.mark?.cells.includes(k) ? ' is-mark' : ''}${f?.boss ? ' is-boss' : ''}`}
-      onClick={() => f ? attack(f) : moveTo(x, y)}>{me ? <b style={faces.me ? { backgroundImage: `url("${faces.me}")` } : undefined}>{faces.me ? '' : t('game.fight.meMark')}</b> : pal ? <b style={face(pal.name)}>{face(pal.name) ? '' : pal.name.slice(0, 1)}</b> : f ? <><b><Emblem kind={foeKind(f.name)} /></b><em>{f.id + 1}</em><i style={{ width: `${f.hp / f.max * 100}%` }} /></> : rock ? <Terrain kind="rock" /> : null}{!rock && high.has(k) ? <span className="gm-land"><Terrain kind="high" /></span> : null}{!rock && bush.has(k) ? <span className="gm-land"><Terrain kind="bush" /></span> : null}</button>);
+    const k = key(x, y), f = alive.find(o => o.x === x && o.y === y), me = st.x === x && st.y === y, pal = st.allies.find(a => a.hp > 0 && a.x === x && a.y === y), rock = rocks.has(k), can = !st.end && f ? canHit(f) : '', keg = !f && !me && !pal && st.kegs.includes(k), boom = keg && !st.end && canBlast(k), herb = st.herbs.includes(k), go = !f && !me && !pal && !rock && !keg && reach.has(k);
+    cells.push(<button key={k} type="button" disabled={!!st.end || (rock && !f) || me || !!pal || (!go && !can && !boom)} aria-label={f ? f.name : pal ? pal.name : me ? t('game.you') : rock ? t('game.fight.rock') : `${x + 1},${y + 1}`}
+      className={`gm-cell${rock ? ' is-rock' : ''}${high.has(k) ? ' is-high' : ''}${bush.has(k) ? ' is-bush' : ''}${f?.ranged ? ' is-ranged' : ''}${me ? ' is-me' : ''}${pal ? ' is-pal' : ''}${f ? ' is-foe' : ''}${go ? ' is-go' : ''}${can ? ' is-aim' : ''}${f?.stun ? ' is-stun' : ''}${st.mark?.cells.includes(k) ? ' is-mark' : ''}${f?.boss ? ' is-boss' : ''}${boom ? ' is-boom' : ''}${herb && !f ? ' is-herb' : ''}`}
+      onClick={() => f ? attack(f) : keg ? blast(k) : moveTo(x, y)}>{me ? <b style={faces.me ? { backgroundImage: `url("${faces.me}")` } : undefined}>{faces.me ? '' : t('game.fight.meMark')}</b> : pal ? <b style={face(pal.name)}>{face(pal.name) ? '' : pal.name.slice(0, 1)}</b> : f ? <><b><Emblem kind={f.kind} /></b><em>{f.id + 1}</em><i style={{ width: `${f.hp / f.max * 100}%` }} /></> : rock ? <Terrain kind="rock" /> : keg ? <Terrain kind="keg" /> : null}{herb && !f && !me && !pal ? <span className="gm-land is-herb"><Terrain kind="herb" /></span> : null}{!rock && high.has(k) ? <span className="gm-land"><Terrain kind="high" /></span> : null}{!rock && bush.has(k) ? <span className="gm-land"><Terrain kind="bush" /></span> : null}</button>);
   }
   return <div className="gm-mini gm-fight">
     <div className="gm-roster">
       <div className="is-me"><small>{t('game.you')}</small><b>{st.hp}<i>/{sheet.hpMax}</i></b><Bar v={st.hp} max={sheet.hpMax} />{myEl || Object.keys(st.ail).length ? <span className="gm-ails">{myEl ? <i className={'is-' + myEl}>{t('game.el.' + myEl)}</i> : null}{(Object.keys(st.ail) as Ail[]).map(a => <i key={a} className="is-ail">{t('game.fight.ail.' + a)} {st.ail[a]}</i>)}</span> : null}</div>
       {st.allies.map(a => <div key={a.name} className={a.hp <= 0 ? 'is-pal is-out' : 'is-pal'}><small>{a.name}</small><b>{a.hp}<i>/{a.max}</i></b><Bar v={a.hp} max={a.max} /></div>)}
-      {st.foes.map(f => <div key={f.id} className={f.hp <= 0 ? 'is-out' : ''}><small>{f.id + 1} · {f.name}{f.ranged ? ' ➶' : ''}</small>{f.el || f.boss || Object.keys(f.ail).length ? <span className="gm-ails">{f.boss ? <i className="is-boss">{t('game.fight.boss')}</i> : null}{f.el ? <i className={'is-' + f.el}>{t('game.el.' + f.el)}</i> : null}{(Object.keys(f.ail) as Ail[]).map(a => <i key={a} className="is-ail">{t('game.fight.ail.' + a)} {f.ail[a]}</i>)}</span> : null}<b>{f.hp}<i>/{f.max}</i></b><Bar v={f.hp} max={f.max} /></div>)}
+      {st.foes.map(f => <div key={f.id} className={f.hp <= 0 ? 'is-out' : ''}><small>{f.id + 1} · {f.name}{f.ranged ? ' ➶' : ''}</small>{f.el || f.boss || f.trait || Object.keys(f.ail).length ? <span className="gm-ails">{f.boss ? <i className="is-boss">{t('game.fight.boss')}</i> : null}{f.trait ? <i className="is-trait" title={t('game.fight.trait.' + f.trait + '.tip')}>{t('game.fight.trait.' + f.trait)}</i> : null}{f.el ? <i className={'is-' + f.el}>{t('game.el.' + f.el)}</i> : null}{(Object.keys(f.ail) as Ail[]).map(a => <i key={a} className="is-ail">{t('game.fight.ail.' + a)} {f.ail[a]}</i>)}</span> : null}<b>{f.hp}<i>/{f.max}</i></b><Bar v={f.hp} max={f.max} /></div>)}
     </div>
     <div key={st.hurt} className={`gm-board${st.hurt ? ' is-hurt' : ''}`} style={{ gridTemplateColumns: `repeat(${W}, 1fr)` }}>{cells}</div>
-    <p className="gm-legend"><span><Terrain kind="rock" size={20} />{t('game.fight.rock')}</span><span><Terrain kind="high" size={20} />{t('game.fight.high')}</span><span><Terrain kind="bush" size={20} />{t('game.fight.bush')}</span></p>
+    <p className="gm-legend"><span><Terrain kind="rock" size={20} />{t('game.fight.rock')}</span><span><Terrain kind="high" size={20} />{t('game.fight.high')}</span><span><Terrain kind="bush" size={20} />{t('game.fight.bush')}</span>{st.herbs.length ? <span><Terrain kind="herb" size={20} />{t('game.fight.herb')}</span> : null}{st.kegs.length ? <span><Terrain kind="keg" size={20} />{t('game.fight.keg')}</span> : null}</p>
+    {(() => { const seen = [...new Set(alive.map(f => f.trait).filter(Boolean))]; return seen.length ? <p className="gm-traits">{seen.map(k => <span key={k}><b>{t('game.fight.trait.' + k)}</b> {t('game.fight.trait.' + k + '.tip')}</span>)}</p> : null; })()}
     <ol className="gm-log">{st.log.length ? st.log.map((l, i) => <li key={i}>{l}</li>) : <li className="dim">{t('game.fight.hint')}</li>}</ol>
     {st.end ? <div className="gm-done"><b className={`gm-verdict is-${st.end === 'win' ? 'win' : st.end === 'lose' ? 'lose' : 'draw'}`}>{t('game.fight.end.' + st.end)}</b><button type="button" className="btn primary" onClick={finish}>{t('game.mini.finish')}</button></div>
       : <div className="gm-acts">

@@ -780,3 +780,9 @@ html.gs-on .modal-wrap:has(.gm) .gm-chess button.is-w { color: #f4ecdb; } html.g
 /* 전투: 공격 단추는 맨 위에 넓게 */
 .gm-fight .gm-acts .gm-strike { grid-column: 1 / -1; }
 .gm-fight .gm-acts .btn small { display: block; font-size: .72em; font-weight: 400; opacity: .7; letter-spacing: 0; }
+
+/* 전투: 종류별 버릇 · 약초 · 화약통 */
+.gm-ails .is-trait { color: var(--text); border-color: var(--ink); cursor: help; }
+.gm-traits { display: flex; flex-direction: column; gap: 2px; margin: 0; font-size: .78em; line-height: 1.5; color: var(--dim); } .gm-traits b { color: var(--text); font-weight: 700; margin-right: 4px; }
+.gm-cell.is-boom { cursor: pointer; outline: 2px dashed var(--bad, #c0392b); outline-offset: -3px; } .gm-cell.is-boom > svg { color: var(--bad, #c0392b); opacity: 1; }
+.gm-cell .gm-land.is-herb { color: #6f9a3c; opacity: 1; } .gm-cell.is-herb.is-go { background: color-mix(in srgb, #6f9a3c 24%, transparent); }

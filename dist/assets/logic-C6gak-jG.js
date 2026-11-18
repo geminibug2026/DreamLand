@@ -1,1 +1,0 @@
-export{r as cfg,u as translate}from"./logic-Mexp0N8r.js";
