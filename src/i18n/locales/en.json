@@ -7277,5 +7277,12 @@
   "game.track.town": "Town",
   "game.track.battle": "Battle",
   "game.track.dark": "Dark places and night",
-  "game.track.rest": "Rest and indoors"
+  "game.track.rest": "Rest and indoors",
+  "game.fate": "Fate",
+  "game.fate.hint": "Points for re-rolling a failed check. You gain one on a critical failure or when the game master rewards bold play.",
+  "game.fate.reroll": "Defy fate and roll again",
+  "game.fate.left": "{n} fate left",
+  "game.fate.accept": "Accept",
+  "game.fate.pending": "Failure…?",
+  "game.fate.used": "re-rolled with a fate point"
 }

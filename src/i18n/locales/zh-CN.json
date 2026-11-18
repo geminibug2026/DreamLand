@@ -7197,5 +7197,12 @@
   "game.track.town": "城镇",
   "game.track.battle": "战斗",
   "game.track.dark": "暗处·夜晚",
-  "game.track.rest": "休息·室内"
+  "game.track.rest": "休息·室内",
+  "game.fate": "命运",
+  "game.fate.hint": "用于重掷失败判定的点数。大失败时或主持人奖励大胆行动时获得。",
+  "game.fate.reroll": "逆天改命，重新掷骰",
+  "game.fate.left": "剩余命运点 {n}",
+  "game.fate.accept": "接受",
+  "game.fate.pending": "失败…？",
+  "game.fate.used": "使用命运点重掷"
 }
