@@ -164,7 +164,9 @@ function MapView({ s, onGo }: { s: SheetData; onGo(name: string): void }) {
   const near = (name: string) => s.paths.some(([a, b]) => (a === s.place && b === name) || (b === s.place && a === name));
   const at = (name: string) => pts.find(p => p.n.name === name)!;
   const W = 40, D = 21;   // 블록 윗면의 반너비 · 반높이
-  return <div className="gm-map"><svg viewBox={`${minX} ${minY} ${maxX - minX} ${maxY - minY}`} style={{ width: '100%', maxHeight: '52vh' }} role="img" aria-label={t('game.map.title')}>
+  // 장소가 몇 없을 때 지나치게 커지지 않게, 그림의 실제 크기보다 조금만 키운다
+  const lines = (name: string) => { if (name.length <= 13) return [name]; const cut = name.lastIndexOf(' ', 13), at = cut > 4 ? cut : 13, rest = name.slice(at).trim(); return [name.slice(0, at).trim(), rest.length > 14 ? rest.slice(0, 13) + '…' : rest]; };
+  return <div className="gm-map"><svg viewBox={`${minX} ${minY} ${maxX - minX} ${maxY - minY + 12}`} style={{ width: `min(100%, ${Math.round((maxX - minX) * 1.35)}px)`, maxHeight: '52vh' }} role="img" aria-label={t('game.map.title')}>
     <defs><pattern id="gm-hatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><line x1="0" y1="0" x2="0" y2="5" stroke="currentColor" strokeWidth=".8" opacity=".5" /></pattern></defs>
     {m.edges.map(([a, b], i) => { const p = at(a.name), q = at(b.name), mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2 + 6; return <path key={i} d={`M${p.x} ${p.y + 2}Q${mx} ${my} ${q.x} ${q.y + 2}`} className={`gm-road${a.seen && b.seen ? '' : ' is-faint'}`} />; })}
     {[...pts].sort((p, q) => p.y - q.y).map(p => { const { n, x, y, h } = p, can = !n.here && near(n.name), top = y - h;
@@ -179,7 +181,7 @@ function MapView({ s, onGo }: { s: SheetData; onGo(name: string): void }) {
         {n.here ? <g className="gm-pin"><path d={`M${x} ${top - D - 14}c-6.500 -8 -8.500 -11.500 -8.500 -15.500a8.500 8.500 0 0 1 17 0c0 4 -2 7.500 -8.500 15.500z`} /><circle cx={x} cy={top - D - 30} r="3" /></g> : null}
       </g>; })}
     {/* 이름은 블록에 가리지 않게 맨 위에 그린다 */}
-    {pts.map(p => <text key={'l' + p.n.name} x={p.x} y={p.y + D + 15} textAnchor="middle" className={`gm-label${p.n.seen ? '' : ' is-new'}`}>{p.n.name.length > 14 ? p.n.name.slice(0, 13) + '…' : p.n.name}</text>)}
+    {pts.map(p => <text key={'l' + p.n.name} x={p.x} y={p.y + D + 15} textAnchor="middle" className={`gm-label${p.n.seen ? '' : ' is-new'}`}>{lines(p.n.name).map((l, i) => <tspan key={i} x={p.x} dy={i ? 12 : 0}>{l}</tspan>)}</text>)}
     <g transform={`translate(${maxX - 30} ${minY + 30})`} className="gm-compass"><circle r="15" /><path d="M0 -12 3.500 0 0 12 -3.500 0z" /><path d="M0 -12 3.500 0H-3.500z" className="is-n" /><text y="-18" textAnchor="middle">N</text></g>
   </svg><p className="hint">{t('game.map.hint')}</p></div>;
 }

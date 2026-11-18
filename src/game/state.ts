@@ -266,6 +266,8 @@ ${RULE_TEXT[ruleOf(g)].check}
 [play rps: who pays for dinner] — settle something with a quick game against you: rps, dice, blackjack, tictactoe, gomoku or numbers.
 [qte 6: Dive aside | Raise the shield | Grab the rope] — a split-second moment: {{user}} has that many seconds to pick. Use sparingly, for sudden danger.
 ${diff}
+Language: keep the tag keywords in English exactly as shown, but write everything you put inside a tag — place names, times, weather, quest titles, item names, clock names, people's names, choices, reasons and stakes — in the language the story is being told in. The English wording above is only an example of the format.
+Keep those names short (a place name of two to four words; a time like "둘째 날 저녁" rather than a sentence).
 The result comes back as a bracketed line; narrate from there and honor it. Do not change the sheet without a tag, and do not show the tags' meaning to {{user}}.`;
 }
 export function sheetPrompt(g: GameCfg, s: Sheet): string {
