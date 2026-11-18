@@ -11,11 +11,21 @@ import { t } from '../i18n';
 import { def, str } from '../stscript/run';
 import { MINIS, gameOf, hideTags, readTags, rulesPrompt, sheetOf, sheetPrompt, type GameSwipe, type MiniId } from '../game/state';
 import { Sheet, drawFor, openGame, openMiniPicker, playMini, redrawGame } from '../game/ui';
+import { closeStage, openStage, stageOpenFor } from '../game/Stage';
+import type { GameChat } from '../game/state';
 
 const OWNER = 'game';
 const here = () => chatApi.current().chat;
 
+/** 게임 화면을 연다. 닫으면 대화 화면으로 돌아가고, 다음에 이 방을 열 때도 대화 화면으로 열린다 */
+export function showStage(chat: Chat) {
+  const g = (chat as GameChat).game; if (!g?.on) return;
+  if (g.stage === false) { g.stage = true; void S.save('chats', chat, true); }
+  openStage(chat.id, () => { const c = S.chats.find(x => x.id === chat.id) as GameChat | undefined; if (c?.game) { c.game.stage = false; void S.save('chats', c, true); } closeStage(); redrawGame(); });
+}
 function setup() {
+  on<Chat>('chat:open', chat => { const g = gameOf(chat); if (g && g.stage !== false) showStage(chat); else if (stageOpenFor()) closeStage(); });
+  on<Chat>('game:start', chat => showStage(chat));
   // 답변을 받으면 표시를 읽어 변화와 맡긴 일을 그 답변에 붙이고, 글에서는 지운다 (기다림 없이 — 뒤이어 도는 기억 기록 · 번역이 깨끗한 글을 보도록)
   on('message:received', data => {
     const { msg, chat } = data as { msg: Msg; chat: Chat };
@@ -46,6 +56,7 @@ function setup() {
 
   X.composer = X.composer.filter(c => c.owner !== OWNER);
   X.composer.push({ owner: OWNER, id: 'game-open', icon: 'dice', get label() { return gameOf(here()) ? t('game.menu.sheet') : t('game.menu.start'); }, run: () => { const c = here(); if (c) openGame(c); } });
+  X.composer.push({ owner: OWNER, id: 'game-stage', icon: 'image', get label() { return t('game.stage.open'); }, run: () => { const c = here(); if (!c) return; if (gameOf(c)) showStage(c); else openGame(c); } });
   X.composer.push({ owner: OWNER, id: 'game-mini', icon: 'play', get label() { return t('game.mini.title'); }, run: () => { const c = here(); if (c) openMiniPicker(c); } });
   X.panels = X.panels.filter(p => p.owner !== OWNER);
   X.panels.push({ owner: OWNER, id: 'game', get title() { return t('game.sheet.title'); }, icon: 'dice', render: (chat, msgs) => gameOf(chat) ? reactNode('game-panel', 'div.gm', <Sheet chat={chat} msgs={msgs} />) : null });

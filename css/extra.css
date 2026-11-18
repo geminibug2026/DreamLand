@@ -472,3 +472,110 @@
 .gm-roster .is-pal .gm-bar i { background: var(--accent); opacity: .6; }
 .gm-board.is-hurt { animation: gm-hurt .28s ease-out; } @keyframes gm-hurt { 20% { transform: translateX(-5px); } 50% { transform: translateX(4px); } 80% { transform: translateX(-2px); } }
 @media (prefers-reduced-motion: reduce) { .gm-board.is-hurt { animation: none; } }
+
+/* ══ 게임 화면 ══ 그림을 주인공으로 두고, 글과 숫자는 조용한 금빛 선과 명조 글씨로 얹는다 */
+.gs, html.gs-on .modal-wrap:has(.gm) .modal {
+  --gs-gold: #d9b877; --gs-paper: #f1e8d6; --gs-mute: #a99d87; --gs-night: #100e0b; --gs-line: rgb(217 184 119 / .28);
+  --gs-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Noto Serif KR", "Noto Serif CJK KR", "Nanum Myeongjo", AppleMyungjo, "Source Han Serif K", Batang, serif;
+  /* 앱의 색 이름을 이 화면의 색으로 바꿔 끼운다 — 시트 · 전투 · 놀이 창이 그대로 같은 옷을 입는다 */
+  --surface: #17140f; --surface2: #221d16; --surface3: #2c261d; --bg: #17140f; --bg2: #100e0b; --text: var(--gs-paper); --dim: var(--gs-mute); --faint: #6f6657;
+  --ink: var(--gs-gold); --ink-line: var(--gs-line); --line: var(--gs-line); --accent: var(--gs-gold); --on-accent: #1a150c; --nar: #cfc4ae; --say-text: #fff6e2; --soft: #2a2318; --bad: #e0705c;
+  --handles: linear-gradient(var(--ink), var(--ink)) 0 0 / 7px 1px no-repeat, linear-gradient(var(--ink), var(--ink)) 0 0 / 1px 7px no-repeat, linear-gradient(var(--ink), var(--ink)) 100% 0 / 7px 1px no-repeat, linear-gradient(var(--ink), var(--ink)) 100% 0 / 1px 7px no-repeat, linear-gradient(var(--ink), var(--ink)) 0 100% / 7px 1px no-repeat, linear-gradient(var(--ink), var(--ink)) 0 100% / 1px 7px no-repeat, linear-gradient(var(--ink), var(--ink)) 100% 100% / 7px 1px no-repeat, linear-gradient(var(--ink), var(--ink)) 100% 100% / 1px 7px no-repeat;
+  color: var(--text);
+}
+.gs { position: fixed; inset: 0; z-index: 50; overflow: hidden; background: var(--gs-night); display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); user-select: none; -webkit-user-select: none; font-family: var(--font); }
+.gs-bg { position: absolute; inset: -3%; background: #1b1712 center / cover no-repeat; animation: gs-fade 1.4s ease both, gs-drift 60s ease-in-out 1.4s infinite alternate; }
+@keyframes gs-fade { from { opacity: 0; } } @keyframes gs-drift { to { transform: scale(1.06) translate(-1%, -1%); } }
+.gs-shade { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgb(12 10 8 / .72) 0, rgb(12 10 8 / .18) 22%, rgb(12 10 8 / 0) 42%, rgb(12 10 8 / .5) 66%, rgb(12 10 8 / .94) 100%), radial-gradient(120% 80% at 50% 40%, transparent 55%, rgb(8 6 4 / .55) 100%); transition: background .6s; }
+.gs.is-fight .gs-shade { background: rgb(10 8 6 / .78); }
+.gs-eyebrow { font: 500 10.5px var(--display); letter-spacing: .26em; text-transform: uppercase; color: var(--gs-gold); }
+/* 위: 어디에 · 언제 / 도구 */
+.gs-top { grid-row: 1; position: relative; z-index: 2; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: calc(14px + var(--safe-t, 0px)) 16px 0; }
+.gs-loc { display: flex; flex-direction: column; gap: 5px; min-width: 0; text-shadow: 0 1px 12px rgb(0 0 0 / .7); }
+.gs-loc h1 { margin: 0; font: 500 clamp(1.35rem, 5.2vw, 2rem)/1.15 var(--gs-serif); letter-spacing: .01em; color: var(--gs-paper); overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.gs-loc h1::after { content: ""; display: block; width: 42px; height: 1px; margin-top: 10px; background: var(--gs-gold); opacity: .8; }
+.gs-tools { display: flex; gap: 2px; flex: none; }
+.gs-tools button, .gs-mini { width: 36px; height: 36px; display: grid; place-items: center; border: 0; background: none; color: var(--gs-paper); opacity: .78; cursor: pointer; border-radius: 50%; transition: opacity .15s, background .15s, color .15s; }
+.gs-tools button:hover, .gs-mini:hover { opacity: 1; color: var(--gs-gold); background: rgb(255 255 255 / .07); } .gs-mini:disabled { opacity: .25; pointer-events: none; }
+/* 지금 상태 */
+.gs-vitals { grid-row: 2; position: relative; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding: 14px 16px 0; text-shadow: 0 1px 8px rgb(0 0 0 / .8); }
+.gs-hp { display: grid; grid-template-columns: auto auto; grid-template-rows: auto auto; column-gap: 8px; row-gap: 5px; align-items: baseline; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; text-align: left; }
+.gs-hp b { font: 600 1.05rem/1 var(--display); font-variant-numeric: tabular-nums; color: var(--gs-paper); } .gs-hp b i { font: 400 .72em var(--display); font-style: normal; color: var(--gs-mute); } .gs-hp b.is-low { color: var(--bad); }
+.gs-meter { grid-column: 1 / -1; width: 132px; height: 3px; background: rgb(255 255 255 / .16); } .gs-meter i { display: block; height: 100%; background: var(--gs-gold); transition: width .5s cubic-bezier(.2, .8, .2, 1); } .gs-meter i.is-low { background: var(--bad); }
+.gs-stats { display: flex; gap: 16px; font: 600 .95rem var(--display); font-variant-numeric: tabular-nums; } .gs-stats span { display: flex; align-items: baseline; gap: 6px; }
+.gs-stats small, .gs-clock small { font: 500 10px var(--display); letter-spacing: .2em; text-transform: uppercase; color: var(--gs-mute); }
+.gs-clock { display: flex; align-items: center; gap: 8px; } .gs-clock i { display: flex; gap: 3px; } .gs-clock b { width: 7px; height: 7px; transform: rotate(45deg); border: 1px solid var(--gs-gold); } .gs-clock b.on { background: var(--gs-gold); } .gs-clock.is-full b.on { background: var(--bad); border-color: var(--bad); }
+.gs-party { display: flex; } .gs-party span { width: 28px; height: 28px; margin-left: -6px; display: grid; place-items: center; border: 1px solid var(--gs-gold); border-radius: 50%; background: #221d16 center / cover; font: 600 12px var(--display); } .gs-party span:first-child { margin-left: 0; }
+/* 인물 */
+.gs-figure { grid-row: 3; position: relative; z-index: 1; min-height: 0; display: grid; place-items: end center; cursor: pointer; }
+.gs-sprite { height: 100%; max-width: 100%; object-fit: contain; object-position: bottom center; filter: drop-shadow(0 18px 30px rgb(0 0 0 / .55)); transition: filter .3s, opacity .3s; animation: gs-rise .5s cubic-bezier(.2, .8, .2, 1) both; }
+.gs-arch { height: min(76%, 400px); aspect-ratio: 3 / 4.3; max-width: 62%; margin-bottom: 14px; padding: 5px; border: 1px solid var(--gs-gold); border-radius: 999px 999px 3px 3px; box-shadow: 0 24px 50px rgb(0 0 0 / .55); animation: gs-rise .5s cubic-bezier(.2, .8, .2, 1) both; transition: opacity .3s, filter .3s; }
+.gs-arch i { display: block; width: 100%; height: 100%; border-radius: 999px 999px 1px 1px; background: #221d16 center 12% / cover; }
+@keyframes gs-rise { from { opacity: 0; transform: translateY(14px); } }
+.gs.is-me .gs-sprite, .gs.is-me .gs-arch { filter: brightness(.62) saturate(.8); } .gs.is-fight .gs-figure { opacity: 0; }
+/* 글 상자 */
+.gs-panel { grid-row: 4; position: relative; z-index: 2; width: min(880px, 100%); margin: 0 auto; padding: 0 20px calc(16px + var(--safe-b, 0px)); cursor: pointer; }
+.gs-panel::before { content: ""; position: absolute; left: 20px; right: 20px; top: 0; height: 1px; background: linear-gradient(90deg, var(--gs-gold), rgb(217 184 119 / .12)); }
+.gs-name { display: flex; align-items: center; gap: 10px; padding-top: 16px; font: 500 .82rem var(--display); letter-spacing: .18em; text-transform: uppercase; color: var(--gs-gold); }
+.gs-name i { width: 6px; height: 6px; transform: rotate(45deg); background: var(--gs-gold); flex: none; } .gs.is-me .gs-name, .gs-name.is-event { color: var(--gs-mute); } .gs.is-me .gs-name i, .gs-name.is-event i { background: none; border: 1px solid var(--gs-mute); }
+.gs-scroll { min-height: 5.4em; max-height: 30vh; overflow-y: auto; padding: 10px 0 4px; scrollbar-width: none; } .gs-scroll::-webkit-scrollbar { display: none; }
+.gs-text { margin: 0; font: 400 clamp(1.02rem, 3.9vw, 1.16rem)/1.85 var(--gs-serif); color: var(--gs-paper); white-space: pre-wrap; overflow-wrap: anywhere; text-shadow: 0 1px 2px rgb(0 0 0 / .5); animation: gs-in .35s ease both; }
+.gs-text em { color: var(--nar); } .gs-text .vn-q { color: var(--say-text); font-weight: 500; } .gs-faint { color: var(--gs-mute); }
+@keyframes gs-in { from { opacity: 0; transform: translateY(4px); } }
+.gs-event { animation: gs-in .35s ease both; } .gs-event .gm-card-rec { width: 100%; margin: 0; background: rgb(23 20 15 / .7); } .gs-event .gm-die { animation: gs-tumble .7s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes gs-tumble { from { transform: rotate(-200deg) scale(.4); opacity: 0; } }
+.gs-rail { display: flex; align-items: center; gap: 4px; min-height: 36px; margin: 0 -8px; } .gs-rail > i { flex: 1; }
+.gs-count { font: 500 11px var(--display); letter-spacing: .14em; color: var(--gs-mute); font-variant-numeric: tabular-nums; }
+.gs-next { padding-right: 8px; font: 500 10.5px var(--display); letter-spacing: .26em; text-transform: uppercase; color: var(--gs-gold); animation: gs-pulse 1.6s ease-in-out infinite; } @keyframes gs-pulse { 50% { opacity: .35; } }
+.gs-acts { display: flex; flex-direction: column; gap: 10px; padding-top: 6px; cursor: auto; animation: gs-in .3s ease both; }
+.gs-ask { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 13px 18px; border: 1px solid var(--gs-gold); background: var(--gs-gold); color: #1a150c; cursor: pointer; transition: background .15s, color .15s; }
+.gs-ask b { font: 600 .98rem var(--display); letter-spacing: .04em; } .gs-ask small { font: 400 .84rem var(--gs-serif); opacity: .8; } .gs-ask:hover { background: none; color: var(--gs-gold); }
+.gs-picks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; } .gs-picks li + li { border-top: 1px solid var(--gs-line); }
+.gs-picks button { width: 100%; display: flex; align-items: baseline; gap: 14px; padding: 10px 2px; border: 0; background: none; color: var(--gs-paper); font: 400 1rem/1.5 var(--gs-serif); text-align: left; cursor: pointer; transition: color .15s, padding .15s; }
+.gs-picks small { flex: none; width: 1.6em; font: 500 .72rem var(--display); letter-spacing: .1em; color: var(--gs-gold); } .gs-picks button:hover { color: var(--gs-gold); padding-left: 8px; }
+.gs-write { display: flex; align-items: flex-end; gap: 6px; border-bottom: 1px solid var(--gs-line); transition: border-color .15s; } .gs-write:focus-within { border-color: var(--gs-gold); }
+.gs-write textarea { flex: 1; min-width: 0; min-height: 40px; resize: none; padding: 9px 0; border: 0; outline: none; background: none; color: var(--gs-paper); font: 400 16px/1.5 var(--gs-serif); user-select: text; -webkit-user-select: text; } .gs-write textarea::placeholder { color: var(--gs-mute); font-style: italic; }
+.gs-send { width: 40px; height: 40px; flex: none; display: grid; place-items: center; border: 0; background: none; color: var(--gs-gold); cursor: pointer; } .gs-send:disabled { opacity: .3; cursor: default; }
+/* 넓은 화면: 상태는 왼쪽에 세로로 */
+@media (min-width: 900px) {
+  .gs-top { padding: 26px 34px 0; } .gs-vitals { position: absolute; left: 34px; top: 118px; flex-direction: column; align-items: flex-start; gap: 16px; padding: 0; }
+  .gs-panel { padding-bottom: 30px; } .gs-scroll { min-height: 6.4em; }
+}
+/* 이 화면 위에 뜨는 게임 창: 같은 색 · 같은 글씨 */
+html.gs-on .modal-wrap:has(.gm) { background: rgb(8 6 4 / .62); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+html.gs-on .modal-wrap:has(.gm) .modal { background: #17140f; border-color: var(--gs-gold); box-shadow: 0 30px 80px rgb(0 0 0 / .6); }
+html.gs-on .modal-wrap:has(.gm) .modal-head h2 { font: 500 1.2rem var(--gs-serif); letter-spacing: .02em; }
+html.gs-on .modal-wrap:has(.gm) .btn { background: none; color: var(--text); border-color: var(--gs-line); } html.gs-on .modal-wrap:has(.gm) .btn:hover { border-color: var(--gs-gold); color: var(--gs-gold); background: none; }
+html.gs-on .modal-wrap:has(.gm) .btn.primary { background: var(--gs-gold); border-color: var(--gs-gold); color: #1a150c; } html.gs-on .modal-wrap:has(.gm) .btn.primary:hover { background: none; color: var(--gs-gold); }
+html.gs-on .modal-wrap:has(.gm) .inp { background: #100e0b; color: var(--text); border-color: var(--gs-line); }
+html.gs-on .modal-wrap:has(.gm) .gm-tabs button.on, html.gs-on .modal-wrap:has(.gm) .gm-cell.is-foe b, html.gs-on .modal-wrap:has(.gm) .gm-map g.is-here text { color: #1a150c; fill: #1a150c; }
+@media (prefers-reduced-motion: reduce) { .gs-bg { animation: gs-fade .4s ease both; } .gs-sprite, .gs-arch, .gs-text, .gs-event, .gs-acts, .gs-next, .gs-event .gm-die { animation: none; } }
+/* 전투판의 그림 */
+.gm-cell.is-rock, .gm-cell.is-bush { background-image: none; } .gm-cell.is-high { box-shadow: none; }
+.gm-cell > svg, .gm-land { position: absolute; inset: 9%; width: 82%; height: 82%; color: var(--dim); pointer-events: none; } .gm-land svg { width: 100%; height: 100%; } .gm-cell.is-rock > svg { color: var(--text); opacity: .8; }
+.gm-cell.is-me .gm-land, .gm-cell.is-pal .gm-land, .gm-cell.is-foe .gm-land { opacity: .35; }
+.gm-legend { display: flex; flex-direction: column; gap: 3px; margin: 0; font-size: .78em; color: var(--dim); } .gm-legend span { display: flex; align-items: center; gap: 8px; } .gm-legend svg { flex: none; color: var(--text); opacity: .75; }
+.gm-cell.is-me b, .gm-cell.is-pal b { background-size: cover; background-position: center 15%; z-index: 1; }
+.gm-cell.is-me b { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--accent); inset: 6px; }
+.gm-cell.is-foe b { inset: 3px; z-index: 1; background: var(--surface); color: var(--text); border: 1px solid var(--ink); border-radius: 2px; --tok-bg: var(--surface); }
+.gm-cell.is-foe b svg { width: 86%; height: 86%; } .gm-cell.is-foe:not(.is-aim) b { opacity: .8; }
+.gm-cell.is-foe em { position: absolute; left: 3px; top: 3px; z-index: 2; min-width: 11px; padding: 0 2px; background: var(--ink); color: var(--bg); font: 700 8.500px/11px var(--display); font-style: normal; text-align: center; }
+.gm-cell.is-ranged b { border-radius: 50%; } .gm-cell.is-foe i { z-index: 2; left: 3px; bottom: 0; max-width: calc(100% - 6px); height: 2px; }
+.gm-cell.is-stun b { border-style: dashed; opacity: .6; }
+html.gs-on .modal-wrap:has(.gm) .gm-cell.is-foe b { color: var(--gs-paper); }
+/* 스무 면 주사위 */
+.gm-d20 { position: relative; display: inline-grid; place-items: center; flex: none; color: var(--text); } .gm-d20 svg { position: absolute; inset: 0; }
+.gm-d20 b { position: relative; top: 5%; font: 800 .95rem/1 var(--display); font-variant-numeric: tabular-nums; } .gm-d20.is-off { opacity: .35; }
+.gs-event .gm-d20 { animation: gs-tumble .7s cubic-bezier(.2, .8, .2, 1) both; }
+.gm-clock b { font: 600 .82em var(--display); color: var(--dim); margin-left: auto; margin-right: 8px; border: 0; width: auto; height: auto; background: none; } .gm-clock svg { flex: none; } .gm-clock svg.is-full { color: var(--accent); }
+/* 게임 화면의 장식 */
+.gs-rule { position: absolute; left: 20px; right: 20px; top: -6px; display: flex; align-items: center; gap: 0; color: var(--gs-gold); pointer-events: none; }
+.gs-rule i { flex: 1; height: 1px; background: linear-gradient(90deg, transparent, currentColor); opacity: .7; } .gs-rule i:last-child { background: linear-gradient(270deg, transparent, currentColor); } .gs-rule svg { flex: none; }
+.gs-panel::before { display: none; }
+.gs-arch { position: relative; color: var(--gs-gold); } .gs-arch::after { content: ""; position: absolute; left: -9px; right: -9px; bottom: -7px; height: 1px; background: currentColor; box-shadow: 0 3px 0 -0.500px currentColor; opacity: .8; }
+.gs-key { position: absolute; left: 50%; top: -9px; transform: translateX(-50%); z-index: 1; }
+.gs-clock { color: var(--gs-paper); } .gs-clock svg { color: var(--gs-gold); flex: none; } .gs-clock svg.is-full { color: var(--bad); } .gs-clock em { font: 500 11px var(--display); font-style: normal; color: var(--gs-mute); font-variant-numeric: tabular-nums; }
+.gs-meter { position: relative; height: 5px; background: rgb(255 255 255 / .12); } .gs-meter::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), rgb(12 10 8 / .75) calc(10% - 1px) 10%); }
+.gs-tools button svg, .gs-mini svg { display: block; }
+.gm-d20 b { text-shadow: 0 0 2px var(--surface), 0 0 4px var(--surface), 0 0 6px var(--surface); font-size: .86rem; }
+.gs-bg.is-plain { background: radial-gradient(90% 70% at 50% 34%, #3a3024 0, #1c1812 55%, #100e0b 100%); animation: gs-fade 1.4s ease both; }

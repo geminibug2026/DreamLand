@@ -9,7 +9,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const out = path.join(root, 'web');
 if (!fs.existsSync(path.join(out, 'index.html'))) { console.error('web/index.html 이 없습니다 — vite build 가 먼저 돌아야 합니다.'); process.exit(1); }
 
-for (const dir of ['css', 'vendor', 'sounds', 'extensions']) {
+for (const dir of ['css', 'vendor', 'sounds', 'game', 'extensions']) {
   if (fs.existsSync(path.join(root, dir))) fs.cpSync(path.join(root, dir), path.join(out, dir), { recursive: true });
 }
 

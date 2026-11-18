@@ -18,7 +18,7 @@ export const RULES: Record<RuleId, { stats: StatKey[]; min: number; max: number;
 export const STATS: StatKey[] = FOUR;
 export type Diff = 'easy' | 'normal' | 'hard';
 export interface GameCfg {
-  on: boolean; rule?: RuleId; /** 새 장소 · 전투 때 삽화를 그린다 */ art?: boolean; /** 효과음 (기본 켬) */ sfx?: boolean; genre: string; tone: string; diff: Diff; hero: string; goal: string;
+  on: boolean; rule?: RuleId; /** 새 장소 · 전투 때 삽화를 그린다 */ art?: boolean; /** 효과음 (기본 켬) */ sfx?: boolean; /** 배경 음악 (기본 켬) */ music?: boolean; /** 게임 화면으로 연다 (기본 켬) */ stage?: boolean; genre: string; tone: string; diff: Diff; hero: string; goal: string;
   stats: Partial<Record<StatKey, number>>; hpMax: number; gold: number; items: string[];
   /** 손으로 고친 값 (시트에서 직접 바꾼 것) */
   adj?: Fx[];
@@ -31,7 +31,7 @@ export type Fx =
   /** 두 장소를 잇는 길 (아직 가 보지 않은 곳도 지도에 나타난다) */
   | { k: 'path'; a: string; b: string } | { k: 'xp'; n: number }
   /** 인물과의 사이 (-100 ~ 100) · 동료 · 작중 시간 · 날씨 · 진행 시계 */
-  | { k: 'rep'; name: string; n: number } | { k: 'party'; name: string; add: boolean } | { k: 'time'; text: string } | { k: 'weather'; text: string } | { k: 'clock'; name: string; v: number; max: number };
+  | { k: 'rep'; name: string; n: number } | { k: 'party'; name: string; add: boolean } | { k: 'time'; text: string } | { k: 'weather'; text: string } | { k: 'scene'; key: string } | { k: 'clock'; name: string; v: number; max: number };
 export type MiniId = 'rps' | 'dice' | 'blackjack' | 'tictactoe' | 'numbers' | 'gomoku';
 export const MINIS: MiniId[] = ['rps', 'dice', 'blackjack', 'tictactoe', 'gomoku', 'numbers'];
 export interface Foe { name: string; hp: number; atk: number; ranged?: boolean }
@@ -52,7 +52,7 @@ export type GameRec =
   | { kind: 'check'; stat: StatKey; dc: number; die: number; mod: number; total: number; ok: boolean; crit?: 'hit' | 'miss'; why?: string; fx?: Fx[]; rule?: RuleId; dice?: number[]; grade?: Grade; note?: string }
   | { kind: 'fight'; name: string; outcome: 'win' | 'lose' | 'fled'; rounds: number; took: number; hp: number; hpMax: number; fx?: Fx[]; loot?: string; fallen?: string[] }
   | { kind: 'play'; game: MiniId; outcome: Outcome; score: string; stake?: string; fx?: Fx[] };
-export interface Sheet { hp: number; hpMax: number; gold: number; items: { name: string; n: number }[]; quests: { title: string; done: boolean }[]; place: string; places: { name: string; seen: boolean }[]; paths: [string, string][]; xp: number; level: number; people: { name: string; v: number }[]; party: string[]; time: string; weather: string; clocks: { name: string; v: number; max: number }[] }
+export interface Sheet { hp: number; hpMax: number; gold: number; items: { name: string; n: number }[]; quests: { title: string; done: boolean }[]; place: string; places: { name: string; seen: boolean }[]; paths: [string, string][]; xp: number; level: number; people: { name: string; v: number }[]; party: string[]; time: string; weather: string; scene: string; clocks: { name: string; v: number; max: number }[] }
 
 export type GameChat = Chat & { game?: GameCfg };
 export type GameSwipe = { gfx?: Fx[]; gask?: Ask; /** 진행자가 내놓은 선택지 */ gchoices?: string[] };
@@ -88,6 +88,7 @@ function apply(s: Sheet, fx: Fx) {
   else if (fx.k === 'xp') { s.xp = Math.max(0, s.xp + fx.n); const lv = levelOf(s.xp); if (lv > s.level) { const up = (lv - s.level) * 3; s.hpMax += up; s.hp += up; } s.level = Math.max(s.level, lv); }
   else if (fx.k === 'rep') { let p = s.people.find(x => same(x.name, fx.name)); if (!p) s.people.push(p = { name: fx.name.trim(), v: 0 }); p.v = Math.min(100, Math.max(-100, p.v + fx.n)); }
   else if (fx.k === 'party') { const i = s.party.findIndex(x => same(x, fx.name)); if (fx.add && i < 0 && s.party.length < 3) s.party.push(fx.name.trim()); if (!fx.add && i >= 0) s.party.splice(i, 1); }
+  else if (fx.k === 'scene') s.scene = fx.key;
   else if (fx.k === 'time') s.time = fx.text; else if (fx.k === 'weather') s.weather = fx.text;
   else if (fx.k === 'clock') { const i = s.clocks.findIndex(x => same(x.name, fx.name)); if (fx.max <= 0) { if (i >= 0) s.clocks.splice(i, 1); } else if (i >= 0) s.clocks[i] = { name: s.clocks[i].name, v: Math.min(fx.max, Math.max(0, fx.v)), max: fx.max }; else s.clocks.push({ name: fx.name.trim(), v: Math.min(fx.max, Math.max(0, fx.v)), max: fx.max }); }
   else if (fx.k === 'place') { const from = s.place, p = spot(s, fx.name); p.seen = true; s.place = p.name; if (from && !same(from, p.name)) link(s, from, p.name); }
@@ -102,7 +103,7 @@ function apply(s: Sheet, fx: Fx) {
 }
 /** 지금의 시트: 시작값 + 손으로 고친 값 + 메시지마다의 변화 */
 export function sheetOf(g: GameCfg, msgs: Msg[]): Sheet {
-  const s: Sheet = { hp: g.hpMax, hpMax: g.hpMax, gold: g.gold, items: [], quests: [], place: '', places: [], paths: [], xp: 0, level: 1, people: [], party: [], time: '', weather: '', clocks: [] };
+  const s: Sheet = { hp: g.hpMax, hpMax: g.hpMax, gold: g.gold, items: [], quests: [], place: '', places: [], paths: [], xp: 0, level: 1, people: [], party: [], time: '', weather: '', scene: '', clocks: [] };
   for (const name of g.items) apply(s, { k: 'item', name, n: 1 });
   for (const m of msgs as GameMsg[]) {
     for (const fx of m.gm && 'fx' in m.gm && m.gm.fx || []) apply(s, fx);
@@ -117,8 +118,34 @@ export function pendingAsk(msgs: Msg[]): Ask | null {
   return (m.swipes[m.sw] as GameSwipe | undefined)?.gask || null;
 }
 
+/** 배경 그림의 이름들 (game/bg/<이름>.jpg). 진행자가 [scene 이름] 으로 고르고, 없으면 장소 이름에서 짐작한다 */
+export const SCENES = ['forest', 'mountain', 'road', 'peak', 'sea', 'winter', 'ruins', 'meadow', 'castle', 'garden', 'night', 'city', 'street', 'hall', 'tavern', 'desert', 'bridge', 'harbor', 'lake'];
+const SCENE_WORDS: [string, RegExp][] = [
+  ['hall', /cave|cavern|dungeon|mine|crypt|tomb|sewer|cloister|corridor|hall|vault|cellar|prison|church|chapel|동굴|던전|지하|광산|무덤|하수|회랑|복도|감옥|성당|교회|예배당|洞|地牢|地下|走廊|教堂/i], ['tavern', /tavern|inn|pub|bar\b|주점|여관|술집|선술집|酒馆|旅店/i], 
+  ['castle', /castle|keep|fortress|palace|citadel|성\b|성채|요새|궁전|왕궁|城堡|宫殿/i], ['ruins', /ruin|temple|shrine|폐허|유적|신전|사원|废墟|遗迹|神殿/i], ['harbor', /harbor|harbour|port|dock|canal|항구|부두|선착장|운하|港|码头/i],
+  ['sea', /sea|ocean|ship|coast|beach|shore|바다|해안|해변|배 위|海|船/i], ['lake', /lake|river|pond|marsh|swamp|호수|강가|강변|늪|湖|河/i], ['winter', /snow|ice|frost|winter|glacier|눈밭|설원|빙하|겨울|雪|冰/i],
+  ['desert', /desert|dune|oasis|사막|오아시스|沙漠/i], ['peak', /peak|summit|cliff|ridge|정상|절벽|봉우리|山顶|悬崖/i], ['mountain', /mountain|valley|pass\b|canyon|산\b|산맥|계곡|협곡|山|峡谷/i],
+  ['forest', /forest|wood|grove|jungle|숲|삼림|밀림|森林|树林/i], ['garden', /garden|park|courtyard|orchard|정원|공원|뜰|과수원|花园|庭院/i], 
+  ['city', /city|downtown|station|office|tower|도시|시내|역\b|빌딩|사무실|城市|车站/i], ['street', /street|alley|avenue|town|village|cafe|café|restaurant|market|plaza|square|카페|식당|시장|광장|咖啡|市场|广场|거리|골목|마을|시가|街|巷|村/i], ['bridge', /bridge|gate|다리|성문|관문|桥|城门/i],
+  ['', /room|house|home|apartment|school|class|hospital|chamber|librar|archive|study|bedroom|서재|도서관|서고|침실|书房|图书|卧室|방\b|집\b|교실|학교|병원|저택|房间|学校|医院/i], ['meadow', /meadow|field|plain|farm|hill|초원|들판|평원|농장|언덕|草原|田野/i], ['road', /road|path|trail|camp|길\b|야영|오솔길|도로|路|营地/i],
+];
+/** 지금 깔 배경: 진행자가 고른 것 → 장소 이름에서 짐작 → 밤이면 밤 그림 → 길. 집 · 교실 같은 실내는 그림 없이 둔다('') */
+export function sceneOf(s: Sheet): string {
+  if (s.scene && SCENES.includes(s.scene)) return s.scene;
+  for (const [key, re] of SCENE_WORDS) if (re.test(s.place)) return key;
+  return /night|midnight|밤|자정|夜/i.test(s.time) ? 'night' : 'road';
+}
+/** 지금 틀 음악 */
+export function trackOf(s: Sheet, g: GameCfg, fighting: boolean): 'explore' | 'town' | 'battle' | 'dark' | 'rest' {
+  if (fighting) return 'battle';
+  const sc = sceneOf(s), dark = /horror|호러|공포|恐怖/i.test(g.genre) || ['hall', 'ruins', 'night'].includes(sc) || /night|midnight|밤|자정|夜/i.test(s.time);
+  if (['tavern', ''].includes(sc) || /rest|camp|sleep|휴식|야영|쉬/i.test(s.place)) return 'rest';
+  if (dark) return 'dark';
+  return ['street', 'city', 'harbor', 'garden', 'castle', 'bridge'].includes(sc) ? 'town' : 'explore';
+}
+
 // ── 진행자가 쓰는 표시 ──
-const TAG = /\[\s*(hp|maxhp|gold|xp|item|quest|place|path|rep|party|time|weather|clock|choices|qte|check|save|fight|play)\b[\s:：]*([^[\]\n]{0,300})\]/gi;
+const TAG = /\[\s*(hp|maxhp|gold|xp|item|quest|place|path|rep|party|time|weather|backdrop|clock|choices|qte|check|save|fight|play)\b[\s:：]*([^[\]\n]{0,300})\]/gi;
 const STAT_ALIAS: Record<string, StatKey> = { str: 'str', strength: 'str', 힘: 'str', 근력: 'str', 力量: 'str', dex: 'dex', dexterity: 'dex', agi: 'dex', 민첩: 'dex', 敏捷: 'dex', con: 'con', constitution: 'con', 건강: 'con', 体质: 'con', int: 'int', intelligence: 'int', 지능: 'int', 智力: 'int', wis: 'wis', wisdom: 'wis', 지혜: 'wis', 感知: 'wis', cha: 'cha', charisma: 'cha', 매력: 'cha', 魅力: 'cha' };
 const MINI_ALIAS: Record<string, MiniId> = { gomoku: 'gomoku', omok: 'gomoku', 'five-in-a-row': 'gomoku', rps: 'rps', dice: 'dice', blackjack: 'blackjack', tictactoe: 'tictactoe', 'tic-tac-toe': 'tictactoe', ttt: 'tictactoe', numbers: 'numbers', baseball: 'numbers' };
 const num = (s: string) => { const m = s.replace(/[−–]/g, '-').match(/[+-]?\s*\d+/); return m ? parseInt(m[0].replace(/\s+/g, ''), 10) : NaN; };
@@ -142,6 +169,7 @@ export function readTags(text: string): { text: string; fx: Fx[]; ask: Ask | nul
     }
     if (k === 'rep') { const m = v.match(/^(.+?)\s*([+-−–]\s*\d+)$/); if (!m) return all; fx.push({ k: 'rep', name: m[1].trim().slice(0, 40), n: clampN(num(m[2]), -100, 100) }); return ''; }
     if (k === 'party') { const m = v.match(/^([+-−–])\s*(.+)$/); if (!m) return all; fx.push({ k: 'party', name: m[2].trim().slice(0, 40), add: m[1] === '+' }); return ''; }
+    if (k === 'backdrop') { const key = v.toLowerCase().replace(/[^a-z]/g, ''); if (!SCENES.includes(key)) return ''; fx.push({ k: 'scene', key }); return ''; }
     if (k === 'time' || k === 'weather') { if (!v) return all; fx.push({ k, text: v.slice(0, 60) }); return ''; }
     if (k === 'clock') { const m = v.match(/^(.+?)\s+(?:(\d+)\s*\/\s*(\d+)|(clear|done|off))$/i); if (!m) return all; fx.push({ k: 'clock', name: m[1].trim().slice(0, 40), v: +(m[2] || 0), max: m[4] ? 0 : clampN(+m[3], 1, 12) }); return ''; }
     if (k === 'choices') { const list = opts(v); if (list.length < 2) return all; choices = list; return ''; }
@@ -172,7 +200,7 @@ export function readTags(text: string): { text: string; fx: Fx[]; ask: Ask | nul
 /** 화면에서만 가린다 (받는 중에는 아직 닫히지 않은 표시도) */
 export const hideTags = (text: string, streaming: boolean) => {
   let s = text.replace(TAG, '');
-  if (streaming) s = s.replace(/\[\s*(hp|maxhp|gold|xp|item|quest|place|path|rep|party|time|weather|clock|choices|qte|check|save|fight|play)\b[^\]\n]*$/i, '');
+  if (streaming) s = s.replace(/\[\s*(hp|maxhp|gold|xp|item|quest|place|path|rep|party|time|weather|backdrop|clock|choices|qte|check|save|fight|play)\b[^\]\n]*$/i, '');
   return s;
 };
 
@@ -223,7 +251,7 @@ ${RULE_TEXT[ruleOf(g)].stats}${g.sessions?.length ? `\nThe story so far (earlier
 When something changes, write the matching tag on its own line at the end of the reply. The app applies it to {{user}}'s sheet and hides it:
 [hp -3]  [hp +5]  [gold +10]  [gold -4]  [xp +20] (for clever play or a finished quest; 100 XP is a level)  [item +Torch]  [item +Arrow x5]  [item -Rusty key]  [quest +Find the missing bell]  [quest done: Find the missing bell]
 [place Old Mill] when {{user}} arrives somewhere (keep place names short and reuse the exact same name later).  [path Old Mill - River Dock] to reveal a route to a place {{user}} has heard of or can see. The app draws the map from these.
-[rep Mira +10] / [rep Mira -15] when someone's opinion of {{user}} shifts (-100 enemy … +100 devoted).  [party +Mira] / [party -Mira] when someone joins or leaves as a companion (they fight alongside {{user}}; at most three).  [time Day 2, dusk]  [weather Heavy rain]  [clock Guards alerted 2/6] for a danger or countdown that fills step by step ([clock Guards alerted clear] to drop it).
+[rep Mira +10] / [rep Mira -15] when someone's opinion of {{user}} shifts (-100 enemy … +100 devoted).  [party +Mira] / [party -Mira] when someone joins or leaves as a companion (they fight alongside {{user}}; at most three).  [time Day 2, dusk]  [weather Heavy rain]  [backdrop forest] to change the backdrop when the setting changes — one of: ${SCENES.join(', ')}.  [clock Guards alerted 2/6] for a danger or countdown that fills step by step ([clock Guards alerted clear] to drop it).
 [choices Sneak around | Talk to the guard | Wait for night] — optional: two to four suggested actions shown as buttons; {{user}} may still type anything.
 To hand something to the app, use ONE of these as the very last line, then stop — do not narrate what happens next:
 ${RULE_TEXT[ruleOf(g)].check}
