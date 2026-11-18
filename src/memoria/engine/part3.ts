@@ -399,7 +399,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     const order = new Map(msgs.map((m, i) => [m.id, i]));
     const last = Math.max(-1, ...mem.turns.slice(0, covered + 1).map(t => order.get(t.msgId) ?? -1));
     const end = Math.min(last, msgs.length - Math.max(1, +cfg.preserveRecent || 6) - 1); let n = 0;
-    for (let i = 0; i <= end; i++) if (!msgs[i].hidden) { msgs[i].hidden = true; msgs[i].memHidden = true; n++; }
+    for (let i = 0; i <= end; i++) if (!msgs[i].hidden && !msgs[i].pin) { msgs[i].hidden = true; msgs[i].memHidden = true; n++; }   // 고정한 메시지는 숨기지 않는다
     return n;
   },
 

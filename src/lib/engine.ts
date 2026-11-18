@@ -577,6 +577,8 @@ function noteDue(chat: Chat, msgs: Msg[]): boolean {
   const f = Math.round(Number(chat.note.freq ?? 1)); if (!Number.isFinite(f) || f === 1) return true; if (f <= 0) return false;
   const n = msgs.filter(m => m.role === 'user' && !m.hidden).length; return n > 0 && n % f === 0;
 }
+/** 기록이 길어 잘려 나간 앞부분 가운데 고정한 메시지 — 고정한 것은 오래돼도 프롬프트에 남는다 */
+const pinnedBefore = (source: Msg[], history: PromptMsg[], start: number): PromptMsg[] => source.length === history.length ? history.slice(0, start).filter((_h, i) => source[i]?.pin === true) : [];
 function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'normal', commit = false, proactive = false }: BuildInput): Built {
   const P: Params = preset.params || {}, M = S.settings.modes || {};
   const ctx = makeCtx({ chat, char, chars, persona, msgs }); ctx.type = type;
@@ -626,7 +628,7 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
   const budget = Math.max(500, (P.contextSize || 128000) - (M.talkTokens || 400) - fixed - (S.settings.format?.tokenPadding || 0));
   let used = 0, start = history.length;
   for (let i = history.length - 1; i >= 0; i--) { const t = tokens(history[i].content) + 4; if (used + t > budget && start < history.length) break; used += t; start = i; }
-  const out = [...before, ...history.slice(start), ...late, tail];
+  const out = [...before, ...pinnedBefore(source, history, start), ...history.slice(start), ...late, tail];   // 고정한 메시지는 잘려도 남긴다
   return { messages: out, total: out.reduce((n, m) => n + tokens(m.content) + 4, 0), lore, dropped: start, ctx, talk: true };
 }
 
@@ -746,7 +748,7 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
     const budget = Math.max(500, (P.contextSize || 128000) - (P.maxTokens || 4096) - fixed - (F.tokenPadding || 0));
     let used = 0, start = history.length;
     for (let i = history.length - 1; i >= 0; i--) { const t = cost(history[i]); if (used + t > budget && start < history.length) break; used += t; start = i; }
-    const hist = history.slice(start), cont = type === 'continue' && hist[hist.length - 1]?.role === 'assistant';
+    const hist = [...pinnedBefore(source, history, start), ...history.slice(start)], cont = type === 'continue' && hist[hist.length - 1]?.role === 'assistant';
     for (const j of inject.sort((a, b) => +b.depth - +a.depth || ordOf(a.order) - ordOf(b.order))) {
       const d = cont && j.depth === 0 ? 1 : j.depth;
       hist.splice(Math.max(0, hist.length - +d), 0, { role: j.role, content: j.content, name: j.role === 'user' ? ctx.user : j.role === 'assistant' ? ctx.char : '', src: j.src });
@@ -801,7 +803,7 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
     if (used + t > budget && start < history.length) break;
     used += t; start = i;
   }
-  const hist = history.slice(start);
+  const hist = [...pinnedBefore(source, history, start), ...history.slice(start)];
   if (F.ccChatStart && hist.length) hist.unshift({ role: 'system', content: mx(F.ccChatStart), src: '대화 시작 표시' });
   for (const j of inject.sort((a, b) => +b.depth - +a.depth || ordOf(a.order) - ordOf(b.order))) {
     const idx = Math.max(0, hist.length - +j.depth);

@@ -189,6 +189,10 @@ export async function delFrom(m: Msg) {
   const i = cur.msgs.indexOf(m); if (i < 0) return; cur.msgs.splice(i); await afterDelete();
 }
 export async function toggleHidden(m: Msg) { m.hidden = !m.hidden; await save(); redraw(m); }
+/** 고정: 오래돼도 프롬프트에 남긴다. 숨겨져 있었으면 다시 보이게 한다 */
+export async function togglePin(m: Msg) { m.pin = !m.pin; if (m.pin && m.hidden && m.memHidden) { m.hidden = false; delete m.memHidden; } await save(); redraw(m); }
+/** 나만 보는 메모 (모델에 보내지 않는다) */
+export async function setMemo(m: Msg, text: string) { const v = text.trim(); if (v) m.memo = v; else delete m.memo; await save(); redraw(m); }
 export async function swipe(m: Msg, dir: number) {
   if (cur.busy) return;
   const n = m.sw + dir;
@@ -527,6 +531,7 @@ function pickSpeaker(chars: Cast[]) {
 
 export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Promise<void> {
   if (cur.busy || cur.prep || !cur.chat) return;
+  clearChoices();
   const E = engine;
   const chat = cur.chat, msgs = cur.msgs, chars = charsOf(chat);
   if (!chars.length) return toast(t('chat.gen.noChar'), 'err');
@@ -660,6 +665,26 @@ async function afterReply(chat: Room, msgs: Msg[]) {
   if (st.tracker.enabled && st.tracker.mode !== 'inline') await track(chat, msgs);
   maybeChime(chat, msgs);
   if (tail?.role === 'assistant' && cur.chat === chat) armGroupAuto(chat);
+  if (tail?.role === 'assistant' && cur.chat === chat && st.modes.choices && !chat.groupAuto?.on) void makeChoices(chat, msgs, tail);
+}
+// ── 선택지: 답장 뒤에 내가 할 만한 말 · 행동을 몇 개 제안한다 (설정에서 켠다 · 답장마다 호출 1회) ──
+export function clearChoices() { if (cur.choices) { cur.choices = null; bump('choices'); } }
+export async function makeChoices(chat: Room, msgs: Msg[], tail: Msg) {
+  const conn = S.helperConn('choices' as never, chat) || S.connFor(chat); if (!conn) return;
+  const n = Math.max(2, Math.min(5, +(S.settings.modes.choiceCount ?? 3) || 3)), persona = S.persona(chat), u = persona.name || 'User';
+  cur.choices = { msgId: tail.id, list: [], busy: true }; bump('choices');
+  try {
+    const recent = msgs.filter(m => !m.hidden && m.role !== 'system').slice(-8).map(m => `${m.role === 'user' ? u : m.name || '?'}: ${msgText(m).slice(0, 900)}`).join('\n\n');
+    const sys = `You suggest what ${u} could do or say next in an ongoing ${modeOf(chat) === 'talk' ? 'text-message chat' : 'roleplay'}. Give exactly ${n} options that differ in direction (for example: go along, push back, change the subject, act boldly). Each option is one short line written as ${u} would send it${modeOf(chat) === 'talk' ? '' : ' — first person, action and/or speech'}, in the language of the story, at most 20 words. Output only the ${n} lines, numbered 1. to ${n}., nothing else.`;
+    const out = await engine.quickCall(sys, recent, { maxTokens: 300, conn, lowThink: true });
+    const list = out.split('\n').map(l => l.replace(/^\s*(?:\d+[.)]|[-*•])\s*/, '').trim().replace(/^["“](.*)["”]$/, '$1')).filter(Boolean).slice(0, n);
+    if (cur.choices?.msgId === tail.id && cur.chat === chat && cur.msgs[cur.msgs.length - 1] === tail) { cur.choices = list.length ? { msgId: tail.id, list } : null; bump('choices'); }
+  } catch (e) { console.warn('[선택지]', e); if (cur.choices?.msgId === tail.id) clearChoices(); }
+}
+/** 선택지를 고른다: 입력창에 넣고 보낸다 (Shift 를 누르고 고르면 넣기만 한다) */
+export function pickChoice(text: string, fillOnly = false) {
+  const inp = ui.input; if (!inp) return; inp.value = text; inp.dispatchEvent(new Event('input')); clearChoices();
+  if (fillOnly) inp.focus(); else void send();
 }
 
 /** 예전 자동 요약 글을 장기기억의 기억 한 장으로 옮긴다 */

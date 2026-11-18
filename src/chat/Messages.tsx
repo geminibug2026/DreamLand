@@ -2,11 +2,11 @@
 import { memo, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { Avatar, Btn, Icon, IconBtn } from '../kit';
-import { menu, openModal, toast } from '../ui';
+import { menu, openModal, promptBox, toast } from '../ui';
 import { cur, ui, useCh } from './store';
 import { DiceCard } from './Dice';
 import { CallCard } from '../call/Card';
-import { bodyHtml, branch, commitEdit, holdView, redraw, delFrom, delMsg, drawScene, editTranslation, generate, msgClock, removeIllust, showMore, speak, swipe, toggleHidden, translate } from './actions';
+import { bodyHtml, branch, commitEdit, holdView, redraw, delFrom, delMsg, drawScene, editTranslation, generate, msgClock, removeIllust, showMore, speak, swipe, toggleHidden, togglePin, setMemo, translate } from './actions';
 import { ux } from '../features/usersettings';
 import type { IllustItem, Msg, SceneSpec, Swipe } from './types';
 import { tint } from '../lib/tone';
@@ -18,6 +18,9 @@ import { X } from '../lib/hooks';
 import { Illust } from '../lib/illust';
 import { Clock } from '../lib/clock';
 import { t, getLang, fmtDate } from '../i18n';
+import { I } from '../lib/icons';
+
+if (!I.pin) I.pin = 'M12 17v5M8 3h8l-1 6 3 3v2H6v-2l3-3z';
 
 const dayFmt = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
 const dayOf = (ts: number) => { const d = new Date(ts || 0); return isNaN(+d) ? '' : getLang() === 'ko' ? dayFmt.format(d) : fmtDate(d, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }); };
@@ -101,6 +104,8 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
     { label: t('chat.msgMenu.speak'), ic: 'volume', onclick: () => speak(s.text, m.charId) },
     ...X.actions.map(a => ({ label: a.label, ic: a.icon || 'sparkle', onclick: () => { void a.run(m, cur.chat); } })),
     { label: m.hidden ? t('chat.msgMenu.unhide') : t('chat.msgMenu.hide'), ic: m.hidden ? 'eye' : 'eyeoff', onclick: () => void toggleHidden(m) },
+    { label: m.pin ? t('chat.msgMenu.unpin') : t('chat.msgMenu.pin'), ic: 'pin', hint: t('chat.msgMenu.pinHint'), onclick: () => void togglePin(m) },
+    { label: m.memo ? t('chat.msgMenu.memoEdit') : t('chat.msgMenu.memo'), ic: 'note', hint: t('chat.msgMenu.memoHint'), onclick: async () => { const v = await promptBox(t('chat.msgMenu.memoAsk'), m.memo || '', { area: true }); if (v !== null) void setMemo(m, v); } },
     '-',
     { label: t('chat.msgMenu.delete'), ic: 'trash', danger: true, onclick: () => void delMsg(m) },
     { label: t('chat.msgMenu.deleteFrom'), ic: 'trash', danger: true, onclick: () => void delFrom(m) },
@@ -112,10 +117,11 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
     <Avatar o={who} cls={S.settings.avatarShape === 'tall' ? 'tall' : ''} />
     <div className="msg-main">
       <header className="msg-head">{castNo ? <span className="cast-no">{String(castNo).padStart(2, '0')}</span> : null}<b>{who?.name || m.name || ''}</b><span className="msg-no">{String(idx + 1).padStart(3, '0')}</span><time>{meta}</time>
-        {why ? <em className="why" title={t('chat.msg.whyTitle')}>{why}</em> : null}{m.hidden && <em className="badge">{t('chat.msg.hiddenBadge')}</em>}</header>
+        {why ? <em className="why" title={t('chat.msg.whyTitle')}>{why}</em> : null}{m.hidden && <em className="badge">{t('chat.msg.hiddenBadge')}</em>}{m.pin && <em className="badge pin" title={t('chat.msgMenu.pinHint')}>{t('chat.msg.pinBadge')}</em>}</header>
       {m.images?.length ? <div className="msg-images">{m.images.map((u, i) => <img key={i} src={u} alt={t('chat.msg.attachAlt')} onClick={() => bigImage(u)} />)}</div> : null}
       {s.reasoning && S.settings.format?.reasoning?.show !== false ? <details className="reason" open={!streaming && !!S.settings.format?.reasoning?.autoExpand}><summary><Icon name="sparkle" size={14} />{t('chat.msg.reasoning')}</summary><div>{s.reasoning}</div></details> : null}
       {body}
+      {m.memo ? <p className="msg-memo" title={t('chat.msgMenu.memoHint')}><Icon name="note" size={13} />{m.memo}</p> : null}
       {m.reactions?.length ? <div className="reacts">{m.reactions.map((r, i) => <span key={i} title={r.by || ''}>{r.emoji}</span>)}</div> : null}
       <Illusts m={m} s={s} />
       <div className="msg-tools">

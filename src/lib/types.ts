@@ -42,6 +42,8 @@ export interface Msg {
   images?: string[]; scene?: boolean; curtain?: Curtain; dice?: DiceRoll; diceBy?: string; greeting?: boolean; viaCommand?: boolean;
   reactions?: { emoji: string; by?: string }[]; why?: string; st?: number;
   memHidden?: boolean; memSide?: boolean;
+  /** 고정: 기록이 길어 잘리거나 요약되어 숨겨질 때도 프롬프트에 남긴다 */ pin?: boolean;
+  /** 나만 보는 메모 (모델에 보내지 않는다) */ memo?: string;
   [k: string]: unknown;
 }
 

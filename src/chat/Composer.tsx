@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useReducer, useRef, useState, type MouseEve
 import { Avatar, Icon, IconBtn } from '../kit';
 import { menu, promptBox } from '../ui';
 import { bump, cur, ui, useCh } from './store';
-import { charsOf, closeScene, command, commandList, generate, modeOf, openScene, running, send, stopAll, translateInput } from './actions';
+import { charsOf, clearChoices, closeScene, command, commandList, generate, makeChoices, modeOf, openScene, pickChoice, running, send, stopAll, translateInput } from './actions';
 import type { CmdItem } from './types';
 import { enterSends } from '../features/usersettings';
 import { S, pickFiles, readDataURL, shrinkImage } from '../lib/core';
@@ -15,6 +15,15 @@ import { toast } from '../ui';
 import { I } from '../lib/icons';
 
 if (!I.mic) I.mic = 'M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3';
+/** 답장 뒤의 선택지: 누르면 그 말로 보낸다 (Shift+클릭은 입력창에 넣기만) */
+function Choices() {
+  useCh('choices');
+  const c = cur.choices; if (!c || !cur.chat) return null;
+  if (c.busy) return <div className="choices"><span className="choice busy">{t('chat.choices.making')}</span></div>;
+  return <div className="choices">{c.list.map((x, i) => <button key={i} type="button" className="choice" title={t('chat.choices.tip')} onClick={e => pickChoice(x, e.shiftKey)}>{x}</button>)}
+    <button type="button" className="choice ghost" title={t('chat.choices.again')} aria-label={t('chat.choices.again')} onClick={() => { const tail = cur.msgs[cur.msgs.length - 1]; if (tail && cur.chat) void makeChoices(cur.chat, cur.msgs, tail); }}><Icon name="refresh" size={13} /></button>
+    <button type="button" className="choice ghost" title={t('common.close')} aria-label={t('common.close')} onClick={clearChoices}><Icon name="x" size={13} /></button></div>;
+}
 /** 말로 입력: 누르면 듣고, 말을 마치면 입력창에 이어 붙인다 (다시 누르면 멈춘다) */
 function MicBtn() {
   const [on, setOn] = useState(false), stop = useRef<(() => void) | null>(null), base = useRef('');
@@ -124,6 +133,7 @@ export function Composer() {
       {talk ? (chat.scene?.on
         ? <button className="chip scene-chip on" title={t('chat.composer.closeSceneHint')} onClick={() => void closeScene()}>{t('chat.composer.closeScene')}</button>
         : <button className="chip scene-chip" title={t('chat.composer.openSceneHint')} onClick={async () => { const v = await promptBox(t('chat.composer.openScenePrompt'), '', { placeholder: t('chat.composer.openScenePlaceholder') }); if (v !== null) void openScene({ title: v.trim() }); }}>{t('chat.composer.openScene')}</button>) : null}</div>
+    <Choices />
     <Attach />
     <div className="composer-box">
       <IconBtn ic="plus" title={t('chat.composer.more')} onClick={plus} />
