@@ -7576,5 +7576,8 @@
   "game.loot.mat.coin": "Tooth-marked coin",
   "game.loot.mat.any": "Trophy",
   "game.bag.whenWorn": "equipped: {what}",
-  "game.bag.tier": "grade +{n}"
+  "game.bag.tier": "grade +{n}",
+  "conns.adv.via": "Outbound proxy address (optional)",
+  "conns.adv.viaHint": "Sends only this connection's requests through your VPN or proxy program. No system-wide VPN needed — enter the local address the program opens (e.g. Clash http://127.0.0.1:7890, v2rayN socks5://127.0.0.1:10808). Try it when 429s seem tied to your location. Works only when running through the DreamLand server (start.bat).",
+  "engine.err.viaNeedsServer": "The outbound proxy only works when running through the DreamLand server. Clear the proxy address in the connection, or run start.bat on a PC."
 }

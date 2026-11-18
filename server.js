@@ -6,6 +6,59 @@ const fsp = fs.promises;
 const path = require('path');
 const os = require('os');
 const { Readable } = require('stream');
+const https = require('https');
+const net = require('net');
+const tls = require('tls');
+
+/** 바깥 프록시(VPN 프로그램이 열어 둔 주소 등)를 거쳐 요청을 보낸다. http://호스트:포트 (CONNECT 터널) 와 socks5://호스트:포트 를 안다.
+ *  응답은 { status, type, stream } 으로 돌려준다 */
+function viaProxy(via, target, { method, headers, body, signal }) {
+  return new Promise((resolve, reject) => {
+    let px; try { px = new URL(via); } catch { return reject(new Error('프록시 주소가 올바르지 않습니다')); }
+    const socks = /^socks5h?:$/.test(px.protocol); if (!socks && px.protocol !== 'http:') return reject(new Error('프록시 주소는 http:// 또는 socks5:// 로 시작해야 합니다'));
+    const secure = target.protocol === 'https:', host = target.hostname, port = Number(target.port) || (secure ? 443 : 80);
+    const sock = net.connect(Number(px.port) || (socks ? 1080 : 8080), px.hostname);
+    let done = false; const fail = e => { if (done) return; done = true; sock.destroy(); reject(e); };
+    const tm = setTimeout(() => fail(new Error('프록시가 응답하지 않습니다')), 15000);
+    sock.once('error', e => fail(new Error('프록시 연결 실패: ' + e.message)));
+    if (signal) signal.addEventListener('abort', () => fail(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true });
+    const go = () => {
+      clearTimeout(tm); sock.removeAllListeners('data');
+      const conn = secure ? tls.connect({ socket: sock, servername: host, ALPNProtocols: ['http/1.1'] }) : sock;
+      const h = { ...headers }; for (const k of Object.keys(h)) if (/^(host|content-length|connection)$/i.test(k)) delete h[k];
+      if (body != null) h['Content-Length'] = Buffer.byteLength(body);
+      const req = (secure ? https : http).request({ host, port, path: target.pathname + target.search, method, headers: h, agent: false, createConnection: () => conn }, res => {
+        done = true; resolve({ status: res.statusCode || 502, type: res.headers['content-type'] || 'application/octet-stream', stream: res });
+      });
+      req.once('error', e => fail(new Error('프록시를 거친 연결 실패: ' + e.message)));
+      if (signal) signal.addEventListener('abort', () => req.destroy(), { once: true });
+      req.end(body == null ? undefined : body);
+    };
+    sock.once('connect', () => {
+      if (!socks) {
+        const auth = px.username ? `Proxy-Authorization: Basic ${Buffer.from(decodeURIComponent(px.username) + ':' + decodeURIComponent(px.password)).toString('base64')}\r\n` : '';
+        sock.write(`CONNECT ${host}:${port} HTTP/1.1\r\nHost: ${host}:${port}\r\n${auth}\r\n`);
+        let buf = ''; sock.on('data', d => { buf += d.toString('latin1'); if (!buf.includes('\r\n\r\n')) return; const code = Number((buf.match(/^HTTP\/1\.\d (\d{3})/) || [])[1]); if (code === 200) go(); else fail(new Error('프록시가 연결을 거절했습니다 (' + (code || '?') + ')')); });
+        return;
+      }
+      // SOCKS5: 인증 없음 → 도메인 이름으로 연결을 청한다 (이름 풀이도 프록시가 한다)
+      let step = 0, buf = Buffer.alloc(0);
+      sock.write(Buffer.from([5, 1, 0]));
+      sock.on('data', d => {
+        buf = Buffer.concat([buf, d]);
+        if (step === 0 && buf.length >= 2) {
+          if (buf[0] !== 5 || buf[1] !== 0) return fail(new Error('SOCKS5 프록시가 인증을 요구합니다 (지원하지 않음)'));
+          buf = buf.subarray(2); step = 1; const name = Buffer.from(host);
+          sock.write(Buffer.concat([Buffer.from([5, 1, 0, 3, name.length]), name, Buffer.from([port >> 8, port & 255])]));
+        }
+        if (step === 1 && buf.length >= 5) {
+          if (buf[1] !== 0) return fail(new Error('SOCKS5 프록시가 연결을 거절했습니다 (' + buf[1] + ')'));
+          const need = 4 + (buf[3] === 1 ? 4 : buf[3] === 4 ? 16 : 1 + buf[4]) + 2; if (buf.length >= need) { step = 2; go(); }
+        }
+      });
+    });
+  });
+}
 
 const PORT = Number(process.env.PORT) || 4173;
 // 기본은 이 PC 에서만 접속. 같은 공유기 안의 휴대폰에서도 쓰려면  node server.js --lan
@@ -632,6 +685,14 @@ async function api(req, res, url) {
     pHeaders['x-dl-proxied'] = '1';
     const ac = new AbortController();
     res.on('close', () => ac.abort());
+    if (body.via) {   // 바깥 프록시를 거쳐서 (지역 때문에 막히는 요청을 다른 나라로 돌려 보낼 때)
+      try {
+        const r = await viaProxy(String(body.via), target, { method: body.method || 'POST', headers: pHeaders, body: pBody, signal: ac.signal });
+        res.writeHead(r.status, { 'Content-Type': r.type, 'Cache-Control': 'no-store' });
+        r.stream.on('error', () => res.end()).pipe(res);
+      } catch (e) { if (!res.headersSent) send(res, 502, { error: e.message }); }
+      return;
+    }
     let up;
     try {
       up = await fetch(target, {

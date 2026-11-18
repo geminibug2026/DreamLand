@@ -91,6 +91,12 @@ PC 에서 켜 두고 휴대폰으로 접속하려면 `start-lan.bat` (또는 `sh
 
 직접 빌드하려면 Mac 에서 `npm ci && npm run build:web` 뒤 `ios-app` 폴더에서 `npm ci && cp -R ../web www && npx cap add ios && npx cap open ios` 를 실행합니다. (Xcode 26 이상)
 
+## 지역 때문에 429가 자주 뜰 때
+
+VPN을 켜야만 Vertex가 잘 되는 경우, 컴퓨터 전체에 VPN을 켜지 않고도 쓸 수 있는 방법이 두 가지 있습니다:
+연결 설정의 **바깥 프록시 주소**(AI 요청만 VPN 프로그램으로 내보내기)와, 구글 클라우드에 올리는 **Vertex 중계 함수**입니다.
+순서는 [`relay/README.md`](relay/README.md)에 있습니다.
+
 ## 업데이트
 
 ```sh
