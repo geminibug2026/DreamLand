@@ -461,3 +461,14 @@
 .gm-legend { display: flex; flex-direction: column; gap: 3px; margin: 0; font-size: .78em; color: var(--dim); }
 .gm-legend span { display: flex; align-items: center; gap: 7px; } .gm-legend i { width: 14px; height: 14px; flex: none; border: 1px solid var(--ink-line); }
 .gm-legend .is-rock { background: repeating-linear-gradient(45deg, var(--ink-line) 0 2px, transparent 2px 6px); } .gm-legend .is-high { box-shadow: inset 0 0 0 2px var(--surface), inset 0 0 0 3px var(--ink-line); } .gm-legend .is-bush { background: radial-gradient(circle, var(--ink-line) 1.2px, transparent 1.6px) 0 0 / 5px 5px; }
+/* 순간 반응 · 선택지 · 인물 · 시계 · 동료 */
+.gm-qte-time { display: flex; align-items: center; gap: 10px; } .gm-qte-time .gm-bar { height: 10px; } .gm-qte-time .gm-bar i { background: var(--accent); transition: none; } .gm-qte-time b { font: 800 1.2em var(--display); font-variant-numeric: tabular-nums; min-width: 2.4em; text-align: right; }
+.gm-qte-opts { display: flex; flex-direction: column; gap: 8px; } .gm-qte-opts .btn { justify-content: flex-start; gap: 12px; min-height: 48px; white-space: normal; text-align: left; } .gm-qte-opts small { font: 800 .9em var(--display); color: var(--dim); }
+.gm-picks { flex-basis: 100%; }
+.gm-people { list-style: none; margin: 0; padding: 0; } .gm-people li { display: grid; grid-template-columns: minmax(0, 1fr) 72px auto; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--ink-line); } .gm-people em { font-style: normal; font-size: .82em; color: var(--dim); white-space: nowrap; grid-column: 3; }
+.gm-rep { position: relative; height: 6px; border: 1px solid var(--ink-line); background: linear-gradient(90deg, transparent calc(50% - .5px), var(--ink-line) calc(50% - .5px) calc(50% + .5px), transparent calc(50% + .5px)); } .gm-rep b { position: absolute; top: -3px; width: 4px; height: 10px; margin-left: -2px; background: var(--ink); }
+.gm-clock { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 3px 0; } .gm-clock i { display: flex; gap: 2px; } .gm-clock b { width: 12px; height: 12px; border: 1px solid var(--ink); } .gm-clock b.on { background: var(--ink); } .gm-clock.is-full b.on { background: var(--accent); border-color: var(--accent); }
+.gm-cell.is-pal b { display: grid; place-items: center; position: absolute; inset: 4px; border: 2px solid var(--accent); border-radius: 50%; color: var(--text); background: var(--surface); }
+.gm-roster .is-pal .gm-bar i { background: var(--accent); opacity: .6; }
+.gm-board.is-hurt { animation: gm-hurt .28s ease-out; } @keyframes gm-hurt { 20% { transform: translateX(-5px); } 50% { transform: translateX(4px); } 80% { transform: translateX(-2px); } }
+@media (prefers-reduced-motion: reduce) { .gm-board.is-hurt { animation: none; } }

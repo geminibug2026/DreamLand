@@ -22,8 +22,8 @@ function setup() {
     if (!gameOf(chat) || msg?.role !== 'assistant') return;
     const sw = msg.swipes[msg.sw] as (Msg['swipes'][number] & GameSwipe) | undefined; if (!sw?.text) return;
     const r = readTags(sw.text);
-    if (r.fx.length || r.ask) {
-      sw.text = r.text; if (r.fx.length) sw.gfx = r.fx; else delete sw.gfx; if (r.ask) sw.gask = r.ask; else delete sw.gask;
+    if (r.fx.length || r.ask || r.choices.length) {
+      sw.text = r.text; if (r.fx.length) sw.gfx = r.fx; else delete sw.gfx; if (r.ask) sw.gask = r.ask; else delete sw.gask; if (r.choices.length) sw.gchoices = r.choices; else delete sw.gchoices;
       if (here()?.id === chat.id) void chatApi.save(); else void S.msgs(chat.id).then(msgs => S.saveMsgs(chat, msgs));
     }
     redrawGame();
