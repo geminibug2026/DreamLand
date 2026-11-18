@@ -71,7 +71,7 @@ async function webFetch(path: string): Promise<Response> {
 }
 
 /** 서버를 거쳐 다른 주소로 보내는 요청 (/api/proxy) */
-export interface ProxyReq { url: string; method?: string; headers?: Record<string, string>; body?: unknown }
+export interface ProxyReq { url: string; method?: string; headers?: Record<string, string>; body?: unknown; /** 글자가 아닌 본문 (base64). body 대신 쓴다 */ bodyB64?: string }
 
 export const Server = {
   /** 'store/status' → '/api/store/status'. 링크·sendBeacon 처럼 fetch 가 아닌 곳에서 쓴다 */
@@ -99,7 +99,7 @@ export const Server = {
   /** 서버를 거쳐 req.url 로 보낸다. 응답은 대상 서버의 것이 그대로 흘러온다 (스트리밍 포함) */
   proxy: (req: ProxyReq, signal?: AbortSignal | null): Promise<Response> => APP ? appProxy(req, signal) : WEB
     // 웹 버전: 거칠 서버가 없으니 바로 보낸다
-    ? rawFetch(req.url, { method: req.method || 'POST', headers: req.headers, body: req.body == null ? undefined : typeof req.body === 'string' ? req.body : JSON.stringify(req.body), signal })
+    ? rawFetch(req.url, { method: req.method || 'POST', headers: req.headers, body: req.bodyB64 != null ? b64ToBytes(req.bodyB64) : req.body == null ? undefined : typeof req.body === 'string' ? req.body : JSON.stringify(req.body), signal })
     : Server.post('proxy', req, { signal }),
   /** 서버를 실행한 터미널에 한 줄 남긴다 (실패해도 조용히 넘어간다) */
   log: (body: { kind: string; line: string; [k: string]: unknown }) => { if (WEB) return; void Server.post('log', body).catch(() => { }); },

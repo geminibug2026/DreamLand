@@ -110,6 +110,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   const total = useRef(0); total.current = pages.length;
   // 세션 다시 보기 등: 그 메시지의 첫 문단으로 간다
   const pagesRef = useRef(pages); pagesRef.current = pages;
+  useEffect(() => listenTo<string>('game:draft', text => { setPos(Math.max(total.current - 1, 0)); setDraft(d => d.trim() ? d.replace(/\s*$/, ' ') + text : text); setTimeout(() => { const el = input.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 132) + 'px'; el.focus(); } }, 0); }), []);
   useEffect(() => listenTo<string>('game:goto', id => { const i = pagesRef.current.findIndex(p => p.msgId === id); if (i >= 0) setPos(i); }), []);
   const [toWhom, setToWhom] = useState<'' | 'party' | 'ooc'>('');
   const step = (d: number) => setPos(p => Math.min(Math.max(Math.min(Math.max(p, 0), Math.max(total.current - 1, 0)) + d, 0), Math.max(total.current - 1, 0)));
