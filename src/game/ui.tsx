@@ -186,7 +186,7 @@ function MapView({ s, onGo }: { s: SheetData; onGo(name: string): void }) {
         <path d={`M${x + W} ${top}L${x} ${top + D}V${y + D}L${x + W} ${y}z`} className="gm-side-r" />
         <path d={`M${x} ${top - D}L${x + W} ${top}L${x} ${top + D}L${x - W} ${top}z`} className="gm-top" />
         {!n.seen ? <path d={`M${x} ${top - D}L${x + W} ${top}L${x} ${top + D}L${x - W} ${top}z`} fill="url(#gm-hatch)" /> : null}
-        {n.seen ? <g transform={`translate(${x - 13} ${top - 14}) scale(1.08)`} className="gm-icon"><PlaceGlyph scene={p.scene} /></g> : <text x={x} y={top + 5} textAnchor="middle" className="gm-q">?</text>}
+        {n.seen ? <g transform={`translate(${x - 13} ${top - 14}) scale(1.08)`} className="gm-icon"><PlaceGlyph scene={p.scene} name={n.name} /></g> : <text x={x} y={top + 5} textAnchor="middle" className="gm-q">?</text>}
         {n.here ? <g className="gm-pin"><path d={`M${x} ${top - D - 14}c-6.500 -8 -8.500 -11.500 -8.500 -15.500a8.500 8.500 0 0 1 17 0c0 4 -2 7.500 -8.500 15.500z`} /><circle cx={x} cy={top - D - 30} r="3" /></g> : null}
       </g>; })}
     {/* 이름은 블록에 가리지 않게 맨 위에 그린다 */}
