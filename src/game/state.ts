@@ -18,7 +18,7 @@ export const RULES: Record<RuleId, { stats: StatKey[]; min: number; max: number;
 export const STATS: StatKey[] = FOUR;
 export type Diff = 'easy' | 'normal' | 'hard';
 export interface GameCfg {
-  on: boolean; rule?: RuleId; /** 새 장소 · 전투 때 삽화를 그린다 */ art?: boolean; genre: string; tone: string; diff: Diff; hero: string; goal: string;
+  on: boolean; rule?: RuleId; /** 새 장소 · 전투 때 삽화를 그린다 */ art?: boolean; /** 효과음 (기본 켬) */ sfx?: boolean; genre: string; tone: string; diff: Diff; hero: string; goal: string;
   stats: Partial<Record<StatKey, number>>; hpMax: number; gold: number; items: string[];
   /** 손으로 고친 값 (시트에서 직접 바꾼 것) */
   adj?: Fx[];
@@ -29,7 +29,9 @@ export type Fx =
   | { k: 'hp'; n: number } | { k: 'hpmax'; n: number } | { k: 'gold'; n: number }
   | { k: 'item'; name: string; n: number } | { k: 'quest'; title: string; done: boolean } | { k: 'place'; name: string }
   /** 두 장소를 잇는 길 (아직 가 보지 않은 곳도 지도에 나타난다) */
-  | { k: 'path'; a: string; b: string } | { k: 'xp'; n: number };
+  | { k: 'path'; a: string; b: string } | { k: 'xp'; n: number }
+  /** 인물과의 사이 (-100 ~ 100) · 동료 · 작중 시간 · 날씨 · 진행 시계 */
+  | { k: 'rep'; name: string; n: number } | { k: 'party'; name: string; add: boolean } | { k: 'time'; text: string } | { k: 'weather'; text: string } | { k: 'clock'; name: string; v: number; max: number };
 export type MiniId = 'rps' | 'dice' | 'blackjack' | 'tictactoe' | 'numbers' | 'gomoku';
 export const MINIS: MiniId[] = ['rps', 'dice', 'blackjack', 'tictactoe', 'gomoku', 'numbers'];
 export interface Foe { name: string; hp: number; atk: number; ranged?: boolean }
@@ -37,20 +39,23 @@ export interface Foe { name: string; hp: number; atk: number; ranged?: boolean }
 export type Ask =
   | { k: 'check'; stat: StatKey; dc: number; why: string; adv?: 'adv' | 'dis'; prof?: boolean; hard?: 'hard' | 'extreme' }
   | { k: 'fight'; foes: Foe[] }
-  | { k: 'play'; game: MiniId; stake: string };
+  | { k: 'play'; game: MiniId; stake: string }
+  /** 순간 반응: 제한 시간 안에 하나를 고른다 */
+  | { k: 'qte'; secs: number; options: string[] };
 export type Outcome = 'win' | 'lose' | 'draw';
 export type Grade = 'crit' | 'ok' | 'partial' | 'fail' | 'fumble';
 /** 대화에 남는 게임 기록 (시스템 메시지에 붙는다) */
 export type GameRec =
   | { kind: 'start' }
   | { kind: 'session'; n: number; text: string }
+  | { kind: 'qte'; choice: string; took: number; secs: number; speed: 'fast' | 'ok' | 'late' | 'timeout' }
   | { kind: 'check'; stat: StatKey; dc: number; die: number; mod: number; total: number; ok: boolean; crit?: 'hit' | 'miss'; why?: string; fx?: Fx[]; rule?: RuleId; dice?: number[]; grade?: Grade; note?: string }
-  | { kind: 'fight'; name: string; outcome: 'win' | 'lose' | 'fled'; rounds: number; took: number; hp: number; hpMax: number; fx?: Fx[]; loot?: string }
+  | { kind: 'fight'; name: string; outcome: 'win' | 'lose' | 'fled'; rounds: number; took: number; hp: number; hpMax: number; fx?: Fx[]; loot?: string; fallen?: string[] }
   | { kind: 'play'; game: MiniId; outcome: Outcome; score: string; stake?: string; fx?: Fx[] };
-export interface Sheet { hp: number; hpMax: number; gold: number; items: { name: string; n: number }[]; quests: { title: string; done: boolean }[]; place: string; places: { name: string; seen: boolean }[]; paths: [string, string][]; xp: number; level: number }
+export interface Sheet { hp: number; hpMax: number; gold: number; items: { name: string; n: number }[]; quests: { title: string; done: boolean }[]; place: string; places: { name: string; seen: boolean }[]; paths: [string, string][]; xp: number; level: number; people: { name: string; v: number }[]; party: string[]; time: string; weather: string; clocks: { name: string; v: number; max: number }[] }
 
 export type GameChat = Chat & { game?: GameCfg };
-export type GameSwipe = { gfx?: Fx[]; gask?: Ask };
+export type GameSwipe = { gfx?: Fx[]; gask?: Ask; /** 진행자가 내놓은 선택지 */ gchoices?: string[] };
 export type GameMsg = Msg & { gm?: GameRec };
 
 export const PRESET_IDS = ['balanced', 'fighter', 'rogue', 'scholar', 'charmer'] as const;
@@ -81,6 +86,10 @@ function apply(s: Sheet, fx: Fx) {
   else if (fx.k === 'hpmax') { s.hpMax = Math.max(1, s.hpMax + fx.n); s.hp = Math.min(s.hp, s.hpMax); }
   else if (fx.k === 'gold') s.gold = Math.max(0, s.gold + fx.n);
   else if (fx.k === 'xp') { s.xp = Math.max(0, s.xp + fx.n); const lv = levelOf(s.xp); if (lv > s.level) { const up = (lv - s.level) * 3; s.hpMax += up; s.hp += up; } s.level = Math.max(s.level, lv); }
+  else if (fx.k === 'rep') { let p = s.people.find(x => same(x.name, fx.name)); if (!p) s.people.push(p = { name: fx.name.trim(), v: 0 }); p.v = Math.min(100, Math.max(-100, p.v + fx.n)); }
+  else if (fx.k === 'party') { const i = s.party.findIndex(x => same(x, fx.name)); if (fx.add && i < 0 && s.party.length < 3) s.party.push(fx.name.trim()); if (!fx.add && i >= 0) s.party.splice(i, 1); }
+  else if (fx.k === 'time') s.time = fx.text; else if (fx.k === 'weather') s.weather = fx.text;
+  else if (fx.k === 'clock') { const i = s.clocks.findIndex(x => same(x.name, fx.name)); if (fx.max <= 0) { if (i >= 0) s.clocks.splice(i, 1); } else if (i >= 0) s.clocks[i] = { name: s.clocks[i].name, v: Math.min(fx.max, Math.max(0, fx.v)), max: fx.max }; else s.clocks.push({ name: fx.name.trim(), v: Math.min(fx.max, Math.max(0, fx.v)), max: fx.max }); }
   else if (fx.k === 'place') { const from = s.place, p = spot(s, fx.name); p.seen = true; s.place = p.name; if (from && !same(from, p.name)) link(s, from, p.name); }
   else if (fx.k === 'path') { const a = spot(s, fx.a), b = spot(s, fx.b); if (!same(a.name, b.name)) link(s, a.name, b.name); }
   else if (fx.k === 'item') {
@@ -93,7 +102,7 @@ function apply(s: Sheet, fx: Fx) {
 }
 /** 지금의 시트: 시작값 + 손으로 고친 값 + 메시지마다의 변화 */
 export function sheetOf(g: GameCfg, msgs: Msg[]): Sheet {
-  const s: Sheet = { hp: g.hpMax, hpMax: g.hpMax, gold: g.gold, items: [], quests: [], place: '', places: [], paths: [], xp: 0, level: 1 };
+  const s: Sheet = { hp: g.hpMax, hpMax: g.hpMax, gold: g.gold, items: [], quests: [], place: '', places: [], paths: [], xp: 0, level: 1, people: [], party: [], time: '', weather: '', clocks: [] };
   for (const name of g.items) apply(s, { k: 'item', name, n: 1 });
   for (const m of msgs as GameMsg[]) {
     for (const fx of m.gm && 'fx' in m.gm && m.gm.fx || []) apply(s, fx);
@@ -109,15 +118,16 @@ export function pendingAsk(msgs: Msg[]): Ask | null {
 }
 
 // ── 진행자가 쓰는 표시 ──
-const TAG = /\[\s*(hp|maxhp|gold|xp|item|quest|place|path|check|save|fight|play)\b[\s:：]*([^[\]\n]{0,240})\]/gi;
+const TAG = /\[\s*(hp|maxhp|gold|xp|item|quest|place|path|rep|party|time|weather|clock|choices|qte|check|save|fight|play)\b[\s:：]*([^[\]\n]{0,300})\]/gi;
 const STAT_ALIAS: Record<string, StatKey> = { str: 'str', strength: 'str', 힘: 'str', 근력: 'str', 力量: 'str', dex: 'dex', dexterity: 'dex', agi: 'dex', 민첩: 'dex', 敏捷: 'dex', con: 'con', constitution: 'con', 건강: 'con', 体质: 'con', int: 'int', intelligence: 'int', 지능: 'int', 智力: 'int', wis: 'wis', wisdom: 'wis', 지혜: 'wis', 感知: 'wis', cha: 'cha', charisma: 'cha', 매력: 'cha', 魅力: 'cha' };
 const MINI_ALIAS: Record<string, MiniId> = { gomoku: 'gomoku', omok: 'gomoku', 'five-in-a-row': 'gomoku', rps: 'rps', dice: 'dice', blackjack: 'blackjack', tictactoe: 'tictactoe', 'tic-tac-toe': 'tictactoe', ttt: 'tictactoe', numbers: 'numbers', baseball: 'numbers' };
 const num = (s: string) => { const m = s.replace(/[−–]/g, '-').match(/[+-]?\s*\d+/); return m ? parseInt(m[0].replace(/\s+/g, ''), 10) : NaN; };
 const clampN = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
 /** 답변에서 표시를 읽어 변화와 맡긴 일을 꺼내고, 글에서는 지운다 */
-export function readTags(text: string): { text: string; fx: Fx[]; ask: Ask | null } {
-  const fx: Fx[] = []; let ask: Ask | null = null;
+export function readTags(text: string): { text: string; fx: Fx[]; ask: Ask | null; choices: string[] } {
+  const fx: Fx[] = []; let ask: Ask | null = null, choices: string[] = [];
+  const opts = (v: string) => v.split(/\s*[|｜]\s*/).map(x => x.trim().replace(/^["“](.*)["”]$/, '$1')).filter(Boolean).slice(0, 5).map(x => x.slice(0, 120));
   const out = String(text || '').replace(TAG, (all, key: string, rest: string) => {
     const k = key.toLowerCase(), v = rest.trim();
     if (k === 'hp' || k === 'gold' || k === 'maxhp' || k === 'xp') { const n = num(v); if (!isFinite(n) || !n) return ''; fx.push({ k: k === 'maxhp' ? 'hpmax' : k, n: clampN(n, -9999, 9999) }); return ''; }
@@ -130,6 +140,12 @@ export function readTags(text: string): { text: string; fx: Fx[]; ask: Ask | nul
       const done = /^(done|complete|completed|✓|✔|-)\s*[:：]?\s*/i.test(v), title = v.replace(/^(done|complete|completed|new|✓|✔|\+|-)\s*[:：]?\s*/i, '').trim().slice(0, 100);
       if (!title) return all; fx.push({ k: 'quest', title, done }); return '';
     }
+    if (k === 'rep') { const m = v.match(/^(.+?)\s*([+-−–]\s*\d+)$/); if (!m) return all; fx.push({ k: 'rep', name: m[1].trim().slice(0, 40), n: clampN(num(m[2]), -100, 100) }); return ''; }
+    if (k === 'party') { const m = v.match(/^([+-−–])\s*(.+)$/); if (!m) return all; fx.push({ k: 'party', name: m[2].trim().slice(0, 40), add: m[1] === '+' }); return ''; }
+    if (k === 'time' || k === 'weather') { if (!v) return all; fx.push({ k, text: v.slice(0, 60) }); return ''; }
+    if (k === 'clock') { const m = v.match(/^(.+?)\s+(?:(\d+)\s*\/\s*(\d+)|(clear|done|off))$/i); if (!m) return all; fx.push({ k: 'clock', name: m[1].trim().slice(0, 40), v: +(m[2] || 0), max: m[4] ? 0 : clampN(+m[3], 1, 12) }); return ''; }
+    if (k === 'choices') { const list = opts(v); if (list.length < 2) return all; choices = list; return ''; }
+    if (k === 'qte') { const m = v.match(/^(\d+)\s*s?\s*[:：]\s*(.+)$/i), list = m ? opts(m[2]) : opts(v); if (list.length < 2) return all; ask = { k: 'qte', secs: clampN(m ? +m[1] : 6, 3, 15), options: list.slice(0, 4) }; return ''; }
     if (k === 'place') { if (!v) return all; fx.push({ k: 'place', name: v.slice(0, 60) }); return ''; }
     if (k === 'path') { const m = v.split(/\s+(?:-|–|—|<->|↔|to)\s+/i).map(x => x.trim()).filter(Boolean); if (m.length !== 2) return all; fx.push({ k: 'path', a: m[0].slice(0, 60), b: m[1].slice(0, 60) }); return ''; }
     if (k === 'check' || k === 'save') {
@@ -151,12 +167,12 @@ export function readTags(text: string): { text: string; fx: Fx[]; ask: Ask | nul
     const m = v.match(/^([a-z-]+)\s*[:：]?\s*(.*)$/i), game = m && MINI_ALIAS[m[1].toLowerCase()]; if (!m || !game) return all;
     ask = { k: 'play', game, stake: (m[2] || '').trim().slice(0, 120) }; return '';
   });
-  return { text: fx.length || ask ? out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim() : out, fx, ask };
+  return { text: fx.length || ask || choices.length ? out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim() : out, fx, ask, choices };
 }
 /** 화면에서만 가린다 (받는 중에는 아직 닫히지 않은 표시도) */
 export const hideTags = (text: string, streaming: boolean) => {
   let s = text.replace(TAG, '');
-  if (streaming) s = s.replace(/\[\s*(hp|maxhp|gold|xp|item|quest|place|path|check|save|fight|play)\b[^\]\n]*$/i, '');
+  if (streaming) s = s.replace(/\[\s*(hp|maxhp|gold|xp|item|quest|place|path|rep|party|time|weather|clock|choices|qte|check|save|fight|play)\b[^\]\n]*$/i, '');
   return s;
 };
 
@@ -207,23 +223,30 @@ ${RULE_TEXT[ruleOf(g)].stats}${g.sessions?.length ? `\nThe story so far (earlier
 When something changes, write the matching tag on its own line at the end of the reply. The app applies it to {{user}}'s sheet and hides it:
 [hp -3]  [hp +5]  [gold +10]  [gold -4]  [xp +20] (for clever play or a finished quest; 100 XP is a level)  [item +Torch]  [item +Arrow x5]  [item -Rusty key]  [quest +Find the missing bell]  [quest done: Find the missing bell]
 [place Old Mill] when {{user}} arrives somewhere (keep place names short and reuse the exact same name later).  [path Old Mill - River Dock] to reveal a route to a place {{user}} has heard of or can see. The app draws the map from these.
+[rep Mira +10] / [rep Mira -15] when someone's opinion of {{user}} shifts (-100 enemy … +100 devoted).  [party +Mira] / [party -Mira] when someone joins or leaves as a companion (they fight alongside {{user}}; at most three).  [time Day 2, dusk]  [weather Heavy rain]  [clock Guards alerted 2/6] for a danger or countdown that fills step by step ([clock Guards alerted clear] to drop it).
+[choices Sneak around | Talk to the guard | Wait for night] — optional: two to four suggested actions shown as buttons; {{user}} may still type anything.
 To hand something to the app, use ONE of these as the very last line, then stop — do not narrate what happens next:
 ${RULE_TEXT[ruleOf(g)].check}
 [fight Goblin x2 hp=8 atk=2; Orc Chief hp=24 atk=5] — a tactical fight the app runs on a grid (up to 6 enemies; x2 means two of them; add the word ranged for archers and casters). The app also hands out gold and XP for a win. Guide: weak hp 8 atk 2, tough hp 18 atk 4, boss hp 30 atk 6.
 [play rps: who pays for dinner] — settle something with a quick game against you: rps, dice, blackjack, tictactoe, gomoku or numbers.
+[qte 6: Dive aside | Raise the shield | Grab the rope] — a split-second moment: {{user}} has that many seconds to pick. Use sparingly, for sudden danger.
 ${diff}
 The result comes back as a bracketed line; narrate from there and honor it. Do not change the sheet without a tag, and do not show the tags' meaning to {{user}}.`;
 }
 export function sheetPrompt(g: GameCfg, s: Sheet): string {
   const items = s.items.map(i => i.n > 1 ? `${i.name} x${i.n}` : i.name).join(', ') || 'nothing', open = s.quests.filter(q => !q.done).map(q => q.title), done = s.quests.filter(q => q.done).map(q => q.title);
-  return `[{{user}}'s sheet — HP ${s.hp}/${s.hpMax}${s.hp <= 0 ? ' (down: cannot act until helped or healed)' : ''} · Gold ${s.gold} · Level ${s.level} (${s.xp} XP) · ${statsOf(g).map(k => `${STAT_EN[k]} ${ruleOf(g) === 'd20' || ruleOf(g) === '2d6' ? sign(statVal(g, k)) : statVal(g, k)}`).join(' ')} · Carrying: ${items}${open.length ? ` · Quests: ${open.join('; ')}` : ''}${done.length ? ` · Finished: ${done.join('; ')}` : ''}${s.place ? ` · Place: ${s.place}` : ''}${ways(s)}]`;
+  return `[{{user}}'s sheet — HP ${s.hp}/${s.hpMax}${s.hp <= 0 ? ' (down: cannot act until helped or healed)' : ''} · Gold ${s.gold} · Level ${s.level} (${s.xp} XP) · ${statsOf(g).map(k => `${STAT_EN[k]} ${ruleOf(g) === 'd20' || ruleOf(g) === '2d6' ? sign(statVal(g, k)) : statVal(g, k)}`).join(' ')} · Carrying: ${items}${open.length ? ` · Quests: ${open.join('; ')}` : ''}${done.length ? ` · Finished: ${done.join('; ')}` : ''}${s.place ? ` · Place: ${s.place}` : ''}${ways(s)}${s.time ? ` · Time: ${s.time}` : ''}${s.weather ? ` · Weather: ${s.weather}` : ''}${s.party.length ? ` · Companions: ${s.party.join(', ')}` : ''}${s.people.length ? ` · Standing: ${s.people.map(p => `${p.name} ${sign(p.v)} (${REP_EN[repTier(p.v)]})`).join(', ')}` : ''}${s.clocks.length ? ` · Clocks: ${s.clocks.map(c => `${c.name} ${c.v}/${c.max}${c.v >= c.max ? ' (FULL — it happens now)' : ''}`).join(', ')}` : ''}]`;
 }
+/** 사이의 단계: 0 원수 · 1 적대 · 2 중립 · 3 우호 · 4 신뢰 */
+export const repTier = (v: number) => v <= -60 ? 0 : v <= -20 ? 1 : v < 20 ? 2 : v < 60 ? 3 : 4;
+const REP_EN = ['enemy', 'hostile', 'neutral', 'friendly', 'devoted'];
 const ways = (s: Sheet) => { if (!s.place) return ''; const near = s.paths.filter(([a, b]) => same(a, s.place) || same(b, s.place)).map(([a, b]) => same(a, s.place) ? b : a); return near.length ? ` · Routes from here: ${near.join(', ')}` : ''; };
 const STAT_EN: Record<StatKey, string> = { str: 'STR', dex: 'DEX', con: 'CON', int: 'INT', wis: 'WIS', cha: 'CHA' };
 const MINI_EN: Record<MiniId, string> = { gomoku: 'gomoku (five in a row)', rps: 'rock-paper-scissors', dice: 'a dice duel', blackjack: 'blackjack', tictactoe: 'tic-tac-toe', numbers: 'the number-guessing game (bulls and cows)' };
 /** 기록 메시지의 글 (프롬프트에 들어간다) */
 export function recText(r: GameRec, user: string, foe: string): string {
   if (r.kind === 'start') return `The game begins. Open the first scene for ${user}.`;
+  if (r.kind === 'qte') return r.speed === 'timeout' ? `Split-second moment: ${user} froze and did not react within ${r.secs}s — it goes badly.` : `Split-second moment: ${user} chose "${r.choice}" after ${r.took.toFixed(1)}s of ${r.secs}s — ${r.speed === 'fast' ? 'lightning fast: give it a clear edge' : r.speed === 'ok' ? 'in good time' : 'barely in time: it works only partly'}.`;
   if (r.kind === 'session') return `Session ${r.n} ended. A new session begins — pick the story up from where it left off.`;
   if (r.kind === 'check') {
     const head = `${STAT_EN[r.stat]} check${r.why ? ` (${r.why})` : ''}${r.note ? ` [${r.note}]` : ''}: `, g = r.grade || (r.crit === 'hit' ? 'crit' : r.crit === 'miss' ? 'fumble' : r.ok ? 'ok' : 'fail');
@@ -233,7 +256,7 @@ export function recText(r: GameRec, user: string, foe: string): string {
     if (r.rule === 'pool') return `${head}${(r.dice || []).length}d6 [${(r.dice || []).join(', ')}] → ${r.total} hit${r.total === 1 ? '' : 's'}, needed ${r.dc} → ${word}`;
     return `${head}d20 ${(r.dice?.length || 0) > 1 ? `(${r.dice!.join(', ')} → ${r.die})` : r.die} ${sign(r.mod)} = ${r.total} vs DC ${r.dc} → ${word}`;
   }
-  if (r.kind === 'fight') return `Fight with ${r.name}: ${r.outcome === 'win' ? `${user} won` : r.outcome === 'fled' ? `${user} got away` : `${user} was beaten and is down`} after ${r.rounds} round${r.rounds === 1 ? '' : 's'}, taking ${r.took} damage (HP ${r.hp}/${r.hpMax}).${r.loot ? ` The app awarded ${r.loot}.` : ''}`;
+  if (r.kind === 'fight') return `Fight with ${r.name}: ${r.outcome === 'win' ? `${user} won` : r.outcome === 'fled' ? `${user} got away` : `${user} was beaten and is down`} after ${r.rounds} round${r.rounds === 1 ? '' : 's'}, taking ${r.took} damage (HP ${r.hp}/${r.hpMax}).${r.fallen?.length ? ` Knocked out during the fight: ${r.fallen.join(', ')}.` : ''}${r.loot ? ` The app awarded ${r.loot}.` : ''}`;
   return `${user} and ${foe} played ${MINI_EN[r.game]}${r.stake ? ` (at stake: ${r.stake})` : ''}: ${r.outcome === 'win' ? `${user} won` : r.outcome === 'lose' ? `${foe} won` : 'a draw'}${r.score ? ` — ${r.game === 'numbers' ? 'guesses used ' : ''}${r.score}` : ''}.`;
 }
 
@@ -263,7 +286,7 @@ export function layoutMap(s: Sheet): { nodes: MapNode[]; edges: [MapNode, MapNod
 }
 
 // ── 모험 일지: 있었던 일을 기록에서 그대로 뽑는다 (모델을 부르지 않는다) ──
-export type JournalRow = { kind: 'place' | 'quest' | 'questDone' | 'item' | 'check' | 'fight' | 'play' | 'session'; text: string; ok?: boolean; id: string };
+export type JournalRow = { kind: 'place' | 'quest' | 'questDone' | 'item' | 'party' | 'check' | 'fight' | 'play' | 'session'; text: string; ok?: boolean; id: string };
 export function journalOf(msgs: Msg[]): JournalRow[] {
   const out: JournalRow[] = [];
   for (const m of msgs as GameMsg[]) {
@@ -271,10 +294,12 @@ export function journalOf(msgs: Msg[]): JournalRow[] {
     if (r?.kind === 'check') out.push({ kind: 'check', text: r.why || '', ok: r.ok, id: m.id });
     else if (r?.kind === 'fight') out.push({ kind: 'fight', text: r.name, ok: r.outcome === 'win', id: m.id });
     else if (r?.kind === 'play') out.push({ kind: 'play', text: r.game, ok: r.outcome === 'win', id: m.id });
+    else if (r?.kind === 'qte') out.push({ kind: 'check', text: r.choice || '—', ok: r.speed !== 'timeout', id: m.id });
     else if (r?.kind === 'session') out.push({ kind: 'session', text: String(r.n), id: m.id });
     for (const fx of fxs) {
       if (fx.k === 'place') out.push({ kind: 'place', text: fx.name, id: m.id });
       else if (fx.k === 'quest') out.push({ kind: fx.done ? 'questDone' : 'quest', text: fx.title, id: m.id });
+      else if (fx.k === 'party') out.push({ kind: 'party', text: fx.name, ok: fx.add, id: m.id });
       else if (fx.k === 'item' && fx.n > 0) out.push({ kind: 'item', text: fx.n > 1 ? `${fx.name} ×${fx.n}` : fx.name, id: m.id });
     }
   }
