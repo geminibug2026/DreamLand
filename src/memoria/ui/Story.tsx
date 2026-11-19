@@ -64,13 +64,13 @@ export function Story({ st }: { st: StOpen }) {
   const setTab = (id: string) => { v.tab = id; drawView(); };
 
   // ── 고른 보기
-  const editSum = async (s: Summary) => { const txt = await promptBox(t('memoria.story.editSummary'), s.text, { area: true }); if (!txt || !txt.trim()) return; s.text = cutLines(txt, 4000); delete s.av; delete s.avec; await M.save(mem); st.draw(); };   // 본문이 바뀌었으니 임베딩은 다음 회상 때 다시 계산
+  const editSum = async (s: Summary) => { const txt = await promptBox(t('memoria.story.editSummary'), s.text, { area: true }); if (!txt || !txt.trim()) return; s.text = cutLines(txt, 4000); delete s.av; delete s.avec; delete s.unverified; await M.save(mem); st.draw(); };   // 본문이 바뀌었으니 임베딩은 다음 회상 때 다시 계산
   const delSum = async (s: Summary) => { if (!(await confirmBox(t('memoria.story.deleteSummary'), t('common.delete'), true))) return; mem.chunks = mem.chunks.filter(x => x.id !== s.id); mem.arcs = mem.arcs.filter(x => x.id !== s.id); await M.save(mem); st.draw(); };
   const regen = (s: Summary, b: HTMLButtonElement) => busyBtn(b, async () => {
     if (!mem.turns.slice(s.from, s.to + 1).some(x => x.digest)) return toast(t('memoria.story.regenNoDigest'), 'err');
-    let txt = ''; try { txt = await M.chunkText(chat, mem, s.from, s.to, undefined, true); } catch (e) { console.error(e); }
+    let txt = '', loose: string[] = []; try { const r = M.chunkRecord ? await M.chunkRecord(chat, mem, s.from, s.to, undefined, true) : { text: await M.chunkText(chat, mem, s.from, s.to, undefined, true), unverified: [] }; txt = r.text; loose = r.unverified; } catch (e) { console.error(e); }
     if (!txt) return toast(t('memoria.story.regenFail'), 'err');
-    s.text = txt; delete s.av; delete s.avec; await M.save(mem); st.draw(); toast(t('memoria.story.regenDone'), 'ok');
+    s.text = txt; delete s.av; delete s.avec; if (loose.length) s.unverified = loose; else delete s.unverified;   // 검수(숫자 · 빠진 전환점)에서 걸린 곳이 남았으면 ⚠ 로 알린다 await M.save(mem); st.draw(); toast(t('memoria.story.regenDone'), 'ok');
   });
   const copyMd = async (rows: TimelineRow[]) => { try { await navigator.clipboard.writeText(timelineMarkdown(rows)); toast(t('memoria.story.mdCopied'), 'ok'); } catch { toast(t('memoria.story.copyFail'), 'err'); } };
   const shownRows = () => filterTimelineRows(buildTimelineRows(storeOf(st, no)), v);
@@ -85,7 +85,7 @@ export function Story({ st }: { st: StOpen }) {
   if (v.tab === 'flow') {
     const all = [...mem.arcs.map(s => ({ ...s, level: 'arc' })), ...mem.chunks.map(s => ({ ...s, level: 'chunk' }))].sort((a, b) => (a.carried ? -1 : 0) - (b.carried ? -1 : 0) || a.from - b.from);
     const marksIn = (s: Summary) => (s.carried ? [] : mem.milestones.filter(m => (m.turn as number) >= s.from && (m.turn as number) <= s.to));
-    if (all.length) flow = flowHtml(all.map((s, i) => ({ id: s.id, level: s.level, fromTurn: s.from + 1, toTurn: s.to + 1, text: s.text, carried: s.carried, carriedFrom: s.carriedFrom, marks: marksIn(s), open: i >= all.length - 2 })));
+    if (all.length) flow = flowHtml(all.map((s, i) => ({ id: s.id, level: s.level, fromTurn: s.from + 1, toTurn: s.to + 1, text: s.text, carried: s.carried, carriedFrom: s.carriedFrom, marks: marksIn(s), open: i >= all.length - 2, unverified: s.carried ? undefined : s.unverified })));
     kids = all.length ? html(undefined, flow, 'flow') : <None text={t('memoria.story.emptyFlow')} />;
   } else if (v.tab === 'line') {
     const shown = new Set(filterTimelineRows(rows, v).map(r => r.id)), dim = new Set(rows.filter(r => !shown.has(r.id)).map(r => r.id));

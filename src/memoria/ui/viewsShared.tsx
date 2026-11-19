@@ -20,6 +20,7 @@ export type MemoryViews = MemoryUi & {
   summarize(chat: ChatM, mem: Mem, o?: { flush?: boolean }): Promise<number>;
   rebuildSummaries(chat: ChatM, mem: Mem, o?: { stop?: () => boolean; onProgress?: (done: number, total: number) => void }): Promise<number | null | undefined>;
   chunkText(chat: ChatM, mem: Mem, from: number, to: number, signal?: AbortSignal, strict?: boolean): Promise<string>;
+  chunkRecord?(chat: ChatM, mem: Mem, from: number, to: number, signal?: AbortSignal, strict?: boolean): Promise<{ text: string; unverified: string[] }>;
 };
 export const Mx = () => (Memory as unknown as MemoryViews);
 

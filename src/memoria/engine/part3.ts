@@ -4,10 +4,10 @@ import { embedTexts, embedKind, embedModel } from '../../lib/embed';
 import type { MemoryApi } from './api';
 import type { StatusBar } from './part1';
 import type { CastCard, Cfg, ChatM, Mem, MemItem, Msg, Summary, SummarySrc, Turn } from '../types';
-import { G, NARRATOR, PUBLIC_ONLY, PAST_QUERY_RE, str, list, clip, low, cleanStr, visibleProse, sanitizeRecord, ekey, vec, cos, cueText, indexText, vecOf, cleanMultiline, normScope, sameKnowledgeScope, storyFossilWeight, grams, lexical, gramOverlap, calibrate, parseLoose, toDays, ago, dcache, dvec, normLockKind, normVisibility, overrides, pendingEmbeds, queryEmbedCache, preps } from './base';
+import { G, NARRATOR, PUBLIC_ONLY, PAST_QUERY_RE, str, list, clip, low, cleanStr, visibleProse, sanitizeRecord, ekey, vec, cos, cueText, indexText, vecOf, cleanMultiline, normScope, sameKnowledgeScope, storyFossilWeight, grams, lexical, gramOverlap, calibrate, parseLoose, toDays, ago, dcache, dvec, normLockKind, normVisibility, overrides, pendingEmbeds, queryEmbedCache, preps, overlap, canonSlot, VOLATILE, STANDING_KINDS, SETTLED_AT_SUMMARY, recallRuns } from './base';
 import * as MP from '../prompts';
 import { chunkTurnsOf } from './base';
-import { THREAD_KINDS, withDeadline, hasPhrase, splitClosedLine } from '../craft';
+import { THREAD_KINDS, withDeadline, hasPhrase, splitClosedLine, isEndedValue, ungroundedFigures, recallCooldown } from '../craft';
 import { t as tr } from '../../i18n';
 
 type Chat = ChatM | null | undefined;
@@ -28,6 +28,8 @@ export interface HistoryMsg { role: string; content?: unknown; [k: string]: unkn
 /** 회상의 입력 */
 export interface RecallInputs { query: string; aux: string[]; scene: string; recentText: string }
 export interface RecallOpts { msgs?: Msg[]; type?: string; query?: string | null; inputs?: RecallInputs; topK?: number }
+/** 묶음 요약 하나 — 글과, 검수에서 걸린 곳(원문에서 찾지 못한 숫자 · 빠진 전환점 ★tN) */
+export interface ChunkRecord { text: string; unverified: string[] }
 /** 왜 골랐는지 (기억 id 별) */
 export interface RecallTraceParts { cos: number; lex: number; imp: number; rec: number; bonus: number; sem: number }
 export interface RecallTrace { reason: string; mode: 'pinned' | 'trigger' | 'direct' | 'association'; score?: number; parts?: RecallTraceParts; via?: string }
@@ -66,6 +68,8 @@ export interface Part3 {
   summaryCoveredTurn(mem: Mem): number;
   digestTag(t: Turn, i: number): string;
   chunkText(chat: Chat, mem: Mem, from: number, to: number, signal?: AbortSignal, strict?: boolean, opts?: { threads?: boolean }): Promise<string>;
+  chunkRecord(chat: Chat, mem: Mem, from: number, to: number, signal?: AbortSignal, strict?: boolean, opts?: { threads?: boolean }): Promise<ChunkRecord>;
+  raisedDirectly(m: MemItem, queryLower: string, names?: string[]): boolean;
   maybeSummarizeChunk(chat: Chat, mem: Mem, opts?: SummarizeChunkOpts): Promise<number>;
   summarize(chat: Chat, mem: Mem, opts?: SummarizeOpts): Promise<number>;
   rebuildAllSummaries(chat: Chat, mem: Mem, opts?: RebuildOpts): Promise<number | null>;
@@ -144,33 +148,77 @@ export const part3: Part3 & ThisType<MemoryApi> = {
    * 한 구간(from~to, 0부터)의 묶음 요약 글을 만든다. threads: 요약 호출이 이 구간을 통째로 읽는 김에, 열려 있는 떡밥 가운데 풀렸거나 의미가 없어진 것을 함께 묻고 닫는다 (호출을 따로 쓰지 않는다).
    * strict: 요약 호출이 실패하면 턴 기록을 이어 붙여 넣는 대신 오류를 던진다
    */
-  async chunkText(chat, mem, from, to, signal, strict = false, { threads = false } = {}) {
+  async chunkText(chat, mem, from, to, signal, strict = false, opts = {}) { return (await this.chunkRecord(chat, mem, from, to, signal, strict, opts)).text; },
+  /**
+   * chunkText 의 본체 — 글과 함께 검수 결과(unverified)를 돌려준다.
+   * threads 일 때는 같은 호출에 얹어, 이 구간 이전부터 그대로 서 있는 상태 · 물건 · 자주 불려 나온 기억 가운데 이 구간이 보여 준 일로 더는 맞지 않게 된 것도 묻는다 (STALE 줄).
+   * 검수(모델을 따로 부르지 않는다): 요약에 나온 숫자가 넘겨준 자료 어디에도 없으면 지어낸 것이고, ★ 표시한 중대한 턴이 요약에 흔적도 없으면 빠뜨린 것이다.
+   * 문제가 있을 때만 무엇이 틀렸는지 짚어 한 번 다시 쓰게 하고, 덜 틀린 쪽을 남긴다. 문제없으면 호출은 늘지 않는다
+   */
+  async chunkRecord(chat, mem, from, to, signal, strict = false, { threads = false } = {}) {
     const parts = mem.turns.slice(from, to + 1).map((t, i) => t.digest && `[${this.digestTag(t, from + i)}] ${t.digest}`).filter(Boolean);
-    if (!parts.length) return '';
-    const open = threads ? mem.pledges.filter(l => l.status === 'active' && THREAD_KINDS.includes(normLockKind(l.kind))).sort((a, b) => (a.turn || 0) - (b.turn || 0)).slice(0, 16) : [];
+    if (!parts.length) return { text: '', unverified: [] };
+    const cfg = this.cfg(), open = threads ? mem.pledges.filter(l => l.status === 'active' && THREAD_KINDS.includes(normLockKind(l.kind))).sort((a, b) => (a.turn || 0) - (b.turn || 0)).slice(0, 16) : [];
     const threadTags = new Map(open.map((l, i) => [`o${i + 1}`, l]));
     const threadBlock = open.length ? `Open threads on file:\n${[...threadTags].map(([tag, l]) => `[${tag}] ${l.summary}`).join('\n')}\n` : '';
     const threadDirective = open.length
       ? '\n\nTHREAD CHECK: after the record, add ONE final line "CLOSED: o2, o5" naming every listed open thread that these turns (or the earlier records shown) have clearly settled, answered, carried out, abandoned, or made pointless. A thread nobody will plausibly return to — a passing errand, a small question already overtaken by events — counts as closed. Write "CLOSED: none" when all are still live. This line is filing metadata, not part of the record.'
       : '';
-    let text = '';
+    // 낡은 기록 점검 — 꼬리표 → 물리는 일. 직접 적은 줄은 올리지 않는다 (사용자가 정한 값을 요약이 치우지 않게)
+    const staleTags = new Map<string, () => void>();
+    const tagStale = <X,>(prefix: string, rows: X[], line: (x: X) => string, retire: (x: X) => void) => rows.map((x, i) => { const tag = `${prefix}${i + 1}`; staleTags.set(tag, () => retire(x)); return `[${tag}] ${line(x)}`; });
+    const staleLines = !threads ? [] : [
+      ...tagStale('s', mem.status.filter(x => x.claim !== 'belief' && x.expired == null && !x.manual && !VOLATILE.has(canonSlot(x.slot)) && !isEndedValue(x.value) && low(x.entity) !== 'scene' && (x.turn || 0) < from)
+        .sort((a, b) => (a.turn || 0) - (b.turn || 0)).slice(0, 8), x => `status — ${x.entity}.${x.slot} = ${x.value}`, x => { x.expired = to; }),
+      ...tagStale('i', (cfg.items ? mem.items : []).filter(x => !x.disabled && !x.manual && x.dormant == null && (x.updated ?? x.first ?? x.turn ?? 0) < from)
+        .sort((a, b) => (a.updated ?? a.first ?? a.turn ?? 0) - (b.updated ?? b.first ?? b.turn ?? 0)).slice(0, 4), x => `item — ${x.name}${x.holder ? ` (held by ${x.holder})` : ''}${x.status ? ` [${x.status}]` : ''}`, x => { x.dormant = to; }),
+      ...tagStale('m', mem.memories.filter(x => STANDING_KINDS.has(x.kind) && !x.retired && !x.disabled && !x.manual && !x.pinned && (x.shown || 0) >= 3 && x.turn != null && x.turn < from)
+        .sort((a, b) => (b.shown || 0) - (a.shown || 0)).slice(0, 6), x => `memory (${x.kind}) — ${x.summary}`, x => { x.retired = { turn: to, now: '' }; }),
+    ];
+    const staleBlock = staleLines.length ? `Standing records on file:\n${staleLines.join('\n')}\n` : '';
+    const staleDirective = staleLines.length
+      ? '\n\nSTALE CHECK: the file also lists standing records tagged like [s1], [i2], [m3] — a status value, an item, a remembered fact — all written before these turns. After the record, add ONE final line "STALE: s1, m3" naming every listed record that these turns show is no longer true or no longer matters: healed, left behind, used up, handed over, overturned, carried out. Not being mentioned is NOT a reason — name a record only when the turns show the change. Write "STALE: none" when nothing changed. This line is filing metadata, not part of the record.'
+      : '';
+    let text = '', unverified: string[] = [];
     try {
       const refBlock = await this.buildReferenceBlock(chat, { lean: true });   // 카드 본문은 다시 보내지 않는다 — 이름만
-      const userPrompt = [refBlock, this.previousSummariesForContext(mem), threadBlock, `Turn digests to weave:\n${parts.join('\n')}`].filter(Boolean).join('\n');
-      const reply = splitClosedLine(await this.call(chat, `${this.promptText('chunk')}${threadDirective}\n\n${this.languageDirective()}`, userPrompt, 4000, signal));
+      const userPrompt = [refBlock, this.previousSummariesForContext(mem), threadBlock, staleBlock, `Turn digests to weave:\n${parts.join('\n')}`].filter(Boolean).join('\n');
+      const sysPrompt = `${this.promptText('chunk')}${threadDirective}${staleDirective}\n\n${this.languageDirective()}`;
+      let reply = splitClosedLine(await this.call(chat, sysPrompt, userPrompt, 4000, signal, 'summary'));
       text = cleanMultiline(sanitizeRecord(reply.text), 2000);
+      const pivotal = mem.turns.slice(from, to + 1).map((t, i) => ({ t, n: from + i + 1 })).filter(x => x.t.digest && (x.t.weight ?? 0) >= 0.75);
+      // 요약 언어를 도중에 바꿨으면 턴 기록과 요약의 말이 달라 글자로 견줄 수 없다 — 전체가 어느 정도 겹칠 때만 본다
+      const missedIn = (rec: string) => (overlap(parts.join(' '), rec) >= 0.3 ? pivotal.filter(x => overlap(x.t.digest, rec) < 0.2) : []);
+      let loose = text ? ungroundedFigures(text, userPrompt) : [], missed = text ? missedIn(text) : [];
+      if (loose.length || missed.length) {
+        const notes = [
+          loose.length ? `it contained figures that appear nowhere in the material above (${loose.slice(0, 12).join(', ')}) — every number, date and amount must be copied from the material, and where the material gives no figure, write none` : '',
+          missed.length ? `it left out pivotal turns marked ★ — each must have its own bullet: ${missed.slice(0, 4).map(x => `"${cleanStr(x.t.digest, 160)}"`).join(' / ')}` : '',
+        ].filter(Boolean).join('; and ');
+        try {
+          const again = splitClosedLine(await this.call(chat, sysPrompt, `${userPrompt}\n\n(Your previous record had problems: ${notes}. Write the record again in the same structure.)`, 4000, signal, 'summary'));
+          const retext = cleanMultiline(sanitizeRecord(again.text), 2000);
+          if (retext) { const reloose = ungroundedFigures(retext, userPrompt), remissed = missedIn(retext); if (reloose.length + remissed.length < loose.length + missed.length) { reply = again; text = retext; loose = reloose; missed = remissed; } }
+        } catch (e: any) { if (e?.name === 'AbortError' || signal?.aborted) throw e; console.debug('[장기기억] 요약 다시 쓰기 실패 — 처음 것을 남깁니다', e); }   // 다시 쓰기가 실패해도 처음 요약은 쓸 수 있다 (표시만 남긴다)
+        const left = [loose.length ? tr('memoria.engine.audit.figures', { list: loose.slice(0, 6).join(', ') }) : '', missed.length ? tr('memoria.engine.audit.missed', { n: missed.length }) : ''].filter(Boolean).join(' · ');
+        this.logActivity(left ? 'error' : 'summary', left ? tr('memoria.engine.log.auditLeft', { from: from + 1, to: to + 1, left }) : tr('memoria.engine.log.auditFixed', { from: from + 1, to: to + 1 }));
+      }
+      unverified = [...loose, ...missed.map(x => `★t${x.n}`)].slice(0, 12);
       if (text) {
         let closed = 0;
         for (const tag of reply.closed) {
           const lock = threadTags.get(tag); if (!lock || lock.status !== 'active') continue;
           if (lock.manual) { lock.suggestResolved = true; lock.suggestTurn = to; continue; }   // 직접 적은 떡밥은 사서가 닫지 못한다 — "해소된 듯" 의견만 붙인다
-          lock.status = 'resolved'; lock.resolvedTurn = to; lock.resolution = lock.resolution || '요약 때 정리됨'; closed++;
+          lock.status = 'resolved'; lock.resolvedTurn = to; lock.resolution = lock.resolution || SETTLED_AT_SUMMARY; closed++;
         }
         if (closed) this.logActivity('summary', tr('memoria.engine.log.threadsClosed', { n: closed }));
+        let aged = 0;
+        for (const tag of reply.stale) { const retire = staleTags.get(tag); if (!retire) continue; retire(); aged++; }
+        if (aged) this.logActivity('summary', tr('memoria.engine.log.staleAged', { n: aged }));
       }
     } catch (e: any) { if (strict || e?.name === 'AbortError' || signal?.aborted) throw e; console.debug('[장기기억] 묶음 요약 실패, 턴 기록을 이어 붙입니다', e); }
-    if (!text) { if (strict) throw new Error(tr('memoria.engine.err.emptySummary', { from: from + 1, to: to + 1 })); text = cleanStr(parts.join(' / '), 2000); }
-    return text;
+    if (!text) { if (strict) throw new Error(tr('memoria.engine.err.emptySummary', { from: from + 1, to: to + 1 })); text = cleanStr(parts.join(' / '), 2000); unverified = []; }
+    return { text, unverified };
   },
   /**
    * 밀린 턴을 요약 주기 단위로 묶어 요약한다. 반환: 새로 만든 묶음 수.
@@ -189,9 +237,9 @@ export const part3: Part3 & ThisType<MemoryApi> = {
       const w = windowFrom(covered); if (!flushAll && w.sum < n) break;
       if (shouldStop?.()) break;
       const from = covered, to = w.to; covered = to + 1;
-      const text = await this.chunkText(chat, mem, from, to, signal, strict, { threads: true });
+      const { text, unverified } = await this.chunkRecord(chat, mem, from, to, signal, strict, { threads: true });
       if (!text) { mem.chunked = covered; onProgress?.(++done, total); continue; }   // 턴 기록이 하나도 없는 창
-      mem.chunks.push({ id: 'c' + uid(), from, to, text }); mem.chunked = covered; made++; onProgress?.(++done, total);
+      mem.chunks.push({ id: 'c' + uid(), from, to, text, ...(unverified.length ? { unverified } : {}) }); mem.chunked = covered; made++; onProgress?.(++done, total);
     }
     // 안전 상한: 서고 정리 주기가 길거나 꺼져 있어도 묶음이 무한정 쌓이지 않게. 새 묶음이 생겼을 때만 본다 —
     // 사서가 "전부 따로 둔다"고 답하면 개수가 줄지 않으므로, 다시 묶어도 상한 아래로 내려가지 않으면 가장 오래된 네 개를 연대기로 접는다
@@ -228,7 +276,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
   rebuildSummaries(chat, mem, opts) { return this.rebuildAllSummaries(chat, mem, opts); },
   /** 여러 요약(묶음 · 연대기)을 하나의 연대기 글로 줄인다. extra: 프롬프트에 덧붙일 지시. 실패하면 '' */
   async arcText(chat, parts, signal, { extra = '', max = 2400 } = {}) {
-    try { return cleanMultiline(sanitizeRecord(await this.call(chat, `${this.promptText('arc')}${extra}\n\n${this.languageDirective()}`, parts.map(c => `[t${c.from + 1}–t${c.to + 1}]\n${c.text}`).join('\n\n'), 4000, signal)), max); }
+    try { return cleanMultiline(sanitizeRecord(await this.call(chat, `${this.promptText('arc')}${extra}\n\n${this.languageDirective()}`, parts.map(c => `[t${c.from + 1}–t${c.to + 1}]\n${c.text}`).join('\n\n'), 4000, signal, 'summary')), max); }
     catch (e: any) { if (e?.name === 'AbortError' || signal?.aborted) throw e; console.debug('[장기기억] 연대기 병합 실패', e); return ''; }
   },
   /** 묶음 여러 개를 하나의 연대기로 줄여 밀어 넣는다. 병합 전 묶음 경계(src)를 남겨 둔다 — 나중에 삭제로 연대기 일부만 걸리면 안 걸린 묶음을 되살릴 수 있게 */
@@ -244,7 +292,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
    */
   async askGroups(chat, rows, prompt, tag, signal) {
     const ids = new Map(rows.map((c, i): Keep<typeof c, [string, number]> => [tag + (i + 1), i])); let plan: GroupPlan | null = null;
-    try { plan = parseLoose(await this.call(chat, prompt, rows.map((c, i) => `[${tag}${i + 1}] (t${c.from + 1}–t${c.to + 1})\n${c.text}`).join('\n\n'), 2000, signal)) as GroupPlan | null; }
+    try { plan = parseLoose(await this.call(chat, prompt, rows.map((c, i) => `[${tag}${i + 1}] (t${c.from + 1}–t${c.to + 1})\n${c.text}`).join('\n\n'), 2000, signal, 'summary')) as GroupPlan | null; }
     catch (e: any) { if (e?.name === 'AbortError' || signal?.aborted) throw e; console.warn('[장기기억] 재그룹 판정 실패 (다음 주기에 재시도)', e); return null; }
     if (!Array.isArray(plan?.groups)) return null;
     const out: Summary[][] = []; let next = 0;
@@ -310,10 +358,10 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     this.logActivity('summary', tr('memoria.engine.log.erasFolded', { n: folding.length }));
     return true;
   },
-  /** 서고 정리 대상: 고정 · 수동 · 최근 기억은 건드리지 않는다. 모델 입력도 등급 · 소유자별로 나눈다 — 비밀을 본 모델이 공개 요약에 섞어 쓰지 않게 (가장 큰 묶음 하나, 120개까지) */
+  /** 서고 정리 대상: 고정 · 수동 · 최근 기억은 건드리지 않는다. 지나간 기억(retired)도 뺀다 — 물린 기억이 살아 있는 기억에 섞여 되살아나거나 정리로 지워지지 않게. 모델 입력도 등급 · 소유자별로 나눈다 — 비밀을 본 모델이 공개 요약에 섞어 쓰지 않게 (가장 큰 묶음 하나, 120개까지) */
   consolidationCandidates(mem) {
     const T = mem.turns.length, scopes: MemItem[][] = [];
-    for (const m of mem.memories.filter(m => !m.pinned && !m.manual && !m.disabled && T - 1 - (m.turn ?? T) >= 4)) { const group = scopes.find(rows => sameKnowledgeScope(rows[0], m)); if (group) group.push(m); else scopes.push([m]); }
+    for (const m of mem.memories.filter(m => !m.pinned && !m.manual && !m.disabled && !m.retired && T - 1 - (m.turn ?? T) >= 4)) { const group = scopes.find(rows => sameKnowledgeScope(rows[0], m)); if (group) group.push(m); else scopes.push([m]); }
     return (scopes.sort((a, b) => b.length - a.length)[0] || []).slice(0, 120);
   },
   /**
@@ -323,7 +371,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
   async runConsolidation(chat, mem, signal) {
     const candidates = this.consolidationCandidates(mem); if (candidates.length < 12) return null;
     const idMap = new Map(candidates.map((m, i) => [`m${i + 1}`, m]));
-    const response = await this.call(chat, MP.CURATOR_PROMPT, [...idMap].map(([tag, m]) => `[${tag}] (${m.kind}, t${(m.turn ?? 0) + 1}, imp ${Number(m.importance).toFixed(2)}) ${m.summary}`).join('\n'), 8000, signal);
+    const response = await this.call(chat, MP.CURATOR_PROMPT, [...idMap].map(([tag, m]) => `[${tag}] (${m.kind}, t${(m.turn ?? 0) + 1}, imp ${Number(m.importance).toFixed(2)}) ${m.summary}`).join('\n'), 8000, signal, 'summary');
     const plan = parseLoose(response) as CuratorPlan | null;
     if (!plan || typeof plan !== 'object') {   // 무엇을 만져야 할지 알 수 있게 — 가장 흔한 원인(추론 모델이 사고에 출력 상한을 다 써서 응답이 잘림)을 짚어 준다
       const head = cleanStr(response, 300); console.warn('[장기기억] 서고 정리: 사서 응답을 JSON 으로 읽지 못했습니다. 응답 앞부분:', head || '(빈 응답)');
@@ -381,7 +429,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
         onProgress?.(Math.min(i + B, turns.length), turns.length);
         // 배치 경계에서 시간이 끊기지 않게 직전 턴 기록 몇 개를 문맥으로 붙인다
         const lines = [...turns.slice(Math.max(0, i - 3), i).map(x => `(context) [t${x.i + 1}] ${x.t.digest}`), ...turns.slice(i, i + B).map(x => `[t${x.i + 1}] ${x.t.digest}`)].join('\n');
-        try { const j = parseLoose(await this.call(chat, MP.CLOCK_RECAL_PROMPT, lines, 4000, signal)); if (!j) { failed++; continue; } for (const [k, v] of Object.entries(j)) { const m = /^t(\d+)$/.exec(str(k)); if (m) up.set(+m[1] - 1, toDays(v)); } }
+        try { const j = parseLoose(await this.call(chat, MP.CLOCK_RECAL_PROMPT, lines, 4000, signal, 'summary')); if (!j) { failed++; continue; } for (const [k, v] of Object.entries(j)) { const m = /^t(\d+)$/.exec(str(k)); if (m) up.set(+m[1] - 1, toDays(v)); } }
         catch (e: any) { if (e.name === 'AbortError' || signal?.aborted) throw e; failed++; console.error('[장기기억] 서사 시계 재계산 배치 실패:', e); }
       }
       if (!up.size) throw new Error(tr('memoria.engine.err.clockFailed'));
@@ -569,6 +617,19 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     return { query, aux: narrator ? [] : users.slice(1), scene, recentText: low(last4.join('\n')) };
   },
   /**
+   * 사용자의 입력이 이 기억의 "내용"을 직접 꺼냈는가 — 이름만 겹치는 것은 치지 않는다 (같은 인물이 나온다는 이유만으로 지나간 기억 · 방금 실린 기억이 다시 올라오면 안 된다).
+   * 이름을 뺀 낱말 가운데 둘 이상이 입력에 있어야 한다. 조사 · 어미가 붙는 말은 끝 글자를 떼고 견준다
+   */
+  raisedDirectly(m, queryLower, names = []) {
+    const own = (m.entities || []).map(e => low(e)), isName = (t: string) => [...names, ...own].some(n => n.includes(t) || t.includes(n)); let hits = 0;
+    for (const t of new Set(low(m.summary).match(/[\p{L}\p{N}]{2,}/gu) || [])) {
+      const latin = /^[a-z0-9]+$/.test(t); if ((latin && t.length < 4) || isName(t)) continue;
+      const stem = !latin && t.length >= 3 ? t.slice(0, t.length - 1) : t;
+      if (queryLower.includes(stem) && ++hits >= 2) return true;
+    }
+    return false;
+  },
+  /**
    * 지금 장면과 맞닿은 기억 고르기: 문맥 유사도 0.62 + 어휘 0.18 + 중요도 0.12 + 최신성 0.08 (+ 인물 0.08 · 단서 0.07 · 장면 인물 0.05), 겹치지 않게(MMR) · 종류 · 턴별 상한.
    * 프롬프트 조립은 기다릴 수 없으므로 임베딩 API 축은 미리 계산해 둔 질의 벡터(prepare · embedQuery)가 있을 때만 쓴다 — 없으면 내장 검색만으로 고른다.
    * 반환 { selected, pinned, triggered, hidden, trace(왜 골랐는지), query, inputs }
@@ -589,7 +650,16 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     // 장면 인물 사전확률: 지금 장면에 있는 인물(이름 · 다른 이름이 최근 글에 나옴). 한국어 롤플은 대명사 · 호칭 생략이 많아 질의에 이름이 없어도 장면 속 인물과 얽힌 기억이 관련 있을 확률이 높다
     const presence: Keep<typeof model, string> = low(`${query}\n${inp.aux.join('\n')}\n${sceneText}`), present = new Set<string>();
     for (const c of mem.cast) if (!c.disabled && [c.name, ...(c.aka || [])].some(n => n && String(n).length >= 2 && presence.includes(low(n)))) present.add(low(c.name));
+    // 회상 쉬어가기: 앞선 답변들에 연달아 실렸던 기억은 점수를 깎는다. 지금 다시 쓰는 답변(다시 생성 · 스와이프)의 몫은 세지 않는다 — 같은 입력에 다른 장부가 나가지 않게
+    const coolHistory = cfg.recallCooldown !== false ? recallRuns.get(mem.id) || [] : [];
+    const coolBefore = Array.isArray(opt.msgs) && (opt.type === 'regen' || opt.type === 'swipe') && opt.msgs[opt.msgs.length - 1]?.role === 'assistant' ? opt.msgs.length - 1 : Infinity;
+    let me = ''; try { me = chat ? S.persona(chat)?.name || '' : ''; } catch { /* 페르소나를 못 읽어도 회상은 한다 */ }
+    const knownNames = [me, ...(chat?.charIds || []).map(id => S.get('chars', id)?.name), ...mem.cast.flatMap(c => [c.name, ...(c.aka || [])])].map(n => low(n || '')).filter(n => n.length >= 2);
+    // 이 대화에서 회상하지 않을 말 — 그 말이 든 기억은 후보에서 뺀다 (지우지 않는다. 고정한 기억은 사용자의 뜻이라 그대로)
+    const mute = list<string>(mem.recallMute).map(w => low(w)).filter(w => w.length >= 2);
+    const muted = (m: MemItem) => mute.length > 0 && !m.pinned && mute.some(w => low(`${m.summary} ${m.quote || ''} ${(m.hints || []).join(' ')}`).includes(w));
     for (const m of active) {
+      if (muted(m)) continue;
       if (m.visibility !== 'public' && !this.knowsMemory(m, auth)) { out.hidden++; continue; }
       eligible.push(m);
       if (m.pinned) { out.pinned.push(m); out.trace.set(m.id, { reason: tr('memoria.engine.why.pinned'), mode: 'pinned' }); continue; }
@@ -614,20 +684,24 @@ export const part3: Part3 & ThisType<MemoryApi> = {
       const presenceHit = !entityHit && present.size > 0 && (m.entities || []).some(e => present.has(low(e)));
       // 관문: 사전확률만으로는 절반의 의미 유사도라도 있어야 통과 (무관한 기억이 쏟아지지 않게)
       if (c < cfg.minCosine && lex < 0.035 && !entityHit && !hintHit && !(presenceHit && c >= cfg.minCosine * 0.5)) continue;
+      // 지나간 기억(잃어버린 물건, 이미 치른 약속, 뒤집힌 사실)은 평소 회상에서 빠진다. 사용자가 그 일을 직접 꺼내거나 옛일을 되짚을 때만 후보가 되고, 실릴 때 "지금은 이렇다"가 붙는다
+      const direct = hintHit || this.raisedDirectly(m, ql, knownNames);
+      if (m.retired && !pastQ && !direct) continue;
       const age = Math.max(0, T - 1 - (m.turn ?? T));
       let fossil = this.fossilWeight(age, cfg);   // 화석화: 턴 나이와 이야기 나이 중 더 오래됐다고 말하는 쪽 (10년을 건너뛰면 직전 턴도 옛일)
       if (ages) fossil = Math.min(fossil, storyFossilWeight(ages.get(m.turn!) ?? 0));
       if ((m.importance || 0) >= 0.75) fossil = Math.max(fossil, 0.7);   // "잊으면 이야기가 깨지는 급" 기억은 깊은 화석화를 면한다
       const rec = pastQ ? 0.55 : Math.exp(-age / 18) * fossil, bonus = (entityHit ? 0.08 : 0) + (hintHit ? 0.07 : 0) + (presenceHit ? 0.05 : 0);
-      const score = 0.62 * Math.max(0, c) + 0.18 * lex + 0.12 * (m.importance || 0) + 0.08 * rec + bonus;
+      const cool = coolHistory.length ? recallCooldown(coolHistory, m.id, { before: coolBefore, direct: direct || pastQ, echoed: (m.echoes || 0) > 0 && !((m.coldRun || 0) > 0) }) : 1;
+      const score = (0.62 * Math.max(0, c) + 0.18 * lex + 0.12 * (m.importance || 0) + 0.08 * rec + bonus) * cool * (m.retired ? 0.7 : 1);
       if (score < cfg.minScore) continue;
       cands.push({ m, score, v: v.sum });
-      out.trace.set(m.id, { mode: 'direct', score, parts: { cos: Math.max(0, c), lex, imp: m.importance || 0, rec, bonus, sem }, reason: [entityHit && tr('memoria.engine.why.entity'), hintHit && tr('memoria.engine.why.hint'), presenceHit && tr('memoria.engine.why.present'), lex >= 0.035 && tr('memoria.engine.why.lexical'), c >= cfg.minCosine && tr('memoria.engine.why.context')].filter(Boolean).join(' · ') || tr('memoria.engine.why.score') });
+      out.trace.set(m.id, { mode: 'direct', score, parts: { cos: Math.max(0, c), lex, imp: m.importance || 0, rec, bonus, sem }, reason: [cool < 0.8 && tr('memoria.engine.why.cooled'), m.retired && tr('memoria.engine.why.retired'), entityHit && tr('memoria.engine.why.entity'), hintHit && tr('memoria.engine.why.hint'), presenceHit && tr('memoria.engine.why.present'), lex >= 0.035 && tr('memoria.engine.why.lexical'), c >= cfg.minCosine && tr('memoria.engine.why.context')].filter(Boolean).join(' · ') || tr('memoria.engine.why.score') });
     }
     cands.sort((a, b) => b.score - a.score);
     if (cfg.associative !== false) {
       const seeds = cands.filter(c => c.score >= Math.max(0.18, (cands[0]?.score || 0) * 0.75)).slice(0, 3);
-      for (const link of this.findAssociations(mem, eligible, seeds)) {
+      for (const link of this.findAssociations(mem, eligible.filter(m => !m.retired), seeds)) {
         if (out.triggered.some(m => m.id === link.m.id)) continue;
         const ex = cands.find(c => c.m.id === link.m.id); if (ex && ex.score >= link.score) continue;
         if (ex) ex.score = link.score; else cands.push({ m: link.m, score: link.score, v: vecOf(link.m).sum });
@@ -656,7 +730,8 @@ export const part3: Part3 & ThisType<MemoryApi> = {
   recall(mem, history) { const r = this.recallEx(S.get('chats', mem.id), mem, history); return [...r.pinned, ...r.triggered, ...r.selected]; },
   /** 주입 창(마지막 3개) 밖으로 밀려난 묶음 요약 가운데 지금 질의와 가장 맞는 하나 (문턱 미달이면 null). 기억 조각은 파편이지만 묶음 요약은 그 시절의 이어진 맥락을 준다 */
   pickRecalledChapter(mem, query, sceneText) {
-    const old = mem.chunks.slice(0, -3), q = String(query || '').trim(); if (!old.length || q.length < 4) return null;
+    const mute = list<string>(mem.recallMute).map(w => low(w)).filter(w => w.length >= 2);   // 회상하지 않을 말이 든 옛 묶음은 소환하지 않는다
+    const old = mem.chunks.slice(0, -3).filter(c => !mute.some(w => low(c.text).includes(w))), q = String(query || '').trim(); if (!old.length || q.length < 4) return null;
     const qv = vec(q), sv = String(sceneText || '').trim() ? vec(String(sceneText).slice(0, 2400)) : null, qT = new Set(low(q).match(/[\p{L}\p{N}]+/gu) || []), qG = grams(q), pastQ = PAST_QUERY_RE.test(low(q));
     const cfg = this.cfg(), rawFloor = Number(cfg.embed.floor), floor = Number.isFinite(rawFloor) ? Math.max(0, Math.min(0.9, rawFloor)) : 0.35;
     const apiQ = this.queryVec(q) || this.queryVec(String(query || '')), apiS = sv ? this.queryVec(String(sceneText).slice(0, 2400)) : null;   // 임베딩이 켜져 있으면 이 축도 그 임베딩을 따른다 (벡터는 prepare 가 채워 둔다)
@@ -697,8 +772,16 @@ export const part3: Part3 & ThisType<MemoryApi> = {
   /** 회상된 기억이 그 뒤 값이 바뀐 상태의 옛 값을 담고 있으면 "당시 기준" 꼬리표를 붙인다 (id → 안내문). 장부를 지을 때마다 다시 잰다 */
   markOutdatedRecall(memories, mem) {
     const notes = new Map<string, string>(); if (!memories.length) return notes;
+    // 그 뒤 이야기: 회상된 기억이 걸어 둔 약속 · 떡밥이 이미 풀렸으면 그 사실을 붙인다 — 붙이지 않으면 "같이 보러 가자"던 옛 장면이 아직 남은 약속처럼 읽힌다
+    const settled = (mem.pledges || []).filter(l => l.status === 'resolved' && l.resolvedTurn != null);
+    for (const m of settled.length ? memories : []) {
+      if (m.retired) continue;
+      const hit = settled.find(l => l.resolvedTurn! > (m.turn || 0) && ((l.createdTurn ?? l.created ?? l.turn) === m.turn ? overlap(m.summary, l.summary) >= 0.3 : overlap(m.summary, l.summary) >= 0.6));
+      if (hit) notes.set(m.id, `this has since been settled${hit.resolution && hit.resolution !== SETTLED_AT_SUMMARY ? `: ${hit.resolution}` : ''}`);
+    }
     const changes = mem.status.filter(s => s.prev != null && String(s.prev).length >= 2 && s.claim !== 'belief').slice(-24); if (!changes.length) return notes;   // 이전 값 이력이 있는 최근 변경만
     for (const m of memories) {
+      if (notes.has(m.id)) continue;   // 풀린 약속 꼬리표가 먼저다
       const text = low(`${m.summary || ''} ${m.quote || ''}`);
       for (const s of changes) {
         if ((m.turn || 0) >= (s.turn || 0)) continue;   // 변경 뒤의 기억은 무관
@@ -719,7 +802,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     // 삼갈 표현이 든 옛 대사는 걷어내면 말이 깨지므로 인용째로 뺀다
     const back = Math.max(0, T - 1 - (m.turn ?? T)), fresh = back <= 40 || m.pinned || (m.importance ?? 0) >= 0.8;
     const quote = withExcerpt && !(m.tags || []).includes('episode_raw') && fresh && m.quote && m.quote.length <= 160 && !(banned?.length && hasPhrase(m.quote, banned)) ? m.quote : null;
-    const dated = notes?.has(m.id) ? ` [as of then — ${notes.get(m.id)}]` : '';
+    const dated = m.retired ? ` [no longer current${m.retired.now ? ` — now: ${m.retired.now}` : ''}]` : notes?.has(m.id) ? ` [as of then — ${notes.get(m.id)}]` : '';
     const d = ages?.get(m.turn!) ?? 0, agoNote = d >= 1 ? ` · ~${ago(d)} ago in-story` : '';   // 이야기 속에서 하루 넘게 지난 기억은 얼마나 옛일인지
     const when = m.manual || m.turn == null ? 'noted' : back <= 0 ? 'this exchange' : back === 1 ? 'last exchange' : `${back} exchanges back`;   // 절대 턴 번호 대신 상대 최신성
     const core = (m.importance ?? 0) >= 0.8 || m.pinned ? ' · core' : '';   // 오래돼도 무거운 기억에는 core 표시

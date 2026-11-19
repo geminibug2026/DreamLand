@@ -2,7 +2,8 @@
 import { Btn } from '../../kit';
 import type { FormDefs } from '../../ui';
 import type { MemItem } from '../types';
-import { Chip, Del, Ib, Ico, KindBadge, Meter, None, Sec, VIS_IC, editBox, pct, safe, showSource, turnTag, useBump, type StOpen } from './parts';
+import { Chip, Del, Ib, Ico, KindBadge, Meter, None, Revive, Sec, VIS_IC, editBox, pct, safe, showSource, turnTag, useBump, type StOpen } from './parts';
+import { parsePhraseList } from '../craft';
 import { MANUAL_MAX, Mx, cut, noMap, onJump } from './viewsShared';
 import { toast } from '../../ui';
 import { t } from '../../i18n';
@@ -38,13 +39,16 @@ export function Memories({ st }: { st: StOpen }) {
   // 검색칸에 글을 치는 동안에는 목록만 갈아 끼운다 — 검색칸까지 새로 만들면 한글 조합이 끊긴다
   const drawList = useBump();
   const save = async () => { await Mx().save(mem); drawList(); };
+  // 이 대화에서 회상하지 않을 말 — 입력을 마쳤을 때(칸을 떠나거나 Enter) 적는다. 대화마다 서고에 따로 저장된다
+  const setMute = async (inp: HTMLInputElement) => { const next = parsePhraseList(inp.value).slice(0, 60); inp.value = next.join(', '); if (next.join('\u0001') === (mem.recallMute || []).join('\u0001')) return; if (next.length) mem.recallMute = next; else delete mem.recallMute; await Mx().save(mem); };
   const card = (m: MemItem) => {
     const n = no.get(m.msgId as string) ?? -1, others = (m.knowers || []).filter(k => k && k !== m.owner), hidden = (m.visibility || 'public') !== 'public', vis = m.visibility || '';
-    return <article key={m.id} className={`mm-card${m.disabled ? ' off' : ''}${m.pinned ? ' pinned' : ''}`}>
+    return <article key={m.id} className={`mm-card${m.disabled || m.retired ? ' off' : ''}${m.pinned ? ' pinned' : ''}`}>
       <header><KindBadge k={m.kind} />{n >= 0 ? <button className="mm-st-jump" type="button" title={t('memoria.memories.jumpTitle')} data-mes={n}>{`#${n}`}</button> : <span className="mm-turn" title={t('memoria.memories.noSource')}>{turnTag(mem, m)}</span>}
         <span className="mm-vis" title={`${VIS[vis] || VIS.public}${m.owner ? t('memoria.memories.ownerSuffix', { owner: m.owner }) : ''}${others.length ? t('memoria.memories.knowersSuffix', { names: others.join(', ') }) : ''}`}><Ico name={VIS_IC[vis] || 'globe'} size={13} />{hidden ? (m.owner || VIS[vis]) : null}</span>
         <span className="mm-imp" title={t('memoria.memories.importance')}><Meter v={m.importance || 0} max={1} />{pct(m.importance)}</span>{m.shown ? <span className="mm-echo" title={t('memoria.memories.echoTitle')}>{t('memoria.memories.echo', { shown: m.shown, echoes: m.echoes || 0 })}</span> : null}
-        <span className="mm-actions"><Ib name="book" title={t('memoria.memories.source')} onClick={() => showSource(st, m)} /><Ib name="pin" title={m.pinned ? t('memoria.memories.unpin') : t('memoria.memories.pin')} onClick={() => { m.pinned = !m.pinned; void save(); }} cls={m.pinned ? 'on' : ''} />
+        {m.retired ? <Revive title={t('memoria.memories.reviveTitle') + (m.retired.now ? t('memoria.memories.retiredNow', { now: m.retired.now }) : '')} onClick={() => { delete m.retired; void save(); }} /> : null}
+        <span className="mm-actions"><Ib name="book" title={t('memoria.memories.source')} onClick={() => showSource(st, m)} />{m.retired ? null : <Ib name="glass" title={t('memoria.memories.retire')} onClick={() => { m.retired = { turn: -1, now: '', manual: true }; void save(); }} />}<Ib name="pin" title={m.pinned ? t('memoria.memories.unpin') : t('memoria.memories.pin')} onClick={() => { m.pinned = !m.pinned; void save(); }} cls={m.pinned ? 'on' : ''} />
           <Ib name={m.disabled ? 'eyeoff' : 'eye'} title={m.disabled ? t('memoria.memories.enable') : t('memoria.memories.disable')} onClick={() => { m.disabled = !m.disabled; void save(); }} /><Ib name="edit" title={t('common.edit')} onClick={() => editMem(st, m)} /><Del st={st} arr="memories" x={m} what={t('memoria.memories.thisMemory')} /></span></header>
       <p className="mm-sum">{m.summary}</p>{m.quote ? <blockquote>{`"${m.quote}"`}</blockquote> : null}
       {(m.entities || []).length || (m.tags || []).length || (m.hints || []).length || m.trigger || (hidden && others.length) ? <div className="mm-chips">{hidden && others.length ? <span className="mm-chip know" title={t('memoria.memories.knowChipTitle')}><Ico name={VIS_IC[vis] || 'lock'} size={11} />{t('memoria.memories.knowChip', { names: others.join(', ') })}</span> : null}
@@ -52,14 +56,15 @@ export function Memories({ st }: { st: StOpen }) {
     </article>;
   };
   const q = String(st.q || '').toLowerCase();
-  const items = mem.memories.filter(m => (!st.kind || m.kind === st.kind) && (!st.vis || m.visibility === st.vis) && (!st.owner || m.owner === st.owner || (m.knowers || []).includes(st.owner)) && (st.only !== 'pin' || m.pinned) && (st.only !== 'off' || m.disabled) && (st.only !== 'manual' || m.manual) && (st.only !== 'ep' || (m.tags || []).includes('episode_raw')) && (st.only !== 'noep' || !(m.tags || []).includes('episode_raw'))
+  const items = mem.memories.filter(m => (!st.kind || m.kind === st.kind) && (!st.vis || m.visibility === st.vis) && (!st.owner || m.owner === st.owner || (m.knowers || []).includes(st.owner)) && (st.only !== 'pin' || m.pinned) && (st.only !== 'off' || m.disabled) && (st.only !== 'retired' || !!m.retired) && (st.only !== 'manual' || m.manual) && (st.only !== 'ep' || (m.tags || []).includes('episode_raw')) && (st.only !== 'noep' || !(m.tags || []).includes('episode_raw'))
     && (!q || `${m.summary} ${m.quote || ''} ${(m.entities || []).join(' ')} ${(m.tags || []).join(' ')} ${(m.hints || []).join(' ')} ${(m.knowers || []).join(' ')}`.toLowerCase().includes(q))).sort(sorts[st.sort] || sorts.new);
   const sel = (key: FilterKey, opts: (readonly [string, string])[], title: string, full = false) => <select className="inp auto" title={title} value={st[key] || ''} onChange={e => { st[key] = e.target.value; if (full) st.draw(); else drawList(); }}>{opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>;
   const kinds = Object.keys(KINDS).map(k => [k, mem.memories.filter(m => m.kind === k).length] as const).filter(x => x[1]);
   const people = [...new Set([...owners, ...mem.memories.flatMap(m => m.knowers || [])])];
   return <div className="mm-view" onClick={onJump(st)}><Sec title={t('memoria.memories.title')} desc={t('memoria.memories.desc')} tools={<Btn label={t('common.add')} ic="plus" title={t('memoria.memories.addBtnTitle')} onClick={() => void editMem(st)} />}>
     <div className="mm-toolbar"><input className="inp" type="search" placeholder={t('memoria.memories.searchPh')} defaultValue={st.q || ''} onChange={e => { st.q = e.target.value; drawList(); }} />{sel('kind', [['', t('memoria.memories.all')], ...Object.entries(KINDS)], t('memoria.memories.f.kind'), true)}{sel('vis', [['', t('memoria.memories.allVis')], ...Object.entries(VIS)], t('memoria.memories.vis'))}{people.length ? sel('owner', [['', t('memoria.memories.allKnowers')], ...people.map(o => [o, o] as const)], t('memoria.memories.ownerOrKnower')) : null}
-      {sel('sort', [['new', t('memoria.memories.sort.new')], ['imp', t('memoria.memories.sort.imp')], ['echo', t('memoria.memories.sort.echo')]], t('memoria.memories.sort'))}{sel('only', [['', t('memoria.memories.all')], ['pin', t('memoria.memories.only.pin')], ['manual', t('memoria.memories.only.manual')], ['off', t('memoria.memories.only.off')], ['noep', t('memoria.memories.only.noep')], ['ep', t('memoria.memories.only.ep')]], t('memoria.memories.only'))}</div>
+      {sel('sort', [['new', t('memoria.memories.sort.new')], ['imp', t('memoria.memories.sort.imp')], ['echo', t('memoria.memories.sort.echo')]], t('memoria.memories.sort'))}{sel('only', [['', t('memoria.memories.all')], ['pin', t('memoria.memories.only.pin')], ['manual', t('memoria.memories.only.manual')], ['off', t('memoria.memories.only.off')], ['retired', t('memoria.memories.only.retired')], ['noep', t('memoria.memories.only.noep')], ['ep', t('memoria.memories.only.ep')]], t('memoria.memories.only'))}</div>
+    <div className="mm-toolbar" title={t('memoria.memories.muteTitle')}><input className="inp" type="text" autoComplete="off" placeholder={t('memoria.memories.mutePh')} aria-label={t('memoria.memories.mutePh')} defaultValue={(mem.recallMute || []).join(', ')} onBlur={e => void setMute(e.currentTarget)} onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.blur(); } }} /></div>
     {kinds.length ? <div className="mm-kindbar">{kinds.map(([k, n]) => <button key={k} type="button" className={`mm-kindchip k-${safe(k)}${st.kind === k ? ' on' : ''}`} onClick={() => { st.kind = st.kind === k ? '' : k; st.draw(); }}>{KINDS[k]}<small>{String(n)}</small></button>)}</div> : null}
     <small className="hint">{t('memoria.memories.count', { total: mem.memories.length, shown: items.length }) + (items.length > 200 ? t('memoria.memories.first200') : '')}</small>
     <div className="mm-list mm-st-results">{items.slice(0, 200).map(card)}{items.length ? null : <None text={mem.memories.length ? t('memoria.memories.emptyFiltered') : t('memoria.memories.empty')} />}</div>

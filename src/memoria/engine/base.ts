@@ -8,6 +8,7 @@ import type { Freeze, PacketResult, StableOpts } from './part4';
 import type { findStatusBars } from '../scene';
 import * as MP from '../prompts';
 import { createActivityLog } from '../craft';
+import type { RecallRun } from '../craft';
 
 /** 옛 모듈의 let 변수들 (다른 파일에서 바꿀 수 있게 한 객체에 모았다) */
 export interface EngineState {
@@ -70,6 +71,7 @@ export const MEMORY_DEFAULTS: Cfg = {
   lowThink: true,           // 기억 정리 호출은 생각(추론)을 적게 — 생각 토큰도 출력 요금이다 — 안정 구간을 얼려 따로 주입하고 매 턴 바뀌는 것만 최근 대화 옆에 (프롬프트 캐시)
   stableRefreshTurns: 24,   // 고정 장부를 이 턴 수마다 새로 뜬다 (0 = 달라진 줄이 넘칠 때만)
   styleGuard: true,         // "기록은 사실만 — 문체는 지금 대화를 따른다" 지시
+  recallCooldown: true,     // 회상 쉬어가기 — 앞선 답변들에 연달아 실린 기억은 순서를 미룬다 (직접 꺼내면 그대로 나온다)
   recallQuotes: true,       // 회상에 옛 원문 대사 인용을 싣는다 (옛 말투가 돌아오면 끈다)
   voiceSamples: 2,          // 장면 속 인물마다 실을 실제 남긴 말 수 (0 = 싣지 않음)
   bannedPhrases: '',        // 삼갈 표현 · 반복 표현 (줄바꿈 · 쉼표 구분) — 장부에서 걷어낸다
@@ -371,7 +373,7 @@ export function upsertRow<V extends { value: string }>(rows: HistRow[], idx: num
   if (idx < 0) { rows.push({ id: uid(), ...rec, turn, createdTurn: turn, prev: null, prevTurn: null, msgId }); return; }
   const cur = rows[idx], createdTurn = cur.createdTurn ?? cur.turn;
   if ((cur.turn || 0) > turn) return;   // 최신성 보호: 옛 턴 재기록이 새 사실을 덮지 못한다
-  if (cur.value === rec.value) { cur.turn = turn; cur.createdTurn = createdTurn; if (msgId && cur.msgId !== msgId) cur.reMsgId = msgId; return; }
+  if (cur.value === rec.value) { cur.turn = turn; cur.createdTurn = createdTurn; if (msgId && cur.msgId !== msgId) cur.reMsgId = msgId; delete (cur as HistRow & { expired?: number | null }).expired; return; }   // 다시 적혔다는 것은 아직 살아 있는 상태라는 뜻 — "지나간 상태" 표시를 걷는다
   if (msgId ? cur.msgId === msgId : (cur.turn || 0) === turn) { rows[idx] = { id: cur.id, ...rec, turn, createdTurn, prev: cur.prev ?? null, prevTurn: cur.prevTurn ?? null, prevMsgId: cur.prevMsgId || '', msgId }; return; }   // 같은 턴 안의 중복 — 값만 갱신
   rows[idx] = { id: cur.id, ...rec, turn, createdTurn, prev: cur.value, prevTurn: cur.turn, prevMsgId: cur.reMsgId || cur.msgId || '', msgId };
 }
@@ -395,6 +397,12 @@ on('generate:end', () => { G.chatGenerating = false; G.chatGeneratingSince = 0; 
 
 export const overrides = new Map<string, string>();   // chatId → 다음 답변 한 번에만 실을 장부
 export const audits = new Map<string, Audit>();      // chatId → 직전에 실린 회상 기억 (답변에 반영됐는지 채점)
+/** 최근 답변들에 실린 회상 이력 — 대화별, 메모리에만 둔다 (새로 고치면 처음부터: 깎임은 며칠 가는 사실이 아니다) */
+export const recallRuns = new Map<string, RecallRun[]>();
+/** 이야기가 흘러가면 더는 맞지 않게 될 수 있는 종류 — 일어난 일(event) · 속마음(impression)은 지나가도 사실이다 */
+export const STANDING_KINDS = new Set(['fact', 'preference', 'promise', 'goal', 'item', 'place', 'relationship']);
+/** 요약이 닫은 서약의 풀린 경위 자리에 적는 글 (저장된 값이라 바꾸지 않는다) */
+export const SETTLED_AT_SUMMARY = '요약 때 정리됨';
 export const lasts = new Map<string, PacketResult>();       // chatId → 직전에 실제로 실린 장부
 export const pendingEmbeds = new Map<string, Promise<boolean>>();     // 떠나 있는 질의 임베딩 호출 (같은 글을 두 번 부르지 않게)
 export const queryEmbedCache = new Map<string, Float32Array>();   // 임베딩 모델 + 질의 글 → 벡터 (같은 입력으로 장부를 여러 번 지을 때 다시 부르지 않게. 늦게 도착한 것은 다음 턴에 쓰인다)

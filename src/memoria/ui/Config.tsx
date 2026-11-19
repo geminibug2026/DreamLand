@@ -95,6 +95,7 @@ export function Config({ st }: { st: St }) {
   const { LANGS, MEMORY_DEFAULTS } = memMod, Mm = M();
   const m = ensureCfg(), chat = st.chat, mem = st.mem, re = () => reinject(chat), api = m.embed.mode === 'api';
   const conns: [string, string][] = [['', t('memoria.config.model.connChat')], ...SX().conns.map(c => [c.id, `${c.name}${c.model ? ' · ' + c.model : ''}`] as [string, string])];
+  const taskConns: [string, string][] = [['', t('memoria.config.model.connSame')], ...conns.slice(1)];   // 작업별 연결 — 비우면 사서 연결 (지워진 연결을 가리키면 엔진이 사서 연결로 돌아간다)
   const langs: [string, string][] = [...Object.entries(LANGS), ...(LANGS[m.language] || !m.language ? [] : [[m.language, m.language] as [string, string]])];
   const outdated = pOutdated();
   const EMBED_KINDS = libEmbed.EMBED_KINDS;
@@ -143,6 +144,8 @@ export function Config({ st }: { st: St }) {
       }} />}>
       <Grid>
         <Sel k="@helpers.memory" label={t('memoria.config.model.conn.label')} title={t('memoria.config.model.conn.title')} opts={conns} />
+        <Sel k="@helpers.memorySummary" label={t('memoria.config.model.connSummary.label')} title={t('memoria.config.model.connSummary.title')} opts={taskConns} />
+        <Sel k="@helpers.memoryLight" label={t('memoria.config.model.connLight.label')} title={t('memoria.config.model.connLight.title')} opts={taskConns} />
         <Num k="responseTokens" label={t('memoria.config.model.responseTokens.label')} title={t('memoria.config.model.responseTokens.title')} min={256} max={65536} step={512} />
         <Num k="reasoningHeadroom" label={t('memoria.config.model.reasoningHeadroom.label')} title={t('memoria.config.model.reasoningHeadroom.title')} min={0} max={32768} step={1000} /></Grid>
       <Note>{t('memoria.config.model.note.t1')}<b>{t('memoria.config.model.note.b1')}</b>{t('memoria.config.model.note.t2')}<code>finishReason: MAX_TOKENS</code>{t('memoria.config.model.note.t3')}</Note>
@@ -201,6 +204,7 @@ export function Config({ st }: { st: St }) {
 
     <Sec title={t('memoria.config.voice.title')} desc={t('memoria.config.voice.desc')}><Grid>
       <Tog k="styleGuard" label={t('memoria.config.voice.styleGuard.label')} hint={t('memoria.config.voice.styleGuard.hint')} after={re} />
+      <Tog k="recallCooldown" label={t('memoria.config.voice.recallCooldown.label')} hint={t('memoria.config.voice.recallCooldown.hint')} after={re} />
       <Tog k="recallQuotes" label={t('memoria.config.voice.recallQuotes.label')} hint={t('memoria.config.voice.recallQuotes.hint')} after={re} />
       <Num k="voiceSamples" label={t('memoria.config.voice.voiceSamples.label')} title={t('memoria.config.voice.voiceSamples.title')} min={0} max={4} step={1} after={re} />
       <div className="mm-block mm-optset"><b>{t('memoria.config.voice.banned.title')}</b>
