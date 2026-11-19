@@ -69,7 +69,7 @@ function WheelArt({ month, phase }: { month: number; phase: number }) {
     {Array.from({ length: 8 }, (_, i) => { const [x, y] = polar(153, i * 45 + 22.5), k = (phase + i) % 8, lit = (1 - Math.cos(k / 8 * 2 * Math.PI)) / 2, r = 7, wax = k < 4;
       return <g key={i} className={i ? 'w-moon' : 'w-moon on'}><circle cx={x} cy={y} r={r} />{lit > .02 && <path d={`M${x} ${y - r}a${r} ${r} 0 0 ${wax ? 1 : 0} 0 ${2 * r}a${f(Math.abs(lit - .5) * 2 * r)} ${r} 0 0 ${(lit > .5) === wax ? 1 : 0} 0 ${-2 * r}z`} />}</g>; })}
     {Array.from({ length: 80 }, (_, i) => { const [x, y] = polar(96 + rnd() * 38, rnd() * 360); return <circle key={i} cx={f(x)} cy={f(y)} r={(.4 + rnd() * .8).toFixed(2)} opacity={(.3 + rnd() * .6).toFixed(2)} className="w-dust" />; })}
-    <path d={[45, 135, 225, 315].map((a, i) => (i ? 'L' : 'M') + polar(128, a).map(f).join(' ')).join('')} className="w-link" />
+    <circle cx="200" cy="200" r="128" className="w-link" />
   </svg>;
 }
 const Dust = ({ n, seed }: { n: number; seed: number }) => { const rnd = seeded(seed); return <svg className="hm-dust" aria-hidden="true">{Array.from({ length: n }, (_, i) => <circle key={i} cx={(rnd() * 100).toFixed(1) + '%'} cy={(rnd() * 100).toFixed(1) + '%'} r={(.4 + rnd() * .8).toFixed(2)} opacity={(.15 + rnd() * .45).toFixed(2)} />)}</svg>; };
