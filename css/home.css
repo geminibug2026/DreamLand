@@ -68,7 +68,7 @@
 .hm .hm-tabs .folder-tab.on { color: var(--text); font-weight: 600; box-shadow: inset 0 -2px var(--accent); } .hm .hm-tabs .folder-tab.over { color: var(--accent); box-shadow: inset 0 -2px var(--accent); }
 .hm-tags { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; } .hm .hm-tags button { font-size: 12.5px; color: var(--h-sub); padding: 4px 10px; border: 1px solid var(--h-hair); border-radius: 20px; } .hm .hm-tags button.on { border-color: var(--accent); color: var(--accent); }
 .hm .folder-bar { margin-top: 14px; }
-.hm-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 30px 22px; margin-top: 28px; padding: 0 6px; } .hm-grid.lg { grid-template-columns: repeat(5, 1fr); } .hm-grid.sm { grid-template-columns: repeat(8, 1fr); gap: 24px 18px; }
+.hm-grid { align-items: start; display: grid; grid-template-columns: repeat(6, 1fr); gap: 30px 22px; margin-top: 28px; padding: 0 6px; } .hm-grid.lg { grid-template-columns: repeat(5, 1fr); } .hm-grid.sm { grid-template-columns: repeat(8, 1fr); gap: 24px 18px; }
 .hm .hm-c { text-align: center; min-width: 0; display: block; }
 .hm-im { position: relative; aspect-ratio: 5 / 7; border-radius: 999px 999px 4px 4px; overflow: hidden; display: grid; place-items: center; outline: 1px solid var(--h-hair2); outline-offset: 5px; color: #ddd8ca;
   background: radial-gradient(120% 70% at 50% 42%, #1b1a16, #0c0c0b 75%) center 12% / cover no-repeat; transition: outline-color .2s, transform .25s var(--ease); }
@@ -79,7 +79,7 @@
 .hm-im .fav { position: absolute; left: 50%; bottom: 10px; z-index: 3; width: 24px; height: 24px; margin-left: -12px; border-radius: 50%; display: grid; place-items: center; background: rgba(10, 10, 9, .6); color: var(--n-gold); } .hm-im .fav path { fill: currentColor; }
 .hm-im .in-folder { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); z-index: 3; display: inline-flex; align-items: center; gap: 3px; max-width: 76%; overflow: hidden; white-space: nowrap; padding: 2px 7px; border-radius: 10px; font-size: 11px; font-style: normal; background: rgba(10, 10, 9, .6); color: #ece7da; }
 .hm-c b { display: block; margin-top: 16px; font: 500 16.5px var(--h-serif); letter-spacing: .08em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hm-c small { display: block; margin-top: 3px; font-size: 12.5px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hm-c small { display: block; min-height: 1.5em; margin-top: 3px; font-size: 12.5px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hm-c.add .hm-im { background: none; outline-style: dashed; color: var(--dim); } .hm-c.add .hm-im::before { display: none; }
 .hm-grid .folder-empty { grid-column: 1 / -1; }
 
