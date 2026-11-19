@@ -7546,5 +7546,7 @@
   "memoria.tools.index.estimateSum": " + 뒤따르는 요약 약 {n}회",
   "memoria.tools.index.canStop": "도중에 멈출 수 있습니다.",
   "chat.branch.ask": "갈라 낼 대화의 이름",
-  "chat.rename.ph": "비우면 기본 이름"
+  "chat.rename.ph": "비우면 기본 이름",
+  "chat.side.branchVia": "「{name}」의 {n}번째에서 분기",
+  "chat.side.branches": "분기 {count}"
 }

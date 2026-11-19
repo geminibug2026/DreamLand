@@ -385,3 +385,13 @@
 @media (hover: hover) and (min-width: 821px) { .room .room-edit { opacity: 0; } .room:hover .room-edit, .room.on .room-edit, .room-edit:focus-visible { opacity: .6; } .room .room-edit:hover { opacity: 1; } }
 button.top-room { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 button.top-room:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
+
+/* 분기한 방: 들여 쓰지 않고, 왼쪽의 가는 줄기에 매단다 (분기가 깊어져도 폭이 줄지 않는다) */
+.room.sub { position: relative; padding: 7px 11px 8px 30px; border-left: 0; gap: 2px; }
+.room.sub::before { content: ""; position: absolute; left: 14px; top: 0; bottom: 0; width: 1px; background: var(--ink-line); }
+.room.sub.last::before { bottom: auto; height: 17px; }
+.room.sub::after { content: ""; position: absolute; left: 14px; top: 17px; width: 10px; height: 1px; background: var(--ink-line); }
+.room.sub .room-top b { font-weight: 500; font-size: .9em; } .room.sub .room-prev { font-size: .78em; }
+.room.sub.on::before, .room.sub.on::after { background: color-mix(in srgb, var(--bg) 45%, transparent); }
+.room-kids { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; padding: 1px 5px; border: 1px solid var(--ink-line); cursor: pointer; flex: none; }
+.room-meta .room-kids::before { content: none !important; margin: 0; } .room-kids:hover { border-color: currentColor; } .room.on .room-kids { border-color: color-mix(in srgb, var(--bg) 45%, transparent); }

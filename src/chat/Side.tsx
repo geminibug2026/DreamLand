@@ -15,16 +15,18 @@ import { t } from '../i18n';
 const matcher = (term: string) => { const fr = term.split(/\s+/).filter(Boolean); return (c: Room) => { if (!fr.length) return true; const hay = [titleOf(c), roomName(c), c.preview || ''].join(' ').toLowerCase(); return fr.every(f => hay.includes(f)); }; };
 const pin = (a: Room, b: Room) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.updatedAt - a.updatedAt;
 
-function room(c: Room, max: number, depth = 0, isFlat = false) {
+/** tree: 분기한 방이면 줄기에 어떻게 매달리는지 (last = 그 묶음의 마지막 줄, via = 뿌리가 아닌 다른 분기에서 갈라졌으면 그 방 이름). kids = 접어 둘 수 있는 분기 수 */
+function room(c: Room, max: number, depth = 0, isFlat = false, tree: { last?: boolean; via?: string; kids?: number; folded?: boolean; toggle?: () => void } = {}) {
   const parent = c.parent && S.get('chats', c.parent.id), n = c.count || 0, mode = modeOf(c);
-  return <button key={c.id} className={['room', c.id === cur.chat?.id && 'on', depth > 0 && 'sub'].filter(Boolean).join(' ')} style={depth ? { marginLeft: Math.min(depth, 3) * 14 + 'px' } : undefined}
+  return <button key={c.id} className={['room', c.id === cur.chat?.id && 'on', depth > 0 && 'sub', depth > 0 && tree.last && 'last'].filter(Boolean).join(' ')}
     onClick={() => { setSide(false); go('chat', c.id); }} onContextMenu={e => { e.preventDefault(); chatMenu(e.currentTarget, c); }}>
-    <div className="room-top">{depth ? <Icon name="branch" size={13} /> : null}<i className={'room-mode ' + mode}>{mode === 'talk' ? t('chat.side.talk') : 'RP'}</i><b>{isFlat ? `${titleOf(c)} · ${roomName(c)}` : roomName(c)}</b>
+    <div className="room-top">{depth ? null : <i className={'room-mode ' + mode}>{mode === 'talk' ? t('chat.side.talk') : 'RP'}</i>}<b>{isFlat ? `${titleOf(c)} · ${roomName(c)}` : roomName(c)}</b>
       {c.temp ? <i className="room-scene">{t('chat.side.temp')}</i> : null}{c.pinned ? <i className="room-pin">✦</i> : null}{c.unread ? <i className="room-unread">{String(c.unread)}</i> : null}{c.scene?.on ? <i className="room-scene">{t('chat.side.scene')}</i> : null}<time>{ago(c.updatedAt)}</time>
       <span className="room-edit" role="button" tabIndex={0} title={t('chat.menu.rename')} aria-label={t('chat.menu.rename')} onClick={e => { e.stopPropagation(); void renameRoom(c); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); void renameRoom(c); } }}><Icon name="edit" size={13} /></span></div>
     <small className="room-prev">{c.preview || t('chat.side.noMsgs')}</small>
     <div className="room-meta"><span className="room-bar" title={t('chat.side.msgCount', { count: n })}><i style={{ width: Math.max(n ? 6 : 0, Math.round(n / Math.max(30, max) * 100)) + '%' }} /></span><span>{t('chat.side.count', { count: n })}</span><span>{t('chat.side.days', { count: daysOf(c) })}</span>
-      {(c.diary || []).length ? <span>{t('chat.side.diary', { count: (c.diary || []).length })}</span> : null}{c.parent ? <span title={parent ? t('chat.side.branchedFrom', { name: roomName(parent) }) : ''}>{t('chat.side.branchAt', { n: c.parent.at })}</span> : null}</div>
+      {(c.diary || []).length ? <span>{t('chat.side.diary', { count: (c.diary || []).length })}</span> : null}{c.parent ? <span title={parent ? t('chat.side.branchedFrom', { name: roomName(parent) }) : ''}>{tree.via ? t('chat.side.branchVia', { n: c.parent.at, name: tree.via }) : t('chat.side.branchAt', { n: c.parent.at })}</span> : null}
+      {tree.kids ? <span className="room-kids" role="button" tabIndex={0} aria-expanded={!tree.folded} onClick={e => { e.stopPropagation(); tree.toggle?.(); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); tree.toggle?.(); } }}><Icon name="branch" size={11} />{t('chat.side.branches', { count: tree.kids })}<Icon name={tree.folded ? 'right' : 'down'} size={11} /></span> : null}</div>
   </button>;
 }
 const empty = (term: string) => <p className="dim pad">{term ? t('chat.side.noResults') : t('chat.side.empty')}</p>;
@@ -49,7 +51,15 @@ function ByChar({ term }: { term: string }) {
     // 분기한 방은 원래 방 바로 아래에 들여 쓴다
     const ids = new Set(rooms.map(c => c.id)), kids = new Map<string, Room[]>();
     for (const c of rooms) if (c.parent && ids.has(c.parent.id)) { const l = kids.get(c.parent.id); if (l) l.push(c); else kids.set(c.parent.id, [c]); }
-    const walk = (c: Room, d: number): ReactNode[] => [room(c, max, d), ...(kids.get(c.id) || []).sort((a, b) => a.createdAt - b.createdAt).flatMap(x => walk(x, d + 1))];
+    // 분기가 분기를 낳아도 들여 쓰지 않는다 — 뿌리 방 아래 한 줄기에 차례로 매달고, 다른 분기에서 갈라진 것은 어디서 왔는지 적는다 (목록이 좁아지지 않게).
+    // 분기가 많으면 접어 둔다: 넷 이상이고 그 안에 지금 방이 없으면 처음엔 접혀 있다
+    const below = (c: Room): Room[] => (kids.get(c.id) || []).sort((a, b) => a.createdAt - b.createdAt).flatMap(x => [x, ...below(x)]);
+    const walk = (c: Room): ReactNode[] => {
+      const all = below(c); if (!all.length) return [room(c, max, 0)];
+      const fk = 'br:' + c.id, hereIn = all.some(x => x.id === cur.chat?.id), folded = term ? false : fold.has(fk) ? true : fold.has('+' + fk) ? false : (all.length >= 4 && !hereIn);
+      const toggle = () => { if (folded) { fold.delete(fk); fold.add('+' + fk); } else { fold.delete('+' + fk); fold.add(fk); } redraw(x => x + 1); };
+      return [room(c, max, 0, false, { kids: all.length, folded, toggle }), ...(folded ? [] : all.map((x, i) => room(x, max, 1, false, { last: i === all.length - 1, via: x.parent && x.parent.id !== c.id ? roomName(S.get('chats', x.parent.id) || x) : '' })))];
+    };
     const roots = rooms.filter(c => !c.parent || !ids.has(c.parent.id)).sort(pin);
     return <section key={k} className={['cgroup', open && 'open', here && 'here'].filter(Boolean).join(' ')}>
       <div className="cgroup-head">
@@ -58,7 +68,7 @@ function ByChar({ term }: { term: string }) {
           <div className="cgroup-text"><b>{titleOf(rooms[0])}</b><small>{t('chat.side.groupSummary', { rooms: rooms.length, msgs: total.toLocaleString(), ago: ago(newest(rooms)) })}</small></div>
           <Icon name={open ? 'down' : 'right'} size={15} /></button>
         <IconBtn ic="plus" title={t('chat.side.newRoom')} onClick={e => startMenu(e.currentTarget, rooms[0].charIds)} /></div>
-      {open ? <div className="cgroup-rooms">{roots.flatMap(c => walk(c, 0))}</div> : null}
+      {open ? <div className="cgroup-rooms">{roots.flatMap(c => walk(c))}</div> : null}
     </section>;
   })}{sorted.length ? null : empty(term)}</div>;
 }
