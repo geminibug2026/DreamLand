@@ -18,6 +18,8 @@ export interface MemItem {
   turn?: number | null; msgId?: string; av?: unknown; acv?: unknown; avm?: string; knowers?: string[];
   /** 회상 반영 채점 (received) */
   shown?: number; echoes?: number; coldRun?: number; ts?: number;
+  /** 지나간 기억 — 이야기가 흘러 더는 맞지 않게 됐다 (지우지 않는다: 평소 회상에서만 빠진다). turn = 물린 턴(0부터, 직접 물렸으면 -1), now = 지금은 어떤지, msgId = 물린 답변(사서가 기록하며 물렸을 때), manual = 직접 물림 */
+  retired?: { turn: number; now: string; msgId?: string; manual?: boolean } | null;
   [k: string]: unknown;
 }
 export interface Relation { target: string; relation: string }
@@ -35,12 +37,12 @@ export interface Bond{ id: string; from: string; to: string; log: BondStep[]; di
 /** 캐논 · 상태 줄이 함께 갖는 이력 칸 (upsertRow) */
 export interface RowHistory { id: string; turn: number; createdTurn?: number; prev?: string | null; prevTurn?: number | null; prevMsgId?: string; msgId?: string; reMsgId?: string; manual?: boolean }
 export interface CanonRow extends RowHistory { key: string; value: string; scope: string; scopeName?: string; [k: string]: unknown }
-export interface StatusRow extends RowHistory { entity: string; slot: string; value: string; claim?: string; owner?: string; [k: string]: unknown }
+export interface StatusRow extends RowHistory { entity: string; slot: string; value: string; claim?: string; owner?: string; /** 요약 때 "더는 맞지 않는다"고 본 턴 (다시 적히면 지워진다) */ expired?: number | null; [k: string]: unknown }
 export interface Pledge { id: string; kind: string; summary: string; status: string; turn?: number; msgId?: string; manual?: boolean; resolvedTurn?: number | null; resolution?: string | null; priority?: number; owner?: string; createdTurn?: number; created?: number; suggestResolved?: boolean; suggestTurn?: number | null; suggestBy?: string; resolvedBy?: string; updMsgId?: string; reMsgId?: string; prev?: { summary: string; status: string; priority?: number; owner?: string } | null; prevTurn?: number | null; sleptTurn?: number | null; [k: string]: unknown }
 /** 연대기로 합치기 전 묶음의 경계 (되살릴 때 쓴다) */
 export interface SummarySrc { from: number; to: number; text: string }
-export interface Summary { id: string; from: number; to: number; text: string; carried?: boolean; carriedFrom?: string; saga?: boolean; src?: SummarySrc[]; av?: unknown; avm?: string; [k: string]: unknown }
-export interface Item { id: string; name: string; holder?: string; meaning?: string; status?: string; disabled?: boolean; turn?: number; first?: number; updated?: number; msgId?: string; [k: string]: unknown }
+export interface Summary { id: string; from: number; to: number; text: string; carried?: boolean; carriedFrom?: string; saga?: boolean; src?: SummarySrc[]; av?: unknown; avm?: string; /** 검수에서 걸린 곳 — 원문에서 찾지 못한 숫자, 빠진 전환점(★tN) */ unverified?: string[]; [k: string]: unknown }
+export interface Item { id: string; name: string; holder?: string; meaning?: string; status?: string; disabled?: boolean; turn?: number; first?: number; updated?: number; msgId?: string; manual?: boolean; /** 요약 때 "더는 의미 없다"고 본 턴 (본문에 다시 나오면 지워진다) */ dormant?: number | null; [k: string]: unknown }
 export interface Milestone { id: string; title: string; summary?: string; participants?: string[]; turn?: number | null; msgId?: string; grade?: string; [k: string]: unknown }
 export interface DossierDoc { id: string; name?: string; title?: string; chunks: string[]; disabled?: boolean; [k: string]: unknown }
 export interface Plan { remember?: unknown[]; scene_goal?: unknown; ideas?: unknown[]; avoid?: unknown[]; tension?: unknown; /** 옛 이름 */ scene_mandate?: unknown; forbidden_moves?: unknown; next_beats?: unknown; pressure?: unknown }
@@ -55,6 +57,8 @@ export interface Mem {
   perspective?: string; perspectiveScope?: string;
   /** 자동 숨김을 처음 했을 때 한 번 알렸다 */
   hideNoticed?: boolean;
+  /** 이 대화에서 회상하지 않을 말 — 그 말이 든 기억 · 옛 묶음은 회상으로 싣지 않는다 (지우지 않는다) */
+  recallMute?: string[];
   /** 옛 서고의 이름 (chunks · chunked 로 옮긴다) */
   chapters?: Summary[]; chaptered?: number;
   [k: string]: unknown;
@@ -73,6 +77,7 @@ export interface Cfg {
   embed: { mode: string; connId: string; model: string; floor: number; kind?: string; [k: string]: unknown };
   prompts: { supervisor: string; chunk: string; arc: string; [k: string]: string };
   recallWaitSec: number; yieldToChat: boolean; watchUpdates: boolean; splitInjection: boolean; stableRefreshTurns: number; styleGuard: boolean; recallQuotes: boolean; voiceSamples: number;
+  /** 회상 쉬어가기 — 앞선 답변들에 연달아 실린 기억은 순서를 미룬다 */ recallCooldown: boolean;
   bannedPhrases: string; banInChat: boolean; banTell: boolean; threadSleepTurns: number; eraKeep: number;
   statusMode: string; statusPattern: string; statusInject: boolean; qrMode: string; replyCheck: boolean;
   bundles: Record<string, Record<string, unknown>>; bundleByOwner: Record<string, string>; activeBundle: string; bundleBase: Record<string, unknown> | null;
@@ -166,7 +171,7 @@ export interface MemoryUi {
   add(chatId: string, rec: Partial<MemItem>): Promise<unknown>;
   autoHide(chat: ChatM, msgs: Msg[]): number;
   post(chat: ChatM, msgs: Msg[], signal?: AbortSignal): Promise<unknown>;
-  received(chat: ChatM, msg: Msg): Promise<unknown>;
+  received(chat: ChatM, msg: Msg, msgs?: Msg[] | null): Promise<unknown>;
   prepare(chat: ChatM, msgs: Msg[], o?: { type?: string; background?: boolean }): unknown;
   // 막간 · 연속성 검사
   isSideMessage(msg: Msg): boolean;

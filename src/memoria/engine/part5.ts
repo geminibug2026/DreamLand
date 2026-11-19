@@ -4,10 +4,10 @@ import type { MemoryApi } from './api';
 import type { HistoryMsg } from './part3';
 import type { CastInput } from './part2';
 import type { Mem, MemItem, Msg, ChatM, Plan, Relation, Bond, BondStep, CastNote, CanonRow, StatusRow } from '../types';
-import { KINDS, LOCKS, VIS, SCOPES, NARRATOR, PUBLIC_ONLY, SHELVES, SHELF_LABELS, DOSSIER_MAX, CHARACTER_LINES_MAX, CHARACTER_GROWTH_MAX, empty, clamp01, str, list, snake, clip, low, cleanStr, toSnake, canonSlot, copy, cleanRecord, visibleProse, prose, ekey, cleanMultiline, parseLoose, fmtDays, ago, normKind, normLockKind, normVisibility, overrides, audits, lasts, freezes, PACKET_HEADER, PACKET_FOOTER } from './base';
+import { KINDS, LOCKS, VIS, SCOPES, NARRATOR, PUBLIC_ONLY, SHELVES, SHELF_LABELS, DOSSIER_MAX, CHARACTER_LINES_MAX, CHARACTER_GROWTH_MAX, empty, clamp01, str, list, snake, clip, low, cleanStr, toSnake, canonSlot, copy, cleanRecord, visibleProse, prose, ekey, cleanMultiline, parseLoose, fmtDays, ago, normKind, normLockKind, normVisibility, overrides, audits, lasts, freezes, recallRuns, PACKET_HEADER, PACKET_FOOTER } from './base';
 import * as MP from '../prompts';
 import { t as tr } from '../../i18n';
-import { stripPhrases } from '../craft';
+import { stripPhrases, pushRecallHistory } from '../craft';
 
 /** AI 에게 보내는 메시지 한 줄 (글 또는 조각 목록) */
 export interface PromptPart { type?: string; text?: string; [k: string]: unknown }
@@ -53,7 +53,7 @@ export interface CarryCount { summaries: number; memories: number; cast: number;
 interface ShelfRow {
   id?: string; msgId?: string; importance?: number; disabled?: boolean; summary?: string; text?: string; title?: string; owner?: string; status?: string; kind?: string;
   name?: string; role?: string; age?: string; occupation?: string; appearance?: string; voice?: string; aka?: string[]; core?: string; traits?: string[]; growth?: CastNote[]; lines?: CastNote[]; relationships?: Relation[]; locked?: boolean;
-  visibility?: string; knowers?: string[]; pinned?: boolean;
+  visibility?: string; knowers?: string[]; pinned?: boolean; retired?: unknown;
   entity?: string; slot?: string; value?: string; claim?: string; scopeName?: string; scope?: string; key?: string;
   priority?: number; resolution?: string | null;
   from?: string | number; to?: string | number; log?: BondStep[];
@@ -62,7 +62,7 @@ interface ShelfRow {
 }
 /** 다른 형식(memoria-export)의 서고 — 칸 이름이 다르다. 칸마다 믿을 수 없어 읽을 때 걸러 낸다 */
 interface ForeignStore {
-  memories?: { summary: string; kind: string; excerpt?: string; importance?: number; entities?: string[]; tags?: string[]; hints?: string[]; visibility: string; owner?: string; knowers?: unknown[]; pinned?: boolean; manual?: boolean; disabled?: boolean; trigger?: string }[];
+  memories?: { summary: string; kind: string; excerpt?: string; importance?: number; entities?: string[]; tags?: string[]; hints?: string[]; visibility: string; owner?: string; knowers?: unknown[]; pinned?: boolean; manual?: boolean; disabled?: boolean; trigger?: string; retired?: { now?: string } | null }[];
   worldRules?: { key: string; value?: string; scope: string; scopeName?: string }[];
   entityStates?: { entity: string; slot?: string; value?: string; claim?: string; owner?: string }[];
   locks?: { summary: string; kind?: string; status: string; resolution?: string; priority: number | string; owner?: string; manual?: boolean }[];
@@ -85,8 +85,9 @@ export interface Part5 {
   rewritePacket(chat: ChatM, history: HistoryMsg[] | null | undefined, signal?: AbortSignal, opts?: { msgs?: Msg[] }): Promise<string>;
   direct(chat: ChatM, msgs: Msg[], signal?: AbortSignal): Promise<Plan | null>;
   runSupervisor(chat: ChatM, msgs: Msg[], signal?: AbortSignal): Promise<Plan | null>;
-  received(chat: ChatM, msg: Msg): Promise<void>;
-  auditRecallEcho(chat: ChatM, msg: Msg): Promise<void>;
+  received(chat: ChatM, msg: Msg, msgs?: Msg[] | null): Promise<void>;
+  auditRecallEcho(chat: ChatM, msg: Msg, msgs?: Msg[] | null): Promise<void>;
+  noteRecallHistory(chatId: string, at: number, ids: string[]): void;
   maskBannedInPrompt(messages: PromptMsg[] | null | undefined, type?: string): number;
   dump(mem: Mem): string;
   ask(chat: ChatM | null | undefined, question: string, signal?: AbortSignal, opt?: { msgs?: Msg[] | null }): Promise<string>;
@@ -138,7 +139,7 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     const lines = String(this.renderPacket(P, {})).split('\n').filter((l: string) => l !== PACKET_HEADER && l !== PACKET_FOOTER), firstSection = lines.findIndex((l: string) => l.startsWith('## '));
     if (firstSection < 0) throw new Error(tr('memoria.engine.err.nothingToRewrite'));
     const rules = lines.slice(0, firstSection), body = lines.slice(firstSection).filter((l: string) => !l.startsWith('(End of archive.')).join('\n');
-    const reply = await this.call(chat, `${this.packetRewritePrompt(P.narratorMode)}\n\n${this.languageDirective()}`, `Archive:\n${body}`, 6000, signal);
+    const reply = await this.call(chat, `${this.packetRewritePrompt(P.narratorMode)}\n\n${this.languageDirective()}`, `Archive:\n${body}`, 6000, signal, 'light');
     if ((this.get(chat.id) || mem) !== mem || this.perspective(mem) !== perspective || this.cfg().authorizePrivate !== privateAllowed) throw new Error(tr('memoria.engine.err.draftStale'));
     const rewritten = cleanRecord(reply).replace(/<\/?memoria_\w+>/gi, '').trim();
     if (!rewritten || !/^##\s/m.test(rewritten)) throw new Error(tr('memoria.engine.err.notLedger'));
@@ -159,7 +160,7 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     let sys: (typeof cfg)['prompts']['supervisor'] = this.promptText('supervisor');
     if (P.narratorMode) sys = `${sys.replace(`- ${MP.PLAYER_CONTROL_RULE}`, '').replace(`- ${MP.PLAYER_KNOWLEDGE_RULE}`, '')}\n\nChat-specific writing mode (replaces generic player-only control and subtext-only guidance):\n${MP.NARRATOR_ROLE_GUIDANCE}\n${MP.NARRATOR_KNOWLEDGE_GUIDANCE}`;
     const ac = new AbortController(), timer = setTimeout(() => ac.abort(), 60000); signal?.addEventListener('abort', () => ac.abort());
-    try { const plan = parseLoose(await this.call(chat, sys, user, 2000, ac.signal)) as Plan | null; if (!plan || typeof plan !== 'object') return null; mem.direction = { plan, at: now(), afterId: lastAi.id }; await this.save(mem); return plan; }
+    try { const plan = parseLoose(await this.call(chat, sys, user, 2000, ac.signal, 'light')) as Plan | null; if (!plan || typeof plan !== 'object') return null; mem.direction = { plan, at: now(), afterId: lastAi.id }; await this.save(mem); return plan; }
     finally { clearTimeout(timer); }
   },
   runSupervisor(chat, msgs, signal) { return this.direct(chat, msgs, signal); },
@@ -167,9 +168,12 @@ export const part5: Part5 & ThisType<MemoryApi> = {
    * 답변이 도착했을 때: 한 번짜리 장부를 치우고, 실린 기억이 답변에 실제로 반영됐는지 채점한다.
    * 반영됨 → 중요도를 아주 조금 올린다. 네 번 연달아 무시됨 → 아주 조금 내린다 (0.8 이상의 정체성급 기억은 내리지 않는다). 한두 턴의 우연이 서고를 흔들지 못하게 폭은 작고 상 · 하한이 있다
    */
-  async received(chat, msg) {
+  async received(chat, msg, msgs) {
     overrides.delete(chat.id);
     const a = audits.get(chat.id); audits.delete(chat.id);
+    // 이 답변에 실렸던 회상을 이력에 적는다 — 다음 턴들의 "쉬어가기" 판단에 쓴다 (빈 묶음도 한 턴으로 센다). msgs: 대화 메시지 (답변의 자리를 알아야 다시 쓴 답변을 갈아 끼울 수 있다)
+    const at = a && Array.isArray(msgs) ? msgs.findIndex(m => m === msg || m.id === msg.id) : -1;
+    if (a && at >= 0) this.noteRecallHistory(chat.id, at, a.ids);
     const mem = this.get(chat.id); if (!mem || !a?.ids.length || this.cfg().audit === false || now() - a.at > 30 * 60000) return;   // 낡은 감사표는 버린다
     const reply = low(visibleProse(msgText(msg))); if (reply.length < 40) return;   // 너무 짧은 답변은 판단 근거가 못 된다
     let touched = false;
@@ -183,7 +187,9 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     }
     if (touched) await this.save(mem);
   },
-  auditRecallEcho(chat, msg) { return this.received(chat, msg); },
+  auditRecallEcho(chat, msg, msgs) { return this.received(chat, msg, msgs); },
+  /** 최근 답변들에 실린 회상 이력에 한 줄 (at = 그 답변의 메시지 자리, 0부터) */
+  noteRecallHistory(chatId, at, ids) { recallRuns.set(chatId, pushRecallHistory(recallRuns.get(chatId), at, ids)); },
   /**
    * AI 에게 보내는 최근 대화에서도 삼갈 표현을 뺀다 (설정 banInChat — 저장된 대화는 그대로). 모델은 자기 최근 답변을 보고 같은 말을 또 쓴다 — 장부에서만 빼서는 그 고리가 끊기지 않는다.
    * 이어쓰기일 때 이어 쓰는 마지막 답변은 건드리지 않는다 (글이 끊긴다). messages: 보낼 메시지 목록 (그 자리에서 고친다)
@@ -215,7 +221,7 @@ export const part5: Part5 & ThisType<MemoryApi> = {
       mem.items.length && 'ITEMS\n' + mem.items.map(i => `${i.name}${i.holder ? ` (held by ${i.holder})` : ''}${i.meaning ? `: ${i.meaning}` : ''}${i.status ? ` [${i.status}]` : ''}`).join('\n'),
       (mem.arcs.length || mem.chunks.length) && 'SUMMARIES\n' + [...mem.arcs, ...mem.chunks].map(c => `[${c.id}] (${c.carried ? 'earlier chat' : `t${c.from + 1}-t${c.to + 1}`}) ${c.text}`).join('\n'),
       mem.turns.some(t => t.digest) && 'TURN DIGESTS\n' + mem.turns.map((t, i) => t.digest && `(t${i + 1}${t.days ? `, +${ago(t.days)}` : ''}) ${t.digest}`).filter(Boolean).slice(-200).join('\n'),
-      mem.memories.length && 'MEMORIES\n' + mem.memories.map(m => `[${m.id}] (${m.manual ? 'noted' : `t${(m.turn ?? 0) + 1}`}, ${m.kind}, ${m.visibility}${m.owner ? ':' + m.owner : ''}) ${m.summary}${m.quote ? ` — "${m.quote}"` : ''}`).join('\n'),
+      mem.memories.length && 'MEMORIES\n' + mem.memories.map(m => `[${m.id}] (${m.manual ? 'noted' : `t${(m.turn ?? 0) + 1}`}, ${m.kind}, ${m.visibility}${m.owner ? ':' + m.owner : ''}) ${m.summary}${m.quote ? ` — "${m.quote}"` : ''}${m.retired ? ` [no longer current${m.retired.now ? ` — now: ${m.retired.now}` : ''}]` : ''}`).join('\n'),
     ].filter(Boolean).join('\n\n');
   },
   /** 서고에 질문 — 저장된 기억 · 요약 · 캐논만 근거로 이야기에 대한 질문에 답한다. "우리 처음 만난 게 언제였지?" 같은 질문에 턴 번호를 인용해 답한다. opt.msgs: 대화 메시지 (없으면 저장된 것을 읽는다) */
@@ -223,7 +229,7 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     const q = String(question || '').trim(); if (!q) throw new Error(tr('memoria.engine.err.emptyQuestion')); if (!chat) throw new Error(tr('memoria.engine.err.noOpenChat'));
     const mem = await this.load(chat.id); if (!Array.isArray(msgs)) msgs = await Promise.resolve(S.msgs(chat.id)).catch(() => null);
     const context = this.renderPacket(this.buildPacketSections(chat, mem, null, this.archiveQueryOpt(mem, q, msgs)), { recallLimit: 14, protectedLimit: 5 });
-    const answer = cleanRecord(await this.call(chat, MP.ASK_LIBRARIAN_PROMPT, `Archive records:\n${context}\n\nPlayer's question: ${q}`, 4000, signal));
+    const answer = cleanRecord(await this.call(chat, MP.ASK_LIBRARIAN_PROMPT, `Archive records:\n${context}\n\nPlayer's question: ${q}`, 4000, signal, 'light'));
     if (!answer) throw new Error(tr('memoria.engine.err.emptyReply'));
     return answer;
   },
@@ -257,7 +263,7 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     const mem = await this.load(chat.id); if (!Array.isArray(msgs)) msgs = await Promise.resolve(S.msgs(chat.id)).catch(() => null);
     const archive = this.buildEditorArchiveText(chat, mem, text, msgs), hist = list(log).filter(l => l && (l.text || l.content)).slice(-6);
     const historyBlock = hist.length ? `Recent conversation (for context only, e.g. "취소해" refers to the last message):\n${hist.map(l => `${l.role === 'user' ? 'User' : 'Archivist'}: ${l.text ?? l.content}${l.role !== 'user' && l.ops?.length ? ` (변경 ${l.ops.length}건 제안)` : ''}`).join('\n')}\n\n` : '';
-    const parsed = await this.callJson(chat, `${MP.EDITOR_PROMPT}\n\n${this.languageDirective()}`, `Archive:\n${archive}\n\n${historyBlock}User's correction request: ${text}`, 3000, signal) as { reply?: unknown; ops?: EditorOp[] } | null;
+    const parsed = await this.callJson(chat, `${MP.EDITOR_PROMPT}\n\n${this.languageDirective()}`, `Archive:\n${archive}\n\n${historyBlock}User's correction request: ${text}`, 3000, signal, 'light') as { reply?: unknown; ops?: EditorOp[] } | null;
     if (!parsed || typeof parsed.reply !== 'string') throw new Error(tr('memoria.engine.err.badReply'));
     return { reply: String(parsed.reply).trim(), ops: list(parsed.ops).filter(o => o && typeof o === 'object' && typeof o.op === 'string') };
   },
@@ -414,14 +420,14 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     return m;
   },
   /** 서고를 통째로 바꿔 끼운다 (복구 · 파일 복원) */
-  async replace(chatId, data) { const m = this.normalize(data, chatId); overrides.delete(chatId); audits.delete(chatId); lasts.delete(chatId); freezes.delete(chatId); await this.save(m); return m; },
+  async replace(chatId, data) { const m = this.normalize(data, chatId); overrides.delete(chatId); audits.delete(chatId); lasts.delete(chatId); freezes.delete(chatId); recallRuns.delete(chatId); await this.save(m); return m; },
   /** 두 서고의 차이 (검토 화면용) */
   diff(before, after) {
     const out: DiffChange[] = [], cmp: (x: unknown) => string = x => JSON.stringify(x, (k, v) => ['av', 'acv', 'avm', 'shown', 'echoes', 'coldRun', 'ts'].includes(k) ? undefined : v), key: (x: ShelfRow) => string = x => x.id ?? x.msgId as string;
     const say = (shelf: string, x: ShelfRow): string => {
       switch (shelf) {
         case 'cast': return [x.name, x.role && `역할: ${x.role}`, x.age && `나이: ${x.age}`, x.occupation && `직업: ${x.occupation}`, x.appearance && `외형: ${x.appearance}`, x.voice && `말투: ${x.voice}`, (x.aka || []).length && `다른 이름: ${x.aka!.join(', ')}`, x.core && `바탕: ${x.core}`, (x.traits || []).length && `성격: ${x.traits!.join(', ')}`, (x.growth || []).length && `달라진 점: ${x.growth!.map(g => g.text).join(' / ')}`, (x.lines || []).length && `남긴 말: ${x.lines!.map(l => `“${l.text}”`).join(' ')}`, (x.relationships || []).length && `관계: ${x.relationships!.map(r => `${r.target} — ${r.relation}`).join(', ')}`, (x.locked || x.disabled) && `${x.locked ? '고정 ' : ''}${x.disabled ? '쓰지 않음' : ''}`].filter(Boolean).join('\n');
-        case 'memories': return `${x.summary}\n${KINDS[x.kind as keyof typeof KINDS] || x.kind} · ${VIS[x.visibility as keyof typeof VIS] || '공개'}${x.owner ? ` (${x.owner})` : ''}${(x.knowers || []).length ? ` · 아는 사람: ${x.knowers!.join(', ')}` : ''}${x.pinned ? ' · 고정' : ''}${x.disabled ? ' · 쓰지 않음' : ''}`;
+        case 'memories': return `${x.summary}\n${KINDS[x.kind as keyof typeof KINDS] || x.kind} · ${VIS[x.visibility as keyof typeof VIS] || '공개'}${x.owner ? ` (${x.owner})` : ''}${(x.knowers || []).length ? ` · 아는 사람: ${x.knowers!.join(', ')}` : ''}${x.pinned ? ' · 고정' : ''}${x.disabled ? ' · 쓰지 않음' : ''}${x.retired ? ' · 지나감' : ''}`;
         case 'status': return `${x.entity}.${x.slot} = ${x.value}${x.claim === 'belief' ? ` (${x.owner || '누군가'}의 믿음)` : ''}`;
         case 'canon': return `${x.scopeName || x.scope || 'world'} · ${x.key} = ${x.value}`;
         case 'pledges': return `${x.summary}\n${LOCKS[x.kind as keyof typeof LOCKS] || x.kind} · ${x.status === 'resolved' ? '해결됨' : x.status === 'dormant' ? '잠듦' : '유효'} · 우선순위 ${x.priority ?? 2}${x.owner ? ` · ${x.owner}` : ''}${x.status === 'resolved' && x.resolution ? `\n풀린 경위: ${x.resolution}` : ''}`;
@@ -449,7 +455,7 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     if (payload?.type === 'memoria-export' && payload.store) {
       const st = payload.store as ForeignStore, arr: <T>(v: T[] | null | undefined) => T[] = v => Array.isArray(v) ? v : [];
       return { foreign: true, label: payload.chatId || '이전 채팅', store: { ...empty('import'),
-        memories: arr(st.memories).filter(m => m?.summary).map(m => ({ id: uid(), kind: KINDS[m.kind as keyof typeof KINDS] ? m.kind : 'fact', summary: str(m.summary), quote: str(m.excerpt), importance: clamp01(m.importance, 0.5), entities: arr(m.entities), tags: arr(m.tags), hints: arr(m.hints), visibility: VIS[m.visibility as keyof typeof VIS] ? m.visibility : 'public', owner: str(m.owner), knowers: arr(m.knowers).map(str).filter(Boolean), pinned: !!m.pinned, manual: !!m.manual, disabled: !!m.disabled, trigger: str(m.trigger) })),
+        memories: arr(st.memories).filter(m => m?.summary).map(m => ({ id: uid(), kind: KINDS[m.kind as keyof typeof KINDS] ? m.kind : 'fact', summary: str(m.summary), quote: str(m.excerpt), importance: clamp01(m.importance, 0.5), entities: arr(m.entities), tags: arr(m.tags), hints: arr(m.hints), visibility: VIS[m.visibility as keyof typeof VIS] ? m.visibility : 'public', owner: str(m.owner), knowers: arr(m.knowers).map(str).filter(Boolean), pinned: !!m.pinned, manual: !!m.manual, disabled: !!m.disabled, trigger: str(m.trigger), ...(m.retired ? { retired: { turn: -1, now: str(m.retired.now), manual: true } } : {}) })),
         canon: arr(st.worldRules).filter(r => r?.key).map(r => ({ id: uid(), scope: SCOPES.includes(r.scope) ? r.scope : 'world', scopeName: str(r.scopeName), key: snake(r.key), value: str(r.value) })) as CanonRow[],
         status: arr(st.entityStates).filter(s => s?.entity).map(s => ({ id: uid(), entity: str(s.entity), slot: snake(s.slot), value: str(s.value), claim: s.claim === 'belief' ? 'belief' : 'objective', owner: str(s.owner) })) as StatusRow[],
         pledges: arr(st.locks).filter(l => l?.summary).map((l, i) => ({ id: 'p' + (i + 1), kind: normLockKind(l.kind), summary: str(l.summary), status: ['resolved', 'dormant'].includes(l.status) ? l.status : 'active', resolution: l.status === 'resolved' ? str(l.resolution) || null : null, priority: +l.priority || 2, owner: str(l.owner), manual: !!l.manual })),
@@ -474,8 +480,8 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     for (const s of [...list(src.arcs), ...list(src.chunks)]) { if (!s?.text) continue; mem.arcs.push({ id: 'a' + uid(), from: 0, to: 0, text: cleanMultiline(s.text, 1600), carried: true, carriedFrom: label || '이전 대화' }); n.summaries++; }
     for (const m of list(src.memories)) {   // 고정/수동 기억만 인계
       if (!m?.summary || !(m.pinned || m.manual)) continue;
-      const { av, acv, avm, msgId, ...rest } = m;
-      mem.memories.push({ ...rest, id: uid(), turn: T, manual: true, kind: normKind(m.kind), visibility: normVisibility(m.visibility), tags: [...new Set([...(m.tags || []), 'carried'])] }); n.memories++;
+      const { av, acv, avm, msgId, retired, ...rest } = m;
+      mem.memories.push({ ...rest, ...(retired ? { retired: { turn: -1, now: String(retired.now || ''), manual: true } } : {}), id: uid(), turn: T, manual: true, kind: normKind(m.kind), visibility: normVisibility(m.visibility), tags: [...new Set([...(m.tags || []), 'carried'])] }); n.memories++;
     }
     for (const r of list(src.canon)) { if (!r?.key || !r?.value) continue; this.upsertWorldRule(mem, { scope: r.scope || 'session', scopeName: r.scopeName || '', key: r.key, value: r.value }, T); n.canon++; }
     for (const l of list(src.pledges)) { if (!l?.summary || l.status !== 'active') continue; this.upsertLock(mem, { kind: normLockKind(l.kind), summary: l.summary, status: 'active', priority: l.priority || 2, owner: l.owner || '' }, T); n.pledges++; }

@@ -166,9 +166,10 @@ function setup() {
   on('message:received', async (a?: { msg: Msg; chat: ChatM }) => {
     if (!a) return; const { msg, chat } = a;
     try {
-      await M.received(chat, msg);   // 1회용 수정본 폐기 · 직전 주입 기억의 반영 여부 채점
+      const msgs0 = await Promise.resolve(msgsOf(chat)).catch(() => null);   // 답변의 자리를 알아야 회상 이력(쉬어가기)을 적는다 — 못 읽어도 아래 채점은 한다
+      await M.received(chat, msg, msgs0);   // 1회용 수정본 폐기 · 직전 주입 기억의 반영 여부 채점
       const cfg = M.cfg(); if (!cfg.enabled) return;
-      const msgs = await msgsOf(chat), side = !!M.tagSideMessage?.(chat, msgs, msg) || M.isSideMessage(msg);   // 새 답변이 막간인지 가려 표시한다 — 막간은 기록도 점검도 하지 않는다
+      const msgs = msgs0 || await msgsOf(chat), side = !!M.tagSideMessage?.(chat, msgs, msg) || M.isSideMessage(msg);   // 새 답변이 막간인지 가려 표시한다 — 막간은 기록도 점검도 하지 않는다
       // 연속성 검사 — 그리팅 · 명령어로 들어온 메시지는 보지 않는다. 엔진이 기록과 같은 줄에 세워 보조 모델을 동시에 두 번 부르지 않는다
       if (cfg.replyCheck && M.checkReply && msg?.role === 'assistant' && !side && !msg.greeting && !msg.viaCommand) {
         const checking = t('memoria.feat.ev.checking'); setActivity(checking);

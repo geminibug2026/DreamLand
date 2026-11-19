@@ -330,3 +330,6 @@
 .mm-frame > *, .mm-scroll > *, .mm > * { min-width: 0; }
 .mm pre, .mm code, .mm .mm-pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
 .mm select, .mm .inp { max-width: 100%; }
+/* 지나간 기억 · 상태 · 물건의 「지나감 ↺」 배지(누르면 되살린다) · 요약 검수 표시(⚠) */
+.mm-revive { background: none; font-family: inherit; cursor: pointer; } .mm-revive:hover { border-color: var(--accent); color: var(--accent); } .mm-slot.mm-dormant .mm-slot-k { opacity: .6; }
+.mm-st-card-top small.mm-st-check { flex: none; color: var(--bad); letter-spacing: 0; cursor: help; }

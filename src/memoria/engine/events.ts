@@ -5,7 +5,7 @@ import type { PromptMsg } from './part5';
 import type { Unused } from './base';
 import { Memory } from './memory';
 import { t as tr } from '../../i18n';
-import { G, cache, visibleProse, updateTimers } from './base';
+import { G, cache, visibleProse, updateTimers, recallRuns } from './base';
 
 /** 이벤트가 실어 오는 것 */
 interface PromptReady { messages?: PromptMsg[]; type?: string }
@@ -42,5 +42,5 @@ on<MsgEvent | undefined>('message:edited', x => withMsgs(x, (chat, msgs, msg) =>
 on<MsgEvent | undefined>('message:updated', x => withMsgs(x, (chat, msgs, msg) => { if (msg) Memory.onMessageUpdated(chat, msgs, msg); emit('memory:check', { chatId: chat.id, msgId: msg?.id }); }));
 on<MsgEvent | undefined>('message:deleted', x => withMsgs(x, async (chat, msgs, msg, mem): Promise<Unused<typeof chat | typeof msg>> => { if (Memory.reconcile(mem, msgs)) await Memory.save(mem); }));
 
-on<string>('chat:deleted', id => { cache.delete(id); });
-on('data:imported', () => { cache.clear(); });   // 백업을 복원하면 옛 서고를 들고 있지 않는다
+on<string>('chat:deleted', id => { cache.delete(id); recallRuns.delete(id); });
+on('data:imported', () => { cache.clear(); recallRuns.clear(); });   // 백업을 복원하면 옛 서고를 들고 있지 않는다

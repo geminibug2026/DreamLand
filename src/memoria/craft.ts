@@ -404,13 +404,61 @@ export const THREAD_KINDS = Object.freeze(['keep_unresolved', 'loose_end', 'fore
  * 요약을 만드는 호출이 그 구간을 통째로 읽으므로, 어떤 떡밥이 풀렸는지도 그때 함께 묻는다
  * (호출을 따로 쓰지 않는다). 반환: { text: 요약 본문, closed: 닫힌 꼬리표들 }
  */
-export function splitClosedLine(raw: unknown): { text: string; closed: string[] } {
-    const closed: string[] = [];
+export function splitClosedLine(raw: unknown): { text: string; closed: string[]; stale: string[] } {
+    const closed: string[] = [], stale: string[] = [];
     const text = String(raw ?? '').replace(/^[ \t]*CLOSED[ \t]*[:：](.*)$/gim, (m: string, rest: typeof m) => {
         for (const tag of String(rest).toLowerCase().match(/\bo\d{1,2}\b/g) || []) if (!closed.includes(tag)) closed.push(tag);
         return '';
+    }).replace(/^[ \t]*STALE[ \t]*[:：](.*)$/gim, (m: string, rest: typeof m) => {
+        // "STALE: s2, m1" — 이 구간을 읽고 보니 더는 맞지 않는 상태·물건·기억 (같은 호출에 얹어 묻는다)
+        for (const tag of String(rest).toLowerCase().match(/\b[smi]\d{1,2}\b/g) || []) if (!stale.includes(tag)) stale.push(tag);
+        return '';
     }).replace(/\n{3,}/g, '\n\n').trim();
-    return { text, closed };
+    return { text, closed, stale };
+}
+
+/* ------------------------------------------------------------
+ * 회상 쉬어가기 — 같은 기억이 매 턴 되풀이해 실리지 않게
+ *
+ * 장면이 비슷하게 이어지면 검색은 매번 같은 기억을 1등으로 올린다. 모델은 장부에 실린 것을
+ * "지금 중요한 것"으로 읽으므로, 이미 지나간 물건이나 일화가 답변마다 다시 불려 나온다.
+ * 직전 몇 번의 답변에 실렸던 기억은 점수를 깎아 다른 기억에게 자리를 내주게 한다.
+ * 지우는 것이 아니라 순서만 미루는 것이라, 사용자가 그 일을 직접 꺼내면 그대로 올라온다.
+ * ------------------------------------------------------------ */
+
+/** 최근 답변 하나에 실렸던 기억 id 묶음 (at = 그 답변의 메시지 번호) */
+export interface RecallRun { at: number; ids: string[] }
+export interface CooldownOptions { before?: number; direct?: boolean; echoed?: boolean; span?: number; step?: number }
+
+/**
+ * history: 최근 답변들에 실렸던 기억 id 묶음 [{ at, ids:[...] }] (오래된 것부터)
+ * before: 이 메시지 번호보다 앞선 답변에 실린 것만 센다 — 지금 다시 쓰는 답변(스와이프·재생성)이
+ *         스스로를 깎아 같은 입력에 다른 장부가 나가는 일을 막는다.
+ * direct: 사용자의 입력이 이 기억을 직접 가리킨다 (이름·단서·낱말이 닿음) — 거의 깎지 않는다.
+ * echoed: 최근 답변이 이미 이 기억을 써먹었다 — 한 번 더 깎는다 (또 꺼낼 이유가 없다).
+ * 반환: 점수에 곱할 값 (0~1]
+ */
+export function recallCooldown(history: RecallRun[] | null | undefined, id: string, { before = Infinity, direct = false, echoed = false, span = 3, step = 0.72 }: CooldownOptions = {}): number {
+    let runs = 0;
+    for (const h of (history || []).filter(h => (h?.at ?? -1) < before).slice(-span)) {
+        if ((h.ids || []).includes(id)) runs++;
+    }
+    let factor = Math.pow(step, runs);
+    if (echoed && runs) factor *= 0.7;
+    return direct ? Math.max(factor, 0.9) : factor;
+}
+
+/** 회상 이력에 이번 답변을 적는다 — 같은 답변을 다시 쓴 것이면 갈아 끼운다. 반환: 새 이력 */
+export function pushRecallHistory(history: RecallRun[] | null | undefined, at: number, ids: string[] | null | undefined, keep = 4): RecallRun[] {
+    const next = (history || []).filter(h => h.at < at);
+    next.push({ at, ids: [...new Set(ids || [])] });
+    return next.slice(-keep);
+}
+
+/** "끝났다"는 값 — 다 나았다·빈손·없음. 잠깐 알려 주면 충분하고, 계속 싣는 것은 자리 낭비다 */
+const ENDED_VALUE_RE = /^(?:none|nothing|n\/?a|no (?:injur\w*|wounds?|longer [\w ]+)|uninjured|unharmed|healed|fully (?:healed|recovered)|recovered|hands? free|empty[- ]handed|normal|fine|calm|resolved|over|ended|gone|없음|없다|해당 ?없음|무사|멀쩡\S*|회복\S*|완치\S*|다 ?나\S*|빈손|맨손|정상|평소\S*|해소\S*|끝\S*)[.!。]?$/i;
+export function isEndedValue(value: unknown): boolean {
+    return ENDED_VALUE_RE.test(String(value ?? '').trim());
 }
 
 /**
@@ -458,4 +506,52 @@ export function stripOpenLines(text: unknown): string {
         if (!skipping) out.push(line);
     }
     return out.join('\n').trim();
+}
+
+/* ------------------------------------------------------------
+ * 요약 속 숫자 검수 — 원문에 없는 숫자는 지어낸 것이다
+ *
+ * 요약이 틀리는 자리는 대개 숫자다: 날짜, 금액, 나이, 횟수. 문장은 그럴듯한데 숫자만 바뀌어 있으면
+ * 사람도 모델도 알아채지 못하고, 그 뒤로는 그 숫자가 사실이 된다. 숫자는 글자 그대로 견줄 수 있으므로
+ * 모델을 다시 부르지 않고도 가려낼 수 있다.
+ * ------------------------------------------------------------ */
+
+/** text에 나오는 숫자 가운데 source 어디에도 없는 것 (쉼표는 무시: 1,200 = 1200) */
+export function ungroundedFigures(text: unknown, source: unknown): string[] {
+    const digits = (t: unknown): string[] => (String(t ?? '').replace(/(\d),(?=\d{3})/g, '$1').match(/\d+(?:\.\d+)?/g) || []);
+    const have = new Set(digits(source));
+    // 한 자리 숫자는 세어서 적은 것일 수 있다("두 사람" → "2명") — 두 자리 이상과 소수만 본다
+    return [...new Set(digits(text))].filter(n => n.length >= 2 && !have.has(n));
+}
+
+/* ------------------------------------------------------------
+ * 쓴 만큼 보기 — 기억을 쌓는 데 오늘 얼마나 썼는지
+ *
+ * 기억 확장의 비용은 눈에 안 보이는 곳에서 나간다. 어떤 작업이 몇 번 불렸고 얼마나 읽고 썼는지를
+ * 날짜별로 세어 두면, 묶어 기록이나 작업별 연결 같은 설정이 실제로 효과가 있었는지 볼 수 있다.
+ * 토큰 수는 글자 수로 어림한다 (한글·한자·가나는 글자당 약 1토큰, 그 밖은 4글자당 1토큰).
+ * ------------------------------------------------------------ */
+
+export interface UsageRow { calls: number; in: number; out: number }
+export interface Usage { day: string; tasks: Record<string, UsageRow> }
+
+export function roughTokens(text: unknown): number {
+    const s = String(text ?? '');
+    const wide = (s.match(/[\u1100-\u11ff\u3040-\u30ff\u3130-\u318f\u3400-\u9fff\uac00-\ud7af]/g) || []).length;
+    return Math.round(wide + (s.length - wide) / 4);
+}
+
+/** usage: { day, tasks: { record: { calls, in, out }, ... } } — 날짜가 바뀌면 새로 센다. 반환: 갱신된 usage */
+export function noteUsage(usage: Usage | null | undefined, task: string, input: unknown, output: unknown, day: string): Usage {
+    const next: Usage = usage && usage.day === day && usage.tasks && typeof usage.tasks === 'object' ? usage : { day, tasks: {} };
+    const row = next.tasks[task] || (next.tasks[task] = { calls: 0, in: 0, out: 0 });
+    row.calls += 1;
+    row.in += roughTokens(input);
+    row.out += roughTokens(output);
+    return next;
+}
+
+export function usageTotals(usage: Usage | null | undefined): UsageRow {
+    const rows = Object.entries(usage?.tasks || {});
+    return rows.reduce((a, [, r]) => ({ calls: a.calls + (+r.calls || 0), in: a.in + (+r.in || 0), out: a.out + (+r.out || 0) }), { calls: 0, in: 0, out: 0 });
 }

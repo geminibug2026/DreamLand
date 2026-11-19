@@ -26,7 +26,7 @@ export interface PulseTurn { turnIndex: number; importance?: number; summary?: s
 export interface PulseSpan { fromTurn: number; toTurn: number; level: string }
 export interface PulseOptions { spans?: PulseSpan[]; marks?: number[]; maxBars?: number }
 /** 흐름의 카드 하나 (level: 'arc' | 'chunk') */
-export interface FlowNode { id: string; level: string; fromTurn: number; toTurn: number; text: string; carried?: boolean; carriedFrom?: string; marks?: { title: string }[]; open?: boolean }
+export interface FlowNode { id: string; level: string; fromTurn: number; toTurn: number; text: string; carried?: boolean; carriedFrom?: string; marks?: { title: string }[]; open?: boolean; /** 검수에서 걸린 곳 (원문에서 찾지 못한 숫자 · 빠진 전환점 ★tN) */ unverified?: string[] }
 export interface RailOptions { dim?: Set<string>; open?: string }
 export interface TableOptions { sort?: string; desc?: boolean }
 /** 관계도의 화살표 하나 */
@@ -133,7 +133,7 @@ export function flowHtml(nodes: FlowNode[] | null | undefined): string {
             <span class="mm-st-node-dot" aria-hidden="true"></span>
             <details class="mm-st-card" data-id="${esc(n.id)}" data-level="${esc(n.level)}"${n.open ? ' open' : ''}>
                 <summary>
-                    <span class="mm-st-card-top"><span class="mm-st-tag mm-st-tag--${level}">${esc(levelLabel(level))}</span><small>${range}</small><span class="mm-actions" data-slot="acts"></span></span>
+                    <span class="mm-st-card-top"><span class="mm-st-tag mm-st-tag--${level}">${esc(levelLabel(level))}</span><small>${range}</small>${n.unverified?.length ? `<small class="mm-st-check" title="${esc(t('memoria.engine.story.checkTitle', { list: n.unverified.join(', ') }))}">⚠ ${esc(t('memoria.engine.story.check'))}</small>` : ''}<span class="mm-actions" data-slot="acts"></span></span>
                     <span class="mm-st-when">${esc(title)}</span>
                 </summary>
                 ${beats ? `<ul class="mm-st-beats">${beats}</ul>` : ''}

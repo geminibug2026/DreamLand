@@ -3,12 +3,13 @@
 import { Fragment, useEffect, useReducer, useRef, useState, type MouseEvent } from 'react';
 import { Btn } from '../../kit';
 import { confirmBox, toast } from '../../ui';
+import { usageTotals } from '../craft';
 import type { CheckpointInfo, ExportRead, Obj } from '../types';
 import type { Bond, ChatM, Mem } from '../types';
 import { Ico, None, Sec, busyBtn, chatTitle, confirmList, editBox, ensureCfg, isCur, msgsOf, persistMsgs, progressBox, review, safe, type StOpen } from './parts';
 import { Memory } from '../../lib/memory';
 import { chatApi } from '../../chat/actions';
-import { t, locale } from '../../i18n';
+import { t, locale, fmtNum, has as hasKey } from '../../i18n';
 import * as memMod from '../../lib/memory';
 import * as core from '../../lib/core';
 
@@ -35,7 +36,10 @@ export async function backfill(chat: ChatM, { from = 0, to = Infinity, includeHi
   const msgs = await msgsOf(chat), mem = await M.load(chat.id); M.reconcile(mem, msgs);
   const todo = M.pending(mem, msgs, { includeHidden, from, to });
   if (!todo.length) { const skipped = includeHidden ? 0 : M.pending(mem, msgs, { includeHidden: true, from, to }).length; return toast(skipped ? t('memoria.tools.index.noneSkipped', { count: skipped }) : t('memoria.tools.index.none')); }
-  if (!(await confirmBox(t('memoria.tools.index.ask', { count: todo.length }), t('memoria.tools.index.btn')))) return;
+  // 시작하기 전에 얼마나 들지 어림해 알려 준다 — 긴 대화를 처음 색인하면 생각보다 많이 든다
+  const est = M.estimateIndexCost(chat, mem, msgs, todo), cost = t('memoria.tools.index.estimate', { calls: fmtNum(est.calls), tokens: fmtNum(est.tokens) }) + (est.summaries ? t('memoria.tools.index.estimateSum', { n: fmtNum(est.summaries) }) : '');
+  if (!(await confirmList(t('memoria.tools.index.ask', { count: todo.length }), [cost, t('memoria.tools.index.canStop')], t('memoria.tools.index.btn')))) return;
+  M.logActivity('record', `${t('memoria.tools.index.title')} — ${cost}`);
   const pb = progressBox(t('memoria.tools.index.title')); let n = 0, failed = 0;
   try {
     for (const m of todo) { if (pb.stopped()) break; pb.set(n + 1, todo.length, t('memoria.tools.index.progress')); await M.commit(chat, msgs, m, { signal: pb.signal, force: true }); n++; if (mem.turns.find(x => x.msgId === m.id)?.failed) failed++; }
@@ -84,10 +88,16 @@ export function bible(chat: ChatM, m: Mem): string {
 
 // ════════ 사서 일지 ════════
 const ACT_IC: Record<string, string> = { check: 'check', side: 'shuffle', recall: 'search', record: 'feather', summary: 'book', defer: 'glass', ledger: 'snow', update: 'edit', bundle: 'layers', error: 'warn' };
-/** 사서 일지 — 저절로 일어난 일(회상 · 기록 · 요약 · 미룸 · 오류). 최신이 위, 60줄까지 */
+/** 오늘 서고가 쓴 양 한 줄 — 작업별 호출 수와 읽은 · 쓴 양(글자 수로 어림). 날짜가 바뀌면 새로 센다. 오늘 부른 적이 없으면 '' */
+export function usageLine(): string {
+  const u = Memory.usage?.() || null, tot = usageTotals(u); if (!u || !tot.calls) return '';
+  const by = Object.entries(u.tasks).map(([k, r]) => t('memoria.tools.usage.by', { task: hasKey('memoria.tools.usage.task.' + k) ? t('memoria.tools.usage.task.' + k) : k, n: fmtNum(r.calls) })).join(' · ');
+  return t('memoria.tools.usage.line', { calls: fmtNum(tot.calls), by, in: fmtNum(tot.in), out: fmtNum(tot.out) });
+}
+/** 사서 일지 — 저절로 일어난 일(회상 · 기록 · 요약 · 미룸 · 오류). 최신이 위, 60줄까지. 맨 위에 오늘 쓴 양 */
 export function ActivityRows() {
-  const M = Memory, rows = M.activity?.() || M.activityLog?.list?.() || [], clock = (at: number) => new Date(at).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  return rows.length ? <>{rows.slice(0, 60).map((r, i) => <div key={i} className={`mm-row mm-act a-${safe(r.kind)}`}><Ico name={ACT_IC[r.kind] || 'note'} size={14} /><span className="mm-row-text">{r.text}{r.count > 1 ? <small>{` ×${r.count}`}</small> : null}</span><small className="mm-act-at">{clock(r.at)}</small></div>)}</>
+  const used = usageLine(), M = Memory, rows = M.activity?.() || M.activityLog?.list?.() || [], clock = (at: number) => new Date(at).toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return rows.length || used ? <>{used ? <div className="mm-row mm-act a-usage"><Ico name="clock" size={14} /><span className="mm-row-text">{used}</span></div> : null}{rows.slice(0, 60).map((r, i) => <div key={i} className={`mm-row mm-act a-${safe(r.kind)}`}><Ico name={ACT_IC[r.kind] || 'note'} size={14} /><span className="mm-row-text">{r.text}{r.count > 1 ? <small>{` ×${r.count}`}</small> : null}</span><small className="mm-act-at">{clock(r.at)}</small></div>)}</>
     : <None text={t('memoria.tools.log.empty')} />;
 }
 

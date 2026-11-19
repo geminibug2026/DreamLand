@@ -8,7 +8,7 @@ import { G, NARRATOR, VOLATILE, list, low, getStringHash, canonSlot, ekey, clean
 import * as MP from '../prompts';
 import { t as tr } from '../../i18n';
 import { statusOneLine } from '../scene';
-import { hasPhrase, stripPhrases, diffStableEntries, shouldRefreeze, pickPledges, stripOpenLines } from '../craft';
+import { hasPhrase, stripPhrases, diffStableEntries, shouldRefreeze, pickPledges, stripOpenLines, isEndedValue } from '../craft';
 import type { FreezeMark, StableEntry as StableLine } from '../craft';
 
 /** 장부를 지을 때의 옵션 (회상 옵션 + 주입 옵션) */
@@ -113,16 +113,28 @@ export const part4: Part4 & ThisType<MemoryApi> = {
       if (low(s.entity) === 'scene' && (slot === 'location' || slot === 'date')) sceneAnchorTurn = Math.max(sceneAnchorTurn, s.turn || 0);
       if ((slot === 'location' || slot === 'whereabouts') && s.claim !== 'belief') moveAnchor.set(low(s.entity), Math.max(moveAnchor.get(low(s.entity)) || 0, s.turn || 0));
     }
-    const states = mem.status.filter(s => !(scene.any && low(s.entity) === 'scene' && sceneSlots.includes(low(s.slot))))
-      .filter(s => {   // 휘발성 줄(활동 · 복장 · 기분 등)은 장면이 지나거나 당사자가 자리를 옮기면 무효 — 싣지 않는다 (서고에는 남는다)
-        if (!VOLATILE.has(canonSlot(s.slot)) || s.claim === 'belief' || s.turn == null) return true;
-        if (s.turn < Math.max(sceneAnchorTurn, moveAnchor.get(low(s.entity)) || 0)) return false;
-        return T - 1 - s.turn <= 16;
-      }).slice(-10);
     // 장면 우선: 최근 메시지에 이름(다른 이름 포함)이 나온 인물을 먼저 — 인원이 많은 대화에서 "지금 장면에 있는" 인물이 상한(10명)에 잘리지 않게.
     // 사서가 적어 둔 "지금 장면에 있는 사람들"도 함께 본다 — 최근 몇 메시지에 이름이 안 불려도 자리에 있는 사람
     const sceneHay = `${inp.recentText || ''}\n${low(scene.present || '')}`;
     const inScene: (c: CastCard) => boolean = c => sceneHay.includes(low(c.name)) || (c.aka || []).some(a => a.length >= 2 && sceneHay.includes(low(a)));
+    // 상태 보드: 지금 장면과 닿는 것부터, 그다음 최근에 바뀐 것. 예전에는 저장 순서의 끝 10개를 실어 장면과 무관한 인물의 묵은 상태가 자리를 차지하고 정작 눈앞 인물의 상태가 밀려났다
+    const stateInScene = (s: StatusRow) => {
+      const name = low(s.entity); if (name === 'scene' || (name.length >= 2 && sceneHay.includes(name))) return true;
+      const card = mem.cast.find(c => ekey(c.name) === ekey(s.entity)); return !!card && inScene(card);
+    };
+    const states = mem.status.filter(s => !(scene.any && low(s.entity) === 'scene' && sceneSlots.includes(low(s.slot))))
+      .filter(s => {
+        if (s.claim === 'belief' || s.turn == null) return true;
+        const age = T - 1 - s.turn;
+        if (s.expired != null) return false;   // 요약 때 "더는 맞지 않는다"고 본 상태 — 다시 적히면 살아난다
+        if (isEndedValue(s.value) && !s.manual) return age <= 6;   // "다 나았다 · 빈손 · 없음"은 바뀐 직후에만 알려 주면 된다 — 계속 실으면 없는 것을 자꾸 떠올리게 한다
+        if (VOLATILE.has(canonSlot(s.slot))) {   // 휘발성 줄(활동 · 복장 · 기분 등)은 장면이 지나거나 당사자가 자리를 옮기면 무효 — 싣지 않는다 (서고에는 남는다)
+          if (s.turn < Math.max(sceneAnchorTurn, moveAnchor.get(low(s.entity)) || 0)) return false;
+          return age <= 16;
+        }
+        return age <= 40 || s.manual === true || stateInScene(s);   // 오래 그대로인 상태는 그 인물이 장면에 있을 때만 — 자리에 없는 사람의 옛 상태는 다시 등장할 때 돌아온다 (직접 적은 줄은 그대로 싣는다)
+      })
+      .map(s => ({ s, scene: stateInScene(s) ? 1 : 0 })).sort((a, b) => (b.scene - a.scene) || ((b.s.turn || 0) - (a.s.turn || 0))).slice(0, 12).map(x => x.s);
     const characters = mem.cast.filter(c => !c.disabled).map(c => ({ c, scene: inScene(c) ? 1 : 0 })).sort((a, b) => (b.scene - a.scene) || ((b.c.updated || 0) - (a.c.updated || 0))).slice(0, 10).map(x => ({ ...x.c, sceneNow: x.scene === 1 }));
     // 관계선: 장면에 있는 인물이 얽힌 줄을 먼저, 그다음 최근에 움직인 줄
     const sceneNames = new Set(characters.filter(c => c.sceneNow).flatMap(c => [c.name, ...(c.aka || [])]).map(ekey));
@@ -141,6 +153,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     const itemEnded: (it: Item) => boolean = it => /lost|broken|destroyed|gone|discarded|consumed|잃|부서|파괴|버림|버려|소모|사라/i.test(String(it.status || ''));
     const items = mem.items.filter(i => !i.disabled).filter(it => {
       const age = T - 1 - (it.updated ?? it.first ?? it.turn ?? -1);
+      if (it.dormant != null) return sceneHay.includes(low(it.name));   // 요약 때 "더는 의미 없다"고 본 물건은 본문에 다시 나올 때만
       if (itemEnded(it)) return age <= 12;
       return age <= 30 || sceneHay.includes(low(it.name)) || (it.holder && sceneNames.has(ekey(it.holder)));
     }).slice(-6);
@@ -160,7 +173,9 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     const storyAges = cfg.storyClock !== false ? this.storyAges(mem) : null, storyTotalDays = storyAges ? mem.turns.reduce((a, t) => a + (t.days || 0), 0) : 0;
     // 전환점 중복 제거: 이미 Turning Points 에 실린 사건과 사실상 같은 회상은 뺀다. 단, 인용이 있는 기억은 전환점에 없는 정보(원문 대사)를 담고 있으므로 남긴다
     const milestoneTexts = milestones.map(m => `${m.title || ''} ${m.summary || ''}`);
-    const publicRecallDeduped = publicRecall.filter(m => m.pinned || (m.quote && m.quote.length <= 160) || !milestoneTexts.some(t => overlap(m.summary, t) >= 0.6));
+    // 요약 중복 제거: 함께 실리는 묶음 요약(연대기보다 자세한 층)이 이미 그 턴을 다루고 내용도 담고 있으면 같은 일을 회상으로 한 번 더 싣지 않는다 — 두 번 실린 일은 모델이 "특별히 중요한 일"로 읽고 자꾸 꺼낸다
+    const chapterCovers = (m: MemItem) => m.turn != null && !m.manual && summaries.some(c => c.level === 'chunk' && !c.carried && m.turn! >= c.from && m.turn! <= c.to && overlap(m.summary, c.text) >= 0.8);
+    const publicRecallDeduped = publicRecall.filter(m => m.pinned || (m.quote && m.quote.length <= 160 && !(m.tags || []).includes('episode_raw')) || !(milestoneTexts.some(t => overlap(m.summary, t) >= 0.6) || chapterCovers(m)));
     // 장면 연출 (미리 계산해 둔 것 — 그 뒤 대화가 바뀌었으면 싣지 않는다) · 아직 묶이지 않은 최근 턴 기록 (옛 대화를 보내지 않을 때)
     const d = mem.direction, supervisorPlan = cfg.supervisor && !opt.noDirection && d?.plan && (opt.anchor == null || opt.anchor === d.afterId) ? d.plan : null;
     const recent = cfg.trim || cfg.autoHide ? mem.turns.slice(this.summaryCoveredTurn(mem)).slice(-6).filter(t => t.digest).map(t => t.digest!) : [];
@@ -240,8 +255,8 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     if (recall.length) {
       // 먼 과거 회상: 이야기 속에서 오래된 기억이 실릴 때만 다루는 법을 일러 준다
       lines.push(P.storyAges && recall.some(m => (P.storyAges!.get(m.turn!) ?? 0) >= 30)
-        ? '## Recalled Moments (relevant to now — entries marked "ago in-story" are the distant past: material for memory, comparison, or how things have changed since, never the present scene)'
-        : '## Recalled Moments (relevant to now)');
+        ? '## Recalled Moments (relevant to now — background only: most replies need none of these on the page, and a moment already brought up once is not brought up again. Entries marked "ago in-story" are the distant past, never the present scene)'
+        : '## Recalled Moments (relevant to now — background only: most replies need none of these on the page, and a moment already brought up once is not brought up again)');
       // 인용은 위쪽 회상부터 채운다 — 예산이 빠듯할 때 전부 떼는 대신 가장 잘 맞는 몇 줄만 남긴다
       recall.forEach((m, i) => lines.push(this.formatMemoryLine(m, quotesOn && i < excerptLimit, lineOpt)));
     }
@@ -266,7 +281,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
       lines.push(`## Scene Now — ${bits.join(' · ')}`);
     }
     if (stableMode) { const looks = chars.filter(c => c.sceneNow && c.appearance && !c.provisional); if (looks.length) lines.push(`(Looks of those in the scene — ${looks.map(c => `${c.name}: ${c.appearance}`).join(' | ')})`); }   // 안정 구간에서 뺀 "지금 장면에 있는 인물의 외형"
-    const states = takeLast(P.states, stateLimit);
+    const states = takeFirst(P.states, stateLimit);   // 장면에 닿는 것 · 최근 것이 앞에 온다 — 예산이 모자라면 뒤쪽(덜 급한 것)부터 뺀다
     if (states.length) {
       lines.push('## Status Board (current values)');
       // 지속 상태(부상 · 위치 · 목표)를 먼저, 장면 휘발성 상태(자세 · 복장 · 기분)를 뒤에. 인물별로 묶는다 — 같은 인물의 상태가 흩어지면 모순을 알아채기 어렵다

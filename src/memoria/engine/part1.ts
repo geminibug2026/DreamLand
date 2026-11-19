@@ -4,10 +4,11 @@ import { quickCall, tokens } from '../../lib/engine';
 import type { MemoryApi } from './api';
 import type { CommitOpts } from './part2';
 import type { Mem, Msg, ChatM, Cfg, MemCheck, Summary, Pledge, CanonRow, StatusRow } from '../types';
-import { BATCH_TOKENS, G, PROMPTS, NARRATOR, PUBLIC_ONLY, LANG_DIRECTIVES, MEMORY_DEFAULTS, SHELVES, PROMPT_KEYS, empty, cache, mesHashOf, mesHashLegacySet, turnMatches, cleanStr, getStringHash, untouchedPrompt, transformTags, visibleProse, sanitizeRecord, cleanMultiline, FOSSIL, fossilShape, parseLoose, rollbackOrDrop, statusCache, updateTimers, BUNDLE_SKIP, activityLog, CHAT_IDLE_MAX_WAIT_MS, overrides, audits, lasts, freezes, PACKET_HEADER, PACKET_FOOTER } from './base';
+import { BATCH_TOKENS, G, PROMPTS, NARRATOR, PUBLIC_ONLY, LANG_DIRECTIVES, MEMORY_DEFAULTS, SHELVES, PROMPT_KEYS, empty, cache, mesHashOf, mesHashLegacySet, turnMatches, cleanStr, getStringHash, untouchedPrompt, transformTags, visibleProse, sanitizeRecord, cleanMultiline, FOSSIL, fossilShape, parseLoose, rollbackOrDrop, statusCache, updateTimers, BUNDLE_SKIP, activityLog, CHAT_IDLE_MAX_WAIT_MS, overrides, audits, lasts, freezes, recallRuns, SETTLED_AT_SUMMARY, PACKET_HEADER, PACKET_FOOTER } from './base';
 import * as MP from '../prompts';
 import { findStatusBars, statusOneLine, isPauseDirective, isPauseMessage, verifyIssues } from '../scene';
-import { withDeadline, parsePhraseList, BUNDLE_EXCLUDED, resolveBundleName, switchBundle } from '../craft';
+import { withDeadline, parsePhraseList, BUNDLE_EXCLUDED, resolveBundleName, switchBundle, noteUsage } from '../craft';
+import type { Usage } from '../craft';
 import { t } from '../../i18n';
 
 /** waitForChatIdle 이 받는 일 이름(한국어 id) → 화면 글 키 */
@@ -17,6 +18,20 @@ const WAIT_WHAT: Record<string, string> = { '기록': 'record', '연속성 검�
 export type RawCfg = Partial<Omit<KnownKeys<Cfg>, 'fossil' | 'embed' | 'prompts'>> & { fossil?: Cfg['fossil'] | number; embed?: Partial<Cfg['embed']>; prompts?: Record<string, string>; [k: string]: unknown };
 /** 이름이 적힌 칸만 (색인 서명을 뺀다 — Omit 이 이름 있는 칸까지 지우지 않게) */
 type KnownKeys<T> = { [K in keyof T as string extends K ? never : number extends K ? never : K]: T[K] };
+/**
+ * 사서 호출의 작업 묶음 — 'record' 턴 기록(사서) · 'summary' 요약 · 연대기 · 서고 정리 · 'light' 연속성 검사 · 장면 연출 · 서고에 묻기 · 말로 고치기 같은 가벼운 판단.
+ * 받아 적기와 가벼운 판단에 같은 값의 모델을 쓸 이유가 없다 — 작업별로 연결을 달리 둘 수 있다 (S.settings.helpers.memorySummary · memoryLight, 비우면 사서 연결)
+ */
+export type CallTask = 'record' | 'summary' | 'light';
+const TASK_HELPER: Record<string, string> = { summary: 'memorySummary', light: 'memoryLight' };
+/** 오늘 쓴 양 — 브라우저에 남겨 새로 고쳐도 이어 센다 (어림값이라 서고 · 설정에는 넣지 않는다) */
+const USAGE_KEY = 'dreamland.memoria.usage';
+let usageToday: Usage | null | undefined;
+const usageDay = () => new Date().toLocaleDateString('sv-SE');   // YYYY-MM-DD (현지 날짜)
+const loadUsage = (): Usage | null => {
+  if (usageToday === undefined) { try { const u = JSON.parse(globalThis.localStorage?.getItem(USAGE_KEY) || 'null'); usageToday = u && typeof u === 'object' && typeof u.day === 'string' && u.tasks && typeof u.tasks === 'object' ? u as Usage : null; } catch { usageToday = null; } }
+  return usageToday ?? null;
+};
 /** 연속성 검사 옵션 */
 export interface CheckOpts { queued?: boolean; signal?: AbortSignal }
 /** 사서 일지의 한 줄 */
@@ -46,13 +61,15 @@ export interface Part1 {
   promptOutdated(): string[];
   resetPrompt(key: string): void;
   getStringHash: typeof getStringHash;
-  conn(chat?: ChatM | null): ReturnType<typeof S.helperConn>;
+  conn(chat?: ChatM | null, task?: CallTask): ReturnType<typeof S.helperConn>;
+  recordUsage(task: string, input: string, output: string): void;
+  usage(): Usage | null;
   busy(): number;
   languageDirective(): string;
   langLine(): string;
   tok(want: number): number;
-  call(chat: ChatM | null | undefined, system: string, user: string, maxTokens?: number, signal?: AbortSignal): Promise<string>;
-  callJson(chat: ChatM | null | undefined, system: string, user: string, maxTokens?: number, signal?: AbortSignal): Promise<ReturnType<typeof parseLoose>>;
+  call(chat: ChatM | null | undefined, system: string, user: string, maxTokens?: number, signal?: AbortSignal, task?: CallTask): Promise<string>;
+  callJson(chat: ChatM | null | undefined, system: string, user: string, maxTokens?: number, signal?: AbortSignal, task?: CallTask, note?: { replied?: boolean }): Promise<ReturnType<typeof parseLoose>>;
   enqueue<T>(fn: () => T | PromiseLike<T>): Promise<T>;
   perspective(mem?: Mem | null): string;
   isSharedPerspective(v: string | undefined): boolean;
@@ -126,7 +143,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
   },
   get: chatId => cache.get(chatId) || null,
   async save(mem) { cache.set(mem.id, mem); await DB.put('mem', mem); emit('memory', mem); },
-  async reset(chatId) { const m = empty(chatId); await this.save(m); overrides.delete(chatId); audits.delete(chatId); lasts.delete(chatId); freezes.delete(chatId); return m; },
+  async reset(chatId) { const m = empty(chatId); await this.save(m); overrides.delete(chatId); audits.delete(chatId); lasts.delete(chatId); freezes.delete(chatId); recallRuns.delete(chatId); return m; },
   cfg() {
     const s: RawCfg = S.settings.memory || {}; this.migrateSettings(s);
     const c: Cfg = { ...MEMORY_DEFAULTS, ...s, embed: { ...MEMORY_DEFAULTS.embed, ...(s.embed || {}) }, prompts: { ...MEMORY_DEFAULTS.prompts, ...(s.prompts || {}) }, fossil: fossilShape(s.fossil) };
@@ -167,19 +184,33 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     S.set({ memory: s });
   },
   getStringHash,
-  conn: chat => S.helperConn('memory', chat),
+  /** 이 작업에 쓸 연결 — 작업별로 따로 골랐고 그 연결이 아직 있으면 그것, 아니면 사서 연결(→ 보조 연결 → 대화 연결) */
+  conn(chat, task) { const own = task && TASK_HELPER[task] ? S.settings.helpers?.[TASK_HELPER[task]] : ''; return (own && S.get('conns', own)) || S.helperConn('memory', chat); },
+  /** 사서 호출 한 번을 오늘 쓴 양에 더한다 (글자 수로 어림 — 실패한 호출도 읽은 만큼은 나갔다) */
+  recordUsage(task, input, output) {
+    usageToday = noteUsage(loadUsage(), task, input, output, usageDay());
+    try { globalThis.localStorage?.setItem(USAGE_KEY, JSON.stringify(usageToday)); } catch { /* 저장 못 해도 세는 데는 지장 없다 */ }
+  },
+  /** 오늘 쓴 양 { day, tasks: { record · summary · light: { calls, in, out } } } — 오늘 것이 없으면 null */
+  usage() { const u = loadUsage(); return u && u.day === usageDay() ? u : null; },
   busy: () => G.busy,
   /** 요약 출력 언어 지시 (프롬프트 뒤에 붙인다) */
   languageDirective() { const l = this.cfg().language || 'auto'; return LANG_DIRECTIVES[l as keyof typeof LANG_DIRECTIVES] || (l && !/^(auto)$/.test(l) ? `LANGUAGE (MANDATORY): Write ALL output in ${l}. Keep quoted dialogue in its original language.` : LANG_DIRECTIVES.auto); },
   langLine() { return '\n\n' + this.languageDirective(); },
   /** 생각하는 모델은 사고에 쓴 토큰도 응답 상한을 먹는다 — 여유분을 얹되 사서 최대 응답 토큰은 넘기지 않는다 */
   tok(want) { const c = this.cfg(), head = Math.max(0, +c.reasoningHeadroom || 0); return Math.max(want, Math.min(+c.responseTokens || want, want + head)); },
-  call(chat, system, user, maxTokens, signal) { return quickCall(system, user, { maxTokens: this.tok(maxTokens || 1500), signal, conn: this.conn(chat), lowThink: this.cfg().lowThink !== false }); },
-  async callJson(chat, system, user, maxTokens, signal) {
+  /** 사서 호출. task 로 연결을 고르고(기본 'record'), 생각 적게(lowThink)는 모든 작업에 같은 설정을 쓴다 */
+  async call(chat, system, user, maxTokens, signal, task = 'record') {
+    let reply = '';
+    try { reply = await quickCall(system, user, { maxTokens: this.tok(maxTokens || 1500), signal, conn: this.conn(chat, task), lowThink: this.cfg().lowThink !== false }); return reply; }
+    finally { try { this.recordUsage(task, `${system}\n${user}`, reply); } catch { /* 세지 못해도 호출 결과는 그대로 */ } }
+  },
+  /** note.replied: 모델이 답은 했는가 (연결 오류와 "읽을 수 없는 답"을 가른다) */
+  async callJson(chat, system, user, maxTokens, signal, task = 'record', note) {
     let err = null;
     for (let attempt = 0; attempt < 3; attempt++) {   // 읽지 못한 답 · API 오류(순간 혼잡 · 속도 제한) 모두 간격을 두고 세 번까지
       if (attempt) await new Promise(r => setTimeout(r, attempt * 2500));
-      let j = null; try { j = parseLoose(await this.call(chat, system + (attempt ? '\n\nFORMAT WARNING: the previous reply could not be parsed. Respond with EXACTLY ONE minified JSON object — no code fences, no commentary, nothing before "{" or after "}".' : ''), user, maxTokens, signal)); err = null; } catch (e: any) { if (e.name === 'AbortError' || signal?.aborted) throw e; err = e; console.warn(`[장기기억] 사서 호출 실패 (${attempt + 1}/3)`, e); }
+      let j = null; try { j = parseLoose(await this.call(chat, system + (attempt ? '\n\nFORMAT WARNING: the previous reply could not be parsed. Respond with EXACTLY ONE minified JSON object — no code fences, no commentary, nothing before "{" or after "}".' : ''), user, maxTokens, signal, task)); err = null; if (note) note.replied = true; } catch (e: any) { if (e.name === 'AbortError' || signal?.aborted) throw e; err = e; console.warn(`[장기기억] 사서 호출 실패 (${attempt + 1}/3)`, e); }
       if (j) return j;
     }
     if (err) throw err;
@@ -326,6 +357,9 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     const t = mem.turns.find(x => x.msgId === msgId), at = t ? mem.turns.indexOf(t) : -1; if (t) mem.clockDays = Math.max(0, (mem.clockDays || 0) - (t.days || 0));
     const bySummary = (by: string | undefined, turn: number | null | undefined, l: Pledge) => at >= 0 && !by && !l.manual && turn === at;   // 요약이 닫은 서약 — 답변이 아니라 턴 번호로만 묶여 있다
     mem.memories = mem.memories.filter(m => m.msgId !== msgId || m.manual || m.pinned);
+    // 이 턴이 "지나간 일"로 물렸던 기억 · 상태 · 물건은 다시 살아난다 (사서가 기록하며 물린 것은 답변으로, 요약이 물린 것은 턴 번호로 묶여 있다. 직접 물린 것은 그대로)
+    for (const m of mem.memories) { const r = m.retired; if (r && !r.manual && (r.msgId ? r.msgId === msgId : at >= 0 && r.turn === at)) delete m.retired; }
+    if (at >= 0) { for (const it of mem.items) if (it.dormant === at) delete it.dormant; for (const s of mem.status) if (s.expired === at) delete s.expired; }
     for (const key of ['canon', 'status']) mem[key] = rollbackOrDrop(mem[key] as (CanonRow | StatusRow)[], msgId);
     // 그 턴에 처음 생긴 서약만 지운다 — 옛 서약이 이 턴에 다시 적혀 턴만 옮겨진 경우까지 지우면 오래 지켜 온 서약이 통째로 사라진다
     mem.pledges = mem.pledges.flatMap(l => {
@@ -337,7 +371,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
       return [l];
     });
     for (const l of mem.pledges) {
-      if (l.status === 'resolved' && (l.resolvedBy === msgId || (bySummary(l.resolvedBy, l.resolvedTurn, l) && l.resolution === '요약 때 정리됨'))) { l.status = 'active'; l.resolvedTurn = null; l.resolvedBy = ''; }   // 이 턴에서 "해소됨" 판정을 받은 서약은 다시 활성으로
+      if (l.status === 'resolved' && (l.resolvedBy === msgId || (bySummary(l.resolvedBy, l.resolvedTurn, l) && l.resolution === SETTLED_AT_SUMMARY))) { l.status = 'active'; l.resolvedTurn = null; l.resolvedBy = ''; }   // 이 턴에서 "해소됨" 판정을 받은 서약은 다시 활성으로
       if (l.suggestResolved && (l.suggestBy === msgId || (at >= 0 && !l.suggestBy && l.suggestTurn === at))) { l.suggestResolved = false; l.suggestTurn = null; l.suggestBy = ''; }
       if (l.resolution && l.status !== 'resolved') l.resolution = null;
     }
@@ -363,9 +397,11 @@ export const part1: Part1 & ThisType<MemoryApi> = {
   shiftTurns(mem, at, d) {
     const sh: (v: number) => number = v => (d < 0 ? v > at : v >= at) ? v + d : v, mv = <K extends string>(x: TurnKeys<K>, ...ks: K[]) => { for (const k of ks) if (x[k] != null) x[k] = sh(x[k]); };
     for (const k of ['memories', 'milestones'] as const) mem[k].forEach(x => mv(x, 'turn'));
+    for (const m of mem.memories) if (m.retired && !m.retired.manual && m.retired.turn >= 0) mv(m.retired, 'turn');   // 직접 물린 것(-1)은 턴 번호가 아니다
     for (const k of ['canon', 'status'] as const) mem[k].forEach(x => mv(x, 'turn', 'prevTurn', 'createdTurn'));
+    mem.status.forEach(x => mv(x, 'expired'));
     mem.pledges.forEach(x => mv(x, 'turn', 'prevTurn', 'createdTurn', 'created', 'resolvedTurn', 'suggestTurn', 'sleptTurn'));
-    mem.items.forEach(x => mv(x, 'turn', 'first', 'updated'));
+    mem.items.forEach(x => mv(x, 'turn', 'first', 'updated', 'dormant'));
     for (const c of mem.cast) { mv(c, 'first', 'updated', 'prevTurn', 'coreTurn'); for (const l of c.lines || []) if (l.msgId) mv(l, 'turn'); for (const g of c.growth || []) if (g.msgId) mv(g, 'turn'); }   // 직접 적은 줄(턴 0)은 턴 번호가 아니다
     for (const b of mem.bonds || []) for (const e of b.log || []) { mv(e, 'turn'); if (e.was) mv(e.was, 'turn'); }
     const span: (c: { from: number; to: number }) => void = c => { if (d < 0) { if (c.from > at) c.from--; if (c.to >= at) c.to--; } else { if (c.from >= at) c.from++; if (c.to >= at) c.to++; } };
@@ -486,7 +522,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     const userPrompt = `${context}\n\n<new_reply number="#${no}" by="${msg.name || char?.name || 'Character'}">\n${reply.slice(0, 8000)}\n</new_reply>`;
     let result = null;
     try {
-      const { value, timedOut } = await withDeadline(this.call(chat, MP.REPLY_CHECK_PROMPT, userPrompt, 1500, signal), 120000, null);
+      const { value, timedOut } = await withDeadline(this.call(chat, MP.REPLY_CHECK_PROMPT, userPrompt, 1500, signal, 'light'), 120000, null);
       if (timedOut) this.logActivity('error', t('memoria.engine.log.checkTimeout', { n: no })); else result = parseLoose(value);
     } catch (e: any) { if (e?.name === 'AbortError' || signal?.aborted) throw e; this.logActivity('error', t('memoria.engine.log.checkFailed', { n: no, why: e?.message || e })); }
     // 점검하는 사이 다른 답변으로 넘겼거나 고쳤으면 결과를 붙이지 않는다

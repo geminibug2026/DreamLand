@@ -95,6 +95,8 @@ export const Chip = ({ text, cls = '' }: { text: ReactNode; cls?: string }) => <
 export const KindBadge = ({ k }: { k?: string }) => <em className={`mm-kind k-${safe(k)}`}>{(k && memMod.KINDS[k] && hasKey('memoria.kindName.' + k)) ? t('memoria.kindName.' + k) : memMod.KINDS[k || ''] || String(k || '')}</em>;
 export const Meter = ({ v, max, cls = '' }: { v: number; max: number; cls?: string }) => <div className={('mm-meter ' + cls).trim()} title={`${Math.round(v)} / ${Math.round(max)}`}><i style={{ width: Math.min(100, max ? v / max * 100 : 0) + '%' }} /></div>;
 export const VIS_IC: Record<string, string> = { public: 'globe', private: 'lock', secret: 'mask' };
+/** 「지나감 ↺」 배지 — 이야기가 흘러 주입에서 빠진 기억 · 상태 · 물건에 붙는다. 누르면 되살린다 */
+export const Revive = ({ title, onClick }: { title: string; onClick: () => unknown }) => <button type="button" className="mm-tag dash mm-revive" title={title} onClick={e => { e.stopPropagation(); void onClick(); }}>{t('memoria.parts.passed')} ↺</button>;
 
 /** 지금 장면 한 줄 — 장소 · 날짜 · 시간 · 자리에 있는 사람들 · 분위기 */
 export function SceneLine({ m, sc = Memory.scene(m) }: { m: Mem; sc?: SceneNow }) {
@@ -105,8 +107,9 @@ export function SceneLine({ m, sc = Memory.scene(m) }: { m: Mem; sc?: SceneNow }
 /** 숫자 띠 + 지금 장면 (개요 맨 위) */
 export function Stats({ st }: { st: StOpen }) {
   const m = st.mem, failed = m.turns.filter(t => t.failed).length, { fmtDays } = memMod;
-  const tile = (n: ReactNode, l: string, cls?: string) => <div className={cls}><b>{String(n)}</b><span>{l}</span></div>;
-  return <div className="mm-top"><div className="mm-stats">{tile(m.turns.length, t('memoria.parts.stat.turns'))}{tile(m.memories.length, t('memoria.parts.stat.memories'))}{tile(m.cast.length, t('memoria.parts.stat.cast'))}{tile(m.pledges.filter(p => p.status === 'active').length, t('memoria.parts.stat.pledges'))}{tile(m.chunks.length + m.arcs.length, t('memoria.parts.stat.summaries'))}{tile(m.clockDays >= 1 / 24 ? fmtDays(m.clockDays) : '–', t('memoria.parts.stat.clock'))}{failed ? tile(failed, t('memoria.parts.stat.failed'), 'bad') : null}</div>
+  // 숫자 띠 — 누르면 그 탭으로 간다 (장면 패널의 숫자 띠와 같은 짝)
+  const tile = (n: ReactNode, l: string, tab: string, cls?: string) => <button type="button" className={cls} onClick={() => { st.tab = tab; st.draw(); }}><b>{String(n)}</b><span>{l}</span></button>;
+  return <div className="mm-top"><div className="mm-stats">{tile(m.turns.length, t('memoria.parts.stat.turns'), 'summaries')}{tile(m.memories.length, t('memoria.parts.stat.memories'), 'memories')}{tile(m.cast.length, t('memoria.parts.stat.cast'), 'world')}{tile(m.pledges.filter(p => p.status === 'active').length, t('memoria.parts.stat.pledges'), 'world')}{tile(m.chunks.length + m.arcs.length, t('memoria.parts.stat.summaries'), 'summaries')}{tile(m.clockDays >= 1 / 24 ? fmtDays(m.clockDays) : '–', t('memoria.parts.stat.clock'), 'summaries')}{failed ? tile(failed, t('memoria.parts.stat.failed'), 'tools', 'bad') : null}</div>
     <SceneLine m={m} /></div>;
 }
 type ArrKey = 'memories' | 'canon' | 'status' | 'pledges' | 'cast' | 'chunks' | 'arcs' | 'items' | 'milestones' | 'dossier' | 'bonds';
