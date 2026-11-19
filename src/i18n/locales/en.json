@@ -7628,5 +7628,7 @@
   "chat.branch.ask": "Name for the new branch",
   "chat.rename.ph": "Leave empty for the default name",
   "chat.side.branchVia": "From “{name}” at #{n}",
-  "chat.side.branches": "{count} branches"
+  "chat.side.branches": "{count} branches",
+  "home.lastMet": "Last met",
+  "home.recent": "Recent chats"
 }

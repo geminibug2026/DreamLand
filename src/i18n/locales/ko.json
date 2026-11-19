@@ -7548,5 +7548,7 @@
   "chat.branch.ask": "갈라 낼 대화의 이름",
   "chat.rename.ph": "비우면 기본 이름",
   "chat.side.branchVia": "「{name}」의 {n}번째에서 분기",
-  "chat.side.branches": "분기 {count}"
+  "chat.side.branches": "분기 {count}",
+  "home.lastMet": "최근에 만난 사람",
+  "home.recent": "최근 대화"
 }
