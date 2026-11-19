@@ -49,6 +49,8 @@ function folderMenu(anchor: Element, c: Char, after: () => void) {
     { label: t('home.folder.putNew'), ic: 'plus', onclick: async () => { const fo = await newFolder(); if (fo) { await moveToFolder([c.id], fo.id); after(); } } }]);
 }
 
+/** 대화방 미리보기에서 꼬리표 덩어리 · 매크로 · 기호를 걷어낸다. 남는 글이 없으면 빈 글 */
+const tidy = (v: string) => (v || '').replace(/<([A-Za-z_][\w-]*)[^>]*>[\s\S]*?<\/\1>/g, ' ').replace(/<[A-Z_]{3,}[^>]*>[\s\S]*$/, ' ').replace(/<[^>]*>?/g, ' ').replace(/\{\{[^}]*\}\}|\[[^\]]*\]|```[\s\S]*?(```|$)/g, ' ').replace(/[#*_>`◆|]+/g, ' ').replace(/\s+/g, ' ').trim();
 const firstLine = (c: Char) => (c.creatorNotes || c.personality || c.scenario || c.description || '').replace(/<[^>]+>/g, ' ').replace(/[#*_>`]/g, '').split(/\n/).map(s => s.trim()).find(Boolean)?.slice(0, 80) || '';
 const SIZES = [['lg', 'home.size.large'], ['md', 'home.size.medium'], ['sm', 'home.size.small']] as const;
 
@@ -88,12 +90,12 @@ function Stage({ picks, redraw }: { picks: Char[]; redraw: () => void }) {
       <div className="hm-acts"><Btn label={t('home.empty.migrate')} ic="folder" cls="hm-p" onClick={() => go('import')} /><Btn label={t('home.empty.importCard')} ic="import" cls="hm-o" onClick={() => void importDialog()} /><Btn label={t('home.empty.conns')} ic="plug" cls="hm-g" onClick={() => go('conns')} /></div></div>
   </div>;
   const last = S.chats.filter(x => x.charIds.includes(c.id)).sort((a, b) => b.updatedAt - a.updatedAt)[0];
-  const line = (last?.preview || firstLine(c)).slice(0, 110), days = daysTogether(c.id);
+  const days = daysTogether(c.id);
   return <div className="hm-hero"><Dust n={90} seed={5} />{wheel}
     <div className="hm-tx">{day}
       <div className="hm-lb">{t('home.lastMet')}</div><h1 className="hm-name"><InkName name={c.name} /></h1>
-      {line && <p className="hm-q">{line}</p>}
-      <div className="hm-mt">{[last?.name, last && fmtTime(last.updatedAt), days ? t('together.badge', { days }) : ''].filter(Boolean).join(' · ')}</div>
+      {c.tags.length ? <div className="hm-tg">{c.tags.slice(0, 4).map(x => <span key={x}>#{x}</span>)}</div> : null}
+      <div className="hm-mt">{[last && fmtTime(last.updatedAt), days ? t('together.badge', { days }) : ''].filter(Boolean).join(' · ')}</div>
       <div className="hm-acts">
         {last && <Btn label={t('home.continue')} ic="play" cls="hm-p" onClick={() => go('chat', last.id)} />}
         <Btn label={t('home.newChat')} ic="chat" cls="hm-o" onClick={e => startMenu(e.currentTarget, [c.id])} />
@@ -173,7 +175,7 @@ function Home() {
         return <button key={c.id} className={'hm-th' + (i ? '' : ' on')} onClick={() => go('chat', c.id)}>
           <time>{fmtTime(c.updatedAt)}</time>
           <div className="hm-pt" style={artStyle(first)}>{first ? !first.avatar && <Emblem o={first} mini /> : <span>?</span>}</div>
-          <div className="hm-tt"><b>{chars.map(x => x.name).join(', ') || t('home.deletedChar')}</b><span>{c.name}</span><p>{c.preview || t('home.newChat')}</p></div>
+          <div className="hm-tt"><b>{chars.map(x => x.name).join(', ') || t('home.deletedChar')}</b><span>{c.name}</span><p>{tidy(c.preview) || t('home.newChat')}</p></div>
         </button>;
       })}</div></div> : null}
     <div>
