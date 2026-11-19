@@ -205,11 +205,20 @@ export async function swipe(m: Msg, dir: number) {
   m.sw = n; rewindState(); await save(); redraw(m); emit('message:swiped', { chat: cur.chat, msg: m, msgs: cur.msgs });
 }
 const copy = <T,>(o: T): T => { try { return structuredClone(o); } catch { return JSON.parse(JSON.stringify(o)) as T; } };
+/** 대화방 이름 바꾸기 (곁 목록 · 위쪽 제목 · 메뉴가 함께 쓴다). 비우면 기본 이름으로 돌아간다 */
+export async function renameRoom(c: Room) {
+  const v = await promptBox(t('chat.menu.renamePrompt'), c.name || '', { placeholder: t('chat.rename.ph') });
+  if (v === null) return;
+  c.name = v.trim().slice(0, 80); await S.save('chats', c, true); drawSide(); if (c.id === cur.chat?.id) drawTop();
+}
 export async function branch(idx: number) {
   const c = cur.chat!;
   try {
     const n = S.chats.filter(x => x.parent?.id === c.id).length + 1;
-    const chat = newChat({ ...copy(c), id: uid(), name: t('chat.branch.name', { room: roomName(c), n }), createdAt: now(), src: '', pinned: false, parent: { id: c.id, at: idx + 1 }, diary: copy((c.diary || []).filter(d => (d.to || 0) <= idx + 1)), diaryAt: Math.min(c.diaryAt || 0, idx + 1) });
+    // 갈라 낼 방의 이름을 먼저 묻는다 (기본 이름이 적혀 있고, 취소하면 갈라 내지 않는다)
+    const asked = await promptBox(t('chat.branch.ask'), t('chat.branch.name', { room: roomName(c), n })); if (asked === null) return;
+    const branchName = asked.trim().slice(0, 80) || t('chat.branch.name', { room: roomName(c), n });
+    const chat = newChat({ ...copy(c), id: uid(), name: branchName, createdAt: now(), src: '', pinned: false, parent: { id: c.id, at: idx + 1 }, diary: copy((c.diary || []).filter(d => (d.to || 0) <= idx + 1)), diaryAt: Math.min(c.diaryAt || 0, idx + 1) });
     const list = copy(cur.msgs.slice(0, idx + 1));
     Live.rewind(chat, list); syncScene(chat, list); delete chat.owed; chat.later = [];
     // 삽화는 대화방마다 따로 보관하므로 새 방 몫으로 복사한다

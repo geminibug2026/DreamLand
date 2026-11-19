@@ -2,7 +2,7 @@
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Avatar, Icon, IconBtn } from '../kit';
 import { cur, ui, useCh } from './store';
-import { ago, charsOf, daysOf, drawSide, groupKey, modeOf, roomName, setSide, titleOf } from './actions';
+import { ago, charsOf, daysOf, drawSide, groupKey, modeOf, renameRoom, roomName, setSide, titleOf } from './actions';
 import { usePaged } from '../ui/Pager';
 import { chatMenu, groupDialog } from './menus';
 import type { Room } from './types';
@@ -20,7 +20,8 @@ function room(c: Room, max: number, depth = 0, isFlat = false) {
   return <button key={c.id} className={['room', c.id === cur.chat?.id && 'on', depth > 0 && 'sub'].filter(Boolean).join(' ')} style={depth ? { marginLeft: Math.min(depth, 3) * 14 + 'px' } : undefined}
     onClick={() => { setSide(false); go('chat', c.id); }} onContextMenu={e => { e.preventDefault(); chatMenu(e.currentTarget, c); }}>
     <div className="room-top">{depth ? <Icon name="branch" size={13} /> : null}<i className={'room-mode ' + mode}>{mode === 'talk' ? t('chat.side.talk') : 'RP'}</i><b>{isFlat ? `${titleOf(c)} · ${roomName(c)}` : roomName(c)}</b>
-      {c.temp ? <i className="room-scene">{t('chat.side.temp')}</i> : null}{c.pinned ? <i className="room-pin">✦</i> : null}{c.unread ? <i className="room-unread">{String(c.unread)}</i> : null}{c.scene?.on ? <i className="room-scene">{t('chat.side.scene')}</i> : null}<time>{ago(c.updatedAt)}</time></div>
+      {c.temp ? <i className="room-scene">{t('chat.side.temp')}</i> : null}{c.pinned ? <i className="room-pin">✦</i> : null}{c.unread ? <i className="room-unread">{String(c.unread)}</i> : null}{c.scene?.on ? <i className="room-scene">{t('chat.side.scene')}</i> : null}<time>{ago(c.updatedAt)}</time>
+      <span className="room-edit" role="button" tabIndex={0} title={t('chat.menu.rename')} aria-label={t('chat.menu.rename')} onClick={e => { e.stopPropagation(); void renameRoom(c); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); void renameRoom(c); } }}><Icon name="edit" size={13} /></span></div>
     <small className="room-prev">{c.preview || t('chat.side.noMsgs')}</small>
     <div className="room-meta"><span className="room-bar" title={t('chat.side.msgCount', { count: n })}><i style={{ width: Math.max(n ? 6 : 0, Math.round(n / Math.max(30, max) * 100)) + '%' }} /></span><span>{t('chat.side.count', { count: n })}</span><span>{t('chat.side.days', { count: daysOf(c) })}</span>
       {(c.diary || []).length ? <span>{t('chat.side.diary', { count: (c.diary || []).length })}</span> : null}{c.parent ? <span title={parent ? t('chat.side.branchedFrom', { name: roomName(parent) }) : ''}>{t('chat.side.branchAt', { n: c.parent.at })}</span> : null}</div>
