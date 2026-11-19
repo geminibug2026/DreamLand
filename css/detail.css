@@ -378,3 +378,10 @@
   .stats-table th:first-child, .stats-table td:first-child { max-width: 6.500em; }
   .stats-top b { font-size: 1.15em; }
 }
+
+/* 대화방 이름 바꾸기: 곁 목록의 연필, 위쪽 제목의 방 이름 */
+.room-edit { flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; margin: -4px -4px -4px 0; color: inherit; opacity: .45; cursor: pointer; border-radius: 2px; }
+.room-edit:hover, .room-edit:focus-visible { opacity: 1; background: color-mix(in srgb, currentColor 14%, transparent); outline: none; }
+@media (hover: hover) and (min-width: 821px) { .room .room-edit { opacity: 0; } .room:hover .room-edit, .room.on .room-edit, .room-edit:focus-visible { opacity: .6; } .room .room-edit:hover { opacity: 1; } }
+button.top-room { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+button.top-room:hover { text-decoration: underline dotted; text-underline-offset: 3px; }

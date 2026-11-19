@@ -3,7 +3,7 @@ import { memo, useEffect } from 'react';
 import { Avatar, Emblem, Icon, IconBtn, InkName, Moon, artStyle, tintRef } from '../kit';
 import { menu, openModal, toast } from '../ui';
 import { cur, ui, useCh } from './store';
-import { armAuto, charsOf, daysOf, drawMain, generate, modeOf, presenceOf, roomName, setDrawer, setSide, titleOf } from './actions';
+import { armAuto, charsOf, daysOf, drawMain, generate, modeOf, presenceOf, renameRoom, roomName, setDrawer, setSide, titleOf } from './actions';
 import { chatMenu, findInChat, meItems, presItems } from './menus';
 import { inspector } from './Inspector';
 import { firstMet, togetherOf } from '../lib/together';
@@ -46,8 +46,8 @@ export const Top = memo(function Top() {
       {p0 ? <div className="top-sub">{branchBtn}
         <button type="button" className="top-pres" title={t('chat.top.pres')} onClick={e => menu(e.currentTarget, presItems(c, chars))}>{chars.slice(0, 3).map(ch => <i key={ch.id} className={'presence ' + presenceOf(c, ch).status} />)}<span>{[chars.length > 1 ? t('chat.top.people', { count: chars.length }) : (p0.activity || STATUS[p0.status]), label].filter(Boolean).join(' · ')}</span></button>
         {tg ? <span className={'top-days' + (tg.mark ? ' mark' : '')} title={t('together.tip', { days: tg.days, date: new Date(firstMet(tg.charId)).toLocaleDateString() })}>{tg.mark ? '✦ ' : ''}{t('together.badge', { days: tg.days })}</span> : null}
-        <span className="top-room">{t('chat.top.roomCount', { room: roomName(c), count: cur.msgs.length })}</span></div>
-        : <small className="top-meta">{branchBtn}{talk && label ? <span className="top-clock">{label}</span> : null}{t('chat.top.roomCountConn', { room: roomName(c), count: cur.msgs.length, conn: connText })}</small>}</div>
+        <button type="button" className="top-room" title={t('chat.menu.rename')} onClick={() => void renameRoom(c)}>{t('chat.top.roomCount', { room: roomName(c), count: cur.msgs.length })}</button></div>
+        : <small className="top-meta">{branchBtn}{talk && label ? <span className="top-clock">{label}</span> : null}<button type="button" className="top-room" title={t('chat.menu.rename')} onClick={() => void renameRoom(c)}>{t('chat.top.roomCountConn', { room: roomName(c), count: cur.msgs.length, conn: connText })}</button></small>}</div>
     <Status /><Gauge />
     {u ? <button type="button" className={`me-btn top-wide is-${u.status}`} title={u.auto ? t('chat.top.meAuto', { status: u.label }) : t('chat.top.me', { status: u.label })} onClick={e => menu(e.currentTarget, meItems())}><i /><span>{t('chat.top.meShort')}</span></button> : null}
     <div className="mode-switch top-wide" title={t('chat.top.modeSwitch')}>{([['rp', 'RP'], ['talk', t('chat.side.talk')]] as const).map(([k, l]) => <button key={k} className={modeOf(c) === k && !gaming ? 'on' : undefined} onClick={() => void setMode(k)}>{l}</button>)}<button className={gaming ? 'on' : undefined} onClick={() => { if (cur.busy) return toast(t('chat.top.busyMode')); emit('game:enter', c); }}>{t('game.mode')}</button></div>

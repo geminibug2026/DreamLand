@@ -7544,5 +7544,7 @@
   "memoria.tools.usage.task.light": "轻量任务",
   "memoria.tools.index.estimate": "馆员调用约 {calls} 次，读入约 {tokens} token（按字数估算）",
   "memoria.tools.index.estimateSum": " + 随后的总结约 {n} 次",
-  "memoria.tools.index.canStop": "中途可以停止。"
+  "memoria.tools.index.canStop": "中途可以停止。",
+  "chat.branch.ask": "新分支的名称",
+  "chat.rename.ph": "留空则使用默认名称"
 }

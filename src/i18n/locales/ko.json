@@ -7544,5 +7544,7 @@
   "memoria.tools.usage.task.light": "가벼운 작업",
   "memoria.tools.index.estimate": "사서 호출 약 {calls}회, 읽을 양 약 {tokens}토큰 (글자 수로 어림)",
   "memoria.tools.index.estimateSum": " + 뒤따르는 요약 약 {n}회",
-  "memoria.tools.index.canStop": "도중에 멈출 수 있습니다."
+  "memoria.tools.index.canStop": "도중에 멈출 수 있습니다.",
+  "chat.branch.ask": "갈라 낼 대화의 이름",
+  "chat.rename.ph": "비우면 기본 이름"
 }

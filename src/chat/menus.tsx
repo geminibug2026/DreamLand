@@ -3,7 +3,7 @@ import { editSchedule } from '../schedule/Editor';
 import { useReducer, useState } from 'react';
 import { charPicker, confirmBox, menu, openModal, promptBox, toast, type MenuItem, type ModalHandle } from '../ui';
 import { cur, ui } from './store';
-import { charsOf, drawMain, drawSide, drawTop, jumpTo, modeOf, presenceOf, titleOf } from './actions';
+import { charsOf, drawMain, drawSide, jumpTo, modeOf, presenceOf, renameRoom, titleOf } from './actions';
 import { inspector } from './Inspector';
 import { liveSettings } from './LiveSettings';
 import type { Cast, ClockCfg, Room } from './types';
@@ -53,7 +53,7 @@ export function chatMenu(anchor: Element, c: Room, top: TopHooks | null = null) 
         ...(c.folder ? [{ label: t('chat.menu.folderNone'), ic: 'x', onclick: () => void move('') }] : [])]);
     } },
     ...(c.temp ? [{ label: t('chat.menu.keepTemp'), ic: 'check', hint: t('chat.menu.keepTempHint'), onclick: async () => { delete c.temp; await S.save('chats', c, true); drawSide(); toast(t('chat.menu.keptTemp'), 'ok'); } }] : []),
-    { label: t('chat.menu.rename'), ic: 'edit', onclick: async () => { const v = await promptBox(t('chat.menu.renamePrompt'), c.name); if (v !== null) { c.name = v; await S.save('chats', c, true); drawSide(); if (c.id === cur.chat?.id) drawTop(); } } },
+    { label: t('chat.menu.rename'), ic: 'edit', onclick: () => void renameRoom(c) },
     { label: t('chat.menu.exportJsonl'), ic: 'import', hint: t('chat.menu.stCompat'), onclick: async () => { const ms = await S.msgs(c.id); download(`${titleOf(c)}-${c.id}.jsonl`, chatToStJsonl(c, ms, S.persona(c).name, charsOf(c)[0]?.name || 'Character'), 'application/jsonl'); } },
     { label: t('chat.menu.exportMd'), ic: 'note', onclick: async () => {   // 읽기 좋은 문서(Markdown): 제목 · 날짜 · 화자별 문단. 숨긴 메시지는 뺀다
       const ms = await S.msgs(c.id), me = S.persona(c).name, day = (ts: number) => new Date(ts).toLocaleDateString();
