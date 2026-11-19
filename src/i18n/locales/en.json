@@ -7626,5 +7626,7 @@
   "memoria.tools.index.estimateSum": " + about {n} summary calls afterwards",
   "memoria.tools.index.canStop": "You can stop at any time.",
   "chat.branch.ask": "Name for the new branch",
-  "chat.rename.ph": "Leave empty for the default name"
+  "chat.rename.ph": "Leave empty for the default name",
+  "chat.side.branchVia": "From “{name}” at #{n}",
+  "chat.side.branches": "{count} branches"
 }
