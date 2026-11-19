@@ -51,7 +51,6 @@ function folderMenu(anchor: Element, c: Char, after: () => void) {
 
 /** 대화방 미리보기에서 꼬리표 덩어리 · 매크로 · 기호를 걷어낸다. 남는 글이 없으면 빈 글 */
 const tidy = (v: string) => (v || '').replace(/<([A-Za-z_][\w-]*)[^>]*>[\s\S]*?<\/\1>/g, ' ').replace(/<[A-Z_]{3,}[^>]*>[\s\S]*$/, ' ').replace(/<[^>]*>?/g, ' ').replace(/\{\{[^}]*\}\}|\[[^\]]*\]|```[\s\S]*?(```|$)/g, ' ').replace(/[#*_>`◆|]+/g, ' ').replace(/\s+/g, ' ').trim();
-const firstLine = (c: Char) => (c.creatorNotes || c.personality || c.scenario || c.description || '').replace(/<[^>]+>/g, ' ').replace(/[#*_>`]/g, '').split(/\n/).map(s => s.trim()).find(Boolean)?.slice(0, 80) || '';
 const SIZES = [['lg', 'home.size.large'], ['md', 'home.size.medium'], ['sm', 'home.size.small']] as const;
 
 /** [격자 클래스, 이름 키] — 설정에 저장된 번호 그대로 */
@@ -185,7 +184,7 @@ function Home() {
         <IconBtn ic="more" cls="hm-line" title={t('home.bulk.title')} onClick={e => menu(e.currentTarget, [
           { label: t('common.import'), ic: 'import', onclick: () => void importDialog() },
           { label: t('home.stats.title'), ic: 'sparkle', onclick: showStats },
-          { label: t('home.bulk.export'), ic: 'import', onclick: () => charPicker({ title: t('home.bulk.export'), selected: [], onDone: async ids => { if (!ids.length) return; const n = await exportChars(ids); toast(t('home.bulk.exported', { count: n }), 'ok'); } }), hint: t('home.bulk.exportHint') },
+          { label: t('home.bulk.export'), ic: 'import', onclick: () => charPicker({ title: t('home.bulk.export'), selected: [], onDone: async ids => { if (!ids.length) return; const n = await exportChars(ids); toast(t('home.bulk.exported', { count: n }), 'ok'); } }) },
           { label: t('home.bulk.delete'), ic: 'trash', danger: true, onclick: () => charPicker({ title: t('home.bulk.delete'), selected: [], onDone: async ids => {
             if (!ids.length) return; const rooms = chatsOnlyOf(ids).length;
             if (!(await confirmBox(t('home.bulk.deleteConfirm', { count: ids.length, rooms }), t('common.delete'), true))) return;
@@ -207,7 +206,7 @@ function Home() {
           onDragStart={e => { e.dataTransfer.setData('text/dreamland-char', c.id); e.dataTransfer.effectAllowed = 'move'; }}
           onClick={() => charSheet(c)} onContextMenu={e => { e.preventDefault(); folderMenu(e.currentTarget, c, redraw); }}>
           <div className="hm-im" style={artStyle(c)}>{!c.avatar && <><Dust n={30} seed={c.name.length * 97 + 13} /><Emblem o={c} /></>}{c.fav && <i className="fav"><Icon name="star" size={12} /></i>}{folderTag(c)}</div>
-          <b>{c.name}</b><small>{c.tags.slice(0, 2).join(' · ') || firstLine(c) || ' '}</small>
+          <b>{c.name}</b><small>{c.tags.slice(0, 2).join(' · ') || '\u00a0'}</small>
         </button>)}
         {!list.length && view.folder && view.folder !== '-' ? <p className="dim folder-empty">{t('home.folder.empty')}</p> : null}
         <button className="hm-c add" onClick={() => void addChar()}><div className="hm-im"><Icon name="plus" size={26} /></div><b>{t('home.newChar')}</b><small>{t('home.newCharSub')}</small></button>
