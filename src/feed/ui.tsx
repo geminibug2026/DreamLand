@@ -1,7 +1,7 @@
 // 밤의 게시판: 화면 — 한 줄 기둥에 꽂힌 쪽지들. 글 쓰기 · 글 한 장(답글 레일 · 투표 · 그림) · 참여자 · 프로필 · 나에게 온 것 · 설정
 import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { Avatar, useEvents } from '../kit';
-import { S, pickFiles, readDataURL } from '../lib/core';
+import { S, emit, pickFiles, readDataURL } from '../lib/core';
 import { Form, PageHead, charPicker, confirmBox, menu, toast } from '../ui';
 import { openModal } from '../addons/parts';
 import { fmtDate, t } from '../i18n';
@@ -24,7 +24,7 @@ function Write({ root, re, onDone, autoFocus }: { root?: string; re?: string; on
   const send = async () => { if (!can) return; setBusy(true); try { await post(text, { image: img || undefined, poll: poll || undefined, root, re }); setText(''); setImg(''); setPoll(null); requestAnimationFrame(grow); onDone?.(); } finally { setBusy(false); } };
   const attach = async () => { const [f] = await pickFiles({ accept: 'image/*' }); if (f) setImg(await readDataURL(f)); };
   return <div className={'fd-write' + (root ? ' re' : '')}>
-    <textarea ref={ta} className="fd-ta" rows={root ? 1 : 2} value={text} maxLength={limit + 40} placeholder={root ? t('feed.write.replyPh') : t('feed.write.ph')} aria-label={root ? t('feed.write.replyPh') : t('feed.write.ph')}
+    <textarea ref={ta} className="fd-ta" rows={1} value={text} maxLength={limit + 40} placeholder={root ? t('feed.write.replyPh') : t('feed.write.ph')} aria-label={root ? t('feed.write.replyPh') : t('feed.write.ph')}
       onChange={e => { setText(e.target.value); grow(); }} onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void send(); } }} />
     {img ? <div className="fd-pic fx-frame"><img src={img} alt="" /><button type="button" className="fd-pic-x" aria-label={t('feed.write.dropImage')} onClick={() => setImg('')}><Ln name="x" size={14} /></button></div> : null}
     {poll ? <div className="fd-pollmake">
@@ -127,7 +127,7 @@ function Profile({ id, close }: { id: string; close: () => void }) {
     </div>
     {follows.length ? <div className="fd-prof-ties"><span className="fx-lbl kr">{t('feed.profile.follows')}</span>{follows.map(x => <button type="button" key={x} className="fx-pill fx-tap" disabled={x === ME} onClick={() => { close(); openProfile(x); }}>{faceOf(x).name}</button>)}</div> : null}
     <div className="fx-head"><span className="fx-lbl kr ink">{t('feed.profile.recent')}</span></div>
-    {notes.length ? <div className="fx-rows fd-prof-list">{notes.map(n => { const root = n.root ? F.notes.find(x => x.id === n.root) : null;
+    {notes.length ? <div className="fx-rows fd-prof-list">{notes.map(n => { const root = n.root ? F.notes.find(x => x.id === (n.re || n.root)) || F.notes.find(x => x.id === n.root) : null;
       return <button type="button" key={n.id} className="fd-prof-row" onClick={() => { close(); jump(n.root || n.id); }}>
         <span className="fx-lbl fd-time">{agoLabel(n.ts)}</span><span className="fd-prof-txt">{root ? <em className="fx-lbl kr">{t('feed.profile.repliedTo', { name: faceOf(root.by).name })}</em> : null}{n.text || t('feed.picture')}</span>
         <span className="fx-num fd-prof-n"><Ln name="fdstar" size={12} />{pad2(n.likes.length)}</span></button>; })}</div>
@@ -135,7 +135,7 @@ function Profile({ id, close }: { id: string; close: () => void }) {
   </>;
 }
 /** 그 글이 보이게 화면을 옮긴다 */
-function jump(id: string) { view.tab = 'all'; view.shown = Math.max(view.shown, F.notes.filter(n => !n.root).length - F.notes.filter(n => !n.root).findIndex(n => n.id === id)); save(); setTimeout(() => { const el = document.getElementById('fd-' + id); el?.scrollIntoView({ block: 'center', behavior: 'smooth' }); el?.classList.add('flash'); setTimeout(() => el?.classList.remove('flash'), 1600); }, 80); }
+function jump(id: string) { const roots = F.notes.filter(n => !n.root); view.tab = 'all'; view.shown = Math.max(view.shown, roots.length - roots.findIndex(n => n.id === id)); emit('feed:changed'); setTimeout(() => { const el = document.getElementById('fd-' + id); el?.scrollIntoView({ block: 'center', behavior: 'smooth' }); el?.classList.add('flash'); setTimeout(() => el?.classList.remove('flash'), 1600); }, 80); }
 
 // ── 창: 참여자 ──
 export function openMembers() { openModal({ title: t('feed.members.title'), wide: true, spec: 'div.fd-mem' }, () => <Members />); }

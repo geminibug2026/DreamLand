@@ -12,7 +12,7 @@
 .fd-dot { position: absolute; top: 7px; left: 21px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }
 
 /* 게시판 머리띠: 수치 몇 개와 새로 고침 */
-.fd-mast { display: flex; align-items: center; justify-content: space-between; gap: 12px 18px; flex-wrap: wrap; padding: 10px 0 0; border-top: 1px solid var(--line-1); box-shadow: inset 0 3px 0 var(--bg), inset 0 3.5px 0 var(--line-3); }
+.fd-mast { display: flex; align-items: center; justify-content: space-between; gap: 12px 18px; flex-wrap: wrap; padding: 0; }
 .fd-mast-kv { display: flex; align-items: baseline; gap: 6px 16px; flex-wrap: wrap; } .fd-mast-kv b { font-weight: 400; color: var(--text); font-size: 12px; margin-left: 4px; letter-spacing: 0; }
 .fd-mast-do { display: flex; align-items: center; gap: 14px; margin-left: auto; }
 .fd-refresh, .fd-pinbtn { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; border: 1px solid var(--line-1); border-radius: 2px; font: 500 13px/1 var(--font); letter-spacing: .02em; color: var(--text); }
@@ -64,7 +64,7 @@
 .fd-acts.sm { gap: 2px 12px; } .fd-acts.sm .fd-act { min-height: 26px; }
 
 /* 그림: 얇은 이중 괘선 액자 */
-.fd-pic { display: block; padding: 6px; width: fit-content; max-width: 100%; position: relative; line-height: 0; } .fd-pic img { display: block; max-width: 100%; max-height: 360px; border-radius: 1px; }
+.fd-pic { display: block; padding: 6px; width: fit-content; max-width: 100%; position: relative; line-height: 0; } .fd-pic img { display: block; max-width: min(100%, 440px); max-height: 300px; border-radius: 1px; }
 .fd-pic-x { position: absolute; top: 10px; right: 10px; width: 26px; height: 26px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line-2); border-radius: 50%; color: var(--text); }
 .fd-pic-full { display: block; max-width: 100%; max-height: 78vh; margin: 0 auto; }
 /* 아직 그리지 않은 그림: 꺾쇠 안에 설명 한 줄과 그리기 단추 */
@@ -96,7 +96,7 @@
 
 /* 창: 프로필 */
 .fd-prof { display: grid; gap: 14px; } .fd-prof-top { display: flex; align-items: center; gap: 16px; }
-.fd-prof-face { width: 60px; height: 60px; flex: none; margin: 5px; } .fd-prof-face .avatar { width: 60px; height: 60px; }
+.fd-prof-face { width: 60px; height: 60px; flex: none; border-radius: 0; box-shadow: none; outline: 1px solid var(--line-2); outline-offset: 4px; margin: 5px; } .fd-prof-face .avatar { width: 60px; height: 60px; }
 .fd-prof-id { flex: 1; min-width: 0; display: grid; gap: 3px; } .fd-prof-id h3 { font: 600 19px/1.25 var(--fx-serif); margin: 0; } .fd-prof-bio { font-size: 13.5px; color: var(--dim); margin: 2px 0 0; }
 .fd-prof-kv { display: grid; gap: 6px; } .fd-prof-ties { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .fd-prof-list { max-height: 44vh; overflow-y: auto; }

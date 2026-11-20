@@ -21,6 +21,7 @@ import { t, getLang, fmtDate, has as hasKey } from '../i18n';
 import { COMMANDS as ST_COMMANDS } from '../stscript/run';
 import '../stscript/commands';
 import { TTS } from '../tts/api';
+import { pickReply, streamReply } from '../reach/route';
 
 // ── 방 · 이름 ──
 export const charsOf = (chat: Room): Cast[] => chat.charIds.map(id => S.get('chars', id)).filter((c): c is Cast => !!c);
@@ -548,8 +549,9 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
   const E = engine;
   const chat = cur.chat, msgs = cur.msgs, chars = charsOf(chat);
   if (!chars.length) return toast(t('chat.gen.noChar'), 'err');
-  const conn = (opt.proactive && S.get('conns', S.settings.modes.autoConn)) || S.connFor(chat);
+  const conn = (opt.proactive && S.get('conns', S.settings.modes.autoConn)) || pickReply(chat, type);   // 이 대화에서 고른 모델 · 섞어 쓰기 (src/reach/route.ts)
   if (!conn) { if (opt.proactive) return; toast(t('chat.gen.noConn'), 'err'); return go('conns'); }
+  let used = conn, fell = false;   // 실제로 답한 연결 (주 연결이 안 돼 대체 연결로 넘어갔으면 그쪽)
   const last = msgs[msgs.length - 1];
   if ((type === 'regen' || type === 'continue') && last?.role !== 'assistant') type = 'normal';
   let speaker = opt.speaker || (type === 'normal' || type === 'impersonate' ? pickSpeaker(chars) : (S.get('chars', last.charId) || chars[0]));
@@ -617,11 +619,12 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
   const t0 = now(), impersonateBase = ui.input?.value || '';
   try {
     const talk = modeOf(chat) === 'talk' && !inScene && type !== 'impersonate';   // 대화 모드는 짧게 주고받는다
-    const res = await E.streamChat(conn, { ...preset.params, ...(talk ? { maxTokens: Math.min(preset.params.maxTokens || 4096, (opt.proactive && +(S.settings.modes.autoTokens || 0)) || S.settings.modes.talkTokens || 400) } : {}), stop: [...(preset.params.stop || []), ...(S.settings.format?.stopStrings || [])], names: { char: speaker.name, user: persona.name, others: chars.filter(c => c.id !== speaker.id).map(c => c.name) } }, built.messages, {
+    const res = await streamReply(conn, { ...preset.params, ...(talk ? { maxTokens: Math.min(preset.params.maxTokens || 4096, (opt.proactive && +(S.settings.modes.autoTokens || 0)) || S.settings.modes.talkTokens || 400) } : {}), stop: [...(preset.params.stop || []), ...(S.settings.format?.stopStrings || [])], names: { char: speaker.name, user: persona.name, others: chars.filter(c => c.id !== speaker.id).map(c => c.name) } }, built.messages, {
       signal: abort.signal, label: `${type === 'normal' ? (opt.proactive ? 'reply (proactive)' : opt.chime ? 'reply (chime)' : 'reply') : type} · ${speaker.name}`,
       onText: d => { acc += d; if (target && sw) { const sp = E.splitThink(base + acc); sw.text = sp.text; if (sp.think && !apiThink) sw.reasoning = sp.think; schedule(); } else if (ui.input) { ui.input.value = impersonateBase + acc; ui.input.dispatchEvent(new Event('input')); } },
       onThink: d => { if (target && sw) { apiThink = true; sw.reasoning = (sw.reasoning || '') + d; schedule(); } },
     });
+    used = res.via; fell = res.fell;
     if (target && sw && !res.text.trim() && !sw.reasoning) toast(t('chat.gen.empty'), 'err');
   } catch (e) {
     if (!(e instanceof Error && e.name === 'AbortError')) { console.error(e); toast(errMsg(e), 'err'); }
@@ -642,7 +645,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
         else if (type === 'regen') { target.swipes.pop(); target.sw = Math.max(0, target.swipes.length - 1); if (cur.chat === chat) rewindState(); else Live.rewind(chat, msgs); }
         if (cur.chat === chat) drawMsgs();
       } else {
-        sw.text = final || sw.text; sw.model = conn.model; sw.ms = now() - t0; if (type !== 'continue') sw.ts = now(); if (opt.stamp && type === 'normal') { sw.ts = target.ts = opt.stamp; }
+        sw.text = final || sw.text; sw.model = used.model; if (fell) sw.fb = used.name; else delete sw.fb; sw.ms = now() - t0; if (type !== 'continue') sw.ts = now(); if (opt.stamp && type === 'normal') { sw.ts = target.ts = opt.stamp; }
         if (cur.chat === chat) redraw(target);
       }
       if (talked?.cmds.length && final) { await runTalkCommands(chat, msgs, target, talked.cmds); if (cur.chat === chat) drawTop(); }

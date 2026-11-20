@@ -8,6 +8,7 @@ import * as clock from './clock';
 import * as advanced from './advanced';
 import { t as tr } from '../i18n';
 import { Server } from './server';
+import { Rpm } from '../reach/rpm';
 
 // ════════ 자료 꼴 (엔진이 읽는 만큼) ════════
 type Obj = Record<string, unknown>;
@@ -1002,7 +1003,7 @@ async function call(conn: Conn, url: string, { method = 'POST', headers = {}, bo
   } catch (e) {
     if (errName(e) === 'AbortError') throw e;
     if (!conn.proxy && !(conn.via || '').trim()) { try { res = await Server.proxy({ url, method, headers, body }, signal); } catch (e2) { if (errName(e2) === 'AbortError') throw e2; res = null; } }
-    if (!res) throw new Error(tr(Server.web && !Server.app ? 'engine.err.connectWeb' : 'engine.err.connect', { why: errMsg(e) }));
+    if (!res) throw Object.assign(new Error(tr(Server.web && !Server.app ? 'engine.err.connectWeb' : 'engine.err.connect', { why: errMsg(e) })), { net: true });   // net · status: 대체 연결로 넘길지 가리는 꼬리표 (src/reach/fallback.ts)
   }
   const r = res as Response;
   if (!r.ok) {
@@ -1012,7 +1013,7 @@ async function call(conn: Conn, url: string, { method = 'POST', headers = {}, bo
       const j = JSON.parse(t as string), e = Array.isArray(j) ? j[0]?.error : j.error;
       t = e?.message || e?.type || j.message || j.detail || (typeof j.error === 'string' ? j.error : t);
     } catch { /* JSON 이 아니면 글 그대로 */ }
-    throw new Error(tr('engine.err.apiStatus', { status: r.status, body: String(t).slice(0, 400) || r.statusText }));
+    throw Object.assign(new Error(tr('engine.err.apiStatus', { status: r.status, body: String(t).slice(0, 400) || r.statusText })), { status: r.status });
   }
   if (tap && /json/i.test(r.headers.get('content-type') || '')) tap.res(r.status, r.clone().json().catch(() => null));   // 스트리밍(SSE)은 다 받은 뒤 글로 남긴다
   return r;
@@ -1176,6 +1177,7 @@ export async function streamChat(conn: Conn | null | undefined, P: Params, messa
   }
   const after = (f: () => void) => { void Promise.allSettled(pending).then(f); };   // 응답 기록이 먼저 찍히게
   try {
+    if (conn?.rpm) await Rpm.gate(conn.id, +conn.rpm, opts.signal);   // 분당 요청 수 제한: 넘치면 자리가 날 때까지 기다린다
     const r = await streamChatRaw(conn, P, messages, ac ? { ...opts, signal: ac.signal } : opts);
     after(() => termSend('done', `✓ ${who} · ${((Date.now() - t0) / 1000).toFixed(1)}s · ${r.text.length} chars out · finish=${r.finish || '-'}`, () => ({
       done: { id, ms: Date.now() - t0, chars: r.text.length, tok: tokens(r.text), finish: r.finish || '', usage: usageOf(r.usage), thinkTok: tokens(r.think),

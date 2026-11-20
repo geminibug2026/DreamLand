@@ -472,11 +472,18 @@ export const S: Store = {
   },
   conn() { return this.get('conns', this.settings.activeConn); },
   // 번역·기억·삽화 같은 보조 작업에 쓸 연결 (지정하지 않으면 대화의 연결)
-  helperConn(task, chat) { return this.get('conns', this.settings.helpers?.[task]) || this.get('conns', this.settings.helpers?.all) || this.connFor(chat); },
+  helperConn(task, chat) {
+    const c = this.get('conns', this.settings.helpers?.[task]) || this.get('conns', this.settings.helpers?.all) || this.connFor(chat), m = String((this.settings as { helperModel?: Record<string, string> }).helperModel?.[task] || '').trim();
+    return c && m && m !== c.model ? { ...c, model: m } : c;   // 일마다 모델만 따로 정해 둘 수 있다 (연결은 그대로 — 기능 › 보조 연결의 표)
+  },
   preset() { return this.get('presets', this.settings.activePreset) || this.presets[0]; },
   // 캐릭터에 지정해 둔 연결·프리셋·페르소나가 있으면 그것이 먼저
   bindOf(chat) { return this.get('chars', chat?.charIds?.[0])?.bind || {}; },
-  connFor(chat) { return this.get('conns', this.bindOf(chat).connId) || this.conn(); },
+  // 대화에서 고른 연결 · 모델(chat.modelConn · chat.model)이 가장 먼저. 모델만 바꾼 것은 연결을 고치지 않고 사본으로 돌려준다 (다른 대화는 그대로)
+  connFor(chat) {
+    const c = this.get('conns', chat?.modelConn as string) || this.get('conns', this.bindOf(chat).connId) || this.conn(), m = typeof chat?.model === 'string' ? chat.model.trim() : '';
+    return c && m && m !== c.model ? { ...c, model: m } : c;
+  },
   presetFor(chat) { return this.get('presets', this.bindOf(chat).presetId) || this.preset(); },
   /** 이 대화에서 말할 페르소나. 대화에서 직접 고른 것(personaAuto === false)이 가장 먼저, 그다음 캐릭터에 연결한 것, 방을 열 때 저절로 적어 둔 것, 기본 페르소나 순 */
   persona(chat) {

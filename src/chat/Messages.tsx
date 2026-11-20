@@ -116,7 +116,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
     { label: t('chat.msgMenu.deleteFrom'), ic: 'trash', danger: true, onclick: () => void delFrom(m) },
   ]);
   const clock = msgClock(m, s);
-  const U = ux(), meta = [U.metaTime && clock, ...(S.settings.showMeta ? [U.metaModel && s.model, U.metaTimer && s.ms ? t('chat.meta.sec', { n: (s.ms / 1000).toFixed(1) }) : '', U.metaTokens && s.text ? t('chat.meta.tokens', { n: tokens(s.text) }) : ''] : [])].filter(Boolean).join(' · ');
+  const U = ux(), meta = [U.metaTime && clock, ...(S.settings.showMeta ? [U.metaModel && s.model, U.metaTimer && s.ms ? t('chat.meta.sec', { n: (s.ms / 1000).toFixed(1) }) : '', U.metaTokens && s.text ? t('chat.meta.tokens', { n: tokens(s.text) }) : ''] : []), s.fb ? t('reach.fb.tag') : ''].filter(Boolean).join(' · ');   // s.fb: 대체 연결로 받은 답장
   const why = m.why && mo('showWhy') !== false ? motiveLabel(m.why) : '';
   return art(<>
     <Avatar o={who} cls={S.settings.avatarShape === 'tall' ? 'tall' : ''} />
