@@ -47,7 +47,7 @@ export function waitingItems(now = Date.now()): Item[] {
 }
 
 export function Waiting() {
-  const all = waitingItems(), rows = all.slice(0, 7);
+  const all = waitingItems(), rows = all.slice(0, 5);
   if (!rows.length) return <None art={<Glyph name="waiting" size={44} />} text={t('desk.wait.none')} />;
   return <><ul className="dk-rows fx-rows">{rows.map(r => <Row key={r.id} mark={MARK[r.k]} main={r.main} sub={r.sub} meta={r.meta} onClick={r.open} />)}</ul>
     {all.length > rows.length ? <p className="dk-more fx-num">+{p2(all.length - rows.length)}</p> : null}</>;

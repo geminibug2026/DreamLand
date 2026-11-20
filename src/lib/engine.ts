@@ -605,6 +605,11 @@ function noteDue(chat: Chat, msgs: Msg[]): boolean {
 }
 /** 기록이 길어 잘려 나간 앞부분 가운데 고정한 메시지 — 고정한 것은 오래돼도 프롬프트에 남는다 */
 const pinnedBefore = (source: Msg[], history: PromptMsg[], start: number): PromptMsg[] => source.length === history.length ? history.slice(0, start).filter((_h, i) => source[i]?.pin === true) : [];
+/** 기록 가공 훅: 프롬프트에 싣기 전에 기록을 "이번에 말할 캐릭터가 보고 들은 것"으로 바꾼다 (귓속말 · 자리에 없던 동안 · 끊긴 말 — src/threads 가 건다). 메시지를 고치려면 원본이 아니라 복사본을 돌려줘야 한다 */
+export type HistoryLens = (source: Msg[], o: { chat: Chat; char: Char; chars: Char[]; type: string }) => Msg[];
+let historyLens: HistoryLens | null = null;
+export const setHistoryLens = (fn: HistoryLens | null) => { historyLens = fn; };
+const lensed = (source: Msg[], o: Parameters<HistoryLens>[1]): Msg[] => { if (!historyLens) return source; try { return historyLens(source, o) || source; } catch (e) { console.warn('[기록 가공]', e); return source; } };
 function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'normal', commit = false, proactive = false }: BuildInput): Built {
   const P: Params = preset.params || {}, M = S.settings.modes || {};
   const ctx = makeCtx({ chat, char, chars, persona, msgs }); ctx.type = type;
@@ -612,7 +617,7 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
   // 통화 중(src/call 이 기록 끝에 'Phone call started' 를 넣는다)에는 전화 걸기 안내를 주지 않는다
   const inCall = msgs.some(m => m.role === 'system' && msgText(m) === 'Phone call started');
   const isGroup = chars.length > 1, clockMode = Clock.mode(chat), today = Clock.now(chat).toDateString();
-  let source = msgs.filter(m => !m.hidden);
+  let source = lensed(msgs.filter(m => !m.hidden), { chat, char, chars, type });
   if (type === 'regen' || type === 'swipe') source = source.slice(0, -1);
   const live = liveDirect(source, type);   // 연출 지시는 그 지시로 쓰는 답변 한 번에만 지시문으로 실린다
   if ((S.settings.direct || {}).past !== 'note') source = source.filter(m => !m.direct || m === live);
@@ -696,7 +701,7 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
   const conn = S.connFor(chat), R = conn && A.TEXT_PROVIDER_KINDS.includes(defOf(conn).kind) && F.storyMode !== false ? A.resolve(conn) : null;
 
   // 1) 기록
-  let source = msgs.filter(m => !m.hidden);
+  let source = lensed(msgs.filter(m => !m.hidden), { chat, char, chars, type });
   if (type === 'regen' || type === 'swipe') source = source.slice(0, -1);
   const mk = S.settings.memory;   // 장기기억이 맡은 옛 대화는 보내지 않는다 (선택)
   if (mk?.enabled && mk.trim && (X.covered?.(chat) || 0) > 0 && source.length > (mk.keepRecent || 20)) source = source.slice(-(mk.keepRecent || 20));

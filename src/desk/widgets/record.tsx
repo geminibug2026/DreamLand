@@ -9,7 +9,7 @@ export function Record() {
   const rows = keys.map(k => ({ k, u: days.get(k)?.user || 0, a: days.get(k)?.ai || 0 })), max = Math.max(4, ...rows.map(r => Math.max(r.u, r.a))), sum = rows.reduce((n, r) => n + r.u + r.a, 0);
   const first = firstEver(), since = first ? Math.floor((Date.now() - first) / DAY) + 1 : 0, H = 40, y = (n: number) => 46 - (n / max) * H;
   return <div className="dk-rec">
-    <svg className="fx-art dk-bars" viewBox="0 0 140 52" role="img" aria-label={t('desk.rec.barsLabel', { n: sum })}>
+    <svg className="fx-art keep dk-bars" viewBox="0 0 140 52" role="img" aria-label={t('desk.rec.barsLabel', { n: sum })}>
       {[0, .5, 1].map(g => <path key={g} className="h" d={`M4 ${46 - g * H}h132`} />)}
       {rows.map((r, i) => { const x = 10 + i * 20, now = r.k === today; return <g key={r.k} className={now ? 'now' : undefined}>
         <path className="t" d={`M${x} 46v3`} />

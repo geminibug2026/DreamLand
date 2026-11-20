@@ -90,7 +90,7 @@ function ItemView({ it }: { it: Item }) {
   if (it.k === 'user') return <div className="gd-u"><span className="fx-lbl kr">{t('guide.you')}</span>{it.refs?.length ? <div className="gd-refs">{it.refs.map(r => <span key={r.kind + r.id} className="fx-pill">@{r.name}</span>)}</div> : null}<p>{it.text}</p></div>;
   if (it.k === 'ai') return it.text ? <div className="gd-a"><Md text={it.text} /></div> : null;
   if (it.k === 'tool') return <details className={'gd-tool' + (it.ok ? '' : ' bad')}>
-    <summary><svg className="fx-art" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">{it.ok ? <path d="M1.5 5.2l2.4 2.4L8.5 2.6" /> : <path d="M2 2l6 6M8 2l-6 6" />}</svg><code>{it.name}</code><span>{argBrief(it.args)}</span><em>{it.ok ? t('guide.tool.ok') : t('guide.tool.bad')}</em></summary>
+    <summary><svg className="fx-art" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">{it.ok ? <path d="M1.5 5.2l2.4 2.4L8.5 2.6" /> : <path d="M2 2l6 6M8 2l-6 6" />}</svg><code>{it.name}</code><span>{argBrief(it.args)}</span><em>{!it.ok ? t('guide.tool.bad') : /^(create|update|add)_/.test(it.name) ? t('guide.tool.proposed') : t('guide.tool.ok')}</em></summary>
     <pre>{it.out.length > 2400 ? it.out.slice(0, 2400) + '\n⋯' : it.out}</pre>
   </details>;
   if (it.k === 'change') return <ChangeCard ch={it.change} />;

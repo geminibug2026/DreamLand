@@ -12,7 +12,7 @@
 .gd-status.is-working { color: var(--fx-ink); border-color: var(--line-1); } .gd-status.is-working .fx-dot { animation: fx-twinkle 1.1s ease-in-out infinite; }
 .gd-status.is-review { background: var(--fx-ink); color: var(--fx-paper); border-color: var(--fx-ink); }
 .gd-rule { margin: 0 16px; opacity: .8; }
-.gd-scroll { overflow-y: auto; overscroll-behavior: contain; padding: 14px 16px 18px; min-height: 0; }
+.gd-scroll { overflow-y: auto; overscroll-behavior: contain; padding: 16px 16px 18px; min-height: 0; -webkit-mask: linear-gradient(transparent, #000 12px); mask: linear-gradient(transparent, #000 12px); }
 .gd-items { display: grid; gap: 14px; align-content: start; }
 
 /* 기록: 내 말은 왼쪽에 가는 세로줄, 조수의 답은 줄글 */

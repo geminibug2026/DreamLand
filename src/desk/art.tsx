@@ -33,14 +33,14 @@ const GLYPHS = {
 
 /** 큰 달: 원반 · 밝은 쪽의 빗금 · 구덩이 · 둘레의 여덟 눈금과 오늘 자리. p 는 위상(0 삭 · .5 보름) */
 export function MoonArt({ p }: { p: number }) {
-  const id = useId().replace(/:/g, ''), rnd = seeded(29), R = 34, C = 60;
-  const craters = Array.from({ length: 9 }, () => { const a = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * 26, r = 1.6 + rnd() * 4.2; return { x: C + Math.cos(a) * d, y: C + Math.sin(a) * d, r }; });
-  const at = (r: number, deg: number): [number, number] => [C + Math.sin(deg * Math.PI / 180) * r, C - Math.cos(deg * Math.PI / 180) * r], [mx, my] = at(50, p * 360), [m2x, m2y] = at(43, p * 360);
+  const id = useId().replace(/:/g, ''), rnd = seeded(29), R = 40, C = 60;
+  const craters = Array.from({ length: 9 }, () => { const a = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * 31, r = 1.8 + rnd() * 4.6; return { x: C + Math.cos(a) * d, y: C + Math.sin(a) * d, r }; });
+  const at = (r: number, deg: number): [number, number] => [C + Math.sin(deg * Math.PI / 180) * r, C - Math.cos(deg * Math.PI / 180) * r], [mx, my] = at(52, p * 360), [m2x, m2y] = at(46, p * 360);
   return <svg className="fx-art dk-moon" viewBox="0 0 120 120" aria-hidden="true">
     <defs><clipPath id={id + 'l'}><path d={moonPath(p, R, C, C)} /></clipPath><clipPath id={id + 'd'}><circle cx={C} cy={C} r={R} /></clipPath></defs>
-    <circle className="h" cx={C} cy={C} r="50" /><circle className="h" cx={C} cy={C} r="57" strokeDasharray=".6 3.4" />
-    {Array.from({ length: 8 }, (_, i) => { const [x1, y1] = at(50, i * 45), [x2, y2] = at(i % 2 ? 47 : 45, i * 45); return <path key={i} className="t" d={`M${f(x1)} ${f(y1)}L${f(x2)} ${f(y2)}`} />; })}
-    <g clipPath={`url(#${id}l)`}><rect className="dk-lit" x="20" y="20" width="80" height="80" />{Array.from({ length: 23 }, (_, i) => <path key={i} className="t" d={`M22 ${28 + i * 3}h76`} />)}</g>
+    <circle className="h" cx={C} cy={C} r="52" /><circle className="h" cx={C} cy={C} r="58" strokeDasharray=".6 3.4" />
+    {Array.from({ length: 8 }, (_, i) => { const [x1, y1] = at(52, i * 45), [x2, y2] = at(i % 2 ? 50 : 48, i * 45); return <path key={i} className="t" d={`M${f(x1)} ${f(y1)}L${f(x2)} ${f(y2)}`} />; })}
+    <g clipPath={`url(#${id}l)`}><rect className="dk-lit" x="18" y="18" width="84" height="84" />{Array.from({ length: 20 }, (_, i) => <path key={i} className="h" d={`M18 ${22 + i * 4}h84`} />)}</g>
     <g clipPath={`url(#${id}d)`}>{craters.map((c, i) => <circle key={i} className={i % 3 ? 'h' : 't'} cx={f(c.x)} cy={f(c.y)} r={f(c.r)} />)}</g>
     <path className="t" d={moonPath(p, R, C, C)} /><circle cx={C} cy={C} r={R} />
     <path className="a" d={`M${f(mx)} ${f(my)}L${f(m2x)} ${f(m2y)}`} /><circle className="af" cx={f(mx)} cy={f(my)} r="2.2" />

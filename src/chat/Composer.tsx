@@ -15,6 +15,7 @@ import { listen, sttSupported } from '../lib/stt';
 import { toast } from '../ui';
 import { I } from '../lib/icons';
 import { StickerBtn } from '../extras/StickerPicker';
+import { ModelChip } from '../reach/models';
 
 if (!I.mic) I.mic = 'M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3';
 /** 답장 뒤의 선택지: 누르면 그 말로 보낸다 (Shift+클릭은 입력창에 넣기만) */
@@ -131,7 +132,7 @@ export function Composer() {
     {chars.length > 1 ? <div className="speakers"><span className="speakers-label">{t('chat.composer.whoSpeaks')}</span>{chars.map((c, i) =>
       <button key={c.id} className={['speaker', muted.has(c.id) && 'muted', lastAi === c.id && 'last'].filter(Boolean).join(' ')} title={muted.has(c.id) ? t('chat.composer.speakerMuted', { name: c.name }) : t('chat.composer.speakerTurn', { name: c.name })} onClick={() => void generate('normal', { speaker: c })}>
         <Avatar o={c} cls="sm" /><small>{String(i + 1).padStart(2, '0')}</small><span>{c.name}</span></button>)}</div> : null}
-    <div className="quick"><QrBar chat={chat} />
+    <div className="quick"><ModelChip /><QrBar chat={chat} />
       {talk ? (chat.scene?.on
         ? <button className="chip scene-chip on" title={t('chat.composer.closeSceneHint')} onClick={() => void closeScene()}>{t('chat.composer.closeScene')}</button>
         : <button className="chip scene-chip" title={t('chat.composer.openSceneHint')} onClick={async () => { const v = await promptBox(t('chat.composer.openScenePrompt'), '', { placeholder: t('chat.composer.openScenePlaceholder') }); if (v !== null) void openScene({ title: v.trim() }); }}>{t('chat.composer.openScene')}</button>) : null}</div>

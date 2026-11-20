@@ -19,6 +19,8 @@
 /* 고정 색을 쓰는 물건 */
 .fx-night { --fx-ink: #ece7da; --fx-paper: #0c0c0b; --fx-gold: #c9b27c; --fx-blend: screen; color: var(--fx-ink); background: var(--fx-paper); }
 .fx-sheet { --fx-ink: #2a251d; --fx-paper: #f6f0e3; --fx-blend: multiply; color: var(--fx-ink); background: var(--fx-paper); }
+/* 선 변수는 정해진 자리(:root)에서 한 번 계산되므로, 잉크가 바뀌는 물건 안에서는 다시 섞어야 그 잉크 색 선이 된다 */
+.fx-night, .fx-sheet { --line-1: color-mix(in srgb, var(--fx-ink) 64%, transparent); --line-2: color-mix(in srgb, var(--fx-ink) 24%, transparent); --line-3: color-mix(in srgb, var(--fx-ink) 12%, transparent); --line-4: color-mix(in srgb, var(--fx-ink) 6%, transparent); }
 
 /* ── 작은 글자 ── 크기가 작을수록 자간을 넓힌다. 10px 아래로는 내리지 않는다 */
 .fx-lbl { font: 400 10px/1.2 var(--fx-mono); letter-spacing: .2em; text-transform: uppercase; color: var(--dim); }

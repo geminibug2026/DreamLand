@@ -189,6 +189,7 @@ function Home() {
         <Btn label={t('home.newChar')} ic="plus" cls="hm-fill" onClick={() => void addChar()} />
         <IconBtn ic="more" cls="hm-line" title={t('home.bulk.title')} onClick={e => menu(e.currentTarget, [
           { label: t('common.import'), ic: 'import', onclick: () => void importDialog() },
+          { label: t('reach.shop.menu'), ic: 'book', onclick: () => go('shop') },
           { label: t('home.stats.title'), ic: 'sparkle', onclick: showStats },
           { label: t('home.bulk.export'), ic: 'import', onclick: () => charPicker({ title: t('home.bulk.export'), selected: [], onDone: async ids => { if (!ids.length) return; const n = await exportChars(ids); toast(t('home.bulk.exported', { count: n }), 'ok'); } }) },
           { label: t('home.bulk.delete'), ic: 'trash', danger: true, onclick: () => charPicker({ title: t('home.bulk.delete'), selected: [], onDone: async ids => {

@@ -51,7 +51,7 @@ export function parseReply(raw: string): Parsed {
   let m: RegExpExecArray | null;
   while ((m = fence.exec(src))) {
     const lang = m[1].toLowerCase(), body = m[2].trim();
-    if ((!lang || lang === 'json' || lang === 'tool' || lang === 'tool_call') && /^\{[\s\S]*"(tool|name)"\s*:/.test(body)) found.push({ at: m.index, end: fence.lastIndex, body });
+    if ((!lang || lang === 'json' || lang === 'tool' || lang === 'tool_call') && /^\{[\s\S]*["\u201c](tool|name)["\u201d]\s*:/.test(body)) found.push({ at: m.index, end: fence.lastIndex, body });
     if (!m[0].endsWith('```')) break;
   }
   if (!found.length) {
@@ -80,7 +80,12 @@ export function visible(raw: string): string {
   let s = raw.replace(/<think>[\s\S]*?(<\/think>|$)/g, '');
   const i = s.search(/```[ \t]*(json|tool|tool_call)?[ \t]*\r?\n?\s*\{\s*"(tool|name)"/);
   if (i >= 0) s = s.slice(0, i);
-  else { const j = s.search(/(^|\n)[ \t]*\{\s*"tool"\s*:/); if (j >= 0) s = s.slice(0, j); else s = s.replace(/```[ \t]*(j(s(on?)?)?|t(o(ol?)?)?)?[ \t]*\r?\n?\s*\{?\s*("(t(o(ol?)?)?)?)?$/, ''); }
+  else {
+    const j = s.search(/(^|\n)[ \t]*\{\s*"tool"\s*:/);
+    if (j >= 0) s = s.slice(0, j);
+    // 울타리가 홀수 개면 마지막 것은 막 열린 것이다: 도구 호출이 될 수 있는 꼬리(```j · ```json { "to …)를 미리 감춘다
+    else if ((s.match(/```/g) || []).length % 2) s = s.replace(/```[ \t]*(j(s(on?)?)?|t(o(ol?)?)?)?[ \t]*\r?\n?\s*\{?\s*("(t(o(ol?)?)?)?)?$/, '');
+  }
   return s.trimEnd();
 }
 
@@ -115,7 +120,7 @@ export async function runRounds(messages: Turn[], hooks: RoundHooks, max = 8): P
     const raw = await hooks.ask(messages, all => hooks.onStream?.(visible(all)));
     const p = parseReply(raw);
     messages.push({ role: 'assistant', content: raw });
-    if (p.text || !p.call) hooks.onSay?.(p.text, raw);
+    if (p.text || p.call || !p.error) hooks.onSay?.(p.text, raw);
     if (last || (!p.call && !p.error)) return { rounds: round, calls, stopped: last ? 'limit' : p.text ? 'done' : 'empty' };
     if (!p.call) {
       // 호출이 틀렸다: 까닭을 돌려주고 스스로 고치게 한다. 세 번 내리 틀리면 그만둔다

@@ -62,6 +62,8 @@ function findEl(sels: string[] | undefined): HTMLElement | null {
   return null;
 }
 interface Box { x: number; y: number; w: number; h: number }
+/** 고리는 요소보다 조금 크게, 화면 밖으로는 나가지 않게 */
+function ring(b: Box, pad: number) { const l = Math.max(3, b.x - pad), t = Math.max(3, b.y - pad), r = Math.min(innerWidth - 3, b.x + b.w + pad), bt = Math.min(innerHeight - 3, b.y + b.h + pad); return { left: l, top: t, width: Math.max(8, r - l), height: Math.max(8, bt - t) }; }
 
 function Tour({ close, from = 0 }: { close: (done: boolean) => void; from?: number }) {
   useLang();
@@ -112,7 +114,7 @@ function Tour({ close, from = 0 }: { close: (done: boolean) => void; from?: numb
 
   const L = labels(), no = String(i + 1).padStart(2, '0'), all = String(STEPS.length).padStart(2, '0'), pad = 6;
   return <div className="gd-tour" role="dialog" aria-modal="true" aria-label={t('guide.tour.name')}>
-    {box ? <div className="gd-ring fx-corners" style={{ left: box.x - pad, top: box.y - pad, width: box.w + pad * 2, height: box.h + pad * 2 }} /> : <div className="gd-scrim" />}
+    {box ? <div className="gd-ring fx-corners" style={ring(box, pad)} /> : <div className="gd-scrim" />}
     <div ref={card} key={i} className={'gd-tcard fx-frame fx-in' + (box ? '' : ' mid')} style={box ? (pos ? { left: pos.left, top: pos.top } : { left: -9999, top: 0 }) : undefined}>
       {step.art && !box ? <Art kind={step.art} /> : null}
       <div className="gd-thead"><span className="fx-lbl acc">{t('guide.tour.eyebrow')}</span><span className="fx-num gd-tno">{no}<i> / {all}</i></span></div>

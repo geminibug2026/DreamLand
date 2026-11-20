@@ -63,7 +63,7 @@ export function Desk() {
       {on.length ? <div className="dk-grid" ref={grid}>{on.map((p, i) => <article key={p.w.id} className={`dk-w ${p.size}${p.w.bare ? ' bare' : ''} fx-in`} style={{ ['--d' as string]: i * 40 + 'ms' }} data-id={p.w.id} aria-label={p.w.title}>
         {editing ? tools(p, i) : null}
         <div className="dk-in" inert={editing || undefined}>{p.w.bare ? <Guard>{p.w.render()}</Guard>
-          : <div className="dk-card fx-frame"><header className="dk-h">{p.w.art ? p.w.art() : <i className="fx-dot" />}<h3>{p.w.title}</h3></header><div className="dk-b"><Guard>{p.w.render()}</Guard></div></div>}</div>
+          : <div className="dk-card fx-frame"><header className="dk-h fx-head">{p.w.art ? p.w.art() : <i className="fx-dot" />}<h3>{p.w.title}</h3></header><div className="dk-b"><Guard>{p.w.render()}</Guard></div></div>}</div>
       </article>)}</div>
         : <div className="fx-empty dk-empty"><DeskEmpty /><p>{t('desk.empty')}</p>{editing ? null : <Btn label={t('desk.edit.start')} ic="sliders" cls="hm-line" onClick={() => setEdit(true)} />}</div>}
       {editing ? <div className="dk-drawer"><div className="dk-drawer-h fx-head"><Glyph name="drawer" size={18} /><span className="fx-lbl kr ink">{t('desk.drawer.title')}</span><span className="fx-num">{p2(off.length)}</span></div>

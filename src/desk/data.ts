@@ -55,7 +55,6 @@ export function useScan(): Scan {
     const mine = running;
     void mine.then(s => { if (runKey === key) cache = { key, scan: s }; if (live) bump(n => n + 1); }).catch(e => console.warn('[책상]', e));
     return () => { live = false; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   return cache?.scan || EMPTY;
 }

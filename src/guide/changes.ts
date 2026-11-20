@@ -8,8 +8,6 @@ import type { Change, Kind, Op, UndoRow } from './types';
 
 const LEDGER = 'guide:undo', KEEP_DAYS = 14, KEEP_N = 50;
 type Obj = Record<string, unknown>;
-type DbColl = 'chars' | 'personas' | 'lore' | 'presets' | 'regex';
-const isDb = (k: Kind): k is DbColl => k !== 'theme' && k !== 'qr';
 const themes = () => (S.settings.customThemes ||= []);
 
 /** 점으로 이은 길(depthPrompt.prompt)에 값을 넣는다 */

@@ -6,7 +6,7 @@ import { allThemes, COLOR_FIELDS } from '../lib/theme';
 import { qrStore } from '../lib/qr-data';
 import { safeCss } from '../modules/logic';
 import { cur } from '../chat/store';
-import type { Char, Chat, Lore, Msg, Preset } from '../lib/types';
+import type { Char, Chat, Msg, Preset } from '../lib/types';
 import { checkChar, checkPreset } from './check';
 import { current, getPath } from './changes';
 import { searchHelp, topicText } from './handbook';

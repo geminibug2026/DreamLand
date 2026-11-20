@@ -21,7 +21,7 @@ function setup() {
   mountGuide();
   // Ctrl/⌘+J: 어느 화면에서든
   addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'j') { e.preventDefault(); toggleGuide(); } });
-  on('guide:toggle', toggleGuide);
+  on('guide:toggle', toggleGuide); on('guide:tour', () => startTour());
 
   // 대화에서 바로 묻기: 입력창 + 메뉴와 메시지 ⋯ 메뉴 (모델은 사용자가 보내기를 눌러야 불린다)
   X.composer = X.composer.filter(a => a.owner !== OWNER);

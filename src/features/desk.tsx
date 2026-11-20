@@ -13,6 +13,7 @@ import { Memo } from '../desk/widgets/memo';
 import { Quote } from '../desk/widgets/quote';
 import { Quick } from '../desk/widgets/quick';
 import { AtlasMini } from '../atlas/ui';
+import { FeedMini } from '../feed';
 
 function setup() {
   useCss('desk.css');
@@ -23,14 +24,12 @@ function setup() {
   registerWidget({ id: 'waiting', get title() { return t('desk.w.waiting'); }, get hint() { return t('desk.w.waitingHint'); }, size: 's', art: () => <Glyph name="waiting" />, render: () => <Waiting /> });
   registerWidget({ id: 'resume', get title() { return t('desk.w.resume'); }, get hint() { return t('desk.w.resumeHint'); }, size: 's', art: () => <Glyph name="resume" />, render: () => <Resume /> });
   registerWidget({ id: 'record', get title() { return t('desk.w.record'); }, get hint() { return t('desk.w.recordHint'); }, size: 's', art: () => <Glyph name="record" />, render: () => <Record /> });
-  registerWidget({ id: 'quote', get title() { return t('desk.w.quote'); }, get hint() { return t('desk.w.quoteHint'); }, size: 's', art: () => <Glyph name="quote" />, render: () => <Quote /> });
-  registerWidget({ id: 'memo', get title() { return t('desk.w.memo'); }, get hint() { return t('desk.w.memoHint'); }, size: 's', art: () => <Glyph name="memo" />, render: () => <Memo /> });
+  registerWidget({ id: 'quote', get title() { return t('desk.w.quote'); }, get hint() { return t('desk.w.quoteHint'); }, size: 'm', art: () => <Glyph name="quote" />, render: () => <Quote /> });
+  registerWidget({ id: 'memo', get title() { return t('desk.w.memo'); }, get hint() { return t('desk.w.memoHint'); }, size: 'm', art: () => <Glyph name="memo" />, render: () => <Memo /> });
   registerWidget({ id: 'quick', get title() { return t('desk.w.quick'); }, get hint() { return t('desk.w.quickHint'); }, size: 'm', art: () => <Glyph name="quick" />, render: () => <Quick /> });
   // 다른 기능의 작은 요약. 제 틀을 가진 물건이라 bare 로 놓는다 (스타일은 그 기능이 건다)
-  registerWidget({ id: 'atlas', get title() { return t('desk.w.atlas'); }, get hint() { return t('desk.w.atlasHint'); }, size: 's', bare: true, art: () => <Glyph name="atlas" />, render: () => <AtlasMini /> });
-  // 소식(src/feed)의 FeedMini 가 생기면 여기에 한 줄:
-  //   import { FeedMini } from '../feed/ui';
-  //   registerWidget({ id: 'feed', get title() { return t('feed.title'); }, size: 'm', render: () => <FeedMini /> });
+  registerWidget({ id: 'atlas', get title() { return t('desk.w.atlas'); }, get hint() { return t('desk.w.atlasHint'); }, size: 'm', bare: true, art: () => <Glyph name="atlas" />, render: () => <AtlasMini /> });
+  registerWidget({ id: 'feed', get title() { return t('feed.title'); }, size: 'm', off: true, render: () => <FeedMini /> });
 }
 
 export const feature: FeatureDef = { name: 'desk', setup };

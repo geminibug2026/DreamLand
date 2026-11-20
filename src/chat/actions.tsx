@@ -525,8 +525,11 @@ export async function closeScene(summary = '', auto = false) {
 }
 
 // ════════ 생성 ════════
+/** 다음에 말할 사람을 고르는 데 끼어드는 자리 (src/threads 가 건다: 눈치껏 순서 · 귓속말을 들은 사람 · 자리에 없는 사람 빼기). pick = 이 사람으로 정함, pool = 이 사람들 가운데서 평소대로 */
+export const speakerHook: { fn: ((chat: Room, chars: Cast[], msgs: Msg[]) => { pick?: Cast; pool?: Cast[] } | null | undefined) | null } = { fn: null };
 function pickSpeaker(chars: Cast[]) {
   const chat = cur.chat!, awake = chars.filter(c => !(chat.muted || []).includes(c.id)); if (awake.length) chars = awake;
+  if (chars.length > 1 && speakerHook.fn) { try { const h = speakerHook.fn(chat, chars, cur.msgs); if (h?.pick) return h.pick; if (h?.pool?.length) chars = h.pool; } catch (e) { console.warn('[다음 화자]', e); } }
   if (chars.length === 1) return chars[0];
   const lastAi = [...cur.msgs].reverse().find(m => m.role === 'assistant'), tail = cur.msgs[cur.msgs.length - 1];
   const lastText = tail ? msgText(tail) : '';
