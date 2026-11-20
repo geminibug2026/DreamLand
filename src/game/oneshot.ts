@@ -37,6 +37,15 @@ export function findBlocks(text: string): Block[] {
   }
   return out;
 }
+/** 갈래를 쓰다 만 판정(끊긴 답장 · 한쪽만 쓴 답장)은 갈래를 버리고 판정 표시만 남긴다 — 그러면 예전 방식대로 내가 굴린다. 결과가 새어 보이지 않게 */
+export function trimBroken(text: string): string {
+  const done = findBlocks(text); CHECK.lastIndex = 0; let m: RegExpExecArray | null;
+  while ((m = CHECK.exec(text))) {
+    const at = m.index, after = at + m[0].length; if (done.some(b => b.from === at)) continue;
+    if (new RegExp('^\\s*' + ARM_SRC, 'i').test(text.slice(after))) return text.slice(0, after);
+  }
+  return text;
+}
 /** 굴림의 등급이 고르는 갈래: 따로 쓰지 않은 대성공 · 대실패 · 부분 성공은 성공 · 실패로 넘어간다 */
 export const armOf = (grade: Grade, arms: Partial<Record<ArmKey, string>>): ArmKey =>
   grade === 'crit' ? (arms.crit ? 'crit' : 'success') : grade === 'fumble' ? (arms.fumble ? 'fumble' : 'fail') : grade === 'partial' ? (arms.partial ? 'partial' : 'success') : grade === 'ok' ? 'success' : 'fail';

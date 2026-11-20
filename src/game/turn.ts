@@ -3,7 +3,7 @@
 import type { Chat, Msg } from '../lib/types';
 import type { PromptPiece } from '../lib/hooks';
 import { chatApi } from '../chat/actions';
-import { fillSlots, resolveReply, veil, type CheckAsk, type RollRec, type SlotCtx } from './oneshot';
+import { fillSlots, resolveReply, trimBroken, veil, type CheckAsk, type RollRec, type SlotCtx } from './oneshot';
 import { encPrompt, missPrompt, missingItems, rng, rollEncounter, rollSights, seePrompt } from './omens';
 import { moodEdge, moodTier } from './mood';
 import { marksPrompt } from './bonds';
@@ -34,10 +34,10 @@ export function settle(sw: Sw): ReturnType<typeof readTags> & { changed: boolean
 /** 답장이 왔다: 갈라 쓴 판정을 굴려 한쪽만 남기고, 굴림 자리를 채운다 (표시를 읽기 전에 부른다). 이어 쓰기라면 앞서 끝난 굴림 뒤에 덧붙인다 */
 export function unfold(chat: Chat, msg: Msg, sw: Sw, msgs: Msg[]): boolean {
   const g = gameOf(chat); if (!g || sw.text.indexOf('[') < 0) return false;
-  const i = msgs.indexOf(msg), before = i >= 0 ? msgs.slice(0, i) : msgs, sh = sheetOf(g, before), raw = sw.text;
+  const i = msgs.indexOf(msg), before = i >= 0 ? msgs.slice(0, i) : msgs, sh = sheetOf(g, before), raw = g.oneShot ? trimBroken(sw.text) : sw.text;
   // 한 번에 판정을 꺼 두었으면 갈래는 건드리지 않고 굴림 자리만 채운다
   const out = g.oneShot ? resolveReply(raw, ask => rollWithMood(g, ask, sh), slotCtx(g, sh)) : { ...fillSlots(raw, slotCtx(g, sh)), rolls: [] as RollRec[] };
-  if (!out.rolls.length && !out.slots.length) return false;
+  if (!out.rolls.length && !out.slots.length) { if (raw === sw.text) return false; sw.text = raw; return true; }
   const cont = !!(sw.grolls?.length || sw.gdice?.length);
   sw.text = out.text;
   if (out.rolls.length) sw.grolls = [...(sw.grolls || []), ...out.rolls];
