@@ -26,7 +26,7 @@ export interface UndoRow { id: string; at: number; kind: Kind; targetId: string;
 export interface Ref { kind: 'chars' | 'personas' | 'lore' | 'presets' | 'chats' | 'regex'; id: string; name: string }
 /** 대화 기록의 한 줄 */
 export type Item =
-  | { k: 'user'; text: string; refs?: Ref[]; at: number }
+  | { k: 'user'; text: string; refs?: Ref[]; /** 모델에는 text 대신 이것을 보낸다 (/명령을 풀어 쓴 것) */ ask?: string; at: number }
   | { k: 'ai'; text: string; raw: string; at: number }
   | { k: 'tool'; name: string; args: Record<string, unknown>; ok: boolean; out: string; at: number }
   | { k: 'change'; change: Change; at: number }
@@ -43,4 +43,4 @@ export interface ToolDef {
 /** 설명서의 한 주제. 제목과 본문은 로케일(guide.hb.<id>.t / .b)에 있고, 본문의 {slot} 은 실제 화면 라벨로 채운다 */
 export interface Topic { id: string; group: string; page?: string; arg?: string; /** 찾기에 쓰는 낱말 (세 언어 섞어서) */ tags: string }
 /** 둘러보기의 한 걸음 */
-export interface TourStep { id: string; page?: string; arg?: string; /** 고리를 두를 요소 (앞에서부터 보이는 첫째). 없으면 가운데 카드 */ sel?: string[]; art?: string }
+export interface TourStep { id: string; page?: string; arg?: string; /** 고리를 두를 요소 (앞에서부터 보이는 첫째). 없으면 가운데 카드 */ sel?: string[]; /** 재기 전에 한 번 누를 것 (탭 등) */ click?: string; art?: 'mark' | 'modes' | 'panel' | 'end' }
