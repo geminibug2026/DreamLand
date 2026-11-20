@@ -43,7 +43,7 @@ export function checkChar(c: Char): { tokens: Record<string, number>; findings: 
   // 인사말이 사용자의 말 · 행동까지 대신 쓰면 모델도 그렇게 배운다
   if (/\{\{user\}\}\s*(:|：)|(^|\n)\s*\{\{user\}\}\s+(says?|said|replies|nods|smiles)/i.test(String(c.firstMes || ''))) f.push({ level: 'note', code: 'speaksForUser', where: 'firstMes' });
   if (String(c.mesExample || '').trim() && !/<START>/i.test(String(c.mesExample))) f.push({ level: 'note', code: 'noStart', where: 'mesExample' });
-  for (const k of [...CHAR_TEXT, 'creatorNotes' as const]) { if (k === 'creatorNotes') continue; for (const d of macroIssues(String(c[k] || ''))) f.push({ level: 'warn', code: 'macro', where: String(k), detail: d }); }
+  for (const k of CHAR_TEXT) for (const d of macroIssues(String(c[k] || ''))) f.push({ level: 'warn', code: 'macro', where: String(k), detail: d });
   (c.altGreetings || []).forEach((g, i) => { for (const d of macroIssues(String(g || ''))) f.push({ level: 'warn', code: 'macro', where: `altGreetings[${i}]`, detail: d }); });
   if (/^\s*$/.test(c.name || '')) f.push({ level: 'warn', code: 'noName', where: 'name' });
   // 길이 지시가 서로 어긋나는지 (짧게 · 길게가 함께 있으면)
