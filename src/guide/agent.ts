@@ -86,7 +86,7 @@ function screenNote(): string {
 }
 /** 기록을 모델 메시지로. 오래된 도구 결과는 줄이고, 변경 카드의 결말은 앱의 쪽지로 다음 사용자 말 앞에 붙인다 */
 export function buildMessages(items: Item[]): Turn[] {
-  const sys = SYSTEM.replace('{{lang}}', LANG[getLang()] || 'the user\'s language').replace('{{max}}', String(MAX_ROUNDS)).replace('{{tools}}', toolDocs());
+  const sys = SYSTEM.replace('{{lang}}', LANG[getLang()] || 'the user\'s language').replace('{{max}}', String(MAX_ROUNDS - 1)).replace('{{tools}}', toolDocs());
   const out: Turn[] = [{ role: 'system', content: sys }], add = (role: Turn['role'], content: string) => { const l = out[out.length - 1]; if (l.role === role && role !== 'system') l.content += '\n\n' + content; else out.push({ role, content }); };
   const tools = items.filter(i => i.k === 'tool'), fresh = new Set(tools.slice(-6));
   let notes: string[] = [];
@@ -121,7 +121,7 @@ export async function send(text: string, { refs = [], ask }: SendOpts = {}): Pro
       onSay: (shown, raw) => { G.stream = ''; tk.items.push({ k: 'ai', text: shown, raw, at: now() }); poke(); },
       exec: async call => { const r = await runTool(call.tool, call.args); if (r.change) pendingCard = r.change; return r.out; },
       onTool: (call, ok, out) => { tk.items.push({ k: 'tool', name: call.tool, args: call.args, ok, out, at: now() }); if (pendingCard) { tk.items.push({ k: 'change', change: pendingCard, at: now() }); pendingCard = null; } poke(); },
-    }, MAX_ROUNDS);
+    }, MAX_ROUNDS - 1);   // 도구 왕복은 일곱 번까지, 마지막 한 번은 말로 맺는다 → 모델 호출은 모두 여덟 번을 넘지 않는다
     if (res.stopped === 'empty') tk.items.push({ k: 'err', text: 'empty', at: now() });
   } catch (e) {
     const abort = e instanceof Error && e.name === 'AbortError';
