@@ -8,7 +8,7 @@ import { openModal } from '../addons/parts';
 import { confirmBox, promptBox, toast } from '../ui';
 import { t } from '../i18n';
 import { bump, cur, useCh } from '../chat/store';
-import { chatApi, drawMain, generate, running } from '../chat/actions';
+import { chatApi, drawMain, generate, running, stopAll } from '../chat/actions';
 import { Combat } from './Combat';
 import { ClockDial, D20, PlaceGlyph } from './Art';
 import { BUILTIN_BG, MAX_AUDIO, TRACKS, addMedia, loadMedia, myMedia, removeMedia } from './media';
@@ -20,7 +20,10 @@ import { Bag } from './Bag';
 import { clipFor, loadClips, makeClip, pingVideo, removeClip, videoCfg } from './video';
 import { quickCall } from '../lib/engine';
 import { msgText } from '../lib/core';
-import { MINIS, PRESET_IDS, RULES, RULE_IDS, SESSION_PROMPT, gameOf, levelOf, presetStats, ruleOf, statVal, statsOf, journalOf, layoutMap, newGame, pendingAsk, pendingFate, recText, repTier, rollCheck, sheetOf, tallyOf, type Ask, type Fx, type GameCfg, type GameChat, type GameMsg, type GameRec, type MiniId, type Sheet as SheetData, type StatKey } from './state';
+import { MoodRow, NotebookTab, SessionParts, Shelf, Recap, draftSaga, keepSaga, openSaga } from './More';
+import { rollWithMood, indoorAt } from './turn';
+import { moodEdge, moodTier } from './mood';
+import { MINIS, PRESET_IDS, RULES, RULE_IDS, SESSION_PROMPT, readSession, weatherOf, gameOf, levelOf, presetStats, ruleOf, statVal, statsOf, journalOf, layoutMap, newGame, pendingAsk, pendingFate, recText, repTier, rollCheck, sheetOf, tallyOf, type Ask, type Fx, type GameCfg, type GameChat, type GameMsg, type GameRec, type MiniId, type Sheet as SheetData, type StatKey } from './state';
 
 const foeName = (chat: Chat) => S.get('chars', chat.charIds[0])?.name || t('game.foe');
 const userName = (chat: Chat) => S.persona(chat).name || 'User';
@@ -68,16 +71,58 @@ export function resolveAsk(chat: Chat, ask: Ask) {
   setSfx(g.sfx !== false);
   if (ask.k === 'qte') return void openModal({ title: t('game.qte.title'), spec: 'div.gm' }, close => <Qte ask={ask} onDone={r => { close(); void record(chat, { kind: 'qte', ...r, secs: ask.secs }); }} />);
   if (ask.k === 'check') {
-    sfx('dice'); const sh = sheetOf(g, cur.msgs), r = rollCheck(g, ask, sh.level), fumble = r.grade === 'fumble';
-    // 실패했고 운명 점이 있으면 바로 넘어가지 않고, 받아들일지 다시 굴릴지 묻는다. 대실패는 운명 점을 하나 준다
+    sfx('dice'); const sh = sheetOf(g, cur.msgs), r = rollWithMood(g, ask, sh), fumble = r.grade === 'fumble';
+    // 실패했고 운명 점이 있으면 바로 넘어가지 않고, 받아들일지 다시 굴릴지 묻는다. 대실패는 운명 점을 하나 준다 (사기가 오른 날의 성공도 가끔)
     const open = !r.ok && sh.fate + (fumble ? 1 : 0) > 0;
-    return void record(chat, { kind: 'check', ...r, ...(ask.why ? { why: ask.why } : {}), ...(fumble ? { fx: [{ k: 'fate' as const, n: 1 }] } : {}), ...(open ? { open: true } : {}) }, !open);
+    return void record(chat, { kind: 'check', ...r, ...(ask.why ? { why: ask.why } : {}), ...(open ? { open: true } : {}) }, !open);
   }
   if (ask.k === 'play') return void playMini(chat, ask.game, ask.stake);
   const sheet = sheetOf(g, cur.msgs), foes = ask.foes?.length ? ask.foes : [{ name: (ask as unknown as { name?: string }).name || t('game.foe'), hp: 12, atk: 3 }];
   const names = [...new Set(foes.map(f => f.name.replace(/ \d+$/, '')))].join(', ');
+  // 보스의 각본: 켜 두었고 우두머리가 있으면 창을 열어 둔 채로 한 번 받아 온다 (못 받아도 싸움은 그대로 한다)
+  const boss = foes.find(f => f.boss), script = g.bossScript && boss ? bossScript(chat, boss.name, names) : undefined;
   const faces: Record<string, string> = {}; { const me = S.persona(chat).avatar; if (me) faces.me = me; for (const n of sheet.party) { const c = S.chars.find(x => x.name.toLowerCase() === n.toLowerCase()); if (c?.avatar) faces[n.toLowerCase()] = c.avatar; } }
-  openModal({ title: t('game.fight.title', { name: names }), spec: 'div.gm' }, close => <Combat g={g} sheet={sheet} foes={foes} faces={faces} onDone={r => { close(); void record(chat, { kind: 'fight', name: names, outcome: r.outcome, rounds: r.rounds, took: r.took, hp: r.hp, hpMax: sheet.hpMax, fx: r.fx, ...(r.gold || r.xp ? { loot: `${r.gold} gold and ${r.xp} XP${r.loot ? ' and ' + r.loot : ''}` } : {}), ...(r.fallen.length ? { fallen: r.fallen } : {}) }); }} />);
+  openModal({ title: t('game.fight.title', { name: names }), spec: 'div.gm' }, close => <Combat g={g} sheet={sheet} foes={foes} faces={faces} air={{ weather: weatherOf(sheet), indoor: indoorAt(sheet) }} edge={moodEdge(sheet.morale)} canRewind={lastCheckpoint(chat) >= 0} script={script} onDone={r => {
+    close();
+    // 졌을 때 체크포인트로 돌아가기를 골랐으면 기록을 남기지 않고 그 지점으로 되감는다 (지금 상태는 갈래로 남는다)
+    if (r.rewind) return void backToCheckpoint(chat);
+    void record(chat, { kind: 'fight', name: names, outcome: r.outcome, rounds: r.rounds, took: r.took, hp: r.hp, hpMax: sheet.hpMax, fx: r.fx, ...(r.gold || r.xp ? { loot: `${r.gold} gold and ${r.xp} XP${r.loot ? ' and ' + r.loot : ''}` } : {}), ...(r.fallen.length ? { fallen: r.fallen } : {}), ...(r.ran.length ? { ran: r.ran } : {}), ...(r.yielded.length ? { yielded: r.yielded } : {}), ...(r.merciless ? { merciless: true } : {}), ...(foes.some(f => f.boss) ? { boss: true } : {}), ...(r.reacts ? { reacts: r.reacts } : {}), ...(r.outcome === 'lose' ? { carried: true } : {}) });
+  }} />);
+}
+
+const cpsOf = (chat: Chat) => ((chat as { checkpoints?: { msgId: string }[] }).checkpoints || []);
+/** 마지막 체크포인트의 자리 (없으면 -1) */
+function lastCheckpoint(chat: Chat): number { let best = -1; for (const c of cpsOf(chat)) { const i = cur.msgs.findIndex(m => m.id === c.msgId); if (i > best && i < cur.msgs.length - 1) best = i; } return best; }
+async function backToCheckpoint(chat: Chat) {
+  const at = lastCheckpoint(chat), cp = at >= 0 ? cpsOf(chat).find(c => c.msgId === cur.msgs[at].id) : null; if (!cp) return;
+  try { const f = await import('../flow/logic'); await f.rewindTo(cp as never); } catch (e) { toast(e instanceof Error ? e.message : String(e), 'err'); }
+}
+/** 보스의 각본을 받아 온다 (요청 한 번). 실패하면 null — 싸움은 각본 없이 간다 */
+async function bossScript(chat: Chat, name: string, all: string) {
+  try {
+    const { BOSS_PROMPT, readBoss } = await import('./saga'), g = gameOf(chat), recent = cur.msgs.filter(m => !m.hidden && m.role !== 'system').slice(-4).map(m => msgText(m).slice(0, 700)).join('\n\n');
+    return readBoss(await quickCall(BOSS_PROMPT, `Boss: ${name}\nAlso in the fight: ${all}\nGenre: ${g?.genre || '—'} · Tone: ${g?.tone || '—'}\nThe scene so far:\n${recent}`, { maxTokens: 500, conn: S.helperConn('all' as never, chat) || S.connFor(chat), lowThink: true }));
+  } catch (e) { console.warn('[보스 각본]', e); return null; }
+}
+/** 끼어들기: 진행자가 쓰는 도중에 끊고, 내 행동을 판정으로 넣는다. 성공하면 끊긴 곳부터 다시 쓰게 하고, 실패하면 그대로 이어 간다 */
+export function interject(chat: Chat) {
+  const g = gameOf(chat); if (!g || !running()) return;
+  stopAll();
+  openModal({ title: t('game.cut.title'), spec: 'div.gm' }, close => <Interject g={g} onGo={(stat, text) => {
+    close(); const wait = () => { if (running()) return void window.setTimeout(wait, 80);
+      setSfx(g.sfx !== false); sfx('dice'); const sh = sheetOf(g, cur.msgs), rule = ruleOf(g), r = rollWithMood(g, { k: 'check', stat, dc: rule === 'pool' ? 2 : rule === '5e' ? 13 : 12, why: text }, sh);
+      void record(chat, { kind: 'check', ...r, why: text, cut: true }); };
+    wait();
+  }} />);
+}
+function Interject({ g, onGo }: { g: GameCfg; onGo(stat: StatKey, text: string): void }) {
+  const keys = statsOf(g), [stat, setStat] = useState<StatKey>(keys.reduce((a, b) => statVal(g, b) > statVal(g, a) ? b : a, keys[0])), [text, setText] = useState('');
+  return <div className="gm-setup g2 g2-cut">
+    <p className="hint">{t('game.cut.hint')}</p>
+    <textarea className="inp" rows={2} autoFocus value={text} placeholder={t('game.cut.ph')} onChange={e => setText(e.target.value)} />
+    <div className="g2-cut-stats" role="radiogroup" aria-label={t('game.cut.with')}>{keys.map(k => <button key={k} type="button" role="radio" aria-checked={stat === k} className={`fx-pill fx-tap${stat === k ? ' on' : ''}`} onClick={() => setStat(k)}>{t('game.stat.' + k)} <b className="fx-num">{ruleOf(g) === 'd20' || ruleOf(g) === '2d6' ? sign(statVal(g, k)) : statVal(g, k)}</b></button>)}</div>
+    <div className="gm-foot"><button type="button" className="btn primary" disabled={!text.trim()} onClick={() => onGo(stat, text.trim().slice(0, 160))}>{t('game.cut.go')}</button></div>
+  </div>;
 }
 
 /** 순간 반응: 시간이 줄어드는 동안 하나를 고른다. 빨리 고를수록 유리하고, 놓치면 나쁘게 흘러간다 */
@@ -100,7 +145,7 @@ export async function settleFate(chat: Chat, reroll: boolean) {
   const g = gameOf(chat), m = pendingFate(cur.msgs); if (!g || !m || m.gm?.kind !== 'check' || cur.chat !== chat) return;
   const old = m.gm;
   if (reroll) {
-    sfx('dice'); const r = rollCheck(g, { k: 'check', stat: old.stat, dc: old.rule === '2d6' || old.rule === 'd100' ? 0 : old.dc, why: old.why || '', ...(old.note?.includes('advantage') && !old.note.includes('dis') ? { adv: 'adv' as const } : old.note?.includes('disadvantage') ? { adv: 'dis' as const } : {}), ...(old.note?.includes('proficient') ? { prof: true } : {}), ...(old.note === 'hard' || old.note === 'extreme' ? { hard: old.note } : {}) }, sheetOf(g, cur.msgs).level);
+    sfx('dice'); const r = rollCheck(g, { k: 'check', stat: old.stat, dc: old.rule === '2d6' || old.rule === 'd100' ? 0 : old.dc, why: old.why || '', ...(old.note?.includes('advantage') && !old.note.includes('dis') ? { adv: 'adv' as const } : old.note?.includes('disadvantage') ? { adv: 'dis' as const } : {}), ...(old.note?.includes('proficient') ? { prof: true } : {}), ...(old.note === 'hard' || old.note === 'extreme' ? { hard: old.note } : {}) }, sheetOf(g, cur.msgs).level, old.edge || 0);
     m.gm = { kind: 'check', ...r, ...(old.why ? { why: old.why } : {}), fx: [...(old.fx || []), { k: 'fate', n: -1 }], rerolled: true };
   } else m.gm = { ...old, open: false };
   delete (m.gm as { open?: boolean }).open;
@@ -114,15 +159,20 @@ const GENRES = ['fantasy', 'modern', 'scifi', 'horror', 'wuxia', 'school', 'myst
 function Setup({ chat, close }: { chat: GameChat; close(): void }) {
   const editing = !!gameOf(chat);
   const [g, setG] = useState<GameCfg>(() => structuredClone(chat.game?.on ? chat.game : { ...newGame(), hero: '' }));
-  const [items, setItems] = useState(() => g.items.join(', '));
+  const [items, setItems] = useState(() => g.items.join(', ')), [saga, setSaga] = useState(false), [busy, setBusy] = useState(false);
   const set = <K extends keyof GameCfg>(k: K, v: GameCfg[K]) => setG({ ...g, [k]: v });
   const rule = ruleOf(g), R = RULES[rule], keys = R.stats;
   const preset = PRESET_IDS.find(k => { const p = presetStats(rule, k); return keys.every(s => p[s] === g.stats[s]); }) || '';
   const done = () => {
     const next: GameCfg = { ...g, on: true, hpMax: Math.max(1, Math.round(g.hpMax) || 20), gold: Math.max(0, Math.round(g.gold) || 0), items: items.split(/[,\n]/).map(s => s.trim()).filter(Boolean).slice(0, 20), adj: editing ? g.adj || [] : [] };
     if (!editing && chat.mode !== 'rp') { next.prev = chat.mode; chat.mode = 'rp'; }
-    chat.game = next; saveChat(chat); close(); drawMain();
-    if (!editing) { emit('game:start', chat); void record(chat, { kind: 'start' }); }
+    if (editing && chat.game?.saga) next.saga = chat.game.saga;   // 창을 열어 둔 사이에 짠 뼈대를 덮어쓰지 않는다
+    chat.game = next; saveChat(chat);
+    if (editing) { close(); drawMain(); return; }
+    // 캠페인 뼈대: 첫 장면을 열기 전에 한 번 받아 둔다 (못 받으면 없이 시작한다)
+    const begin = () => { close(); drawMain(); emit('game:start', chat); void record(chat, { kind: 'start' }); };
+    if (!saga) return begin();
+    setBusy(true); void draftSaga(chat).then(s => { if (s) keepSaga(chat, s); }).finally(begin);
   };
   return <div className="gm-setup">
     <p className="hint">{t(editing ? 'game.setup.editHint' : 'game.setup.hint', { name: foeName(chat) })}</p>
@@ -151,11 +201,18 @@ function Setup({ chat, close }: { chat: GameChat; close(): void }) {
     <label className="field"><span className="field-label">{t('game.setup.secret')}</span><textarea className="inp" rows={3} value={g.secret || ''} placeholder={t('game.setup.secretPh')} onChange={e => set('secret', e.target.value)} /><small className="hint">{t('game.setup.secretHint')}</small></label>
     <label className="field"><span className="field-label">{t('game.setup.auto')}</span>
       <select className="inp" value={g.auto || 0} onChange={e => set('auto', +e.target.value)}>{[0, 2, 4, 6, 9].map(n => <option key={n} value={n}>{n ? t('game.setup.autoN', { n }) : t('game.setup.autoOff')}</option>)}</select></label>
+    <label className="gm-check"><input type="checkbox" checked={!!g.oneShot} onChange={e => set('oneShot', e.target.checked)} />{t('game.setup.oneShot')}</label>
+    <small className="hint g2-sub">{t('game.setup.oneShotHint')}</small>
+    <label className="gm-check"><input type="checkbox" checked={g.chance !== false} onChange={e => set('chance', e.target.checked)} />{t('game.setup.chance')}</label>
+    <label className="gm-check"><input type="checkbox" checked={g.keen !== false} onChange={e => set('keen', e.target.checked)} />{t('game.setup.keen')}</label>
+    <label className="gm-check"><input type="checkbox" checked={!!g.bossScript} onChange={e => set('bossScript', e.target.checked)} />{t('game.setup.bossScript')}</label>
+    {editing ? <button type="button" className="gm-link" onClick={() => openSaga(chat)}>{t(g.saga || chat.game?.saga ? 'game.saga.open' : 'game.saga.make')}</button>
+      : <><label className="gm-check"><input type="checkbox" checked={saga} onChange={e => setSaga(e.target.checked)} />{t('game.setup.saga')}</label><small className="hint g2-sub">{t('game.saga.cost')}</small></>}
     <label className="gm-check"><input type="checkbox" checked={g.autoWeather !== false} onChange={e => set('autoWeather', e.target.checked)} />{t('game.setup.autoWeather')}</label>
     <label className="gm-check"><input type="checkbox" checked={g.music !== false} onChange={e => set('music', e.target.checked)} />{t('game.setup.music')}</label>
     <label className="gm-check"><input type="checkbox" checked={g.sfx !== false} onChange={e => set('sfx', e.target.checked)} />{t('game.setup.sfx')}</label>
     <label className="gm-check"><input type="checkbox" checked={!!g.art} onChange={e => set('art', e.target.checked)} />{t('game.setup.art')}</label>
-    <div className="gm-foot"><button type="button" className="btn primary" onClick={done}>{t(editing ? 'game.setup.save' : 'game.setup.start')}</button></div>
+    <div className="gm-foot"><button type="button" className="btn primary" disabled={busy} onClick={done}>{busy ? t('game.saga.busy') : t(editing ? 'game.setup.save' : 'game.setup.start')}</button></div>
   </div>;
 }
 export function openSetup(chat: Chat) { openModal({ title: t(gameOf(chat) ? 'game.setup.editTitle' : 'game.setup.title'), spec: 'div.gm' }, close => <Setup chat={chat as GameChat} close={close} />); }
@@ -209,31 +266,34 @@ export async function rewindTo(msgId: string, onClose?: () => void) {
 function Journal({ msgs, onClose }: { msgs: Msg[]; onClose?: () => void }) {
   const rows = journalOf(msgs); if (!rows.length) return <p className="dim">{t('game.journal.empty')}</p>;
   return <ol className="gm-journal">{rows.map((r, i) => <li key={i} className={`is-${r.kind}`}><span className="eyebrow">{t('game.journal.' + r.kind)}</span>
-    <span>{r.kind === 'party' ? r.text : r.kind === 'play' ? t('game.mini.' + r.text) : r.kind === 'session' ? t('game.journal.sessionN', { n: r.text }) : r.text || '—'}</span>{r.ok === undefined ? <em /> : <em>{r.kind === 'party' ? t(r.ok ? 'game.journal.joined' : 'game.journal.left') : t(r.ok ? 'game.rec.ok' : 'game.rec.fail')}</em>}<button type="button" className="gm-back" title={t('game.rewind.tip')} aria-label={t('game.rewind.tip')} onClick={() => void rewindTo(r.id, onClose)}>↺</button></li>)}</ol>;
+    <span>{r.kind === 'bond' ? `${r.text.split('\u0001')[0]} · ${t('game.rep.' + r.text.split('\u0001')[1])}` : r.kind === 'party' ? r.text : r.kind === 'play' ? t('game.mini.' + r.text) : r.kind === 'session' ? t('game.journal.sessionN', { n: r.text }) : r.text || '—'}</span>{r.ok === undefined ? <em /> : <em>{r.kind === 'party' ? t(r.ok ? 'game.journal.joined' : 'game.journal.left') : t(r.ok ? 'game.rec.ok' : 'game.rec.fail')}</em>}<button type="button" className="gm-back" title={t('game.rewind.tip')} aria-label={t('game.rewind.tip')} onClick={() => void rewindTo(r.id, onClose)}>↺</button></li>)}</ol>;
 }
 /** 세션 마무리: 지금까지를 요약해 두고(요청 한 번), 지난 메시지는 프롬프트에서 뺀다. 시트 · 지도 · 일지는 그대로 이어진다 */
-async function endSession(chat: GameChat, trim: boolean) {
+async function endSession(chat: GameChat, trim: boolean, wish = '') {
   const g = chat.game; if (!g || cur.chat !== chat) return false;
   const msgs = cur.msgs, from = Math.max(0, ...msgs.map((m, i) => (m as GameMsg).gm?.kind === 'session' ? i + 1 : 0));
   const part = msgs.slice(from).filter(m => !m.hidden || true), lines = part.map(m => `${m.role === 'user' ? userName(chat) : m.role === 'assistant' ? (m.name || foeName(chat)) : 'Event'}: ${msgText(m)}`).join('\n').slice(-60000);
   if (part.filter(m => m.role === 'assistant').length < 2) { toast(t('game.session.tooShort'), 'err'); return false; }
-  const text = (await quickCall(SESSION_PROMPT, lines, { maxTokens: 1200, lowThink: true })).trim(); if (!text) throw new Error('empty');
-  (g.sessions ||= []).push({ text, at: Date.now() });
+  const note = readSession((await quickCall(SESSION_PROMPT, lines, { maxTokens: 1600, lowThink: true })).trim()), text = note.text; if (!text) throw new Error('empty');
+  (g.sessions ||= []).push({ ...note, at: Date.now(), ...(wish.trim() ? { wish: wish.trim().slice(0, 600) } : {}) }); g.recap = true;
   if (trim) for (const m of part) m.hidden = true;
   await S.save('chats', chat, true); await chatApi.save(); chatApi.redraw();
   await record(chat, { kind: 'session', n: g.sessions.length, text }, false);
   return true;
 }
 function SessionBox({ chat, onClose }: { chat: GameChat; onClose?: () => void }) {
-  const [busy, setBusy] = useState(false), [trim, setTrim] = useState(true), list = chat.game?.sessions || [];
-  const go = async () => { setBusy(true); try { if (await endSession(chat, trim)) { toast(t('game.session.done'), 'ok'); onClose?.(); } } catch (e) { toast(t('game.session.failed', { error: (e instanceof Error ? e.message : String(e)).slice(0, 120) }), 'err'); } finally { setBusy(false); } };
+  const [busy, setBusy] = useState(false), [trim, setTrim] = useState(true), [wish, setWish] = useState(''), list = chat.game?.sessions || [];
+  const go = async () => { setBusy(true); try { if (await endSession(chat, trim, wish)) { toast(t('game.session.done'), 'ok'); onClose?.(); } } catch (e) { toast(t('game.session.failed', { error: (e instanceof Error ? e.message : String(e)).slice(0, 120) }), 'err'); } finally { setBusy(false); } };
   return <div className="gm-sec">
-    {list.length ? <ol className="gm-sessions">{list.map((x, i) => <li key={i}><span className="eyebrow">{t('game.journal.sessionN', { n: i + 1 })}</span><button type="button" className="gm-link" onClick={() => { const ends = cur.msgs.map((m, k) => (m as GameMsg).gm?.kind === 'session' ? k : -1).filter(k => k >= 0), from = i ? ends[i - 1] + 1 : 0, first = cur.msgs.slice(from).find(m => !(m as GameMsg).gm); onClose?.(); if (first) { emit('game:enter', chat); window.setTimeout(() => emit('game:goto', first.id), 500); } }}>{t('game.session.replay')}</button><p>{x.text}</p></li>)}</ol> : null}
+    {list.length ? <ol className="gm-sessions">{list.map((x, i) => <li key={i}><span className="eyebrow">{t('game.journal.sessionN', { n: i + 1 })}</span><button type="button" className="gm-link" onClick={() => { const ends = cur.msgs.map((m, k) => (m as GameMsg).gm?.kind === 'session' ? k : -1).filter(k => k >= 0), from = i ? ends[i - 1] + 1 : 0, first = cur.msgs.slice(from).find(m => !(m as GameMsg).gm); onClose?.(); if (first) { emit('game:enter', chat); window.setTimeout(() => emit('game:goto', first.id), 500); } }}>{t('game.session.replay')}</button><p>{x.text}</p><SessionParts x={x} />{i === list.length - 1 ? <><button type="button" className="gm-link" style={{ position: 'static' }} onClick={() => openRecap(chat)}>{t('game.recap.open')}</button><textarea className="inp" rows={2} defaultValue={x.wish || ''} placeholder={t('game.session.wishPh')} aria-label={t('game.session.wish')} onBlur={e => { const v = e.target.value.trim().slice(0, 600); if ((x.wish || '') !== v) { if (v) x.wish = v; else delete x.wish; saveChat(chat); } }} /></> : null}</li>)}</ol> : null}
     <p className="hint">{t('game.session.hint')}</p>
+    <label className="field"><span className="field-label">{t('game.session.wish')}</span><textarea className="inp" rows={2} value={wish} placeholder={t('game.session.wishPh')} onChange={e => setWish(e.target.value)} /><small className="hint">{t('game.session.wishHint')}</small></label>
     <label className="gm-check"><input type="checkbox" checked={trim} onChange={e => setTrim(e.target.checked)} />{t('game.session.trim')}</label>
     <div className="gm-foot"><button type="button" className="btn primary" disabled={busy} onClick={() => void go()}>{busy ? t('game.session.busy') : t('game.session.end')}</button></div>
   </div>;
 }
+/** 지난 이야기를 창으로 다시 듣는다 (게임 화면에서는 세션을 마친 뒤 처음 들어올 때 저절로 나온다) */
+export function openRecap(chat: Chat) { const list = (chat as GameChat).game?.sessions || [], note = list[list.length - 1]; if (note) openModal({ title: t('game.recap.title'), spec: 'div.gm' }, close => <Recap note={note} n={list.length} onDone={close} />); }
 /** 배경 · 음악: 장면마다 내 사진을, 분위기마다 내 음악을 올린다. 올린 것이 있으면 그 장면 · 분위기는 내 것만 쓴다 */
 function MediaBox() {
   const [, draw] = useState(0), [scene, setScene] = useState('forest'), [busy, setBusy] = useState(false), audio = useRef<HTMLAudioElement | null>(null), [playing, setPlaying] = useState('');
@@ -335,21 +395,23 @@ function Storyboard({ chat, close }: { chat: Chat; close(): void }) {
   </div>;
 }
 export function openStoryboard(chat: Chat) { openModal({ title: t('game.story.title'), wide: true, spec: 'div.gm' }, close => <Storyboard chat={chat} close={close} />); }
-type Tab = 'sheet' | 'bag' | 'map' | 'journal' | 'session' | 'media';
+type Tab = 'sheet' | 'bag' | 'map' | 'notes' | 'journal' | 'session' | 'media';
 const StepBtn = ({ chat, fx, label }: { chat: GameChat; fx: Fx; label: string }) => <button type="button" className="gm-step" aria-label={label} title={label} onClick={() => adjust(chat, fx)}>{'n' in fx && fx.n > 0 ? '+' : '−'}</button>;
 export function Sheet({ chat, msgs, onClose, first = 'sheet' }: { chat: Chat; msgs: Msg[]; onClose?: () => void; first?: Tab }) {
-  useCh('game'); const [tab, setTab] = useState<Tab>(first);
+  useCh('game'); const [tab, setTab] = useState<Tab>(first), [shelf, setShelf] = useState(false);
   const g = gameOf(chat); if (!g) return <><p className="dim">{t('game.sheet.off')}</p><button type="button" className="btn" onClick={() => openSetup(chat)}>{t('game.setup.title')}</button></>;
   const s = sheetOf(g, msgs), gc = chat as GameChat;
   const addItem = async () => { const v = await promptBox(t('game.sheet.addItem'), ''); if (v?.trim()) adjust(gc, { k: 'item', name: v.trim().slice(0, 60), n: 1 }); };
-  const tabs = <div className="gm-tabs">{(['sheet', 'bag', 'map', 'journal', 'session', 'media'] as const).map(k => <button key={k} type="button" className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{t('game.tab.' + k)}</button>)}</div>;
+  const tabs = <div className="gm-tabs">{(['sheet', 'bag', 'map', 'notes', 'journal', 'session', 'media'] as const).map(k => <button key={k} type="button" className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{t('game.tab.' + k)}</button>)}</div>;
   if (tab === 'bag') return <div className="gm-sheet">{tabs}<Bag g={g} sheet={s} onSave={() => saveChat(chat)} onDrop={(name, n) => adjust(gc, { k: 'item', name, n: -n })} onUndo={(name, n) => { let left = n; const adj = g.adj || []; for (let i = adj.length - 1; i >= 0 && left > 0; i--) { const f = adj[i]; if (f.k === 'item' && f.n < 0 && f.name.toLowerCase() === name.toLowerCase() && -f.n <= left) { left += f.n; adj.splice(i, 1); } } if (left > 0) adjust(gc, { k: 'item', name, n: left }); else saveChat(chat); }} onAdd={() => void addItem()} /></div>;
   if (tab === 'map') return <div className="gm-sheet">{tabs}<MapView s={s} onGo={name => { putDraft(t('game.map.go', { place: name })); onClose?.(); }} /></div>;
+  if (tab === 'notes') return <div className="gm-sheet">{tabs}<NotebookTab chat={gc} s={s} /></div>;
   if (tab === 'journal') return <div className="gm-sheet">{tabs}
+    <div className="g2 g2-seg" role="tablist">{[false, true].map(k => <button key={String(k)} type="button" role="tab" aria-selected={shelf === k} className={`fx-tap inv${shelf === k ? ' on' : ''}`} onClick={() => setShelf(k)}>{t(k ? 'game.shelf.title' : 'game.tab.journal')}{k && s.docs.length ? <small className="fx-num">{String(s.docs.length).padStart(2, '0')}</small> : null}</button>)}</div>
+    {shelf ? <Shelf s={s} /> : <>
     <div className="gm-sec"><span className="eyebrow">{t('game.memo')}</span><textarea className="inp" rows={3} defaultValue={g.memo || ''} placeholder={t('game.memoPh')} onBlur={e => { if ((g.memo || '') !== e.target.value) { g.memo = e.target.value; saveChat(chat); } }} /></div>
-    {s.docs.length ? <div className="gm-sec"><span className="eyebrow">{t('game.docs')}</span>{s.docs.map(d => <details key={d.title} className="gm-doc"><summary>{d.title}</summary><p>{d.text}</p></details>)}</div> : null}
     <div className="gm-foot"><button type="button" className="btn sm" onClick={() => { onClose?.(); openStoryboard(chat); }}>{t('game.story.title')}</button></div>
-    <p className="hint">{t('game.rewind.hint')}</p><Journal msgs={msgs} onClose={onClose} /></div>;
+    <p className="hint">{t('game.rewind.hint')}</p><Journal msgs={msgs} onClose={onClose} /></>}</div>;
   if (tab === 'media') return <div className="gm-sheet">{tabs}<MediaBox /></div>;
   if (tab === 'session') return <div className="gm-sheet">{tabs}<SessionBox chat={gc} onClose={onClose} /></div>;
   return <div className="gm-sheet">{tabs}
@@ -357,6 +419,7 @@ export function Sheet({ chat, msgs, onClose, first = 'sheet' }: { chat: Chat; ms
     <div className="gm-row"><span className="eyebrow">{t('game.gold')}</span><b className="gm-n">{s.gold}</b><i className="gm-fill" /><StepBtn chat={gc} fx={{ k: 'gold', n: -1 }} label={t('game.gold') + ' −1'} /><StepBtn chat={gc} fx={{ k: 'gold', n: 1 }} label={t('game.gold') + ' +1'} /></div>
     <div className="gm-row"><span className="eyebrow">{t('game.fate')}</span><b className="gm-n">{s.fate}</b><span className="gm-fates">{Array.from({ length: Math.max(s.fate, 3) }, (_, i) => <i key={i} className={i < s.fate ? 'on' : ''} />)}</span></div>
     <p className="hint gm-note">{t('game.fate.hint')}</p>
+    <MoodRow v={s.morale} />
     <div className="gm-row"><span className="eyebrow">LV</span><b className="gm-n">{s.level}</b><span className="gm-bar"><i style={{ width: `${s.level >= 20 ? 100 : s.xp % 100}%` }} /></span><small className="gm-xp">{s.xp} XP</small></div>
     <div className="gm-statline" style={{ gridTemplateColumns: `repeat(${statsOf(g).length > 4 ? 3 : 4}, 1fr)` }}>{statsOf(g).map(k => <span key={k}><small>{t('game.stat.' + k)}</small><b>{ruleOf(g) === 'd20' || ruleOf(g) === '2d6' ? sign(statVal(g, k)) : statVal(g, k)}</b></span>)}</div>
     {s.time || s.weather || s.wx ? <div className="gm-sec"><span className="eyebrow">{t('game.time')}</span><p>{[s.time, s.weather || (s.wx ? t('game.wx.' + s.wx) : '')].filter(Boolean).join(' · ')}</p></div> : null}
@@ -366,7 +429,7 @@ export function Sheet({ chat, msgs, onClose, first = 'sheet' }: { chat: Chat; ms
       <ul className="gm-people">{s.party.filter(n => !s.people.some(p => p.name.toLowerCase() === n.toLowerCase())).map(n => <li key={'p' + n}><span>{n}</span><em>{t('game.party')}</em></li>)}
         {s.people.map(p => <li key={p.name}><span>{p.name}</span><i className="gm-rep"><b style={{ left: `${(p.v + 100) / 2}%` }} /></i><em>{s.party.some(n => n.toLowerCase() === p.name.toLowerCase()) ? t('game.party') + ' · ' : ''}{t('game.rep.' + repTier(p.v))} {sign(p.v)}</em></li>)}</ul></div> : null}
     <div className="gm-sec"><span className="eyebrow">{t('game.items')}</span>
-      {s.items.length ? <p className="gm-carry">{s.items.map(i => i.n > 1 ? `${i.name} ×${i.n}` : i.name).join(' · ')}</p> : <p className="dim">{t('game.items.none')}</p>}
+      {s.items.length ? <><p className="gm-carry">{s.items.map(i => i.n > 1 ? `${i.name} ×${i.n}` : i.name).join(' · ')}</p>{s.items.filter(i => i.hid && i.known).map(i => <p key={i.name} className="g2 g2-truth"><span className="fx-lbl kr">{t('game.fake.revealed')}</span><b>{i.name}</b> — {i.hid}</p>)}</> : <p className="dim">{t('game.items.none')}</p>}
       <button type="button" className="gm-link" onClick={() => setTab('bag')}>{t('game.bag.open')}</button></div>
     <div className="gm-sec"><span className="eyebrow">{t('game.quests')}</span>
       {s.quests.length ? <ul className="gm-quests">{s.quests.map(q => <li key={q.title} className={q.done ? 'is-done' : ''}><i>{q.done ? '✓' : '○'}</i>{q.title}</li>)}</ul> : <p className="dim">{t('game.quests.none')}</p>}</div>
@@ -394,9 +457,10 @@ export function GameBar() {
   const tail = cur.msgs[cur.msgs.length - 1], picks = !busy && !ask && tail?.role === 'assistant' ? (tail.swipes[tail.sw] as { gchoices?: string[] } | undefined)?.gchoices || [] : [];
   return <div className="gm-strip">
     <button type="button" className="gm-status" title={t('game.sheet.title')} onClick={() => openSheet(chat)}>
-      <span><small>HP</small><b className={s.hp <= s.hpMax / 4 ? 'is-low' : ''}>{s.hp}/{s.hpMax}</b></span><span><small>{t('game.gold')}</small><b>{s.gold}</b></span>{s.place || s.time ? <span className="gm-where"><small>{t(s.place ? 'game.place' : 'game.time')}</small><b>{[s.place, s.time].filter(Boolean).join(' · ')}</b></span> : null}
+      <span><small>HP</small><b className={s.hp <= s.hpMax / 4 ? 'is-low' : ''}>{s.hp}/{s.hpMax}</b></span><span><small>{t('game.gold')}</small><b>{s.gold}</b></span>{moodTier(s.morale) !== 2 ? <span><small>{t('game.mood.title')}</small><b>{t('game.mood.' + moodTier(s.morale))}</b></span> : null}{s.place || s.time ? <span className="gm-where"><small>{t(s.place ? 'game.place' : 'game.time')}</small><b>{[s.place, s.time].filter(Boolean).join(' · ')}</b></span> : null}
     </button>
     {fate && !busy ? <div className="gm-fate"><button type="button" className="gm-ask" onClick={() => void settleFate(chat, true)}><Icon name="dice" size={15} /><span><b>{t('game.fate.reroll')}</b><small>{t('game.fate.left', { n: s.fate })}</small></span></button><button type="button" className="btn" onClick={() => void settleFate(chat, false)}>{t('game.fate.accept')}</button></div> : null}
+    {busy && cur.msgs[cur.msgs.length - 1]?.role === 'assistant' ? <button type="button" className="btn sm g2-cut-btn" title={t('game.cut.tip')} onClick={() => interject(chat)}>{t('game.cut.title')}</button> : null}
     {ask && !busy ? <button type="button" className="gm-ask" onClick={() => resolveAsk(chat, ask)}><Icon name={ask.k === 'check' ? 'dice' : ask.k === 'fight' ? 'star' : 'play'} size={15} /><span><b>{label}</b>{why ? <small>{why}</small> : null}</span></button> : null}
     {picks.length ? <div className="choices gm-picks">{picks.map((x, i) => <button key={i} type="button" className="choice" onClick={e => { if (e.shiftKey) putDraft(x); else void chatApi.send(x); }}>{x}</button>)}</div> : null}
   </div>;
@@ -415,11 +479,12 @@ export function GameCard({ m }: { m: Msg }) {
       <div className="gm-roll">{dice.map((v, i) => rule === 'd20' || rule === '5e' ? <D20 key={i} dim={dice.length > 1 && i !== dice.indexOf(r.die)}>{v}</D20> : <i key={i} className={`gm-die${rule === 'pool' && v >= 5 ? ' is-hit' : ''}`}>{v}</i>)}
         {rule === 'd100' ? null : rule === 'pool' ? <><span>→</span><strong>{r.total}</strong></> : <><span>{sign(r.mod)}</span><span>=</span><strong>{r.total}</strong></>}
         <em>{t(r.open ? 'game.fate.pending' : 'game.grade.' + grade)}</em></div>
-      {r.why || r.rerolled ? <small>{[r.why, r.rerolled ? t('game.fate.used') : ''].filter(Boolean).join(' · ')}</small> : null}</div>;
+      {r.why || r.rerolled || r.edge || r.cut ? <small>{[r.cut ? t('game.cut.title') : '', r.why, r.edge ? t('game.mood.edge', { n: sign(r.edge) }) : '', r.rerolled ? t('game.fate.used') : ''].filter(Boolean).join(' · ')}</small> : null}</div>;
   }
   if (r.kind === 'fight') return <div className={`gm-card-rec is-${r.outcome === 'win' ? 'win' : r.outcome === 'lose' ? 'lose' : 'draw'}`}>
     <span className="eyebrow">{t('game.rec.fight')}</span><b>{r.name}</b>
-    <small>{t('game.fight.end.' + r.outcome)} · {t('game.rec.rounds', { n: r.rounds })} · {t('game.rec.took', { n: r.took })} · HP {r.hp}/{r.hpMax}{r.loot ? ' · ' + lootText(r) : ''}</small></div>;
+    <small>{t('game.fight.end.' + r.outcome)} · {t('game.rec.rounds', { n: r.rounds })} · {t('game.rec.took', { n: r.took })} · HP {r.hp}/{r.hpMax}{r.loot ? ' · ' + lootText(r) : ''}</small>
+    {r.ran?.length || r.yielded?.length || r.reacts ? <small className="g2 g2-after">{[r.yielded?.length ? t(r.merciless ? 'game.fight.rec.merciless' : 'game.fight.rec.yielded', { names: r.yielded.join(', ') }) : '', r.ran?.length ? t('game.fight.rec.ran', { names: r.ran.join(', ') }) : '', r.reacts ? t('game.fight.rec.reacts', { n: r.reacts }) : ''].filter(Boolean).join(' · ')}</small> : null}</div>;
   const foe = S.get('chars', m.charId)?.name || m.name || t('game.foe');
   return <div className={`gm-card-rec is-${r.outcome}`}>
     <span className="eyebrow">{t('game.mini.' + r.game)}</span><b>{r.outcome === 'win' ? t('game.rec.youWon') : r.outcome === 'lose' ? t('game.rec.foeWon', { name: foe }) : t('game.out.draw')}</b>

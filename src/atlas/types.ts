@@ -41,5 +41,5 @@ export interface AtlasRec {
   /** 처음 도감을 만든 때 (그 전의 기록은 조용히 한꺼번에 켠다) */ born: number;
 }
 export interface AtlasCfg { /** 별이 켜질 때 구석에 카드 */ card: boolean; /** 카드와 함께 한 음 */ sound: boolean; /** 캐릭터가 최근 켜진 별을 한 번 언급할 수 있게 프롬프트에 한 줄 */ tell: boolean }
-/** 방금 켜진 것 (카드가 받는다) */
+/** 방금 켜진 것 (카드가 받는다). done: 별이면 이 별로 별자리가 완성됐다 · many 면 앞의 카드에 이어 "더 켜진" 묶음이다 */
 export interface Lit { kind: 'star' | 'mile' | 'many'; id: string; tier: number; con?: string; charId?: string; n?: number; done?: boolean }

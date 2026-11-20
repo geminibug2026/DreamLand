@@ -14,6 +14,7 @@ import { QrBar } from '../stscript/QrBar';
 import { listen, sttSupported } from '../lib/stt';
 import { toast } from '../ui';
 import { I } from '../lib/icons';
+import { StickerBtn } from '../extras/StickerPicker';
 
 if (!I.mic) I.mic = 'M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3';
 /** 답장 뒤의 선택지: 누르면 그 말로 보낸다 (Shift+클릭은 입력창에 넣기만) */
@@ -141,6 +142,7 @@ export function Composer() {
       <IconBtn ic="plus" title={t('chat.composer.more')} onClick={plus} />
       <IconBtn ic="image" title={t('chat.composer.attach')} onClick={async () => addImages(await pickFiles({ accept: 'image/*', multiple: true }))} />
       <textarea className="composer-input" ref={input} rows={1} spellCheck={false} placeholder={talk ? t('chat.composer.placeholderTalk') : t('chat.composer.placeholderRp')} />
+      <StickerBtn />
       <MicBtn />
       <SendBtn />
     </div>

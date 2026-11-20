@@ -11,7 +11,7 @@ const H = { hidden: true };
 export const CONS: ConDef[] = [
   // 첫 문장 — 깃펜: 촉에서 깃 끝까지 한 줄, 옆으로 깃털 한 가닥
   { id: 'first', no: 'I', cx: 150, cy: 152, s: 172, rot: -6, edges: [...chain('hello', 'answer', 'cast', 'tome', 'again'), ['cast', 'mask'], ['mask', 'again']],
-    stars: stars('first', [['hello', 14, 88, 'turns', [1]], ['answer', 32, 66, 'replies', [1]], ['cast', 50, 46, 'nChars', [1]], ['tome', 70, 26, 'lore', [1]], ['again', 88, 10, 'swipes', [1]], ['mask', 76, 54, 'personas', [1]]]) },
+    stars: stars('first', [['hello', 14, 88, 'turns', [1]], ['answer', 32, 66, 'replies', [1]], ['cast', 50, 46, 'nChars', [1]], ['tome', 70, 26, 'lore', [1]], ['again', 88, 10, 'swipes', [1]], ['mask', 76, 54, 'masked', [1]]]) },
   // 오래된 약속 — 매듭: 다섯 별의 고리와 풀려 나온 끈 하나
   { id: 'vow', no: 'II', cx: 525, cy: 148, s: 164, rot: 8, edges: [...chain('kept', 'days', 'circle', 'back', 'made', 'kept'), ['circle', 'year']],
     stars: stars('vow', [['kept', 50, 14, 'kept', [1, 5, 20]], ['days', 78, 32, 'daysMax', [7, 30, 100]], ['circle', 70, 62, 'circle', [2, 5]], ['back', 38, 70, 'gap', [30], H], ['made', 22, 40, 'made', [1]], ['year', 88, 88, 'daysMax', [365], H]]) },
@@ -28,13 +28,13 @@ export const CONS: ConDef[] = [
   { id: 'dice', no: 'VI', cx: 1010, cy: 424, s: 192, rot: 6, edges: [...chain('crit', 'fights', 'boss', 'quests', 'minis', 'sessions', 'crit'), ['rolls', 'sessions'], ['rolls', 'fights'], ['rolls', 'quests'], ['fights', 'places'], ['places', 'fumble']],
     stars: stars('dice', [['crit', 42, 22, 'crit', [1, 5, 20]], ['fights', 70, 38, 'fights', [1, 10, 50]], ['boss', 70, 70, 'boss', [1, 5]], ['quests', 42, 86, 'quests', [1, 10, 30]], ['minis', 14, 70, 'minis', [1, 10, 30]], ['sessions', 14, 38, 'sessions', [1, 5, 20]], ['rolls', 42, 54, 'rolls', [10, 100]], ['places', 88, 18, 'places', [5, 30, 100]], ['fumble', 96, 46, 'fumble', [1], H]]) },
   // 마주 앉은 자리 — 등 하나 아래의 탁자
-  { id: 'scene', no: 'VII', cx: 150, cy: 622, s: 164, rot: 0, edges: [['scenes', 'calls'], ['scenes', 'illust'], ['calls', 'react'], ['illust', 'react'], ['calls', 'hours'], ['illust', 'missed'], ['hours', 'missed']],
+  { id: 'scene', no: 'VII', cx: 150, cy: 602, s: 164, rot: 0, edges: [['scenes', 'calls'], ['scenes', 'illust'], ['calls', 'react'], ['illust', 'react'], ['calls', 'hours'], ['illust', 'missed'], ['hours', 'missed']],
     stars: stars('scene', [['scenes', 50, 12, 'scenes', [1, 10, 50]], ['calls', 22, 44, 'calls', [1, 10, 50]], ['illust', 78, 44, 'illust', [1, 20, 100]], ['react', 50, 58, 'react', [10, 100]], ['hours', 32, 84, 'callSecs', [3600, 36000], { unit: 3600 }], ['missed', 68, 84, 'missed', [1], H]]) },
   // 종이 서랍 — 열린 봉투
-  { id: 'paper', no: 'VIII', cx: 505, cy: 632, s: 160, rot: -4, edges: [...chain('diary', 'dreams', 'keeps', 'notes', 'diary'), ['diary', 'letters'], ['letters', 'dreams'], ['diary', 'tr'], ['tr', 'dreams']],
+  { id: 'paper', no: 'VIII', cx: 505, cy: 608, s: 160, rot: -4, edges: [...chain('diary', 'dreams', 'keeps', 'notes', 'diary'), ['diary', 'letters'], ['letters', 'dreams'], ['diary', 'tr'], ['tr', 'dreams']],
     stars: stars('paper', [['diary', 14, 34, 'diary', [1, 10, 50]], ['dreams', 86, 34, 'dreams', [1, 5, 20]], ['keeps', 86, 80, 'keeps', [1, 10, 30]], ['notes', 14, 80, 'notes', [1, 10]], ['letters', 50, 60, 'letters', [1, 3, 12]], ['tr', 50, 10, 'tr', [1, 50, 500]]]) },
   // 수집가 — 열쇠: 고리와 자루와 이
-  { id: 'keep', no: 'IX', cx: 835, cy: 640, s: 172, rot: 10, edges: [...chain('faces', 'masks', 'rooms', 'books', 'faces'), ['rooms', 'entries'], ['entries', 'met']],
+  { id: 'keep', no: 'IX', cx: 835, cy: 612, s: 172, rot: 10, edges: [...chain('faces', 'masks', 'rooms', 'books', 'faces'), ['rooms', 'entries'], ['entries', 'met']],
     stars: stars('keep', [['faces', 20, 26, 'nChars', [5, 20, 50]], ['masks', 40, 12, 'personas', [2, 5]], ['rooms', 56, 30, 'rooms', [10, 50, 200]], ['books', 34, 44, 'lore', [3, 10]], ['entries', 88, 62, 'entries', [100, 500, 2000]], ['met', 76, 78, 'met', [3, 10, 30]]]) },
 ];
 export const STARS: StarDef[] = CONS.flatMap(c => c.stars);

@@ -20,6 +20,8 @@ import { Illust } from '../lib/illust';
 import { Clock } from '../lib/clock';
 import { t, getLang, fmtDate } from '../i18n';
 import { I } from '../lib/icons';
+import { emit } from '../lib/core';
+import { Reacts } from '../extras/reactions';
 
 if (!I.pin) I.pin = 'M12 17v5M8 3h8l-1 6 3 3v2H6v-2l3-3z';
 
@@ -124,11 +126,12 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
       {s.reasoning && S.settings.format?.reasoning?.show !== false ? <details className="reason" open={!streaming && !!S.settings.format?.reasoning?.autoExpand}><summary><Icon name="sparkle" size={14} />{t('chat.msg.reasoning')}</summary><div>{s.reasoning}</div></details> : null}
       {body}
       {m.memo ? <p className="msg-memo" title={t('chat.msgMenu.memoHint')}><Icon name="note" size={13} />{m.memo}</p> : null}
-      {m.reactions?.length ? <div className="reacts">{m.reactions.map((r, i) => <span key={i} title={r.by || ''}>{r.emoji}</span>)}</div> : null}
+      <Reacts m={m} />
       <Illusts m={m} s={s} />
       <div className="msg-tools">
         {canSwipe && <div className="swipe"><IconBtn ic="left" title={t('chat.msg.prevSwipe')} onClick={() => void swipe(m, -1)} /><span>{`${m.sw + 1} / ${m.swipes.length}`}</span><IconBtn ic="right" title={last && m.sw === m.swipes.length - 1 ? t('chat.msg.newSwipe') : t('chat.msg.nextSwipe')} onClick={() => void swipe(m, 1)} /></div>}
         {m.role === 'assistant' && last && <><IconBtn ic="refresh" title={t('chat.msg.regen')} onClick={() => void generate('regen')} /><IconBtn ic="play" title={t('chat.msg.continue')} onClick={() => void generate('continue')} /></>}
+        {m.role === 'assistant' && <IconBtn ic="heart" title={t('extras.react.title')} onClick={e => emit('xt:react', { m, anchor: e.currentTarget })} />}
         <IconBtn ic="edit" title={t('chat.msg.edit')} onClick={() => setEditing(true)} />
         <IconBtn ic="copy" title={t('common.copy')} onClick={() => { void navigator.clipboard.writeText(s.text); toast(t('chat.msg.copied')); }} />
         <IconBtn ic="more" title={t('chat.msg.more')} onClick={more} />

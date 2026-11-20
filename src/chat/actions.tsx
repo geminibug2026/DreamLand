@@ -186,11 +186,11 @@ async function afterDelete() {
 }
 export async function delMsg(m: Msg) {
   if (cur.msgs.indexOf(m) < 0 || (ux().confirmDelete && !(await confirmBox(t('chat.msg.confirmDelete'), t('common.delete'), true)))) return;
-  const i = cur.msgs.indexOf(m); if (i < 0) return; cur.msgs.splice(i, 1); await afterDelete();
+  const i = cur.msgs.indexOf(m); if (i < 0) return; emit('message:trashed', { chat: cur.chat, gone: cur.msgs.splice(i, 1), at: i, after: cur.msgs[i - 1]?.id || '' }); await afterDelete();   // 지운 것은 보관함(src/extras/trash)이 받아 둔다
 }
 export async function delFrom(m: Msg) {
   if (!(await confirmBox(t('chat.msg.confirmDeleteFrom'), t('common.delete'), true))) return;
-  const i = cur.msgs.indexOf(m); if (i < 0) return; cur.msgs.splice(i); await afterDelete();
+  const i = cur.msgs.indexOf(m); if (i < 0) return; emit('message:trashed', { chat: cur.chat, gone: cur.msgs.splice(i), at: i, after: cur.msgs[i - 1]?.id || '' }); await afterDelete();
 }
 export async function toggleHidden(m: Msg) { m.hidden = !m.hidden; await save(); redraw(m); }
 /** 고정: 오래돼도 프롬프트에 남긴다. 숨겨져 있었으면 다시 보이게 한다 */

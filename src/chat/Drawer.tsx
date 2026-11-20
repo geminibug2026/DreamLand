@@ -9,7 +9,7 @@ import { editState } from './Hud';
 import { inspector } from './Inspector';
 import { liveSettings } from './LiveSettings';
 import type { Cast, Room } from './types';
-import { S, chatConns, pickFiles, readDataURL, shrinkImage } from '../lib/core';
+import { S, chatConns, emit, pickFiles, readDataURL, shrinkImage } from '../lib/core';
 import { STATUS, scheduleOf } from '../lib/f-schedule';
 import { LoreLinker } from '../editors/lore';
 import { X } from '../lib/hooks';
@@ -91,6 +91,7 @@ function Body({ c }: { c: Room }) {
     </Sec>
     <Sec title={t('chat.drawer.bgSec')} ic="image" open={false}><div className="row">
       <Btn label={t('chat.drawer.pickImage')} ic="upload" cls="ghost" onClick={async () => { const [f] = await pickFiles({ accept: 'image/*' }); if (!f) return; c.bg = await shrinkImage(await readDataURL(f), 1920, 'image/jpeg', 0.85); await S.save('chats', c, true); drawMain(); }} />
+      <Btn label={t('extras.bg.open')} ic="shelf" cls="ghost" onClick={() => emit('xt:bgshelf', c)} />
       {c.bg && <Btn label={t('chat.drawer.clear')} cls="ghost" onClick={async () => { c.bg = ''; await S.save('chats', c, true); drawMain(); }} />}</div></Sec>
     {X.panels.map((p, i) => { try { return <Sec key={i} title={p.title || ''} ic={p.icon || 'sparkle'} open={!!p.open}><Dom node={p.render(c, cur.msgs)} /></Sec>; } catch (e) { console.warn('[확장 패널]', p.owner, e); return null; } })}
     <Btn label={t('chat.drawer.inspect')} ic="search" cls="ghost wide" onClick={inspector} />

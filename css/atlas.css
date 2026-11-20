@@ -1,0 +1,121 @@
+/* ── 성좌 도감(atlas) ── 접두사 at-. 선은 fine.css 의 네 단계만, 색은 테마 변수만 쓴다.
+   밤하늘(.fx-night) 안에서는 잉크가 상아색으로 바뀌고, 완성한 별자리만 금색(--fx-gold) 한 색을 쓴다. 밤하늘 밖에서는 같은 자리에 포인트 색이 온다 */
+.at-page { max-width: 1180px; container: at / inline-size; }
+.at-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-bottom: 1px solid var(--line-1); padding-bottom: 0; }
+.at-head > div:first-child { display: grid; gap: 6px; padding-bottom: 10px; } .at-head h1 { margin: 0; }
+.at-head .tabs { margin: 0; border-bottom: 0; }
+.at-intro { margin: -4px 0 0; max-width: 60ch; }
+
+/* ── 별과 선 ── */
+.at-star { color: inherit; } .at-star .f { fill: currentColor; stroke: none; }
+.at-star .at-off { stroke-width: .8; opacity: .6; } .at-conart .at-off { stroke-width: .5; } .at-star.gold { color: var(--fx-gold, var(--accent)); }
+.at-star.hot { animation: at-lit 1.4s var(--fx-out) both; }
+@keyframes at-lit { 0% { opacity: 0; } 35% { opacity: 1; } 55% { opacity: .45; } 100% { opacity: 1; } }
+.at-ln { stroke-width: .8; opacity: .85; } .at-ln.d { stroke-width: .6; opacity: .4; }
+.at-conart .at-ln { stroke-width: .55; } .at-conart .at-ln.d { stroke-width: .4; stroke-dasharray: 1.2 2.4; } .at-conart .t { stroke-width: .45; } .at-conart .h { stroke-width: .3; } .at-conart .d { stroke-width: .35; stroke-dasharray: 1 2; }
+.done .at-ln { stroke: var(--fx-gold, var(--accent)); opacity: 1; }
+.at-hit { fill: transparent; stroke: none; }
+.at-num { font: 400 4.6px var(--fx-mono); fill: currentColor; stroke: none; opacity: .55; letter-spacing: .08em; }
+.at-conart { display: block; width: 100%; height: 100%; }
+/* 작은 그림(56~84px)에서는 선과 별을 굵게 — 줄어들어도 읽히게 */
+.at-conart.sm .at-ln { stroke-width: 1.3; } .at-conart.sm .at-ln.d { stroke-width: 1; stroke-dasharray: 2 4; } .at-conart.sm .at-off { stroke-width: 1.1; } .at-conart.sm .t, .at-conart.sm .h, .at-conart.sm .d { stroke-width: .9; }
+.at-one { width: 26px; height: 26px; flex: none; }
+
+/* ── 큰 성도 ── */
+.at-sky { aspect-ratio: 1200 / 760; overflow: hidden; }
+.at-skysvg { display: block; width: 100%; height: 100%; overflow: hidden; }
+.at-scale text { font: 400 13px var(--fx-mono); fill: currentColor; stroke: none; opacity: .4; letter-spacing: .12em; }
+.at-con { cursor: pointer; outline: none; }
+.at-cname { font: 500 16px var(--fx-serif); fill: currentColor; stroke: none; letter-spacing: .08em; opacity: .78; transition: opacity .15s; }
+.at-cno { font: 400 12px var(--fx-mono); fill: currentColor; stroke: none; opacity: .45; letter-spacing: .18em; }
+.at-con .at-brk { opacity: 0; transition: opacity .15s; }
+.at-con:hover .at-brk { opacity: .55; } .at-con.on .at-brk { opacity: 1; stroke-width: 1; } .at-con:hover .at-cname, .at-con.on .at-cname { opacity: 1; }
+.at-con:focus-visible .at-brk { opacity: 1; stroke: var(--fx-gold); stroke-width: 1.4; }
+.at-con.done .at-cname { fill: var(--fx-gold); opacity: 1; }
+
+/* ── 별자리 카드 목록 (좁은 화면에서 성도 대신) ── */
+.at-cards { display: none; list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line-2); }
+.at-cards li { border-bottom: 1px solid var(--line-3); }
+.at-ccard { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 14px; align-items: center; width: 100%; min-height: 76px; padding: 10px 4px; text-align: left; outline-offset: -1px; }
+.at-ccard.on { background: var(--line-4); }
+.at-thumb { display: block; width: 56px; height: 56px; border: 1px solid var(--line-2); border-radius: 2px; flex: none; }
+.at-ctx { display: grid; gap: 5px; min-width: 0; } .at-ctx b { font: 500 15px/1.3 var(--fx-serif); letter-spacing: .03em; }
+.at-ccard > .fx-num, .at-pbtn > .fx-num { font-size: 12px; color: var(--dim); }
+
+/* ── 아래: 고른 별자리 + 진척 ── */
+.at-lower { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 34px; align-items: start; scroll-margin-top: 12px; }
+.at-detail { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 24px; align-items: start; min-width: 0; }
+.at-back { display: none; align-items: center; gap: 4px; min-height: 44px; padding: 0 8px 0 2px; font-size: 13px; color: var(--dim); justify-self: start; }
+.at-plate { position: relative; aspect-ratio: 1; padding: 16px; }
+.at-plno { position: absolute; left: 14px; top: 12px; color: var(--fx-ink); opacity: .6; max-width: calc(100% - 28px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.at-pick { outline: none; } .at-pick:focus-visible .at-hit { stroke: var(--fx-gold); stroke-width: .5; }
+.at-dbody { display: grid; gap: 12px; min-width: 0; }
+.at-dbody header { display: grid; gap: 6px; } .at-dbody h2 { margin: 0; } .at-dbody header p { margin: 0; font-size: 13.5px; }
+.at-rows { list-style: none; margin: 2px 0 0; padding: 0; border-top: 1px solid var(--line-2); }
+.at-row { display: grid; grid-template-columns: 20px 26px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 4px; transition: background .15s; }
+.at-row.hot { background: var(--line-4); }
+.at-rno { font-size: 10px; color: var(--dim); }
+.at-rtx { min-width: 0; } .at-rtx b { display: flex; align-items: baseline; gap: 7px; font: 500 14.5px/1.35 var(--fx-serif); letter-spacing: .02em; }
+.at-rtx b i { font: 400 10px var(--fx-mono); font-style: normal; color: var(--accent); letter-spacing: .1em; }
+.at-rtx small { display: block; font-size: 12.5px; color: var(--dim); text-wrap: pretty; }
+.at-row:not(.lit) .at-rtx b { color: var(--dim); font-weight: 400; }
+.at-rmeta { display: grid; justify-items: end; gap: 4px; font-size: 11.5px; white-space: nowrap; }
+.at-rmeta .fx-pips i { width: 6px; height: 6px; }
+
+.at-side { display: grid; gap: 12px; min-width: 0; } .at-side h3 { margin: 6px 0 0; }
+.at-big { display: flex; align-items: baseline; gap: 8px; } .at-big b { font: 300 46px/1 var(--fx-mono); letter-spacing: -.02em; } .at-big .fx-lbl { margin-left: auto; }
+.at-kvs { display: grid; gap: 7px; font-size: 13px; }
+.at-recent { list-style: none; margin: 0; padding: 0; }
+.at-recent button { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 8px; align-items: center; width: 100%; min-height: 40px; padding: 4px 2px; text-align: left; font-size: 13.5px; outline-offset: -1px; }
+.at-recent button > span:nth-child(2) { font-family: var(--fx-serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .at-recent .fx-num { font-size: 11px; }
+.at-none, .at-foot { font-size: 12.5px; margin: 0; text-wrap: pretty; }
+.at-set { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 0; cursor: pointer; }
+.at-set b { display: block; font-weight: 500; font-size: 13.5px; } .at-set small { display: block; font-size: 12px; color: var(--dim); text-wrap: pretty; }
+.at-pick-hint { align-self: center; }
+
+/* ── 사람별 ── */
+.at-split { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 34px; align-items: start; }
+.at-people { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line-2); border-bottom: 1px solid var(--line-3); }
+.at-pbtn { display: grid; grid-template-columns: auto minmax(0, 1fr) 40px auto; gap: 11px; align-items: center; width: 100%; min-height: 58px; padding: 8px 4px; text-align: left; outline-offset: -1px; }
+.at-pbtn.on { background: var(--line-4); } .at-pbtn .at-thumb { width: 40px; height: 40px; }
+.at-pname { font: 500 14.5px var(--fx-serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── 대화 서랍 패널 ── */
+.at-panel { display: grid; gap: 10px; }
+.at-pcard { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 13px; align-items: center; width: 100%; text-align: left; }
+.at-pplate { display: block; width: 84px; height: 84px; padding: 5px; border: 1px solid var(--line-2); border-radius: 2px; }
+.at-ptx { display: grid; gap: 6px; min-width: 0; } .at-ptx > b { font: 500 14.5px var(--fx-serif); letter-spacing: .02em; } .at-ptx small { font-size: 12px; color: var(--dim); }
+
+/* ── 홈에 놓는 작은 요약 ── */
+.at-mini { display: grid; gap: 10px; width: 100%; max-width: 360px; min-width: 0; padding: 14px 15px 13px; }
+.at-mhead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-height: 28px; text-align: left; } .at-mhead .fx-lbl { color: var(--fx-ink); } .at-mhead .fx-num { font-size: 12.5px; }
+.at-mini .dim, .at-card small { color: color-mix(in srgb, var(--fx-ink) 62%, transparent); }
+.at-mempty { display: grid; grid-template-columns: 40px 1fr; gap: 10px; align-items: center; } .at-mempty svg { width: 40px; height: 40px; opacity: .7; } .at-mempty p { margin: 0; font-size: 12.5px; opacity: .75; }
+.at-mfoot { font-size: 12.5px; }
+
+/* ── 별이 켜지는 카드 ── 화면 오른쪽 아래 구석. 알림 줄(#toasts)과 겹치지 않게 옆으로 */
+.at-toasts { position: fixed; z-index: 95; right: 18px; bottom: calc(18px + var(--safe-b, 0px)); display: grid; gap: 8px; width: min(320px, calc(100vw - 24px)); pointer-events: none; }
+.at-card { pointer-events: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; padding: 10px 6px 10px 10px; animation: at-rise .42s var(--fx-out) both; }
+@keyframes at-rise { from { opacity: 0; transform: translateY(8px); } }
+.at-cmain { display: grid; grid-template-columns: 68px minmax(0, 1fr); gap: 12px; align-items: center; text-align: left; min-height: 68px; }
+.at-cart { display: block; width: 68px; height: 68px; }
+.at-cbody { display: grid; gap: 3px; min-width: 0; } .at-cbody .fx-lbl { color: var(--fx-gold); } .at-cbody b { font: 500 15.5px/1.3 var(--fx-serif); letter-spacing: .03em; } .at-cbody small { font-size: 12px; text-wrap: pretty; }
+.at-cx { width: 28px; height: 28px; display: grid; place-items: center; opacity: .55; } .at-cx:hover { opacity: 1; }
+
+/* ── 좁은 자리 ── 성도 대신 카드 목록, 목록 ↔ 상세 */
+@container at (max-width: 880px) {
+  .at-sky { display: none; } .at-cards { display: block; }
+  .at-lower { grid-template-columns: minmax(0, 1fr); gap: 26px; }
+  .at-pick-hint { display: none; }
+  .at-page.has-con .at-cards { display: none; }
+  .at-back { display: inline-flex; grid-column: 1 / -1; }
+  .at-split { grid-template-columns: minmax(0, 1fr); } .at-split.has .at-people { display: none; }
+}
+@container at (max-width: 600px) {
+  .at-detail { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .at-plate { max-width: 340px; width: 100%; justify-self: center; }
+}
+@media (max-width: 820px) {
+  .at-toasts { right: 12px; bottom: calc(84px + var(--safe-b, 0px)); }
+  .at-recent button, .at-set { min-height: 44px; }
+}

@@ -38,15 +38,15 @@ export interface Proposal {
 export interface Applied extends Proposal { at: number; before?: string; loreId?: string; entryId?: string; undone?: boolean }
 
 /** 이야기 저울이 혼자 쥐고 있는 것 */
-export interface Scale { arc: string; next: string; cue: string; turn: number; push?: boolean }
+export interface Scale { arc: string; next: string; cue: string; turn: number }
 
 /** 대화에 붙는 막후 상태 (chat.crew) — 분기하면 대화와 함께 복사된다 */
 export interface ChatCrew {
   /** 이 대화에서만 켜고 끈 조수 (없으면 전체 설정을 따른다) */ on?: Record<string, boolean>;
   /** 조수별 비공개 메모 */ memo?: Record<string, string>;
   /** 조수가 마지막으로 일한 턴 */ last?: Record<string, number>;
-  /** 답장 뒤 조수가 다음 턴에 넣어 달라고 남긴 글 */ carry?: Record<string, string>;
-  /** 답장 전 조수의 결과 (같은 직전 메시지면 다시 부르지 않는다) */ pre?: { key: string; out: Record<string, string> };
+  /** 밀어 주기: 다음 답장 한 번만 전개를 세게 민다 */ push?: boolean;
+  /** 답장 전 조수의 결과 (같은 직전 메시지면 다시 부르지 않는다) */ pre?: { key: string; out: Record<string, string>; /** 이 직전 메시지에 대해 이미 돈 조수 */ ran?: string[] };
   pending?: Proposal[]; done?: Applied[]; scale?: Scale;
   /** 설정 사서가 채우는 이 대화의 로어북 */ loreId?: string;
   /** 객석 창: 열림 · 접힘 · 자리 */ seats?: { open?: boolean; fold?: boolean; x?: number; y?: number };

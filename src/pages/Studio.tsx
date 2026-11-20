@@ -72,7 +72,7 @@ function Studio() {
       <p className="hint" key="h">{t('studio.as.hint')}</p>),
     '보조 연결': () => card([{ section: t('studio.hp.section') },
       { k: 'helpers.all', label: t('studio.hp.all'), type: 'select', opts: conns, hint: t('studio.hp.allHint') },
-      { k: 'helpers.translate', label: t('studio.tab.translate'), type: 'select', opts: conns, third: true }, { k: 'helpers.memory', label: t('studio.tab.memoria'), type: 'select', opts: conns, third: true }, { k: 'helpers.illust', label: t('studio.hp.illust'), type: 'select', opts: conns, third: true }]),
+      { k: 'helpers.translate', label: t('studio.tab.translate'), type: 'select', opts: conns, third: true }, { k: 'helpers.memory', label: t('studio.tab.memoria'), type: 'select', opts: conns, third: true }, { k: 'helpers.illust', label: t('studio.hp.illust'), type: 'select', opts: conns, third: true }, { k: 'helpers.crew', label: t('crew.title'), type: 'select', opts: conns, third: true }]),
   };
   // 기능 모듈이 등록한 탭이 같은 이름의 기본 탭을 대신한다
   for (const t of libHooks.X.studio) views[t.title] = () => <ExtTab render={() => t.render()} />;
