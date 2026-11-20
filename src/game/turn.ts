@@ -3,6 +3,7 @@
 import type { Chat, Msg } from '../lib/types';
 import type { PromptPiece } from '../lib/hooks';
 import { chatApi } from '../chat/actions';
+import { emit } from '../lib/core';
 import { fillSlots, resolveReply, trimBroken, veil, type CheckAsk, type RollRec, type SlotCtx } from './oneshot';
 import { encPrompt, missPrompt, missingItems, rng, rollEncounter, rollSights, seePrompt } from './omens';
 import { moodEdge, moodTier } from './mood';
@@ -40,7 +41,7 @@ export function unfold(chat: Chat, msg: Msg, sw: Sw, msgs: Msg[]): boolean {
   if (!out.rolls.length && !out.slots.length) { if (raw === sw.text) return false; sw.text = raw; return true; }
   const cont = !!(sw.grolls?.length || sw.gdice?.length);
   sw.text = out.text;
-  if (out.rolls.length) sw.grolls = [...(sw.grolls || []), ...out.rolls];
+  if (out.rolls.length) { sw.grolls = [...(sw.grolls || []), ...out.rolls]; const r = out.rolls[out.rolls.length - 1]; if (r.grade === 'crit') emit('fx:buzz', 'crit'); else if (!r.ok) emit('fx:buzz', 'fail'); }
   if (out.slots.length) sw.gdice = [...(sw.gdice || []), ...out.slots];
   if (cont || !out.rolls.length) delete sw.graw; else sw.graw = raw;
   return true;

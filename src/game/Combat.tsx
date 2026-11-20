@@ -2,6 +2,7 @@
 // 바위는 길과 시야를 막는다. 계산은 모두 앱이 하고, 끝나면 결과만 진행자에게 알린다
 import { useEffect, useMemo, useState } from 'react';
 import { t } from '../i18n';
+import { emit } from '../lib/core';
 import { sfx } from './sfx';
 import { gearOf, packBag, type BagCfg } from './bag';
 import { Emblem, Terrain } from './Art';
@@ -229,7 +230,7 @@ export function Combat({ g, sheet, foes, onDone, faces = {}, air, edge: moodEdge
     }
     // 내 차례가 돌아오기 전에 화상 · 중독이 한 번 탄다
     if (hp > 0) { const [na, dmg] = tick(myAil); myAil = na; if (dmg) { hp = Math.max(0, hp - dmg); log.push(t('game.fight.log.ailMe', { n: dmg })); } }
-    if (hp < s.hp) sfx('hurt');
+    if (hp < s.hp) { sfx('hurt'); emit('fx:buzz', 'hit'); }
     list = aftermath(list, log, s);
     return { ...s, hp, foes: list, allies, ail: myAil, mark, aura: myAura, say, rally, reacts, log: log.slice(-6), moved: false, guard: false, round: s.round + 1, hurt: hp < s.hp ? s.hurt + 1 : s.hurt, end: hp <= 0 ? 'lose' : list.every(f => f.hp <= 0) ? 'win' : s.end };
   };
@@ -277,7 +278,7 @@ export function Combat({ g, sheet, foes, onDone, faces = {}, air, edge: moodEdge
       if (weak) log.push(t('game.fight.log.weak', { name: f.name }));
       log.push(t(die === 20 || st.sure ? 'game.fight.log.crit' : how === 'melee' ? 'game.fight.log.hit' : 'game.fight.log.shot', { name: f.name, n: dmg }));
       if (f.hp - dmg <= 0) log.push(t('game.fight.log.down', { name: f.name }));
-      sfx('hit'); pop = { k: key(f.x, f.y), text: `-${dmg}`, miss: false, n: (st.pop?.n || 0) + 1 };
+      sfx('hit'); if (crit) emit('fx:buzz', 'crit'); pop = { k: key(f.x, f.y), text: `-${dmg}`, miss: false, n: (st.pop?.n || 0) + 1 };
     } else { log.push(t('game.fight.log.miss', { name: f.name })); sfx('miss'); pop = { k: key(f.x, f.y), text: t('game.fight.missPop'), miss: true, n: (st.pop?.n || 0) + 1 }; }
     after({ ...st, foes: aftermath(foesNow, log, st), log, sure: false, pop, reacts });
   };

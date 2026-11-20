@@ -69,11 +69,12 @@ export function openMiniPicker(chat: Chat) {
 export function resolveAsk(chat: Chat, ask: Ask) {
   const g = gameOf(chat); if (!g || running()) return;
   setSfx(g.sfx !== false);
-  if (ask.k === 'qte') return void openModal({ title: t('game.qte.title'), spec: 'div.gm' }, close => <Qte ask={ask} onDone={r => { close(); void record(chat, { kind: 'qte', ...r, secs: ask.secs }); }} />);
+  if (ask.k === 'qte') { emit('fx:buzz', 'qte'); return void openModal({ title: t('game.qte.title'), spec: 'div.gm' }, close => <Qte ask={ask} onDone={r => { close(); void record(chat, { kind: 'qte', ...r, secs: ask.secs }); }} />); }
   if (ask.k === 'check') {
     sfx('dice'); const sh = sheetOf(g, cur.msgs), r = rollWithMood(g, ask, sh), fumble = r.grade === 'fumble';
     // 실패했고 운명 점이 있으면 바로 넘어가지 않고, 받아들일지 다시 굴릴지 묻는다. 대실패는 운명 점을 하나 준다 (사기가 오른 날의 성공도 가끔)
     const open = !r.ok && sh.fate + (fumble ? 1 : 0) > 0;
+    if (r.grade === 'crit') emit('fx:buzz', 'crit'); else if (!r.ok) emit('fx:buzz', 'fail');   // 손에 전해지는 떨림 (받는 쪽이 있으면)
     return void record(chat, { kind: 'check', ...r, ...(ask.why ? { why: ask.why } : {}), ...(open ? { open: true } : {}) }, !open);
   }
   if (ask.k === 'play') return void playMini(chat, ask.game, ask.stake);
