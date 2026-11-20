@@ -166,6 +166,16 @@ function collect(a: PrepArgs, T: number, turn: AskTurn | null): Found[] {
   return [...found.values()];
 }
 
+/** 보기 전용 조립: 지금 보낸다면 어떤 프롬프트가 되는지 (매크로가 건드린 변수는 되돌린다) */
+export function dryBuild(chat: Chat, msgs: Msg[]): engine.Built | null {
+  const chars = (chat.charIds || []).map(id => S.get('chars', id) as Char | undefined).filter((x): x is Char => !!x); if (!chars.length) return null;
+  const keepVars = copy(chat.vars || {}), keepG = copy(S.settings.globalVars || {});
+  const inScene = chat.mode === 'talk' && !!chat.scene?.on, pchat = inScene ? Object.assign(Object.create(chat) as Chat, { mode: 'rp' as const, sceneLive: true }) : chat;
+  try { return engine.buildPrompt({ chat: pchat, char: chars[0], chars, persona: S.persona(chat), preset: S.presetFor(chat), msgs, type: 'normal', commit: false }); }
+  catch (e) { console.warn('[깨어난 설정] 미리 보기', e); return null; }
+  finally { chat.vars = keepVars; S.settings.globalVars = keepG; }
+}
+
 /** 이번 턴의 물음을 모아 한 번에 묻고, 답과 타이머를 chat.gate 에 적는다 */
 export async function prepare(a: PrepArgs): Promise<void> {
   const chat = a.chat as GChat; live = null;

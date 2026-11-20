@@ -6,7 +6,7 @@ import { S } from '../lib/core';
 import { quickCall } from '../lib/engine';
 import { openModal } from '../addons/parts';
 import { confirmBox, toast } from '../ui';
-import { t } from '../i18n';
+import { has, t } from '../i18n';
 import { cur } from '../chat/store';
 import { running } from '../chat/actions';
 import { GameCard, redrawGame } from './ui';
@@ -110,7 +110,7 @@ function PersonRow({ p, s, chat }: { p: Person; s: Sheet; chat: GameChat }) {
     {p.role ? <p className="g2-person-role">{p.role}</p> : null}
     {open ? <div className="g2-person-more fx-in">
       {p.met ? <span className="fx-kv"><span className="fx-lbl kr">{t('game.cast.met')}</span><i /><span>{p.met}</span></span> : null}
-      {p.last ? <span className="fx-kv"><span className="fx-lbl kr">{t('game.cast.last')}</span><i /><span>{p.last}</span></span> : null}
+      {p.last ? <span className="fx-kv"><span className="fx-lbl kr">{t('game.cast.last')}</span><i /><span>{has('game.verb.' + p.last) ? t('game.verb.' + p.last) : p.last}</span></span> : null}
       {p.marks.length ? <ol className="g2-marks">{p.marks.map((m, i) => <li key={i} className={m.to > m.from ? 'is-up' : 'is-down'}><span className="fx-num">{pad(i + 1)}</span><span>{t('game.rep.' + m.from)}</span><svg viewBox="0 0 28 8" width="28" height="8" className="fx-art" aria-hidden="true"><path d="M1 4h25M22.500 1 26 4l-3.500 3" /></svg><b>{t('game.rep.' + m.to)}</b></li>)}</ol> : null}
       <textarea className="inp" rows={2} defaultValue={g.npcNotes?.[key] || ''} placeholder={t('game.cast.notePh')} aria-label={t('game.cast.notePh')} onBlur={e => { const v = e.target.value.trim(); if ((g.npcNotes?.[key] || '') === v) return; g.npcNotes = { ...(g.npcNotes || {}) }; if (v) g.npcNotes[key] = v.slice(0, 600); else delete g.npcNotes[key]; void S.save('chats', chat, true); }} />
     </div> : null}
@@ -142,10 +142,10 @@ export function Shelf({ s }: { s: Sheet }) {
 }
 
 // ── 세션: 정리된 것들을 보여 주고, 다음 회에 바라는 것을 받는다 ──
-export function SessionParts({ x }: { x: SessionNote }) {
+export function SessionParts({ x, wish = true }: { x: SessionNote; /** 바라는 것도 보여 준다 (바로 아래에 고치는 칸이 있으면 끈다) */ wish?: boolean }) {
   const rows: [string, string[] | undefined][] = [['hooks', x.hooks], ['moments', x.moments], ['details', x.details], ['party', x.party]];
   return <div className="g2 g2-sess">{rows.map(([k, list]) => list?.length ? <div key={k}><span className="fx-lbl kr">{t('game.session.' + k)}</span><ul>{list.map((l, i) => <li key={i}>{l}</li>)}</ul></div> : null)}
-    {x.wish?.trim() ? <div className="g2-wish"><span className="fx-lbl kr acc">{t('game.session.wish')}</span><p>{x.wish}</p></div> : null}</div>;
+    {wish && x.wish?.trim() ? <div className="g2-wish"><span className="fx-lbl kr acc">{t('game.session.wish')}</span><p>{x.wish}</p></div> : null}</div>;
 }
 /** 지난 이야기: 요약을 한 단락씩 읽어 준다. 누르면 넘어가고, 언제든 건너뛸 수 있다 */
 export function Recap({ note, n, onDone }: { note: SessionNote; n: number; onDone(): void }) {

@@ -69,7 +69,8 @@
 
 /* ── 세션 ── */
 .g2-sess { display: grid; gap: 8px; padding: 4px 0 8px; font-size: 13px; } .g2-sess:empty { display: none; } .g2-sess > div { display: grid; gap: 3px; }
-.g2-sess li { position: relative; padding-left: 14px; color: var(--fx-ink); text-wrap: pretty; } .g2-sess li::before { content: ""; position: absolute; left: 2px; top: .72em; width: 6px; height: 1px; background: var(--line-1); }
+.gm-sessions .g2-sess li, .g2-sess li { position: relative; display: block; border: 0; padding: 0 0 0 14px; color: var(--fx-ink); text-wrap: pretty; } .g2-sess li::before { content: ""; position: absolute; left: 2px; top: .72em; width: 6px; height: 1px; background: var(--line-1); }
+.gm-sessions > li { padding-bottom: 10px; } .gm-sessions > li > textarea { margin-top: 6px; }
 .g2-wish { padding: 8px 10px; border: 1px dashed var(--line-2); border-radius: 3px; }
 /* 지난 이야기: 밤 바탕에 한 단락씩 */
 .g2-recap { position: absolute; inset: 0; z-index: 8; display: grid; grid-template-rows: 1fr auto auto auto 1.4fr; justify-items: center; gap: 18px; padding: max(28px, env(safe-area-inset-top)) 26px max(28px, env(safe-area-inset-bottom)); cursor: pointer; text-align: center; }

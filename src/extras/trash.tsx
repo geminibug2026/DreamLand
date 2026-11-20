@@ -7,6 +7,7 @@ import { DB, S, emit, msgText, now, uid } from '../lib/core';
 import { Live } from '../lib/live';
 import type { Chat, Msg } from '../lib/types';
 import { chatApi } from '../chat/actions';
+import { bump } from '../chat/store';
 import { fmtDate, t } from '../i18n';
 import { cfg } from './cfg';
 
@@ -48,7 +49,7 @@ export const Trash = {
     const ids = new Set(back.map(i => i.m.id)); row.items = row.items.filter(i => !ids.has(i.m.id)); await putRow(chat.id, row);
     try { Live.rewind(chat as never, msgs as never); } catch { /* 상태창을 쓰지 않는 방 */ }
     await S.saveMsgs(chat, msgs);
-    if (open) { chatApi.redraw(); emit('message:deleted', { chat, msgs }); }   // 목록이 달라졌으니 기억 · 변수 같은 것도 다시 맞추게 알린다
+    if (open) { chatApi.redraw(); bump('top', 'side', 'dossier'); emit('message:deleted', { chat, msgs }); }   // 목록이 달라졌으니 기억 · 변수 같은 것도 다시 맞추게 알린다
     return n;
   },
   /** 기한이 지난 것을 비운다 (앱을 열 때 · 백업을 되돌린 뒤) */

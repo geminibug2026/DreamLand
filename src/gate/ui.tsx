@@ -111,7 +111,8 @@ export function askDiag(chat = chatApi.current().chat) {
 
 // ════════ 설정 (기능 화면의 탭) ════════
 export function GatePane() {
-  const redraw = useEvents('settings'), c = cfg(), st = S.settings;
+  cfg();   // 기본값을 채워 둔다 (아래 폼이 settings.gate 를 직접 고친다)
+  const redraw = useEvents('settings'), st = S.settings;
   const conns: [string, string][] = [['', t('gate.cfg.connChat')], ...chatConns().map((x): [string, string] => [x.id, `${x.name}${x.model ? ' · ' + x.model : ''}`])];
   return <div className="gt-pane">
     <Form obj={st} defs={[{ section: t('gate.title') },

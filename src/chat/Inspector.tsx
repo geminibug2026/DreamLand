@@ -5,7 +5,7 @@ import { cur } from './store';
 import { charsOf, drawGauge, modeOf, presenceOf } from './actions';
 import type { Built, PMsg, Room } from './types';
 import { buildPrompt, tokens } from '../lib/engine';
-import { S } from '../lib/core';
+import { S, emit } from '../lib/core';
 import { t as tr } from '../i18n';
 
 const CATS = (): [string, string][] => (['history', 'preset', 'char', 'persona', 'lore', 'memory', 'note', 'feature', 'prefill']).map((k): [string, string] => [k, tr('chat.inspect.cat.' + k)]);
@@ -50,6 +50,7 @@ function Inspect({ chat, built, fine }: { chat: Room; built: Built; fine: Built 
       <div className="pm-ctx" title={tr('chat.inspect.ctxCap')}><i className="pm-ctx-used" style={{ width: Math.min(100, pct(used)) + '%' }} /><i className="pm-ctx-res" style={{ width: Math.min(100 - Math.min(100, pct(used)), pct(reserve)) + '%' }} /></div>
       <div className="pm-table pm-tail">{tail}</div>
       <p className="hint">{tr('chat.inspect.hint')}</p></> : listView()}
+    <div className="row wrap"><button type="button" className="btn ghost" onClick={() => emit('gate:diag', chat)}>{tr('gate.diag.title')}</button><button type="button" className="btn ghost" onClick={() => emit('lore:awake', chat)}>{tr('awake.title')}</button></div>
   </div>;
 }
 

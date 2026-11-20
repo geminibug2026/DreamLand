@@ -84,6 +84,7 @@ function Body({ c }: { c: Room }) {
     <Sec title={t('chat.drawer.loreSec')} ic="book" open={false}>
       <LoreLinker holder={c} save={saveChat} fixed={() => S.lore.filter(b => globals.has(b.id) || charBooks.has(b.id)).map(b => [b, globals.has(b.id) ? t('chat.drawer.loreGlobal') : t('chat.drawer.loreChar')])} />
       {hits.length ? <div className="hits"><small className="hint">{t('chat.drawer.loreHits', { count: hits.length })}</small>{hits.map((e, i) => <span className="chip static" key={i}>{e.name || e.keys?.[0] || e.book}</span>)}</div> : null}
+      <Btn label={t('awake.open')} ic="eye" cls="ghost" onClick={() => emit('lore:awake', c)} />
     </Sec>
     <Sec title={t('chat.drawer.varsSec')} ic="code" open={false}>
       <textarea className="inp" rows={3} placeholder={t('chat.drawer.varsPh')} defaultValue={Object.entries(c.vars || {}).map(([k, v]) => `${k}=${v}`).join('\n')} onChange={e => { c.vars = Object.fromEntries(e.target.value.split('\n').map(l => l.split('=')).filter(p => p[0].trim()).map(p => [p[0].trim(), p.slice(1).join('=')])); saveChat(); }} />

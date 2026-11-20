@@ -34,8 +34,9 @@ export const BgShelf = {
   },
   async save(b: BgRec) { if (!b.url) await DB.put('assets', b); },
   async remove(b: BgRec) { await DB.del('assets', b.id); await DB.del('assets', b.id + ':full'); mine = (mine || []).filter(x => x !== b); },
-  /** 대화에 걸 주소 (원본). 내장 풍경은 파일 주소 그대로 */
-  async full(b: BgRec) { return b.url || ((await DB.get('assets', b.id + ':full')) as { data?: string } | undefined)?.data || b.data; },
+  /** 대화에 걸 주소 (원본) */
+  async full(b: BgRec) { if (b.url) return new URL(b.url, document.baseURI).pathname;   // 배경은 스타일시트의 변수로 걸리므로, 문서 기준 주소로 바꿔 둔다 (css/ 기준으로 읽히지 않게)
+    return ((await DB.get('assets', b.id + ':full')) as { data?: string } | undefined)?.data || b.data; },
   /** 모델에게 알려 줄 이름들: 내 서가(즐겨찾기 먼저)에서 30개까지, 서가가 비었으면 내장 풍경 */
   names() { const l = [...(mine || [])].sort((a, b) => +!!b.fav - +!!a.fav); return (l.length ? l : builtin()).slice(0, 30).map(b => b.name); },
   find(name: string) { const q = norm(name); if (!q) return null; const l = [...(mine || []), ...builtin()]; return l.find(b => norm(b.name) === q) || l.find(b => (b.tags || []).some(x => norm(x) === q)) || null; },
