@@ -223,6 +223,7 @@ export async function prepare(a: PrepArgs): Promise<void> {
       done(f, p!, typeof v === 'boolean' ? v : null);
     }
   }
+  const order = new Map(found.map((f, i) => [f.key, i])); turn.rows.sort((x, y) => (order.get(x.key) ?? 0) - (order.get(y.key) ?? 0));   // 진단 창에는 프롬프트에 나온 차례대로
   for (const k of Object.keys(st)) if (st[k].at < T - 200) delete st[k];   // 오래 쓰이지 않은 자리의 기록은 치운다
   g.turn = turn;
   await S.save('chats', chat, true);

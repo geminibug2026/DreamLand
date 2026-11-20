@@ -21,6 +21,7 @@ function ImportBody({ b, done, close }: { b: Lore; done: () => void; close: () =
   // 넣을 곳마다의 계획: 이 책에 모두, 또는 글의 책 제목대로 (같은 이름의 책이 있으면 거기에, 없으면 새로)
   const plans = useMemo(() => (into === 'here' || !named ? [{ book: b as Lore | null, name: b.name, rows: planImport(b.entries || [], books.flatMap(x => x.entries), mode) }]
     : books.map(x => { const hit = x.name.trim() ? S.lore.find(l => l.name.trim().toLowerCase() === x.name.trim().toLowerCase()) || null : b; return { book: hit, name: hit?.name || x.name, src: x, rows: planImport(hit?.entries || [], x.entries, mode) }; })), [books, mode, into, named, b]);
+  for (const p of plans) for (const r of p.rows) if (r.status === 'overwrite' && p.book?.entries?.[r.target]?.locked) r.status = 'skip';   // 잠근 항목은 덮어쓰지 않는다 — 미리보기에서도 건너뜀으로
   const all = plans.flatMap(p => p.rows.map(r => ({ ...r, to: p.name }))), stat = (s: string) => all.filter(r => r.status === s).length;
   const read = (text: string, file = '') => {
     if (text.length > TEXT_MAX_BYTES) return toast(t('loretext.tooBig'), 'err');
@@ -35,7 +36,7 @@ function ImportBody({ b, done, close }: { b: Lore; done: () => void; close: () =
       target.entries ||= [];
       for (const r of p.rows) {
         if (r.status === 'skip') continue;
-        if (r.status === 'overwrite' && target.entries[r.target]) { if (target.entries[r.target].locked) continue; applyText(target.entries[r.target], r.entry); changed++; }   // 잠근 항목은 덮어쓰지 않는다
+        if (r.status === 'overwrite' && target.entries[r.target]) { applyText(target.entries[r.target], r.entry); changed++; }
         else { target.entries.push(applyText(newEntry(), r.entry, r.name) as LoreEntry); added++; }
       }
       if (p.rows.some(r => r.status !== 'skip')) await S.save('lore', target);

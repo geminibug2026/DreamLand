@@ -75,8 +75,9 @@ export async function applyChange(ch: Change): Promise<void> {
         if (!bl) {
           bl = { id: op.blockId, kind: 'custom', name: '', role: 'system', content: '', enabled: true, depth: null } as PresetBlock;
           // 자리를 정하지 않았으면 대화 기록 바로 앞에 둔다 (뒤에 두면 마지막 지시가 되어 영향이 너무 크다)
-          const at = op.after ? p.blocks.findIndex(x => x.id === op.after) + 1 : p.blocks.findIndex(x => x.kind === 'chatHistory');
-          p.blocks.splice(at <= 0 && !op.after ? p.blocks.length : Math.max(0, at), 0, bl);
+          let at = op.after ? p.blocks.findIndex(x => x.id === op.after) : -1;
+          at = at >= 0 ? at + 1 : p.blocks.findIndex(x => x.kind === 'chatHistory');
+          p.blocks.splice(at < 0 ? p.blocks.length : at, 0, bl);
         }
         Object.assign(bl, structuredClone(op.fields));
       }

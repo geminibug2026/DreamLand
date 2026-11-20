@@ -46,7 +46,7 @@ function tags(r: AskRow, turn: AskTurn | null): ReactNode {
   else if (r.tag === 'held') { pill('v', t('gate.tag.yes'), true); pill('h', r.left == null ? t('gate.tag.heldUntil') : t('gate.tag.held', { n: r.left })); }
   else if (r.tag === 'cool') { pill('v', t('gate.tag.no')); pill('c', t('gate.tag.cool', { n: r.left ?? 0 })); }
   else if (r.tag === 'every') { pill('v', r.v ? t('gate.tag.yes') : t('gate.tag.no'), r.v); pill('e', t('gate.tag.every', { n: r.left ?? 0 })); }
-  else if (r.tag === 'none') { pill('v', t('gate.tag.no')); pill('n', turn?.err === 'timeout' ? t('gate.tag.timeout') : t('gate.tag.none')); }
+  else if (r.tag === 'none') { pill('v', r.kind === 'pick' ? t('gate.tag.nopick') : t('gate.tag.no')); pill('n', turn?.err === 'timeout' ? t('gate.tag.timeout') : t('gate.tag.none')); }
   else if (r.tag === 'over') { pill('v', t('gate.tag.no')); pill('o', t('gate.tag.over')); }
   else if (r.tag === 'off') pill('o', t('gate.tag.off'));
   else { pill('v', t('gate.tag.no')); pill('u', t('gate.tag.unasked')); }

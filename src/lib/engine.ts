@@ -485,7 +485,7 @@ export function scanLore(books: LoreBook[], history: { content?: string | null }
         if (ask === 'need' && !sticky && !askYes(e)) { D.skip[e.id] = 'ask'; continue; }   // 유지 중인 항목은 다시 묻지 않는다
         D.hit[e.id] = sticky ? 'sticky' : e.constant ? 'constant' : 'vector'; now.push(it); continue;
       }
-      if (ask === 'wake' && st === 'initial' && askYes(e)) { D.hit[e.id] = 'ask'; now.push(it); continue; }   // 물음이 참이면 키워드 없이도 깨어난다
+      if (ask === 'wake' && st === 'initial') { if (askYes(e)) { D.hit[e.id] = 'ask'; now.push(it); continue; } D.skip[e.id] = 'ask'; }   // 물음이 참이면 키워드 없이도 깨어난다 (아니면 키워드를 본다)
       if (!e.keys?.length) continue;
       const hay = hayOf(it);
       if (hay.h && entryHit(e, hay.h, hay.l, flagsOf(it))) {

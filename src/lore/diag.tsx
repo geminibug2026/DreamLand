@@ -34,7 +34,7 @@ const why = (v: string) => WHY.includes(v) ? t('awake.why.' + v) : v;
 
 /** 머리 그림: 펼친 책에서 깨어난 항목 수만큼 별이 떠오른다 (자리는 차례에서 정해진다) */
 function BookArt({ n }: { n: number }) {
-  const stars = Array.from({ length: Math.min(n, 9) }, (_, i) => { const a = (i * 137.5) % 360, r = 6 + (i * 53) % 17; return [40 + Math.cos(a * Math.PI / 180) * r * 1.5, 26 - (i * 29) % 21, 1 + (i % 3) * 0.5]; });
+  const stars = Array.from({ length: Math.min(n, 9) }, (_, i) => { const a = (i * 137.5) % 360, r = 6 + (i * 53) % 17; return [40 + Math.cos(a * Math.PI / 180) * r * 1.5, 30 - (i * 29) % 23, 1.5 + (i % 3) * 0.6]; });
   return <svg className="fx-art gt-book" viewBox="0 0 80 80" width="80" height="80" aria-hidden="true">
     <path className="fx-draw" pathLength={1} d="M40 50C33 45 22 44 12 46v20c10-2 21-1 28 4 7-5 18-6 28-4V46c-10-2-21-1-28 4z" /><path className="t" d="M40 50v20" />
     <path className="h" d="M17 52c6-1 12 0 18 3M17 57c6-1 12 0 18 3M45 55c6-3 12-4 18-3M45 60c6-3 12-4 18-3" />
@@ -81,7 +81,7 @@ function Awake({ chat }: { chat: Chat }) {
   return <div className="gt-awake">
     <header className="gt-top"><BookArt n={(tab === 'test' ? test : scan)?.hits.length || 0} />
       <div className="gt-top-text"><span className="fx-lbl">lore · {tab === 'test' ? 'test' : scan?.real ? 'last reply' : 'preview'}</span><h3 className="fx-title">{t('awake.title')}</h3>
-        <p className="gt-sub">{tab === 'test' ? t('awake.sub.test') : !scan ? t('awake.sub.none') : scan.real ? t('awake.sub.real', { time: new Date(scan.diag.at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }) : t('awake.sub.preview')}</p></div></header>
+        <p className="gt-sub">{tab === 'test' ? t('awake.sub.test') : !scan ? t('awake.sub.none') : scan.real ? t('awake.sub.real', { time: new Date(scan.diag.at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false }) }) : t('awake.sub.preview')}</p></div></header>
     <div className="tabs gt-tabs" role="tablist">{([['last', t('awake.tab.last')], ['test', t('awake.tab.test')]] as const).map(([k, l]) => <button key={k} role="tab" aria-selected={tab === k} className={'tab' + (tab === k ? ' on' : '')} onClick={() => setTab(k)}>{l}</button>)}</div>
     {!books.length ? <div className="fx-empty"><svg className="fx-art" viewBox="0 0 56 56" aria-hidden="true"><path d="M28 36c-5-4-12-4-19-3v14c7-1 14-1 19 3 5-4 12-4 19-3V33c-7-1-14-1-19 3z" /><path d="M28 36v14" className="t" /><path d="M28 28V10" className="d" /></svg><p>{t('awake.noBooks')}</p></div>
       : tab === 'last' ? <>{scan ? <Rows scan={scan} /> : <p className="gt-none">{t('awake.sub.none')}</p>}

@@ -162,5 +162,6 @@ export function carryBlock(st: FeedState, char: Char, cfg: FeedCfg, now = Date.n
     return c.kind === 'reply' ? `- ${ago(c.ts, now)}, replied to ${name(c.toBy)}${c.toText ? ` ("${one(c.toText, 80)}")` : ''}: "${one(c.text, 200)}"${tail ? ' ' + tail : ''}` : `- ${ago(c.ts, now)}, pinned: "${one(c.text, 240)}"${tail ? ' ' + tail : ''}`;
   });
   const head = `[Night Board — a small bulletin board where ${char.name} and people they know pin short notes; {{user}} reads it too. What ${char.name} did there lately. ${char.name} remembers writing these, and {{user}} may bring them up. Do not recite them unprompted.]`;
-  return [head, ...fit(lines.reverse(), Math.max(60, cfg.carryTokens - tokens(head))).reverse()].join('\n');
+  const kept = fit(lines.reverse(), Math.max(60, cfg.carryTokens - tokens(head))).reverse();
+  return kept.length ? [head, ...kept].join('\n') : '';
 }
