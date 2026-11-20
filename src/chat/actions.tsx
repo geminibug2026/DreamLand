@@ -574,7 +574,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
     // 멈추기를 누르면 기다리던 준비를 두고 바로 그만둔다
     const stop = cur.prepAbort = new AbortController(), stopped = new Promise<void>(r => stop.signal.addEventListener('abort', () => r(), { once: true }));
     setPrep(true); setStatus(t('chat.status.recalling'));
-    try { for (const b of X.before) { if (stop.signal.aborted) break; try { await Promise.race([b.fn({ chat, msgs, type, chars, persona }), stopped]); } catch (e) { console.warn('[생성 전 준비]', b.owner, e); } } } finally { if (cur.prepAbort === stop) cur.prepAbort = null; setPrep(false); setStatus(''); }
+    try { for (const b of X.before) { if (stop.signal.aborted) break; try { await Promise.race([b.fn({ chat, msgs, type, chars, persona, speaker }), stopped]); } catch (e) { console.warn('[생성 전 준비]', b.owner, e); } } } finally { if (cur.prepAbort === stop) cur.prepAbort = null; setPrep(false); setStatus(''); }
     if (stop.signal.aborted || cur.chat !== chat || cur.msgs !== msgs || cur.busy) return;
   }
   chat.loreState ||= {}; chat.vars ||= {};

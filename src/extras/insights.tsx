@@ -1,5 +1,5 @@
 // 발자국: 이 대화의 통계 창. 모델을 부르지 않고 저장된 메시지만으로 센다. 그림은 전부 가는 선 SVG, 숫자는 모노
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { openModal } from '../ui';
 import { S, msgText } from '../lib/core';
 import { tokens } from '../lib/engine';
@@ -63,6 +63,12 @@ export function compute(msgs: Msg[]): Insights {
 }
 
 // ════════ 그림 ════════
+/** 그림을 놓을 자리의 실제 너비. 그 너비 그대로 그려서 글자와 선이 늘어나거나 줄지 않게 한다 */
+function useWidth(first: number): [(el: HTMLDivElement | null) => void, number] {
+  const [w, setW] = useState(first), node = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => { const el = node.current; if (!el) return; const fit = () => { const n = Math.round(el.clientWidth); if (n > 40) setW(n); }; fit(); const ro = new ResizeObserver(fit); ro.observe(el); return () => ro.disconnect(); }, []);
+  return [el => { node.current = el; }, w];
+}
 /** 머리의 발자국 길: 굽은 점선 위로 좌우 번갈아 찍힌 작은 자국 (함께한 날이 많을수록 길게) */
 function Trail({ seed, steps }: { seed: string; steps: number }) {
   const r = rng(seed), n = Math.max(4, Math.min(22, steps)), W = 320, amp = 7 + r() * 4, ph = r() * 6;
@@ -75,39 +81,39 @@ function Trail({ seed, steps }: { seed: string; steps: number }) {
 }
 /** 날짜별 활동: 가는 막대. 날이 많으면 같은 너비의 토막으로 묶는다. 축은 바닥 선 하나, 값 라벨은 가장 높은 것만 */
 function DayBars({ I }: { I: Insights }) {
-  const W = 560, H = 86, base = H - 16, MAXB = 90, d = I.days; if (!d.length) return null;
+  const [ref, W] = useWidth(800), H = 104, base = H - 18, d = I.days, MAXB = Math.max(12, Math.floor(W / 7)); if (!d.length) return null;
   const per = Math.max(1, Math.ceil(d.length / MAXB)), bins = Array.from({ length: Math.ceil(d.length / per) }, (_, i) => { const s = d.slice(i * per, (i + 1) * per); return { from: s[0].key, to: s[s.length - 1].key, n: s.reduce((a, b) => a + b.n, 0) }; });
   const max = Math.max(1, ...bins.map(b => b.n)), step = W / bins.length, top = bins.findIndex(b => b.n === max);
   const date = (k: number, o: Intl.DateTimeFormatOptions = { month: 'numeric', day: 'numeric' }) => fmtDate(new Date(k * DAY + new Date(k * DAY).getTimezoneOffset() * 60000 + 3600000), o);
-  return <svg viewBox={`0 0 ${W} ${H}`} className="xt-chart" role="img" aria-label={t('extras.ins.daily')}>
+  return <div ref={ref}><svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="xt-chart" role="img" aria-label={t('extras.ins.daily')}>
     <line className="ax" x1={0} y1={base + .5} x2={W} y2={base + .5} />
     {bins.map((b, i) => { const h = b.n ? Math.max(2, b.n / max * (base - 14)) : 0, x = i * step + step / 2;
-      return <g key={i}>{h ? <line className={'bar' + (i === top ? ' hi' : '')} x1={x} x2={x} y1={base} y2={base - h} strokeWidth={Math.max(1, Math.min(4, step - 2))} /> : <circle className="nil" cx={x} cy={base - 3} r={.6} />}
+      return <g key={i}>{h ? <line className={'bar' + (i === top ? ' hi' : '')} x1={x} x2={x} y1={base} y2={base - h} strokeWidth={Math.max(1, Math.min(3, step - 3))} /> : <circle className="nil" cx={x} cy={base - 3} r={.6} />}
         <rect className="hit" x={i * step} y={0} width={step} height={base}><title>{`${date(b.from)}${b.to !== b.from ? '–' + date(b.to) : ''} · ${b.n}`}</title></rect></g>; })}
     <text className="val" x={Math.max(14, Math.min(W - 14, top * step + step / 2))} y={base - Math.max(2, (base - 14)) - 4} textAnchor="middle">{max}</text>
     <text className="lab" x={0} y={H - 2}>{date(d[0].key, { year: '2-digit', month: 'numeric', day: 'numeric' })}</text>
     <text className="lab" x={W} y={H - 2} textAnchor="end">{date(d[d.length - 1].key, { year: '2-digit', month: 'numeric', day: 'numeric' })}</text>
     {per > 1 ? <text className="lab" x={W / 2} y={H - 2} textAnchor="middle">{t('extras.ins.perBin', { n: per })}</text> : null}
-  </svg>;
+  </svg></div>;
 }
 /** 시간대 고리: 24칸. 안쪽 고리에서 바깥으로 뻗는 눈금의 길이가 그 시각의 메시지 수 */
 function HourRing({ I }: { I: Insights }) {
-  const S0 = 168, c = S0 / 2, r0 = 34, L = 34, max = Math.max(1, ...I.hours);
+  const S0 = 188, c = S0 / 2, r0 = 30, L = 40, max = Math.max(1, ...I.hours);
   const pt = (h: number, r: number) => { const a = (h / 24) * Math.PI * 2 - Math.PI / 2; return [c + Math.cos(a) * r, c + Math.sin(a) * r]; };
-  return <svg viewBox={`0 0 ${S0} ${S0}`} className="xt-chart xt-ring" role="img" aria-label={t('extras.ins.hours')}>
+  return <svg viewBox={`0 0 ${S0} ${S0}`} width={S0} height={S0} className="xt-chart xt-ring" role="img" aria-label={t('extras.ins.hours')}>
     <circle className="ax" cx={c} cy={c} r={r0} /><circle className="ax faint" cx={c} cy={c} r={r0 + L} strokeDasharray="1 4" />
     {I.hours.map((n, h) => { const [x1, y1] = pt(h + .5, r0 + 2), [x2, y2] = pt(h + .5, r0 + 2 + (n / max) * (L - 3)), [hx, hy] = pt(h + .5, r0 + L / 2);
-      return <g key={h}>{n ? <line className={'bar' + (h === I.peak ? ' hi' : '')} x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth={2.4} /> : <circle className="nil" cx={x1} cy={y1} r={.6} />}
+      return <g key={h}>{n ? <line className={'bar' + (h === I.peak ? ' hi' : '')} x1={x1} y1={y1} x2={x2} y2={y2} strokeWidth={1.8} /> : <circle className="nil" cx={x1} cy={y1} r={.6} />}
         <circle className="hit" cx={hx} cy={hy} r={9}><title>{`${pad(h)}:00–${pad(h)}:59 · ${n}`}</title></circle></g>; })}
     {[0, 6, 12, 18].map(h => { const [x, y] = pt(h, r0 + L + 9); return <text key={h} className="lab" x={x} y={y + 3.5} textAnchor="middle">{pad(h)}</text>; })}
-    <text className="val big" x={c} y={c + 1} textAnchor="middle">{pad(I.peak)}</text><text className="lab" x={c} y={c + 14} textAnchor="middle">{t('extras.ins.peak')}</text>
+    <text className="val big" x={c} y={c + 7} textAnchor="middle">{pad(I.peak)}</text>
   </svg>;
 }
 /** 답장 길이의 흐름: 한 줄의 꺾은선과 평균 점선, 끝 값만 적는다 */
 function Trend({ I }: { I: Insights }) {
-  const W = 560, H = 78, v = I.trend; if (v.length < 2) return null;
+  const [ref, W] = useWidth(560), H = 84, v = I.trend; if (v.length < 2) return <div ref={ref} />;
   const max = Math.max(...v) * 1.08, min = 0, X = (i: number) => 4 + i * (W - 56) / (v.length - 1), Y = (n: number) => H - 14 - (n - min) / (max - min || 1) * (H - 26);
-  return <svg viewBox={`0 0 ${W} ${H}`} className="xt-chart" role="img" aria-label={t('extras.ins.trend')}>
+  return <div ref={ref}><svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="xt-chart" role="img" aria-label={t('extras.ins.trend')}>
     <line className="ax" x1={0} y1={H - 13.5} x2={W - 48} y2={H - 13.5} />
     <line className="ax faint" x1={0} y1={Y(I.avgReply)} x2={W - 48} y2={Y(I.avgReply)} strokeDasharray="2 4" />
     <path className="ln fx-draw" pathLength={1} d={v.map((n, i) => `${i ? 'L' : 'M'}${X(i).toFixed(1)} ${Y(n).toFixed(1)}`).join('')} />
@@ -116,7 +122,7 @@ function Trend({ I }: { I: Insights }) {
     <text className="val" x={W - 40} y={Y(v[v.length - 1]) + 3.5}>{num(v[v.length - 1])}</text>
     <text className="lab" x={0} y={H - 1}>{t('extras.ins.early')}</text><text className="lab" x={W - 48} y={H - 1} textAnchor="end">{t('extras.ins.recent')}</text>
     <text className="lab" x={W - 40} y={Math.min(H - 16, Math.max(9, Y(I.avgReply) + (Math.abs(Y(I.avgReply) - Y(v[v.length - 1])) < 12 ? 14 : 3.5)))}>{t('extras.ins.avg')}</text>
-  </svg>;
+  </svg></div>;
 }
 function Words({ title, rows, acc }: { title: string; rows: [string, number][]; acc?: boolean }) {
   const max = Math.max(1, ...rows.map(r => r[1]));
@@ -142,7 +148,7 @@ function View({ chat, msgs }: { chat: Chat; msgs: Msg[] }) {
     <div className="xt-share" role="img" aria-label={t('extras.ins.share', { me: Math.round(share * 100), them: Math.round((1 - share) * 100) })}><span>{me}<b className="fx-num">{Math.round(share * 100)}%</b></span><i style={{ ['--p' as string]: share }} /><span><b className="fx-num">{Math.round((1 - share) * 100)}%</b>{them}</span></div>
     <Sec title={t('extras.ins.daily')} note={I.days.length ? t('extras.ins.dailyNote', { n: I.days.length }) : ''}><DayBars I={I} /></Sec>
     <div className="xt-ins-two">
-      <Sec title={t('extras.ins.hours')}><HourRing I={I} /></Sec>
+      <Sec title={t('extras.ins.hours')}><HourRing I={I} /><div className="fx-kv"><span>{t('extras.ins.peak')}</span><i /><b>{pad(I.peak)}:00</b></div></Sec>
       <div>
         <Sec title={t('extras.ins.trend')} note={t('extras.ins.avgN', { n: num(I.avgReply) })}>{I.trend.length > 1 ? <Trend I={I} /> : <p className="dim">{t('extras.ins.tooFew')}</p>}</Sec>
         <Sec title={t('extras.ins.swipes')} note={`${Math.round(swPct * 100)}%`}>

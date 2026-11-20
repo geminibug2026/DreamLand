@@ -10,7 +10,7 @@
 
 /* ── 고르는 창 ── */
 .xt-pick { position: fixed; z-index: 58; width: 360px; max-height: min(430px, 62vh); display: flex; flex-direction: column; padding: 4px; color: var(--text); }
-.xt-pick.sheet { left: 8px; right: 8px; width: auto; }
+.xt-pick.xt-sheet { left: 8px; right: 8px; width: auto; }
 .xt-pick-head { display: flex; align-items: center; gap: 8px; padding: 8px 8px 6px 12px; }
 .xt-pick-q { flex: 1; min-width: 0; height: 28px; padding: 0 2px; border: 0; border-bottom: 1px solid var(--line-2); background: none; color: inherit; font: inherit; font-size: 13px; outline: 0; transition: border-color .15s; }
 .xt-pick-q:focus { border-bottom-color: var(--line-1); } .xt-pick-q::placeholder { color: var(--dim); }
@@ -88,7 +88,7 @@
 
 /* ── 지운 메시지 ── */
 .toast.xt-undo { display: flex; align-items: center; gap: 14px; } .toast.xt-undo button { border: 0; background: none; color: inherit; font: 500 12px var(--fx-mono); letter-spacing: .08em; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; padding: 4px 0; }
-.xt-trash { display: grid; gap: 12px; } .xt-trash-list { display: grid; gap: 18px; max-height: min(56vh, 520px); overflow-y: auto; padding-right: 4px; }
+.xt-trash { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; } .xt-trash-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; max-height: min(56vh, 520px); overflow-y: auto; padding-right: 4px; }
 .xt-trash-g > header { display: flex; align-items: center; gap: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--line-2); font-size: 12px; }
 .xt-trash-all { border: 0; background: none; padding: 4px; margin: -4px; display: inline-flex; cursor: pointer; }
 .xt-trash-row { display: flex; align-items: baseline; gap: 10px; padding: 8px 0; cursor: pointer; font-size: 13px; min-width: 0; }
@@ -124,14 +124,14 @@
 .xt-share { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--dim); } .xt-share span { display: inline-flex; gap: 6px; align-items: baseline; max-width: 30%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; } .xt-share b { color: var(--text); font-weight: 400; }
 .xt-share > i { flex: 1; height: 7px; background: linear-gradient(var(--accent) 0 0) 0 50% / calc(var(--p) * 100% - 1px) 3px no-repeat, linear-gradient(var(--fx-ink) 0 0) 100% 50% / calc((1 - var(--p)) * 100% - 1px) 3px no-repeat; }
 .xt-ins-sec { display: grid; gap: 10px; min-width: 0; align-content: start; } .xt-ins-sec > header { display: flex; align-items: center; gap: 10px; } .xt-ins-sec > header .fx-head { flex: 1; } .xt-ins-sec > header small { font-size: 11px; color: var(--dim); }
-.xt-ins-two { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 28px; } .xt-ins-two > div { display: grid; gap: 22px; align-content: start; min-width: 0; }
-.xt-chart { width: 100%; height: auto; display: block; overflow: visible; }
+.xt-ins-two { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 32px; } .xt-ins-two > div { display: grid; gap: 22px; align-content: start; min-width: 0; }
+.xt-chart { display: block; overflow: visible; max-width: 100%; }
 .xt-chart .ax { stroke: var(--line-2); stroke-width: 1; fill: none; } .xt-chart .ax.faint { stroke: var(--line-2); stroke-width: .7; }
 .xt-chart .bar { stroke: var(--fx-ink); } .xt-chart .bar.hi { stroke: var(--accent); } .xt-chart .nil { fill: var(--line-2); } .xt-chart .hit { fill: transparent; stroke: none; }
 .xt-chart .hit:hover { fill: var(--line-4); }
 .xt-chart .lab { font: 400 10px var(--fx-mono); fill: var(--dim); letter-spacing: .04em; } .xt-chart .val { font: 400 11px var(--fx-mono); fill: var(--text); } .xt-chart .val.big { font-size: 22px; }
 .xt-chart .ln { fill: none; stroke: var(--fx-ink); stroke-width: 1.2; stroke-linejoin: round; stroke-linecap: round; } .xt-chart .dot { fill: var(--surface); stroke: var(--accent); stroke-width: 1.5; }
-.xt-ring { max-width: 200px; margin: 0 auto; }
+.xt-ring { margin: 0 auto; }
 .xt-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; } .xt-tbl th { text-align: right; font: 500 11px var(--font); letter-spacing: .08em; color: var(--dim); padding: 0 0 6px 12px; border-bottom: 1px solid var(--line-2); } .xt-tbl th:first-child, .xt-tbl td:first-child { text-align: left; padding-left: 0; }
 .xt-tbl td { padding: 7px 0 7px 12px; text-align: right; border-bottom: 1px solid var(--line-3); } .xt-tbl td:first-child { font-family: var(--fx-mono); font-size: 12px; overflow-wrap: anywhere; } .xt-tbl tr:last-child td { border-bottom: 0; }
 .xt-words-two { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; } .xt-words { display: grid; gap: 8px; align-content: start; min-width: 0; }

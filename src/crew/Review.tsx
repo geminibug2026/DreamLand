@@ -28,7 +28,7 @@ function Card({ chat, p }: { chat: CrewChat; p: Proposal }) {
       {stale && <span className="fx-pill">{t('crew.review.staleTag')}</span>}
     </header>
     {p.kind === 'lore' && <h4 className="cr-pcard-name">{p.name}{p.keys?.length ? <small className="fx-num">{p.keys.join(' · ')}</small> : null}</h4>}
-    {s.before ? <Diff a={s.before} b={s.after} /> : <p className="cr-diff"><ins>{s.after}</ins></p>}
+    {s.before ? <Diff a={s.before} b={s.after} /> : <p className="cr-diff new">{s.after}</p>}
     {p.kind === 'card' && !p.oldText && <small className="hint">{t('crew.review.append')}</small>}
     {p.reason && <p className="cr-why"><span className="fx-lbl kr">{t('crew.review.why')}</span>{p.reason}</p>}
     {stale && <small className="hint">{t('crew.review.stale')}</small>}

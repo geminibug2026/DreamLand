@@ -37,7 +37,7 @@ function Win({ chat }: { chat: CrewChat }) {
   const [, bump] = useState(0), box = useRef<HTMLDivElement>(null), body = useRef<HTMLDivElement>(null);
   // 새로 온 묶음은 시차를 두고 한 줄씩 보인다: fresh = { 메시지, 보인 줄 수 }
   const fresh = useRef<{ msgId: string; shown: number } | null>(null);
-  const seats = seatsOf(chat.id, getLang()), w = st(chat).seats || {}, items = feed().filter(it => !fresh.current || it.msgId !== fresh.current.msgId || it.i < fresh.current.shown);
+  const seats = seatsOf(chat.id, getLang()), w0 = st(chat).seats || {}, w = { ...w0, fold: w0.fold ?? matchMedia('(max-width: 820px)').matches }, items = feed().filter(it => !fresh.current || it.msgId !== fresh.current.msgId || it.i < fresh.current.shown);
   useEffect(() => {
     let timer = 0;
     const off = on<{ chatId: string; msgId: string }>('crew:seats', e => {
@@ -59,7 +59,7 @@ function Win({ chat }: { chat: CrewChat }) {
     const up = () => { removeEventListener('pointermove', move); removeEventListener('pointerup', up); const q = el.getBoundingClientRect(); st(chat).seats = { ...(st(chat).seats || {}), x: Math.round(q.left), y: Math.round(q.top) }; void S.save('chats', chat, true); };
     addEventListener('pointermove', move); addEventListener('pointerup', up);
   };
-  const fold = () => { st(chat).seats = { ...w, fold: !w.fold }; void S.save('chats', chat, true); bump(n => n + 1); };
+  const fold = () => { st(chat).seats = { ...w0, fold: !w.fold }; void S.save('chats', chat, true); bump(n => n + 1); };
   const pos = w.x != null && w.y != null ? { left: Math.min(w.x, innerWidth - 80), top: Math.min(w.y, innerHeight - 60), right: 'auto', bottom: 'auto' } : undefined;
   const last = items[items.length - 1], style = cfg().seats.style;
   return <aside ref={box} className={'cr-seats fx-frame' + (w.fold ? ' fold' : '')} style={pos} aria-label={t('crew.b.seats.name')}>

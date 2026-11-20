@@ -51,6 +51,7 @@ function setup() {
     const opened = unfold(chat, msg, sw, mine); carryOmen(msg, sw, mine);
     const r = settle(sw);
     if (r.changed || opened || sw.gturn || had) { if (here()?.id === chat.id) void chatApi.save(); else void S.msgs(chat.id).then(msgs => S.saveMsgs(chat, msgs)); }
+    if (opened && here()?.id === chat.id) chatApi.redraw();   // 갈래가 걷혀 글이 달라졌으니 그 답장을 다시 그린다
     redrawGame();
     // 삽화: 새 장소에 도착했거나, 전투 결과를 이어받은 답변만 그린다 (답변마다 그리지 않는다)
     // 새 장소에 닿으면 체크포인트를 남긴다 (그 장면으로 돌아오기 쉽게)

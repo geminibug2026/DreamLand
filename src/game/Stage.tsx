@@ -13,11 +13,13 @@ import { fmt, pagesOf } from '../vn/Screen';
 import { Ambience, Music, setSfx, sfx } from './sfx';
 import { Weather, airOf } from './Weather';
 import { elapsedOf, gameOf, pendingAsk, pendingFate, sceneOf, sheetOf, trackOf, type GameMsg, type GameRec } from './state';
-import { GameCard, askLabel, openSheet, resolveAsk, rewindTo, settleFate } from './ui';
+import { GameCard, askLabel, interject, openSheet, resolveAsk, rewindTo, settleFate } from './ui';
+import { MoodFlag, Recap, TurnCards, stageParts } from './More';
+import { moodTier } from './mood';
 import { bgFor, loadMedia, trackByName, trackFor } from './media';
 import { ClockDial, Glyph, Keystone, Rule, type GlyphName } from './Art';
 
-interface Page { key: string; msgId: string; who: 'c' | 'u' | 'n' | 'e'; charId: string; name: string; text: string; rec?: GameRec; msg: Msg }
+interface Page { key: string; msgId: string; who: 'c' | 'u' | 'n' | 'e'; charId: string; name: string; text: string; rec?: GameRec; msg: Msg; /** 문단 사이에 끼는 굴림 카드 (만남 · 눈썰미 · 한 번에 끝난 판정) */ cards?: string }
 /** 되돌아볼 수 있는 메시지 수. 세션을 마무리해 프롬프트에서 뺀(숨긴) 메시지도 읽을 수는 있다 */
 const LOOKBACK = 400;
 // 메시지마다 나눠 둔 문단을 기억해 둔다 — 답변이 흘러오는 동안 지난 메시지 수백 개를 매번 다시 나누지 않게
@@ -29,9 +31,9 @@ function build(chat: Chat, msgs: Msg[]): Page[] {
     if (rec) { if (rec.kind !== 'start') out.push({ key: m.id, msgId: m.id, who: 'e', charId: '', name: '', text: '', rec, msg: m }); continue; }
     const who = m.role === 'user' ? 'u' : m.role === 'assistant' ? 'c' : 'n', charId = who === 'c' ? charIdOf(m, chat as ChatX) : '';
     const name = who === 'u' ? me : who === 'c' ? S.get('chars', charId)?.name || m.name || '' : '';
-    const sig = `${m.sw}\u0001${name}\u0001${charId}\u0001${m.swipes[m.sw]?.text || ''}`, had = pageCache.get(m);
+    const sig = `${m.sw}\u0001${name}\u0001${charId}\u0001${m.swipes[m.sw]?.text || ''}\u0001${JSON.stringify((m.swipes[m.sw] as { grolls?: unknown })?.grolls || '')}`, had = pageCache.get(m);
     if (had && had.sig === sig) { for (const p of had.pages) out.push(p); continue; }
-    const mine = pagesOf(shownText(m)).map((text, i): Page => ({ key: `${m.id}:${m.sw}:${i}`, msgId: m.id, who, charId, name, text, msg: m }));
+    const mine = stageParts(m, pagesOf(shownText(m))).map((p, i): Page => p.cards ? { key: `${m.id}:${m.sw}:${i}`, msgId: m.id, who: 'e', charId: '', name: '', text: '', msg: m, cards: p.cards } : { key: `${m.id}:${m.sw}:${i}`, msgId: m.id, who, charId, name, text: p.text || '', msg: m });
     pageCache.set(m, { sig, pages: mine }); for (const p of mine) out.push(p);
   }
   return out;
@@ -45,6 +47,8 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   const [, bump] = useState(0), [pos, setPos] = useState(-1), [draft, setDraft] = useState(''), [sound, setSound] = useState(true);
   const box = useRef<HTMLDivElement>(null), input = useRef<HTMLTextAreaElement>(null), lastEnd = useRef(''), restored = useRef(false), was = useRef({ gold: -1, scene: '', ask: false, hp: -1 }), [cine, setCine] = useState(''), played = useRef(new Set<string>()), cineTm = useRef(0);
   const chat = cur.chat?.id === chatId ? cur.chat : null, msgs = chat ? cur.msgs : [], busy = running(), g = gameOf(chat);
+  // 지난 이야기는 세션을 마친 뒤 이 화면에 다시 들어올 때 들려준다 (마무리한 그 자리에서 바로 뜨지 않게, 들어올 때의 값만 본다)
+  const [recapDue] = useState(() => !!gameOf(cur.chat)?.recap);
   // 대화는 바깥에서 바뀐다. 자주 들여다보되, 달라진 것이 있을 때만 다시 그린다 (그 밖의 변화는 2초마다 한 번 따라잡는다)
   useEffect(() => {
     let sig = '', n = 0;
@@ -109,7 +113,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   // 연출: 진행자가 붙인 효과는 그 답변을 처음 볼 때 한 번, 다치면 화면이 흔들린다
   const play = (name: string) => { clearTimeout(cineTm.current); setCine(''); requestAnimationFrame(() => setCine(name)); if (name !== 'letterbox') cineTm.current = window.setTimeout(() => setCine(c => c === name ? '' : c), 900); };
   useEffect(() => {
-    if (!page || page.who === 'e') return; const list = (page.msg.swipes[page.msg.sw] as { gcine?: string[] } | undefined)?.gcine;
+    if (!page || page.who === 'e' || page.cards) return; const list = (page.msg.swipes[page.msg.sw] as { gcine?: string[] } | undefined)?.gcine;
     if (list?.length && !played.current.has(page.msgId)) { played.current.add(page.msgId); play(list[0]); } else if (!list?.length && cine === 'letterbox') setCine('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page?.msgId]);
@@ -147,6 +151,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   const hpLow = sheet.hp <= sheet.hpMax / 4, lastAi = lastMsg?.role === 'assistant';
   let body: ReactNode;
   if (!page) body = <p className="gs-text gs-faint">{busy ? '' : t('game.stage.empty')}</p>;
+  else if (page.cards) body = <div className="gs-event" key={page.key}><TurnCards m={page.msg} only={page.cards} /></div>;
   else if (page.who === 'e') body = <div className="gs-event" key={page.key}><GameCard m={page.msg} /></div>;
   else body = <p className="gs-text" key={page.key}>{fmt(page.text)}{waiting ? <span className="typing"><i /><i /><i /></span> : null}</p>;
 
@@ -155,6 +160,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
     <div className={`gs-bg${bg ? '' : ' is-plain'}`} key={bg} style={bg ? { backgroundImage: `url("${bg}")` } : undefined} />
     {air ? <Weather air={air} onFlash={() => { if (ambOn) window.setTimeout(() => Ambience.thunder(false), 500 + Math.random() * 2200); }} /> : null}
     <div className="gs-shade" /><div className="gs-cine" />
+    {recapDue && g.recap && g.sessions?.length && !busy ? <Recap note={g.sessions[g.sessions.length - 1]} n={g.sessions.length} onDone={() => { g.recap = false; void S.save('chats', chat, true); bump(n => n + 1); }} /> : null}
     <div className="gs-head" ref={head}>
     <header className="gs-top">
       <div className="gs-loc">{when ? <span className="gs-eyebrow">{when}</span> : null}<h1 className={title.length > 22 ? 'is-xlong' : title.length > 12 ? 'is-long' : undefined} title={title}>{title}</h1></div>
@@ -172,6 +178,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
         <span className="gs-meter"><i style={{ width: `${sheet.hp / sheet.hpMax * 100}%` }} className={hpLow ? 'is-low' : ''} /></span>
       </button>
       <div className="gs-stats"><span title={t('game.fate.hint')}><small>{t('game.fate')}</small>{sheet.fate}</span><span><small>LV</small>{sheet.level}</span><span><small>{t('game.gold')}</small>{sheet.gold}</span></div>
+      {moodTier(sheet.morale) !== 2 ? <button type="button" className="g2 g2-gs-mood" title={t('game.mood.hint')} onClick={() => openSheet(chat)}><MoodFlag v={sheet.morale} size={26} /><small>{t('game.mood.title')}</small><b>{t('game.mood.' + moodTier(sheet.morale))}</b></button> : null}
       {sheet.meters.map(m => <div key={m.name} className="gs-clock gs-mbar"><small>{m.name}</small><span className="gs-meter"><i style={{ width: `${m.v / m.max * 100}%` }} /></span><em>{m.v}/{m.max}</em></div>)}
       {sheet.clocks.map(c => <div key={c.name} className={`gs-clock${c.v >= c.max ? ' is-full' : ''}`}><ClockDial v={c.v} max={c.max} /><small>{c.name}</small><em>{c.v}/{c.max}</em></div>)}
       {sheet.party.length ? <div className="gs-party">{sheet.party.map(n => { const c = S.chars.find(x => x.name.toLowerCase() === n.toLowerCase()); return <span key={n} title={n} style={c?.avatar ? { backgroundImage: `url("${c.avatar}")` } : undefined}>{c?.avatar ? '' : n.slice(0, 1)}</span>; })}</div> : null}
@@ -187,6 +194,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
         {/* 넘기기와 헷갈리지 않게, 조작 단추는 글 위 오른쪽에 따로 모아 둔다 */}
         <div className="gs-ctl">
           {page && !busy && !atEnd ? <button type="button" className="gs-mini" title={t('game.rewind.tip')} aria-label={t('game.rewind.tip')} onClick={() => void rewindTo(page.msgId)}><Glyph name="rewind" size={18} /></button> : null}
+          {busy && lastAi ? <button type="button" className="gs-auto g2-gs-cut" title={t('game.cut.tip')} onClick={() => interject(chat)}>{t('game.cut.title')}</button> : null}
           {busy ? <button type="button" className="gs-mini is-stop" title={t('vn.stop')} aria-label={t('vn.stop')} onClick={() => stopAll()}><Glyph name="stop" size={18} /></button>
             : canAct && lastAi ? <button type="button" className="gs-mini" title={t('vn.regen')} aria-label={t('vn.regen')} onClick={() => void generate('regen')}><Glyph name="redo" size={18} /></button> : null}
           <button type="button" className={`gs-auto${auto ? ' on' : ''}`} title={t('game.stage.autoTip')} aria-pressed={!!auto} onClick={() => { g.auto = auto ? 0 : 4; void S.save('chats', chat, true); bump(n => n + 1); }}><i />AUTO</button>

@@ -208,7 +208,7 @@ export const seePrompt = (list: Seen[]) => `[Keen eyes — {{user}} notices with
 
 // ── 가방에 없는 물건 ──
 const USE_EN = /\b(?:use|using|draw|drawing|drink|quaff|throw|light|wield|equip|unsheathe|fire|shoot with|swing|read|show|hand over|give (?:him|her|them)|pull out|take out|produce|open (?:it|the \w+) with|unlock (?:it|the \w+) with)\s+(?:my|the|a|an|our)\s+([a-z][a-z' -]{1,28}?)(?=[.,!?;:)]|\s+(?:and|to|at|on|in|from|with|for|then|so|before|while)\b|$)/gi;
-const USE_KO = /([가-힣A-Za-z][가-힣A-Za-z ]{0,14}?)[을를]\s*(?:꺼내|꺼낸|사용|써서|쓴다|마신|마셔|들이켜|던진|던져|휘두|뽑아|뽑는|겨눈|겨누|장착|착용|건넨|건네|내민|내밀|보여|켠다|켜서|펼친|펼쳐)/g;
+const USE_KO = /([가-힣A-Za-z]{1,12})[을를]\s*(?:꺼내|꺼낸|사용|써서|쓴다|마신|마셔|들이켜|던진|던져|휘두|뽑아|뽑는|겨눈|겨누|장착|착용|건넨|건네|내민|내밀|보여|켠다|켜서|펼친|펼쳐)/g;
 const USE_ZH = /(?:拿出|掏出|使用|喝下|喝掉|扔出|拔出|举起|点燃|亮出|递出)(?:我的|一[把瓶个张支根]|那[把瓶个张支根])?([一-龥]{1,8})/g;
 const norm = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
 /** 내 말에 "꺼낸다 · 쓴다 · 마신다" 고 한 물건 가운데, 가방에 없고 장비 · 소모품으로 알아볼 수 있는 것 */

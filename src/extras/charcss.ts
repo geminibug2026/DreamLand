@@ -20,13 +20,13 @@ export function rawCss(ch: Char | null | undefined): string {
 /** 선언 블록 하나를 다듬는다: !important 빼기 · fixed → absolute · 잠긴 변수 빼기 */
 function cleanDecls(body: string): string {
   return body.split(';').map(d => {
-    const i = d.indexOf(':'); if (i < 0) return d.trim() ? '' : d;
+    const i = d.indexOf(':'); if (i < 0) return '';
     const prop = d.slice(0, i).trim(); let val = d.slice(i + 1).replace(/!\s*important/gi, '').trim();
     if (!prop || LOCKED.test(prop)) return '';
     if (/^position$/i.test(prop) && /\b(fixed|sticky)\b/i.test(val)) val = 'absolute';
     if (/expression\s*\(|javascript:|behavior\s*:|-moz-binding/i.test(prop + val)) return '';
     return ` ${prop}: ${val}`;
-  }).filter(Boolean).join(';') + (body.trim() ? ';' : '');
+  }).filter(Boolean).join(';') + (body.includes(':') ? ';' : '');
 }
 /** 선택자 앞에 대화 화면을 붙인다. html · body · :root 는 대화 화면 자체로 읽는다 */
 const scopeSel = (sel: string) => sel.split(',').map(s => s.trim()).filter(Boolean).map(s => {

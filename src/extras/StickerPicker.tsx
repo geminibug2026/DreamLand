@@ -59,7 +59,7 @@ export function openStickerPicker(anchor: Element, onPick: (s: Sticker) => void)
   if (closeOpen) { const was = closeOpen; was(); if ((was as { anchor?: Element }).anchor === anchor) return; }
   const host = document.createElement('div'); host.className = 'xt-pick fx-frame fx-in'; host.setAttribute('role', 'dialog'); host.setAttribute('aria-label', t('extras.stk.title'));
   const root = createRoot(host), r = anchor.getBoundingClientRect(), narrow = innerWidth <= 820;
-  if (narrow) { host.classList.add('sheet'); host.style.bottom = Math.max(8, innerHeight - r.top + 8) + 'px'; }
+  if (narrow) { host.classList.add('xt-sheet'); host.style.bottom = Math.max(8, innerHeight - r.top + 8) + 'px'; }
   else { host.style.bottom = (innerHeight - r.top + 10) + 'px'; host.style.left = Math.max(12, Math.min(innerWidth - 372, r.left - 40)) + 'px'; }
   const close = () => { if (closeOpen !== close) return; closeOpen = null; document.removeEventListener('pointerdown', away, true); document.removeEventListener('keydown', key, true); root.unmount(); host.remove(); };
   (close as { anchor?: Element }).anchor = anchor;

@@ -121,7 +121,7 @@ function Shelf({ chat, close }: { chat: Chat; close: () => void }) {
       {list === null ? <p className="dim">{t('extras.loading')}</p> : rows.length ? <div className="xt-bg-grid">{rows.map((b, i) => <figure key={b.id} className={'xt-bg-it fx-in' + (c.bgName === b.name && chat.bg ? ' on' : '')} style={{ ['--d' as string]: Math.min(i, 12) * 18 + 'ms' }}>
         <button type="button" className="xt-bg-pic" aria-label={t('extras.bg.use', { name: b.name })} onClick={() => void pick(b)}><img src={b.data} alt="" loading="lazy" /></button>
         <figcaption><span className="fx-num">{b.name}</span>
-          {b.url ? <em className="fx-lbl">{t('extras.bg.builtinTag')}</em> : <><button type="button" className={'xt-star' + (b.fav ? ' on' : '')} aria-pressed={!!b.fav} title={t('extras.bg.fav')} aria-label={t('extras.bg.fav')} onClick={async () => { b.fav = !b.fav; await BgShelf.save(b); redraw(); }}><Icon name="star" size={13} /></button>
+          {b.url ? <em className="fx-lbl kr">{t('extras.bg.builtinTag')}</em> : <><button type="button" className={'xt-star' + (b.fav ? ' on' : '')} aria-pressed={!!b.fav} title={t('extras.bg.fav')} aria-label={t('extras.bg.fav')} onClick={async () => { b.fav = !b.fav; await BgShelf.save(b); redraw(); }}><Icon name="star" size={13} /></button>
             <button type="button" className="xt-star" title={t('extras.bg.more')} aria-label={t('extras.bg.more')} onClick={e => more(e.currentTarget, b)}><Icon name="more" size={13} /></button></>}</figcaption>
       </figure>)}</div> : <div className="fx-empty"><EmptyArt /><p>{term ? t('extras.bg.noneFound') : view === '@fav' ? t('extras.bg.noFavs') : t('extras.bg.empty')}</p></div>}
     </section>
