@@ -5,6 +5,7 @@ import { Btn, useEvents } from '../kit';
 import { Check, Field, Select, openModal } from '../addons/parts';
 import { promptBox, toast } from '../ui';
 import { cur } from '../chat/store';
+import { S } from '../lib/core';
 import { t } from '../i18n';
 import { formatVar } from './engine';
 import * as A from './app';
@@ -28,14 +29,33 @@ export function MvuSettings() {
         <Field label={t('mvu.set.tries')} hint={t('mvu.set.triesHint')}><input className="inp" type="number" min={1} max={5} defaultValue={c.tries} onChange={e => set({ tries: num(e.target.value, 1, 5) })} /></Field>
       </div>
       <Field label={t('mvu.set.trigger')} hint={t('mvu.set.triggerHint')}><input className="inp" defaultValue={c.trigger} spellCheck={false} onChange={e => set({ trigger: e.target.value })} /></Field>
+      <Field label={t('mvu.set.prompt')} hint={t('mvu.set.promptHint')}>
+        <Select value={c.prompt} opts={[['builtin', t('mvu.set.promptBuiltin')], ['preset', t('mvu.set.promptPreset')], ['other', t('mvu.set.promptOther')]]} onChange={v => set({ prompt: v as A.MvuCfg['prompt'] })} />
+      </Field>
+      {c.prompt === 'other' ? <Field label={t('mvu.set.otherPreset')}><Select value={c.otherPreset} opts={[['', '—'], ...S.presets.map(p => [p.id, p.name] as const)]} onChange={v => set({ otherPreset: v })} /></Field> : null}
+      <Field label={t('mvu.set.format')} hint={t('mvu.set.formatHint')}>
+        <Select value={c.format} opts={[['chat', t('mvu.set.formatChat')], ['tool', t('mvu.set.formatTool')], ['json', t('mvu.set.formatJson')], ['json_v4', t('mvu.set.formatJsonV4')]]} onChange={v => set({ format: v as A.MvuCfg['format'] })} />
+      </Field>
+      <Field label={t('mvu.set.strategy')} hint={t('mvu.set.strategyHint')}>
+        <Select value={c.strategy} opts={[['seq', t('mvu.set.strategySeq')], ['parallel', t('mvu.set.strategyParallel')], ['oneThenParallel', t('mvu.set.strategyOneThen')]]} onChange={v => set({ strategy: v as A.MvuCfg['strategy'] })} />
+      </Field>
       <Field label={t('mvu.set.white')} hint={t('mvu.set.whiteHint')}><input className="inp" defaultValue={c.white} spellCheck={false} onChange={e => set({ white: e.target.value })} /></Field>
       <Field label={t('mvu.set.black')} hint={t('mvu.set.blackHint')}><input className="inp" defaultValue={c.black} spellCheck={false} onChange={e => set({ black: e.target.value })} /></Field>
     </> : null}
     <Check label={t('mvu.set.notifyErr')} on={c.notifyErr} onChange={v => set({ notifyErr: v })} />
     <Check label={t('mvu.set.notifyInit')} on={c.notifyInit} onChange={v => set({ notifyInit: v })} />
+    <details className="api-doc"><summary>{t('mvu.set.cleanupSec')}</summary>
+      <Check label={t('mvu.set.cleanup')} hint={t('mvu.set.cleanupHint')} on={c.cleanup} onChange={v => set({ cleanup: v })} />
+      <div className="row wrap">
+        <Field label={t('mvu.set.keepRecent')}><input className="inp" type="number" min={1} defaultValue={c.keepRecent} onChange={e => set({ keepRecent: num(e.target.value, 1, 10000) })} /></Field>
+        <Field label={t('mvu.set.snapEvery')} hint={t('mvu.set.snapEveryHint')}><input className="inp" type="number" min={1} defaultValue={c.snapEvery} onChange={e => set({ snapEvery: num(e.target.value, 1, 10000) })} /></Field>
+        <Field label={t('mvu.set.restoreRecent')} hint={t('mvu.set.restoreRecentHint')}><input className="inp" type="number" min={1} defaultValue={c.restoreRecent} onChange={e => set({ restoreRecent: num(e.target.value, 1, 10000) })} /></Field>
+      </div>
+    </details>
     <details className="api-doc"><summary>{t('mvu.set.more')}</summary>
       <Check label={t('mvu.set.toChat')} hint={t('mvu.set.toChatHint')} on={c.toChat} onChange={v => set({ toChat: v })} />
       <Check label={t('mvu.set.sendas')} hint={t('mvu.set.sendasHint')} on={c.sendas} onChange={v => set({ sendas: v })} />
+      <Check label={t('mvu.set.legacy')} hint={t('mvu.set.legacyHint')} on={c.legacy} onChange={v => set({ legacy: v })} />
     </details>
   </div>;
 }
@@ -69,6 +89,27 @@ export function MvuPanel({ chat }: { chat: Chat; msgs: Msg[] }) {
         <Btn label={t('mvu.panel.repair')} ic="sparkle" cls="ghost" title={t('mvu.panel.repairHint')} onClick={go(repair)} />
       </> : null}
     </div>
+    {E.legacy ? <div className="row wrap">
+      <Btn label={t('mvu.panel.snapshot')} ic="star" cls="ghost" title={t('mvu.panel.snapshotHint')} onClick={go(async () => { const v = await promptBox(t('mvu.panel.snapshotAsk'), '10'); if (v === null) return; const n = parseInt(v); if (Number.isNaN(n)) return toast(t('mvu.toast.badFloor', { n: v }), 'err'); await A.snapshotAt(n); })} />
+      <Btn label={t('mvu.panel.replay')} ic="refresh" cls="ghost" title={t('mvu.panel.replayHint')} onClick={go(async () => {
+        const v = await promptBox(t('mvu.panel.replayEnd'), '-1'); if (v === null) return; let to = parseInt(v); if (to === -1) to = cur.msgs.length - 1;
+        if (Number.isNaN(to) || !cur.msgs[to]) return toast(t('mvu.toast.badFloor', { n: v }), 'err');
+        const found = A.lastValidIndex(cur.msgs, to); if (found < 0) return toast(t('mvu.toast.replayNone'), 'err');
+        const w = await promptBox(t('mvu.panel.replayStart', { n: found }), String(found)); if (w === null) return; const from = parseInt(w);
+        if (Number.isNaN(from)) return toast(t('mvu.toast.badFloor', { n: w }), 'err');
+        await A.replay(from, to);
+      })} />
+      <Btn label={t('mvu.panel.cleanup')} ic="trash" cls="ghost" title={t('mvu.panel.cleanupHint')} onClick={go(async () => { const v = await promptBox(t('mvu.panel.cleanupAsk', { n: E.snapEvery }), '10'); if (v === null) return; const n = parseInt(v); if (Number.isNaN(n)) return toast(t('mvu.toast.badFloor', { n: v }), 'err'); await A.cleanupOld(n); })} />
+    </div> : null}
     {busy ? <small className="hint">{t('mvu.panel.working')}</small> : null}
   </div>;
+}
+
+/** 오래 이어진 대화를 처음 열 때: 옛 메시지의 변수를 정리할지 (정리만 · 받아 두고 정리 · 다시 묻지 않기) */
+export function askLegacyCleanup(): Promise<'clean' | 'backup' | 'never' | null> {
+  return new Promise(res => {
+    let done = false; const fin = (v: 'clean' | 'backup' | 'never' | null) => { if (!done) { done = true; res(v); } };
+    openModal({ title: t('mvu.legacy.title'), onClose: () => fin(null), actions: [{ label: t('mvu.legacy.never'), onclick: () => fin('never') }, { label: t('mvu.legacy.backup'), onclick: () => fin('backup') }, { label: t('mvu.legacy.clean'), cls: 'primary', onclick: () => fin('clean') }] },
+      () => <p style={{ whiteSpace: 'pre-wrap' }}>{t('mvu.legacy.body')}</p>);
+  });
 }

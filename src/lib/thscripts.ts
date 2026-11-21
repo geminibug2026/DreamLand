@@ -45,10 +45,18 @@ export const isRunning = () => running.size > 0;
 
 // ── 실리태번 화면 흉내: jQuery · 마법봉 메뉴(#extensionsMenu) · EJS 템플릿 도우미 ──
 let jq: Promise<void> | null = null;
+const loadScript = (src: string) => new Promise<void>(res => { const el = document.createElement('script'); el.src = src; el.onload = () => res(); el.onerror = () => res(); document.head.append(el); });
 function ensureJq() {
   const w = window as unknown as { jQuery?: unknown; $?: unknown };
   if (w.jQuery) return Promise.resolve();
-  return jq ||= new Promise<void>(res => { const el = document.createElement('script'); el.src = vendor() + 'jquery.min.js'; el.onload = () => res(); el.onerror = () => res(); document.head.append(el); });
+  return jq ||= loadScript(vendor() + 'jquery.min.js');
+}
+// 실리태번 화면에는 jQuery UI 가 늘 있다: 스크립트가 쓰면 앱 화면에도 깐다 (스크립트의 $ 는 앱 화면의 jQuery 다)
+let jqui: Promise<void> | null = null;
+const JQUI = /\.(?:draggable|droppable|resizable|selectable|sortable|accordion|autocomplete|checkboxradio|controlgroup|datepicker|dialog|selectmenu|slider|spinner|tabs|tooltip|effect)\s*\(|\$\.ui\b/;
+function ensureJqUi() {
+  if ((window as unknown as { jQuery?: { ui?: unknown } }).jQuery?.ui) return Promise.resolve();
+  return jqui ||= loadScript(vendor() + 'th/jquery-ui.min.js').then(() => { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = vendor() + 'th/jquery-ui/theme.min.css'; document.head.append(l); });
 }
 function ensureMenu() {
   if (document.getElementById('extensionsMenu')) return;
@@ -124,6 +132,7 @@ function start(s: ThScript) {
     if (e.source !== f.contentWindow || !(e.data as { dlFrameReady?: unknown })?.dlFrameReady) return;
     removeEventListener('message', onReady);
     await ensureJq();
+    if (JQUI.test(s.content)) await ensureJqUi();
     const init = await Promise.resolve(frameHooks.init?.(f)).catch(() => ({}));
     const code = rewriteImports(bodyOf(s.content)).replace(/<\/script/gi, '<\\/script');
     // Tavern Helper 처럼 모듈 스크립트로 돌린다 (import 를 쓸 수 있다)

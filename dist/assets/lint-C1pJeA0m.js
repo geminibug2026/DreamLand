@@ -1,0 +1,1 @@
+export{r as similar}from"./lint-3ntGPqwO.js";

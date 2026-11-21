@@ -6,6 +6,7 @@ import { allThemes, COLOR_FIELDS } from '../lib/theme';
 import { qrStore, type QrItem, type QrSet } from '../lib/qr-data';
 import { isMvu, runtime as mvuRuntime, type Obj as MvuObj } from '../mvu/engine';
 import { initOf as mvuInitOf } from '../mvu/app';
+import { varsOf } from '../chat/msgVars';
 import { safeCss } from '../modules/logic';
 import { cur } from '../chat/store';
 import { buildNow } from '../chat/Inspector';
@@ -147,11 +148,10 @@ async function lintButtons(list: { label: string; text: string; kind?: unknown }
 const qrCard = (i: Obj) => `${str(i.label)} · ${str(i.kind || 'insert')}${(i.auto && typeof i.auto === 'object' && Object.keys(i.auto).length) ? ' · auto: ' + Object.keys(i.auto as Obj).join(',') : ''}${i.hidden ? ' · hidden' : ''}`;
 
 // ── 변수 갱신 틀(MVU) ──
-type MsgD = Msg & { thData?: Obj };
 /** 대화의 지금 변수: 가장 마지막 메시지의 stat_data, 없으면 로어북의 [InitVar] 항목들 */
 async function mvuOf(ref: unknown) {
-  const c = openChat(ref), list = (cur.chat?.id === c.id ? cur.msgs : await S.msgs(c.id)) as MsgD[];
-  for (let i = list.length - 1; i >= 0; i--) if (isMvu(list[i].thData)) return { chat: c, source: `message ${i + 1}`, data: list[i].thData as unknown as { stat_data: MvuObj; schema?: MvuObj } };
+  const c = openChat(ref), list = (cur.chat?.id === c.id ? cur.msgs : await S.msgs(c.id));
+  for (let i = list.length - 1; i >= 0; i--) if (isMvu(varsOf(list[i]))) return { chat: c, source: `message ${i + 1}`, data: varsOf(list[i]) as unknown as { stat_data: MvuObj; schema?: MvuObj } };
   let init: { stat_data: MvuObj; schema?: MvuObj } | null = null;
   try { init = (await mvuInitOf(c)).data as unknown as { stat_data: MvuObj; schema?: MvuObj }; } catch { init = null; }
   return { chat: c, source: init && Object.keys(init.stat_data).length ? 'initial variables ([InitVar] lorebook entries)' : 'none', data: init };

@@ -465,7 +465,7 @@ export const stPresetWithRegex = (j: O, scripts: unknown) => ({ ...j, extensions
 
 interface StRow {
   mes?: unknown; name?: string; is_user?: boolean; is_system?: boolean; send_date?: unknown; swipes?: unknown[]; swipe_id?: number; original_avatar?: string;
-  swipe_info?: { extra?: { reasoning?: string; model?: unknown } }[]; extra?: { type?: string; reasoning?: string; model?: unknown }; create_date?: unknown; character_name?: string;
+  swipe_info?: { extra?: { reasoning?: string; model?: unknown } }[]; variables?: unknown[]; extra?: { type?: string; reasoning?: string; model?: unknown }; create_date?: unknown; character_name?: string;
   chat_metadata?: { note_prompt?: string; note_depth?: number; note_role?: number; variables?: O }; [k: string]: unknown;
 }
 /** .jsonl 채팅 → { chat, msgs }.  resolve(m) 은 그룹 채팅에서 화자 캐릭터를 찾는다 */
@@ -489,6 +489,8 @@ export function stChatToChat(text: string, { charIds, name, resolve }: { charIds
     if (r.extra?.model) swipes[sw].model = r.extra.model;
     const m = K.newMsg(role, r.mes, { swipes, sw, ts, name: r.name || '', hidden: !!r.is_system && !narrator });
     if (role === 'assistant') m.charId = resolve ? resolve(r) : charIds[0];
+    // 메시지 변수 (Tavern Helper · 변수 갱신 틀): 후보마다 하나씩
+    if (Array.isArray(r.variables)) r.variables.forEach((v, i) => { if (swipes[i] && v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length) (swipes[i] as Swipe & { thData?: O }).thData = v as O; });
     // 드림랜드가 쓰지 않는 값(그림 · 생성 시각 · 확장 기록 등)은 그대로 두었다가 내보낼 때 되돌린다
     const rest = Object.fromEntries(Object.entries(r).filter(([k]) => !ROW_OWN.has(k)));
     const extra = Object.fromEntries(Object.entries(r.extra || {}).filter(([k]) => k !== 'reasoning' && k !== 'model'));
@@ -502,7 +504,7 @@ export function stChatToChat(text: string, { charIds, name, resolve }: { charIds
   return { chat, msgs };
 }
 /** 줄에서 드림랜드가 직접 읽는 키 */
-const ROW_OWN = new Set(['mes', 'name', 'is_user', 'is_system', 'send_date', 'swipes', 'swipe_id', 'swipe_info', 'extra']);
+const ROW_OWN = new Set(['mes', 'name', 'is_user', 'is_system', 'send_date', 'swipes', 'swipe_id', 'swipe_info', 'extra', 'variables']);
 const META_OWN = new Set(['note_prompt', 'note_depth', 'note_role', 'variables']);
 export function chatToStJsonl(chat: Chat, msgs: Msg[], userName: string, charName: string): string {
   const stamp = (t: number) => new Date(t).toISOString();
@@ -516,7 +518,8 @@ export function chatToStJsonl(chat: Chat, msgs: Msg[], userName: string, charNam
     const many = m.role === 'assistant';
     const info = many ? m.swipes.map((s, i) => { const o: O = { ...(rest.swipe_info?.[i] || {}) }; const x: O = { ...((o.extra as O) || {}) }; if (s.reasoning) x.reasoning = s.reasoning; else delete x.reasoning; if (s.model) x.model = s.model; o.extra = x; o.send_date ??= stamp(s.ts || m.ts); return o; }) : undefined;
     const { extra: _e, swipe_info: _s, ...other } = rest; void _e; void _s;
-    lines.push(JSON.stringify({ ...other, name: m.role === 'user' ? userName : (m.name || charName), is_user: m.role === 'user', is_system: m.role === 'system' || !!m.hidden, send_date: stamp(m.ts), mes: cur.text, swipes: many ? m.swipes.map(s => s.text) : undefined, swipe_id: many ? m.sw : undefined, swipe_info: info, extra }));
+    const vars = (many ? m.swipes : [cur]).map(s => ((s as Swipe & { thData?: O })?.thData) || ((m as Msg & { thData?: O }).thData && s === cur ? (m as Msg & { thData?: O }).thData : {}));
+    lines.push(JSON.stringify({ ...other, name: m.role === 'user' ? userName : (m.name || charName), is_user: m.role === 'user', is_system: m.role === 'system' || !!m.hidden, send_date: stamp(m.ts), mes: cur.text, swipes: many ? m.swipes.map(s => s.text) : undefined, swipe_id: many ? m.sw : undefined, swipe_info: info, extra, ...(vars.some(v => Object.keys(v as O).length) ? { variables: vars } : {}) }));
   }
   return lines.join('\n');
 }

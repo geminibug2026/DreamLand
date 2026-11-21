@@ -16,7 +16,9 @@ type Num = number | string;
 import type { Swipe, Msg, Char, Persona, Chat, Regex, Preset, PresetBlock as Block, PresetParams, Conn, LoreEntry, Lore as LoreBook } from './types';
 export type { Swipe, Msg, Char, Persona, Chat, Regex, Preset, Block, Conn, LoreEntry, LoreBook };
 /** 프리셋 매개변수 + 보조 호출이 덧붙이는 이름들 */
-export type Params = Partial<PresetParams> & { /** 보조 호출(기억 정리 등): 생각(추론)을 적게 하라고 요청한다 */ lowThink?: boolean; stop?: unknown[]; names?: Names; groupNudge?: string; continueNudge?: string; impersonatePrompt?: string };
+/** 정해진 꼴로 답하게 하기 (스트리밍하지 않는 호출에서만): 도구 호출 하나를 꼭 부르게 · JSON 스키마 · JSON 객체 */
+export interface Structured { tool?: { name: string; description: string; parameters: Obj }; json?: { name: string; schema: Obj }; jsonObject?: boolean }
+export type Params = Partial<PresetParams> & { /** 보조 호출(기억 정리 등): 생각(추론)을 적게 하라고 요청한다 */ lowThink?: boolean; structured?: Structured; stop?: unknown[]; names?: Names; groupNudge?: string; continueNudge?: string; impersonatePrompt?: string };
 export interface Names { user?: string; char?: string; others?: string[] }
 export type LoreState = Record<string, { sticky: number; cool: number }>;
 export interface LoreHit extends LoreEntry { text: string; book?: string; bookId: string; tok: number }
@@ -1212,12 +1214,12 @@ function parseThink(text: string, rz: ReasonFmt): { text: string; think: string 
 
 // 받은 조각의 꼴 (읽는 만큼)
 interface AnthEvent { type?: string; delta?: { type?: string; text?: string; thinking?: string; stop_reason?: string }; usage?: unknown; error?: { message?: string } }
-interface AnthJson { content?: { type: string; text?: string; thinking?: string }[]; stop_reason?: string; usage?: unknown }
-interface GemJson { error?: { code?: Num; message?: string }; candidates?: { content?: { parts?: { thought?: boolean; text?: string }[] }; finishReason?: string }[]; promptFeedback?: { blockReason?: string }; usageMetadata?: unknown }
-interface OaiChoice { text?: string; finish_reason?: string; message?: { content?: string; reasoning_content?: string; reasoning?: string }; delta?: { content?: unknown; reasoning_content?: string; reasoning?: string } }
+interface AnthJson { content?: { type: string; text?: string; thinking?: string; name?: string; input?: unknown }[]; stop_reason?: string; usage?: unknown }
+interface GemJson { error?: { code?: Num; message?: string }; candidates?: { content?: { parts?: { thought?: boolean; text?: string; functionCall?: { name?: string; args?: unknown } }[] }; finishReason?: string }[]; promptFeedback?: { blockReason?: string }; usageMetadata?: unknown }
+interface OaiChoice { text?: string; finish_reason?: string; message?: { content?: string; reasoning_content?: string; reasoning?: string; tool_calls?: { function?: { name?: string; arguments?: string } }[] }; delta?: { content?: unknown; reasoning_content?: string; reasoning?: string } }
 interface OaiJson { error?: { message?: string }; choices?: OaiChoice[]; usage?: unknown }
 export interface StreamOpts { signal?: AbortSignal; onText?: (t: string) => void; onThink?: (t: string) => void; /** 터미널 로그에 적을 호출 이름 */ label?: string }
-export interface StreamResult { text: string; think: string; finish: string | undefined; usage: unknown }
+export interface StreamResult { text: string; think: string; finish: string | undefined; usage: unknown; /** structured.tool 로 부른 도구의 인자 (JSON 글) */ tool?: string }
 
 /** 스트리밍 채팅. onText(delta), onThink(delta) */
 /** 모델 호출. 서버 터미널에도 기록을 남긴다 (설정 › 터미널 로그) */
@@ -1356,6 +1358,8 @@ async function streamChatRaw(conn: Conn | null | undefined, Pin: Params, message
       if (num(P.topK)) body.top_k = +P.topK;
     }
     if (P.stop?.length) body.stop_sequences = P.stop;
+    const st = !stream ? P.structured : undefined;
+    if (st?.tool) { body.tools = [{ name: st.tool.name, description: st.tool.description, input_schema: st.tool.parameters }]; body.tool_choice = adaptive ? { type: 'auto' } : { type: 'any' }; }
     Object.assign(body, extra);
     let url = base.replace(/\/v1$/, '') + '/v1/messages';
     let headers: Record<string, string> = { 'Content-Type': 'application/json', 'x-api-key': conn.apiKey as string, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' };
@@ -1368,9 +1372,10 @@ async function streamChatRaw(conn: Conn | null | undefined, Pin: Params, message
     const stopNote = (r?: string) => { if (r === 'refusal') put('\n\n' + tr('engine.refused')); };
     if (!stream) {
       const j: AnthJson = await res.json();
-      for (const b of j.content || []) { if (b.type === 'text') put(b.text); if (b.type === 'thinking') putThink(b.thinking); }
+      let tool: string | undefined;
+      for (const b of j.content || []) { if (b.type === 'text') put(b.text); if (b.type === 'thinking') putThink(b.thinking); if (b.type === 'tool_use' && b.name === st?.tool?.name) tool = JSON.stringify(b.input ?? {}); }
       stopNote(j.stop_reason);
-      return { text, think, finish: j.stop_reason, usage: j.usage };
+      return { text, think, finish: j.stop_reason, usage: j.usage, tool };
     }
     for await (const evRaw of sse(res)) {
       const ev = evRaw as AnthEvent;
@@ -1397,6 +1402,10 @@ async function streamChatRaw(conn: Conn | null | undefined, Pin: Params, message
       safetySettings: ['HARM_CATEGORY_HARASSMENT', 'HARM_CATEGORY_HATE_SPEECH', 'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'HARM_CATEGORY_DANGEROUS_CONTENT'].map(c => ({ category: c, threshold: 'BLOCK_NONE' })),
     };
     if (system) body.systemInstruction = { parts: [{ text: system }] };
+    const st = !stream ? P.structured : undefined;
+    if (st?.tool) { body.tools = [{ functionDeclarations: [{ name: st.tool.name, description: st.tool.description, parameters: gemSchema(st.tool.parameters) }] }]; body.toolConfig = { functionCallingConfig: { mode: 'ANY' } }; }
+    if (st?.json || st?.jsonObject) gen.responseMimeType = 'application/json';
+    let tool: string | undefined;
     Object.assign(body, extra);
     const id = encodeURIComponent(model.replace(/^models\//, '')), method = stream ? 'streamGenerateContent?alt=sse' : 'generateContent';
     const t = kind === 'vertex' ? await vertexTarget(conn, 'google', id, method) : { url: `${base}/v1beta/models/${id}:${method}`, headers: { 'x-goog-api-key': conn.apiKey as string } };
@@ -1406,12 +1415,13 @@ async function streamChatRaw(conn: Conn | null | undefined, Pin: Params, message
       if (Array.isArray(j)) j = j[0] || {};
       if (j.error) throw new Error(tr('engine.err.apiStatus', { status: j.error.code || '', body: j.error.message || JSON.stringify(j.error) }));
       const c = j.candidates?.[0];
-      for (const p of c?.content?.parts || []) { if (p.thought) putThink(p.text); else put(p.text); }
+      for (const p of c?.content?.parts || []) { if (p.functionCall && p.functionCall.name === st?.tool?.name) tool = JSON.stringify(p.functionCall.args ?? {}); else if (p.thought) putThink(p.text); else put(p.text); }
       if (c?.finishReason) finish = c.finishReason;
       if (j.promptFeedback?.blockReason) put('\n\n' + tr('engine.blocked', { why: j.promptFeedback.blockReason }));
       usage = j.usageMetadata || usage;
     };
     if (stream) { for await (const ev of sse(res)) eat(ev); } else eat(await res.json());
+    if (tool !== undefined) return { text, think, finish, usage, tool };
     // 글이 한 자도 안 왔으면 이유를 알려 준다
     if (!text.trim()) {
       const why = ['MAX_TOKENS', 'SAFETY', 'PROHIBITED_CONTENT', 'RECITATION', 'BLOCKLIST', 'SPII', 'OTHER'].includes(finish as string) ? tr('engine.finish.' + finish) : '';
@@ -1482,6 +1492,10 @@ async function streamChatRaw(conn: Conn | null | undefined, Pin: Params, message
   // 받지 않는 곳이면 quickCall 이 그 설정을 빼고 한 번 더 보낸다
   else if (P.lowThink && /gemini/i.test(model)) body.reasoning_effort = 'low';
   if (stream && official) body.stream_options = { include_usage: true };
+  const st = !stream ? P.structured : undefined;
+  if (st?.tool) { body.tools = [{ type: 'function', function: { name: st.tool.name, description: st.tool.description, parameters: st.tool.parameters } }]; body.tool_choice = 'required'; }
+  if (st?.json) body.response_format = { type: 'json_schema', json_schema: { name: st.json.name, strict: false, schema: st.json.schema } };
+  else if (st?.jsonObject) body.response_format = { type: 'json_object' };
   Object.assign(body, extra);
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (conn.apiKey) { if (kind === 'azure') headers['api-key'] = conn.apiKey; else headers.Authorization = 'Bearer ' + conn.apiKey; }
@@ -1491,7 +1505,8 @@ async function streamChatRaw(conn: Conn | null | undefined, Pin: Params, message
   if (!stream) {
     const j: OaiJson = await res.json(); const m = j.choices?.[0]?.message || {};
     putThink(m.reasoning_content || m.reasoning || ''); put(m.content || '');
-    return { text, think, finish: j.choices?.[0]?.finish_reason, usage: j.usage };
+    const call0 = st?.tool ? [...(m.tool_calls || [])].reverse().find(c => c.function?.name === st.tool!.name) : undefined;
+    return { text, think, finish: j.choices?.[0]?.finish_reason, usage: j.usage, tool: call0?.function?.arguments ?? undefined };
   }
   for await (const evRaw of sse(res)) {
     const ev = evRaw as OaiJson;
@@ -1547,6 +1562,12 @@ function moreSamplers(P: Params): Obj { const o: Obj = {}; for (const [k, name] 
 function logitBiasOf(P: Params): Obj {
   const raw = String((P as Record<string, unknown>).logitBias || '').trim(); if (!raw) return {};
   try { const j = JSON.parse(raw); if (!j || typeof j !== 'object' || Array.isArray(j)) return {}; const o: Record<string, number> = {}; for (const [k, v] of Object.entries(j)) if (/^\d+$/.test(k) && Number.isFinite(Number(v))) o[k] = Math.max(-100, Math.min(100, Number(v))); return Object.keys(o).length ? { logit_bias: o } : {}; } catch { return {}; }
+}
+/** Gemini 함수 선언이 받는 꼴로 (JSON 스키마의 $schema · additionalProperties 같은 칸은 뺀다) */
+function gemSchema(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(gemSchema);
+  if (!v || typeof v !== 'object') return v;
+  const o: Obj = {}; for (const [k, x] of Object.entries(v as Obj)) if (k !== '$schema' && k !== 'additionalProperties') o[k] = gemSchema(x); return o;
 }
 /** 생각을 적게 하라는 요청을 거절한 모델 (이번 실행 동안은 다시 보내지 않는다) */
 const noLowThink = new Set<string>();

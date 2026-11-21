@@ -4,6 +4,7 @@
 import { get, isEqual, isPlainObject } from './lo';
 import { closeUpdateMarkup, cleanStructuredUpdate, findUpdateMarkupBlocks, isJsonSafe, parseStructuredUpdate, scanUpdateMarkup } from './markup';
 import { extractCommands, isJsonPatch } from './update';
+import { parseString } from './parse';
 
 function stripOuterTagBlock(input: string, tag: string): string {
   const m = input.match(new RegExp(`^\\s*<${tag}>\\s*([\\s\\S]*?)\\s*</${tag}>\\s*$`, 'i')); return m?.[1]?.trim() ?? input.trim();
@@ -94,4 +95,162 @@ export function appendRepairBlock(message: string, block: string): string {
     return message.slice(0, target.contentEnd) + closeUpdateMarkup(body) + '\n' + content + '\n' + message.slice(target.contentEnd);
   }
   return `${message}${closeUpdateMarkup(message)}\n${content}`;
+}
+
+// ── 추가 호출의 답 꼴: 도구 호출 · 정해진 JSON (MagVarUpdate 의 src/function/function_call.ts 에서 옮김) ──
+export const MVU_TOOL_NAME = 'mvu_VariableUpdate_dreamland';
+const mvu_update_schema = Object.freeze({
+    $schema: 'http://json-schema.org/draft-04/schema#',
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+        analysis: {
+            type: 'string',
+            minLength: 1,
+            description:
+                'Write in ENGLISH. A compact reasoning summary that includes: (1) calculate time passed; (2) decide whether dramatic updates are allowed (special case or sufficiently long time); (3) list every variable name BEFORE actual variable analysis, without revealing their contents; (4) for each variable, judge whether it satisfies its change conditions and output only Y/N without reasons; (5) only evaluate stories inside <past_observe> block.',
+        },
+        delta: {
+            type: 'string',
+            minLength: 0,
+            description: 'variable update block',
+        },
+    },
+    required: ['delta'],
+});
+
+const json_primitive_value_schemas = [
+    { type: 'string' },
+    { type: 'number' },
+    { type: 'integer' },
+    { type: 'boolean' },
+    { type: 'null' },
+];
+
+const json_array_item_schema = {
+    anyOf: [...json_primitive_value_schemas, { type: 'object' }, { type: 'array' }],
+};
+
+const json_value_schema = {
+    anyOf: [
+        ...json_primitive_value_schemas,
+        { type: 'object' },
+        {
+            type: 'array',
+            items: json_array_item_schema,
+        },
+    ],
+};
+
+const json_patch_operation_schema = {
+    anyOf: [
+        {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                op: { type: 'string', enum: ['replace'] },
+                path: { type: 'string' },
+                value: json_value_schema,
+            },
+            required: ['op', 'path', 'value'],
+        },
+        {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                op: { type: 'string', enum: ['delta'] },
+                path: { type: 'string' },
+                value: { type: 'number' },
+            },
+            required: ['op', 'path', 'value'],
+        },
+        {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                op: { type: 'string', enum: ['insert', 'add'] },
+                path: { type: 'string' },
+                value: json_value_schema,
+            },
+            required: ['op', 'path', 'value'],
+        },
+        {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                op: { type: 'string', enum: ['remove'] },
+                path: { type: 'string' },
+            },
+            required: ['op', 'path'],
+        },
+        {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                op: { type: 'string', enum: ['move'] },
+                from: { type: 'string' },
+                path: { type: 'string' },
+            },
+            required: ['op', 'from', 'path'],
+        },
+        {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                op: { type: 'string', enum: ['move'] },
+                from: { type: 'string' },
+                to: { type: 'string' },
+            },
+            required: ['op', 'from', 'to'],
+        },
+    ],
+};
+
+export const MVU_JSON_PATCH_RESPONSE_SCHEMA = Object.freeze({
+    name: 'mvu_json_patch',
+    description: 'MVU JsonPatch dialect response. Return analysis plus json_patch operations only.',
+    strict: false,
+    value: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+            analysis: {
+                type: 'string',
+                description:
+                    'Write in ENGLISH. Compactly summarize the variable update decision without revealing variable contents.',
+            },
+            json_patch: {
+                type: 'array',
+                description:
+                    'MVU JsonPatch dialect operations. Use replace, delta, insert/add, remove, or move with JSON Pointer paths.',
+                items: json_patch_operation_schema,
+            },
+        },
+        required: ['analysis', 'json_patch'],
+    },
+});
+
+export const MVU_TOOL = { name: MVU_TOOL_NAME, description: 'use this tool to UpdateVariable.', parameters: mvu_update_schema as unknown as Record<string, unknown> };
+
+/** 도구 호출의 인자(JSON 글)를 갱신 블록으로. 못 읽으면 null */
+export function extractFromToolArgs(content: string | undefined): string | null {
+  if (!content) return null;
+  try {
+    const json = parseString(content);
+    if (typeof json?.delta === 'string' && json.delta.trim().length > 0) {
+      let result = `<UpdateVariable>\n<Analyze>\n${json.analysis}\n</Analyze>\n`;
+      const patchy = /json_?patch/i.test(json.delta);
+      try {
+        const patch = normalizeJsonPatchPayload(json.delta);
+        if (!patch) throw new Error('invalid JSONPatch');
+        result += `<JSONPatch>\n${patch}\n</JSONPatch>\n`;
+      } catch {
+        if (patchy) return null;
+        if (/_\.(?:set|insert|assign|remove|unset|delete|add)\s*\([\s\S]*?\)\s*;/.test(json.delta)) result += `${json.delta}\n`;
+        else return null;
+      }
+      return result + '</UpdateVariable>';
+    }
+  } catch (e) { console.warn('[변수 갱신] 도구 호출 답을 읽지 못함', e); }
+  return null;
 }

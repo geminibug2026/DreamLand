@@ -14,6 +14,7 @@
     if (d.dlRet != null && wait[d.dlRet]) { var w = wait[d.dlRet]; delete wait[d.dlRet]; if (d.ok) w.res(d.val); else w.rej(new Error(d.err || "error")); }
     if (d.dlState) { if (d.dlState.messages) I.messages = d.dlState.messages; if (d.dlState.lastId != null) I.lastId = d.dlState.lastId; if (d.dlState.vars) V = d.dlState.vars; }
     if (d.dlState && d.dlState.mvuExtra != null) I.mvuExtra = !!d.dlState.mvuExtra;
+    if (d.dlState && d.dlState.viewH) setVh(d.dlState.viewH);
     if (d.dlState) checkMvuWait();
     if (d.dlEvent) fire(d.dlEvent, d.args || []);
     if (d.dlInvoke != null) invoke(d);
@@ -40,6 +41,12 @@
     });
   }
 
+  // 스크립트 화면의 $ 는 앱 화면의 jQuery (Tavern Helper 와 같다: 메뉴 · 단추를 앱 화면에 붙인다)
+  if (I.script) { try { if (window.parent !== window && window.parent.jQuery) { window.$ = window.jQuery = window.parent.jQuery; } } catch (e) { } }
+  // ── Tavern Helper 의 미리 깔기: Vue 설정 · 앱 창 높이(--TH-viewport-height) ──
+  window.__VUE_PROD_DEVTOOLS__ = true; window.__VUE_OPTIONS_API__ = true; window.__VUE_PROD_HYDRATION_MISMATCH_DETAILS__ = false;
+  function setVh(h) { try { document.documentElement.style.setProperty("--TH-viewport-height", h + "px"); } catch (e) { } }
+  setVh(I.viewH || innerHeight);
   // ── 저장소: 격리된 화면이라 진짜 localStorage 를 못 쓴다. 앱이 대신 보관한다 ──
   function store(kind) {
     var m = kind === "local" ? (I.ls || {}) : {};
@@ -85,7 +92,13 @@
     return out;
   }
   function refreshLocal(list) {
-    list.forEach(function (p) { var m = msgs().filter(function (x) { return x.message_id === idOf(p.message_id); })[0]; if (!m) return; for (var k in p) if (k !== "message_id") m[k] = clone(p[k]); });
+    list.forEach(function (p) {
+      var m = msgs().filter(function (x) { return x.message_id === idOf(p.message_id); })[0]; if (!m) return;
+      for (var k in p) if (k !== "message_id") m[k] = clone(p[k]);
+      // 변수는 답변 후보마다: data 는 지금 후보 · swipes_data 는 후보 전체
+      if (p.swipes_data && m.swipes_data) m.data = clone(m.swipes_data[m.swipe_id || 0] || {});
+      else if (p.data && m.swipes_data) m.swipes_data[m.swipe_id || 0] = clone(p.data);
+    });
   }
   function setChatMessages(list, opt) { list = list || []; refreshLocal(list); return call("setMsgs", [list.map(function (p) { var q = clone(p); q.message_id = idOf(p.message_id); return q; }), opt || {}]); }
   function setChatMessage(fields, id, opt) {
@@ -100,7 +113,7 @@
   var V = I.vars || { chat: {}, global: {}, character: {}, message: {} };
   function slot(o) {
     o = o || {}; var t = o.type || "chat";
-    if (t === "message") { var id = o.message_id == null || o.message_id === "latest" ? lastId() : idOf(o.message_id); var m = msgs().filter(function (x) { return x.message_id === id; })[0]; return { t: t, id: id, get: function () { return m ? (m.data || (m.data = {})) : {}; }, set: function (v) { if (m) m.data = v; } }; }
+    if (t === "message") { var id = o.message_id == null || o.message_id === "latest" ? lastId() : idOf(o.message_id); var m = msgs().filter(function (x) { return x.message_id === id; })[0]; return { t: t, id: id, get: function () { return m ? (m.data || (m.data = {})) : {}; }, set: function (v) { if (m) { m.data = v; if (m.swipes_data) m.swipes_data[m.swipe_id || 0] = v; } } }; }
     if (t === "script" || t === "extension") t = "chat";
     return { t: t, id: null, get: function () { return V[t] || (V[t] = {}); }, set: function (v) { V[t] = v; } };
   }
@@ -167,21 +180,21 @@
   function hasMvuData(m) { return !!(m && m.data && m.data.stat_data); }
   function checkMvuWait() { var ms = msgs(); if (!mvuWaits.length) return; if (hasMvuData(ms[0]) || ms.slice(-10).some(hasMvuData)) { var w = mvuWaits; mvuWaits = []; w.forEach(function (f) { f(); }); } }
   function waitGlobalInitialized(name) {
-    var ready = function () { if (name !== "Mvu") return Promise.resolve(); return new Promise(function (res) { mvuWaits.push(res); checkMvuWait(); setTimeout(function () { mvuWaits = mvuWaits.filter(function (f) { return f !== res; }); res(); }, 5000); }); };
+    // Mvu 는 변수가 생길 때까지 기다린다 (Tavern Helper 와 같다). 기다리는 동안 앱에 "이 화면은 준비됐다"고 알려 앱이 변수를 채우게 한다
+    var ready = function () { if (name !== "Mvu") return Promise.resolve(); return new Promise(function (res) { mvuWaits.push(res); checkMvuWait(); if (mvuWaits.indexOf(res) >= 0) parent.postMessage({ dlReady: 1 }, "*"); setTimeout(function () { mvuWaits = mvuWaits.filter(function (f) { return f !== res; }); res(); }, 5000); }); };
     if (_.has(window, name)) return ready();
     var pv = parentGet(name); if (pv !== undefined) { try { Object.defineProperty(window, name, { get: function () { return parentGet(name); }, configurable: true }); } catch (e) { } return ready(); }
     return new Promise(function (res) { eventOnce("global_" + name + "_initialized", function () { var v = parentGet(name); if (v !== undefined && !_.has(window, name)) { try { Object.defineProperty(window, name, { get: function () { return parentGet(name); }, configurable: true }); } catch (e) { } } ready().then(res); }); });
   }
   // ── 변수 갱신 틀(MagVarUpdate): 카드 스크립트 · 상태창이 찾는 Mvu 전역. 계산은 앱이 맡는다 ──
   var isVwd = function (v) { return Array.isArray(v) && v.length === 2 && typeof v[1] === "string"; };
-  function mvuLatest() { var ms = msgs(); for (var i = ms.length - 1; i >= 0; i--) if (ms[i].data && ms[i].data.stat_data) return clone(ms[i].data); return { stat_data: {}, display_data: {}, delta_data: {}, initialized_lorebooks: {}, schema: { type: "object", properties: {} } }; }
   function curId() { return I.msgId != null ? I.msgId : lastId(); }
   var Mvu = {
     events: { VARIABLE_INITIALIZED: "mag_variable_initialized", VARIABLE_UPDATE_STARTED: "mag_variable_update_started", COMMAND_PARSED: "mag_command_parsed", VARIABLE_UPDATE_ENDED: "mag_variable_update_ended", BEFORE_MESSAGE_UPDATE: "mag_before_message_update", SINGLE_VARIABLE_UPDATED: "mag_variable_updated" },
-    getMvuData: function (o) { o = o || { type: "message", message_id: "latest" }; var d = getVariables(o); return o.type === "message" && !(d && d.stat_data) ? mvuLatest() : d; },
-    replaceMvuData: function (d, o) { return replaceVariables(d, o || { type: "message", message_id: "latest" }); },
+    getMvuData: function (o) { return getVariables(o); },
+    replaceMvuData: function (d, o) { return replaceVariables(d, o); },
     parseMessage: function (message, old) { return call("mvuParse", [String(message), old]); },
-    getCurrentMvuData: function () { return Mvu.getMvuData({ type: "message", message_id: curId() }); },
+    getCurrentMvuData: function () { return getVariables({ type: "message", message_id: curId() }); },
     replaceCurrentMvuData: function (d) { return replaceVariables(d, { type: "message", message_id: curId() }); },
     reloadInitVar: function (d) { return call("mvuReloadInit", [d]).then(function (r) { if (r && r.data && d && typeof d === "object") adopt(d, r.data); return !!(r && r.updated); }); },
     setMvuVariable: function (d, path, value, opt) {

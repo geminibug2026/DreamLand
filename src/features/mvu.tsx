@@ -22,7 +22,7 @@ const unescape = (s: string) => s.replace(/&(amp|lt|gt|quot|#39);/g, (_m, k: str
 /** '$' 로 시작하는 칸($meta 등)은 빼고 보인다 */
 const no$ = (v: unknown): unknown => Array.isArray(v) ? v.map(no$) : isPlainObject(v) ? Object.fromEntries(Object.entries(v).filter(([k]) => !k.startsWith('$')).map(([k, x]) => [k, no$(x)])) : v;
 function varsOf(type: string, chat: Chat | null | undefined): unknown {
-  if (type === 'message') return A.latestData(chat) || {};
+  if (type === 'message') return A.latestVars(chat) || {};
   if (type === 'chat') return chat?.vars || {};
   if (type === 'global') return S.settings.globalVars || {};
   return {};
@@ -53,25 +53,22 @@ function macroLike(text: string, c: { chat?: unknown }): string {
 }
 
 function setup() {
-  const idx = (d: unknown) => { const m = (d as { msg?: Msg })?.msg; return m ? cur.msgs.indexOf(m) : cur.msgs.length - 1; };
-  const chatOf = (d: unknown) => ((d as { chat?: Chat })?.chat || cur.chat) as Chat | null;
+    const chatOf = (d: unknown) => ((d as { chat?: Chat })?.chat || cur.chat) as Chat | null;
   const warm = (c: Chat | null) => { if (c && A.usesMvu(c)) void load(); };
-  on('chat:open', c => { warm(c as Chat); setTimeout(() => void A.check(c as Chat), 0); });
-  on('message:sent', d => { const c = chatOf(d), i = idx(d); warm(c); void A.sync(c, i, { fresh: i, draw: false }); });
-  on('message:edited', d => { void A.sync(chatOf(d), idx(d)); });
-  on('message:swiped', d => { void A.sync(chatOf(d), idx(d)); });
-  let trashAt = Infinity;
-  on('message:trashed', d => { const at = Number((d as { at?: number })?.at); if (Number.isFinite(at)) trashAt = Math.min(trashAt, at); });
-  on('message:deleted', d => { const at = trashAt; trashAt = Infinity; void A.sync(chatOf(d), Number.isFinite(at) ? at : 0); });
+  // 원래 틀처럼: 대화를 열 때 · 보낸 메시지 · 받은 답만 계산한다. 고치기 · 후보 바꾸기는 다시 계산하지 않는다 (후보마다 제 변수가 있다)
+  on('chat:open', c => { warm(c as Chat); setTimeout(() => void A.opened(c as Chat), 0); });
+  on('message:sent', d => { const c = chatOf(d); warm(c); void A.sent(c, (d as { msg?: Msg })?.msg); });
+  on('message:swiped', () => A.pushFrames());
+  on('message:deleted', d => { A.deleted(chatOf(d)); A.pushFrames(); });
 
   // 답을 받아 저장하기 전: (추가 호출 방식이면 한 번 더 물어) 변수를 계산한다
   X.received.push({ owner: 'mvu', fn: ({ chat, msgs, msg }) => A.onReceived(chat, msgs as never, msg as never) });
   // 생성 전: 앞의 변수 갱신이 끝나기를 기다리고, 나중에 붙은 로어북의 초기 변수를 합친다
-  X.before.push({ owner: 'mvu', fn: async ({ chat }) => { if (!A.usesMvu(chat)) return; await load(); await A.pending(chat); await A.check(chat); } });
+  X.before.push({ owner: 'mvu', fn: async ({ chat }) => { if (!A.usesMvu(chat)) return; await load(); await A.pending(chat); await A.beforeGenerate(chat); } });
   // 로어북: 추가 호출 방식에서 [mvu_update] 항목은 본 답변에 싣지 않는다
-  X.loreFilter = (books, { chat }) => A.usesMvu(chat) && A.eff(chat).mode === 'extra' ? A.filterBooks(books, chat, false) : books;
+  X.loreFilter = (books, { chat }) => A.usesMvu(chat) && A.eff(chat).mode === 'extra' ? A.filterBooks(books, chat, A.extraPhase()) : books;
   // EJS 의 getvar('stat_data') 가 마지막 메시지 변수를 읽게 한다
-  X.varsOf = chat => A.latestData(chat);
+  X.varsOf = chat => A.latestVars(chat);
   X.macroLike.push(macroLike);
   // 보내는 프롬프트에서 상태창 자리 표시 · (추가 호출 방식이면) 옛 갱신 블록을 뺀다
   on('prompt:ready', d => {
