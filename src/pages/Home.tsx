@@ -1,6 +1,6 @@
 // 홈: 오늘 밤의 창 · 이어서 · 캐릭터 목록(폴더 · 정렬 · 검색 · 카드 크기)
 import { useRef, useState, type DragEvent, type ReactNode } from 'react';
-import { Btn, Emblem, Icon, IconBtn, InkName, artStyle, useEvents } from '../kit';
+import { Btn, Emblem, Icon, IconBtn, InkName, thumbStyle, useEvents, useThumbs } from '../kit';
 import type { Char, Folder } from '../types';
 import { charPicker, confirmBox, menu, promptBox, usePaged } from '../ui';
 import { moonPhase } from '../lib/moon';
@@ -80,14 +80,15 @@ const Dust = ({ n, seed }: { n: number; seed: number }) => { const rnd = seeded(
 
 /** 성도: 가운데에 최근에 만난 캐릭터, 둘레에 그다음 넷. 둘레의 별을 누르면 가운데로 온다 */
 function Stage({ picks, redraw }: { picks: Char[]; redraw: () => void }) {
+  useThumbs();
   const now = new Date(), moon = moonPhase(now), cur = Math.round(moon.p * 8) % 8;
   const at = view.pick % Math.max(1, picks.length), c: Char | undefined = picks[at];
   const day = <div className="hm-day"><i className="hm-star" />{`${DAYS[now.getDay()]} ${now.getDate()} ${MONTHS[now.getMonth()]}`}<b>{moon.name}</b></div>;
   const others = picks.map((p, i) => ({ p, i })).filter(x => x.i !== at).slice(0, 4);
   const wheel = <div className="hm-wheel"><WheelArt month={now.getMonth()} phase={cur} />
-    {c ? <button className="hm-core" style={artStyle(c)} title={c.name} onClick={() => charSheet(c)}>{!c.avatar && <Emblem o={c} center />}</button> : <i className="hm-core"><Emblem o={{ tags: [], name: '' }} center /></i>}
+    {c ? <button className="hm-core" style={thumbStyle(c)} title={c.name} onClick={() => charSheet(c)}>{!c.avatar && <Emblem o={c} center />}</button> : <i className="hm-core"><Emblem o={{ tags: [], name: '' }} center /></i>}
     {others.map(({ p, i }, n) => { const [x, y] = polar(128, [45, 135, 225, 315][n]); return <button key={p.id} className="hm-sat" style={{ left: x / 4 + '%', top: y / 4 + '%' }} title={p.name} onClick={() => { view.pick = i; redraw(); }}>
-      <i style={artStyle(p)}>{!p.avatar && <Emblem o={p} mini center />}</i><span>{p.name}</span></button>; })}
+      <i style={thumbStyle(p)}>{!p.avatar && <Emblem o={p} mini center />}</i><span>{p.name}</span></button>; })}
     <i className="hm-ptr" /></div>;
   if (!c) return <div className="hm-hero"><Dust n={90} seed={5} /><Twinkle />{wheel}
     <div className="hm-tx">{day}<h1 className="hm-name">{t('home.empty.title')}</h1>
@@ -114,7 +115,7 @@ const SecHead = ({ title, sub, children }: { title: string; sub: string; childre
 export const page = { name: 'home', Component: Home };
 
 function Home() {
-  const redraw = useEvents('chars', 'chats');
+  const redraw = useEvents('chars', 'chats'); useThumbs();
   const [q, setQ] = useState(view.q);
   const fs = folders();
   if (view.folder && view.folder !== '-' && !fs.some(f => f.id === view.folder)) view.folder = '';
@@ -178,7 +179,7 @@ function Home() {
         const chars = c.charIds.map(id => S.get('chars', id)).filter((x): x is Char => !!x), first = chars[0];
         return <button key={c.id} className={'hm-th' + (i ? '' : ' on')} onClick={() => go('chat', c.id)}>
           <time>{fmtTime(c.updatedAt)}</time>
-          <div className="hm-pt" style={artStyle(first)}>{first ? !first.avatar && <Emblem o={first} mini /> : <span>?</span>}</div>
+          <div className="hm-pt" style={thumbStyle(first)}>{first ? !first.avatar && <Emblem o={first} mini /> : <span>?</span>}</div>
           <div className="hm-tt"><b>{chars.map(x => x.name).join(', ') || t('home.deletedChar')}</b><span>{c.name}</span><p>{tidy(c.preview) || t('home.newChat')}</p></div>
         </button>;
       })}</div></div> : null}
@@ -212,7 +213,7 @@ function Home() {
         {pg.rows.map(c => <button key={c.id} className={'hm-c' + (c.id === picks[view.pick % Math.max(1, picks.length)]?.id ? ' sel' : '')} draggable={fs.length > 0}
           onDragStart={e => { e.dataTransfer.setData('text/dreamland-char', c.id); e.dataTransfer.effectAllowed = 'move'; }}
           onClick={() => charSheet(c)} onContextMenu={e => { e.preventDefault(); folderMenu(e.currentTarget, c, redraw); }}>
-          <div className="hm-im" style={artStyle(c)}>{!c.avatar && <><Dust n={30} seed={c.name.length * 97 + 13} /><Emblem o={c} /></>}{c.fav && <i className="fav"><Icon name="star" size={12} /></i>}{folderTag(c)}</div>
+          <div className="hm-im" style={thumbStyle(c)}>{!c.avatar && <><Dust n={30} seed={c.name.length * 97 + 13} /><Emblem o={c} /></>}{c.fav && <i className="fav"><Icon name="star" size={12} /></i>}{folderTag(c)}</div>
           <b>{c.name}</b><small>{c.tags.slice(0, 2).join(' · ') || '\u00a0'}</small>
         </button>)}
         {list.length ? null : term || view.tag || view.fav ? <div className="fx-empty hm-none"><SearchNone /><p>{t('home.none.search')}</p></div>

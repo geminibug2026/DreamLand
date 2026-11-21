@@ -7,10 +7,15 @@ const DAY = 86400000;
 const dayStart = (t: number) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
 /** 그 캐릭터와 처음 대화방을 연 때 (없으면 0) */
 export function firstMet(charId: string): number {
-  let at = 0;
-  for (const c of S.chats) if (c.charIds?.includes(charId) && c.createdAt && (!at || c.createdAt < at)) at = c.createdAt;
-  return at;
+  // 목록 화면은 캐릭터마다 부른다 — 대화방을 캐릭터 수만큼 다시 훑지 않게, 방 목록이 바뀔 때만 한 번에 센다
+  if (metOf.arr !== S.chats || metOf.len !== S.chats.length) {
+    const m = new Map<string, number>();
+    for (const c of S.chats) if (c.createdAt) for (const id of c.charIds || []) { const v = m.get(id); if (!v || c.createdAt < v) m.set(id, c.createdAt); }
+    Object.assign(metOf, { arr: S.chats, len: S.chats.length, map: m });
+  }
+  return metOf.map.get(charId) || 0;
 }
+const metOf: { arr: unknown; len: number; map: Map<string, number> } = { arr: null, len: -1, map: new Map() };
 /** 며칠째인가 — 처음 만난 날이 1일째 (한국식 D+). 만난 적이 없으면 0 */
 export function daysTogether(charId: string, now = Date.now()): number {
   const at = firstMet(charId); if (!at) return 0;
