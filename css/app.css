@@ -125,6 +125,8 @@ button.chip:hover { color: var(--text); background: var(--surface2); }
 #toasts { position: fixed; z-index: 90; left: 50%; bottom: calc(26px + var(--safe-b)); transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; width: max-content; max-width: 92vw; }
 .toast { padding: 10px 18px; border-radius: 999px; background: var(--text); color: var(--bg); box-shadow: var(--shadow); font-size: .92em; max-width: min(560px, 92vw); animation: pop .25s var(--ease); transition: .3s; }
 .toast.err { background: var(--bad); color: #fff; border-radius: var(--r-sm); } .toast.out { opacity: 0; transform: translateY(8px); }
+.toast { pointer-events: auto; cursor: pointer; display: flex; align-items: center; gap: 10px; } .toast-msg { min-width: 0; }
+.toast-x { flex: none; margin-right: -8px; width: 22px; height: 22px; display: grid; place-items: center; border: 0; border-radius: 50%; background: none; color: inherit; opacity: .6; font-size: 17px; line-height: 1; cursor: pointer; } .toast-x:hover { opacity: 1; background: color-mix(in srgb, currentColor 15%, transparent); }
 @keyframes pop { from { opacity: 0; transform: translateY(10px); } }
 .modal-wrap { position: fixed; inset: 0; z-index: 60; background: color-mix(in srgb, #1a1418 45%, transparent); display: grid; place-items: center; padding: 20px; animation: fade .2s; }
 .modal-wrap.out { opacity: 0; transition: .18s; }
