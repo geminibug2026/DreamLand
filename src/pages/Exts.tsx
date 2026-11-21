@@ -8,6 +8,7 @@ import { t } from '../i18n';
 import * as TH from '../lib/thscripts';
 import type { Char } from '../lib/types';
 import { toast } from '../ui';
+import { MvuSettings } from '../mvu/Ui';
 
 interface ExtItem { id: string; name: string; version?: string; author?: string; description?: string; source: 'folder' | 'installed' }
 
@@ -43,6 +44,7 @@ function Exts() {
       }) : <p className="dim">{t('exts.empty')}</p>}</div>
       <p className="hint">{t('exts.folderHint')}</p></div>
     <ThScripts />
+    <MvuSettings />
     <div className="card"><h3 className="form-sec">{t('exts.make.title')}</h3>
       <p className="hint">{t('exts.make.hint')}</p>
       <details className="api-doc"><summary>{t('exts.make.template')}</summary><pre>{E.TEMPLATE}</pre></details>

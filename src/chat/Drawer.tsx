@@ -23,7 +23,7 @@ let tab: Group = 'base';
 /** 다른 기능이 꽂은 칸의 묶음: 칸 id 가 먼저, 없으면 주인(owner). 모르는 칸(확장)은 도구로 */
 const PANEL_GROUP: Record<string, Group> = {
   presetvars: 'base', 'reach-fit': 'base', 'flow-profile': 'base',
-  memoria: 'story', almanac: 'story', 'flow-cp': 'story', 'threads-links': 'story', 'threads-inner': 'story', game: 'story',
+  memoria: 'story', mvu: 'story', almanac: 'story', 'flow-cp': 'story', 'threads-links': 'story', 'threads-inner': 'story', game: 'story',
   expr: 'look', scenebook: 'look', extras: 'look', modules: 'look',
   crew: 'tools', gate: 'tools', 'flow-auto': 'tools', feed: 'tools', atlas: 'tools',
 };
@@ -100,7 +100,7 @@ function Body({ c }: { c: Room }) {
       <Btn label={t('awake.open')} ic="eye" cls="ghost" onClick={() => emit('lore:awake', c)} />
     </Sec>
     <Sec g="story" title={t('chat.drawer.varsSec')} ic="code" open={false}>
-      <textarea className="inp" rows={3} placeholder={t('chat.drawer.varsPh')} defaultValue={Object.entries(c.vars || {}).map(([k, v]) => `${k}=${v}`).join('\n')} onChange={e => { c.vars = Object.fromEntries(e.target.value.split('\n').map(l => l.split('=')).filter(p => p[0].trim()).map(p => [p[0].trim(), p.slice(1).join('=')])); saveChat(); }} />
+      <textarea className="inp" rows={3} placeholder={t('chat.drawer.varsPh')} defaultValue={Object.entries(c.vars || {}).filter(([, v]) => !v || typeof v !== 'object').map(([k, v]) => `${k}=${v}`).join('\n')} onChange={e => { const keep = Object.fromEntries(Object.entries(c.vars || {}).filter(([, v]) => v && typeof v === 'object')); c.vars = { ...keep, ...Object.fromEntries(e.target.value.split('\n').map(l => l.split('=')).filter(p => p[0].trim()).map(p => [p[0].trim(), p.slice(1).join('=')])) }; saveChat(); }} />
       <small className="hint">{t('chat.drawer.varsHint')}</small>
     </Sec>
     <Sec g="look" title={t('chat.drawer.bgSec')} ic="image" open={false}><div className="row">

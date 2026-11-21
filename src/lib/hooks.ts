@@ -1,6 +1,6 @@
 // ── Dreamland hooks: 확장 기능이 끼어드는 지점들의 등록부 ── (옛 js/hooks.js 그대로)
 // 각 항목은 { owner, ... } 형태. owner 는 확장 id.
-import type { Char, Chat, Conn, LoreEntry, Msg, Persona, Theme } from './types';
+import type { Char, Chat, Conn, Lore, LoreEntry, Msg, Persona, Theme } from './types';
 import type { Ctx } from './engine';
 
 export interface Owned { owner: string }
@@ -35,11 +35,19 @@ export interface PromptHook extends Owned { fn(info: PromptInfo): PromptPiece[] 
 export interface StudioTab extends Owned { title: string; render(): Node; [k: string]: unknown }
 export interface BeforeHook extends Owned { fn(o: { chat: Chat; msgs: Msg[]; type: string; signal?: AbortSignal; chars?: Char[]; persona?: Persona; /** 이번에 말할 캐릭터 */ speaker?: Char }): Promise<unknown> }
 
+/** 답변을 받은 뒤 저장하기 전에 기다려 주는 일 (변수 갱신 등). 답변 글을 고쳐도 된다 */
+export interface ReceivedHook extends Owned { fn(o: { chat: Chat; msgs: Msg[]; msg: Msg; type: string }): Promise<unknown> }
 export interface TranslateOpt { chat?: Chat | null; context?: { name: string; text?: string; mes?: string }[]; signal?: AbortSignal; name?: string | null; preset?: string; conn?: Conn | null }
 export interface Hooks {
   commands: Map<string, Command>; macros: Map<string, Macro>;
   panels: Panel[]; actions: Action[]; pages: ExtPage[]; filters: Filter[]; themes: ThemeReg[]; composer: Composer[];
-  prompt: PromptHook[]; studio: StudioTab[]; before: BeforeHook[];
+  prompt: PromptHook[]; studio: StudioTab[]; before: BeforeHook[]; received: ReceivedHook[];
+  /** 프롬프트에 실을 로어북 항목을 고른다 (변수 갱신 틀의 [mvu_update] · [mvu_plot] 같은 표식) */
+  loreFilter: ((books: Lore[], o: { chat: Chat; chars: Char[]; persona?: Persona | null }) => Lore[]) | null;
+  /** 대화의 메시지 변수 (EJS 의 getvar 가 대화 변수에 없는 이름을 여기서 찾는다) */
+  varsOf: ((chat: Chat | null | undefined) => Record<string, unknown> | null) | null;
+  /** 매크로보다 먼저 글을 바꾸는 꼴 ({{format_message_variable::…}} 처럼 줄 앞 들여쓰기를 아는 것) */
+  macroLike: ((text: string, c: Ctx) => string)[];
   loreVec: ((entryId: string) => boolean) | null;
   translate: ((text: string, language?: string, o?: TranslateOpt) => Promise<string>) | null;
   covered: ((chat: Chat) => number) | null;
@@ -59,17 +67,19 @@ export const X: Hooks = {
   prompt: [],            // { owner, fn(info) → [{ where: 'before'|'depth'|'end', role, content, depth, order, src }] }  프롬프트에 덧붙일 조각
   studio: [],            // { owner, title, render() → Node }  기능 화면의 탭
   before: [],            // { owner, fn({ chat, msgs, type, signal }) → Promise }  프롬프트를 조립하기 직전에 기다려 주는 준비 (임베딩 왕복 등)
+  received: [],          // { owner, fn({ chat, msgs, msg, type }) → Promise }  답변을 받아 저장하기 직전에 기다려 주는 일 (변수 갱신)
+  loreFilter: null, varsOf: null, macroLike: [],
   loreVec: null,         // (entryId) → 벡터 검색이 이번 턴에 깨운 로어북 항목인가
   translate: null,       // (text, language, { chat, context, signal }) → 번역문. 번역 기능이 등록한다
   covered: null,         // (chat) → 장기기억이 기록해 둔 턴 수
   gate: null,            // 물음(판정문)과 매크로 보강 — 없으면 ask: 조건은 거짓이다
 };
-type OwnedList = 'panels' | 'actions' | 'pages' | 'filters' | 'themes' | 'composer' | 'prompt' | 'before';
+type OwnedList = 'panels' | 'actions' | 'pages' | 'filters' | 'themes' | 'composer' | 'prompt' | 'before' | 'received';
 export function dropOwner(owner: string) {
   for (const [k, v] of X.commands) if (v.owner === owner) X.commands.delete(k);
   for (const [k, v] of X.macros) if (v.owner === owner) X.macros.delete(k);
   const bag = X as unknown as Record<OwnedList, Owned[]>;
-  for (const key of ['panels', 'actions', 'pages', 'filters', 'themes', 'composer', 'prompt', 'before'] as OwnedList[]) bag[key] = bag[key].filter(v => v.owner !== owner);
+  for (const key of ['panels', 'actions', 'pages', 'filters', 'themes', 'composer', 'prompt', 'before', 'received'] as OwnedList[]) bag[key] = bag[key].filter(v => v.owner !== owner);
 }
 export function runFilters(text: string, info?: FilterInfo) {
   for (const f of X.filters) { try { const r = f.fn(text, info); if (typeof r === 'string') text = r; } catch (e) { console.warn('[확장 필터]', f.owner, e); } }

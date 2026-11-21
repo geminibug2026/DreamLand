@@ -4,9 +4,8 @@ import { S, chatConns, msgText, uid } from '../lib/core';
 import { tokens } from '../lib/engine';
 import { allThemes, COLOR_FIELDS } from '../lib/theme';
 import { qrStore, type QrItem, type QrSet } from '../lib/qr-data';
-import { activeBooks } from '../lib/engine';
-import { isMvu, initFrom, type Obj as MvuObj } from '../mvu/engine';
-import { checkInit, checkUpdate, leafPaths } from '../mvu/check';
+import { isMvu, runtime as mvuRuntime, type Obj as MvuObj } from '../mvu/engine';
+import { initOf as mvuInitOf } from '../mvu/app';
 import { safeCss } from '../modules/logic';
 import { cur } from '../chat/store';
 import { buildNow } from '../chat/Inspector';
@@ -153,9 +152,8 @@ type MsgD = Msg & { thData?: Obj };
 async function mvuOf(ref: unknown) {
   const c = openChat(ref), list = (cur.chat?.id === c.id ? cur.msgs : await S.msgs(c.id)) as MsgD[];
   for (let i = list.length - 1; i >= 0; i--) if (isMvu(list[i].thData)) return { chat: c, source: `message ${i + 1}`, data: list[i].thData as unknown as { stat_data: MvuObj; schema?: MvuObj } };
-  const chars = c.charIds.map(i => S.get('chars', i)).filter(Boolean) as Char[];
   let init: { stat_data: MvuObj; schema?: MvuObj } | null = null;
-  try { init = initFrom(activeBooks(c, chars, S.persona(c)) as unknown as Parameters<typeof initFrom>[0]); } catch { init = null; }
+  try { init = (await mvuInitOf(c)).data as unknown as { stat_data: MvuObj; schema?: MvuObj }; } catch { init = null; }
   return { chat: c, source: init && Object.keys(init.stat_data).length ? 'initial variables ([InitVar] lorebook entries)' : 'none', data: init };
 }
 const initEntries = () => S.lore.flatMap(b => b.entries.filter(e => /\[initvar\]/i.test(e.name || '')).map(e => ({ book: b.name, bookId: b.id, entry: e.id, name: e.name, enabled: e.enabled })));
@@ -253,16 +251,17 @@ const R: ToolDef[] = [
       const sib = Array.isArray(a.siblings) ? a.siblings.map(str) : [];
       const r = checkScript(src, sib); return { ok: r.ok, errors: r.errors, warnings: r.warnings, issues: r.issues.map(i => `${i.level} line ${i.line}:${i.col}${i.cmd ? ' /' + i.cmd : ''} — ${i.msg}`), commands: [...new Set(r.commands)].join(' '), ...(r.ok && !r.warnings ? { note: 'No problems found. This checks structure and names only; it does not run the script.' } : {}) }; } },
   { name: 'get_mvu', sig: '{chat?}', desc: 'Variable-update (MVU) state of a chat: the current stat_data (from the newest message that has it, else from [InitVar] lorebook entries), its leaf paths, and which lorebook entries hold initial variables. Without chat: the open chat.',
-    run: async a => { const r = await mvuOf(a.chat), stat = r.data?.stat_data || {}, js = JSON.stringify(stat, null, 1);
+    run: async a => { const r = await mvuOf(a.chat), stat = r.data?.stat_data || {}, js = JSON.stringify(stat, null, 1), { leafPaths } = await mvuRuntime();
       return { chat: chatTitle(r.chat), source: r.source, paths: leafPaths(stat), stat_data: js.length > 6000 ? js.slice(0, 6000) + '… [cut]' : js, initEntries: initEntries().slice(0, 20), ...(r.source === 'none' ? { note: 'This chat has no MVU variables. They start from a lorebook entry whose name contains [InitVar] (content: JSON or YAML), in a lorebook linked to the character or chat.' } : {}) }; } },
   { name: 'mvu_check', sig: '{update?, initvar?, stat_data?}', desc: 'Test MVU text with Dreamland\'s own engine, without saving anything. initvar= checks initial-variables JSON/YAML and lists its paths. update= runs update commands (_.set(\'path\', old, new);//reason, _.add, _.insert, _.remove, <JSONPatch>) against stat_data= (object or JSON), else against initvar=, else the open chat\'s current variables; reports per command: applied / failed (e.g. unknown path) with before → after, plus lines that look like commands but are not read.',
     run: async a => {
-      const out: Obj = {}; let base: MvuObj | null = null;
+      const out: Obj = {}; let base: MvuObj | null = null, schema: unknown;
+      const { checkInit, checkUpdate } = await mvuRuntime();
       if (a.initvar != null) { const r = checkInit(str(a.initvar)); out.initvar = r.ok ? { ok: true, paths: r.paths } : { ok: false, error: r.error }; if (r.ok) base = r.stat_data!; }
       if (a.stat_data != null) { const v = typeof a.stat_data === 'string' ? checkInit(a.stat_data) : { ok: true, stat_data: a.stat_data as MvuObj }; if (!v.ok || !v.stat_data || typeof v.stat_data !== 'object') fail('"stat_data" must be an object (or JSON text of one).'); base = v.stat_data as MvuObj; }
       if (a.update != null) {
-        let from = 'given'; if (!base) { if (!cur.chat && !str(a.chat)) fail('No stat_data to test against: give stat_data= or initvar=, or open a chat that uses MVU.'); const r = await mvuOf(a.chat); base = r.data?.stat_data || {}; from = 'chat: ' + r.source; }
-        const r = checkUpdate(str(a.update), base!), fin = JSON.stringify(r.final);
+        let from = 'given'; if (!base) { if (!cur.chat && !str(a.chat)) fail('No stat_data to test against: give stat_data= or initvar=, or open a chat that uses MVU.'); const r = await mvuOf(a.chat); base = r.data?.stat_data || {}; schema = r.data?.schema; from = 'chat: ' + r.source; }
+        const r = await checkUpdate(str(a.update), base!, schema), fin = JSON.stringify(r.final);
         out.update = { against: from, applied: r.applied, failed: r.failed, commands: r.commands, ...(r.unrecognized.length ? { notRead: r.unrecognized } : {}), ...(r.ignoredBlocks ? { note: r.ignoredBlocks } : {}), ...(r.commands.length ? {} : { warning: 'No update commands were found in the text.' }), finalStat: fin.length > 3000 ? fin.slice(0, 3000) + '…' : r.final };
       }
       if (!Object.keys(out).length) fail('Give update= and/or initvar=.');

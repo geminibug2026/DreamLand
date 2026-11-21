@@ -56,6 +56,7 @@ interface EngineStore {
 interface PromptPart { where?: string; role?: string; content?: string; depth?: Num; order?: Num; src?: string }
 interface PromptHook { owner: string; fn(info: Obj): PromptPart[] | null | undefined }
 interface Hooks { macros: Map<string, { owner?: string; fn(args: string[], c: Ctx): unknown }>; prompt: PromptHook[]; loreVec?: ((id: string) => unknown) | null; covered?: ((chat: Chat) => number) | null;
+  loreFilter: ((books: LoreBook[], o: { chat: Chat; chars: Char[]; persona?: Persona | null }) => LoreBook[]) | null; varsOf: ((chat: Chat | null | undefined) => Record<string, unknown> | null) | null; macroLike: ((text: string, c: Ctx) => string)[];
   gate?: { cond(cond: string, c: Ctx): string; lore(e: LoreEntry, c: Ctx): boolean; each(text: string, c: Ctx): string; post(text: string): string } | null }
 interface ClockApi { now(chat?: Chat | null): Date; mode(chat: Chat): string; timeOf(chat: Chat, m: Msg): number; line(chat: Chat): string; command(chat: Chat): string }
 interface FmtChatOpts { name: string; mes: string; isUser: boolean; isNarrator: boolean; force?: number; group?: boolean; user?: string; char?: string; mx?: (t: string) => string }
@@ -110,7 +111,9 @@ const own = <T,>(o: Record<string, T> | null | undefined, k: string | undefined)
 export function tpl(text: string | null | undefined, c: Ctx = {}): string {
   const s = text || ''; if (s.indexOf('<%') < 0) return s;
   const vars = (c.vars || {}) as Record<string, unknown>, g = (S.settings.globalVars || {}) as Record<string, unknown>;
-  return ejs(s, { getvar: n => Object.prototype.hasOwnProperty.call(vars, n) ? vars[n] : undefined, getGlobalVar: n => Object.prototype.hasOwnProperty.call(g, n) ? g[n] : undefined });
+  let mv: Record<string, unknown> | null | undefined;   // 대화 변수에 없는 이름은 마지막 메시지 변수에서 (변수 갱신 틀의 stat_data 등 — 실리태번 템플릿처럼)
+  const msgVar = (n: string) => { if (mv === undefined) mv = X.varsOf?.(c.chat as Chat | undefined) || null; return mv && Object.prototype.hasOwnProperty.call(mv, n) ? mv[n] : undefined; };
+  return ejs(s, { getvar: n => Object.prototype.hasOwnProperty.call(vars, n) ? vars[n] : msgVar(n), getGlobalVar: n => Object.prototype.hasOwnProperty.call(g, n) ? g[n] : undefined });
 }
 /** 그룹 대화에서 쉬게 하지 않은 멤버 이름들 */
 function notMuted(c: Ctx): string {
@@ -121,6 +124,7 @@ function notMuted(c: Ctx): string {
 export function macro(textIn: string | null | undefined, c: Ctx = {}): string {
   let text = textIn as string;
   if (!text || (text.indexOf('{{') < 0 && text.indexOf('<') < 0)) return text || '';
+  if (X.macroLike.length && text.indexOf('{{') >= 0) for (const f of X.macroLike) { try { text = f(text, c); } catch (e) { console.warn('[매크로]', e); } }
   const vars = c.vars || {}, g = S.settings.globalVars;
   if (X.gate && text.indexOf('{{#each') >= 0) text = X.gate.each(text, c);   // {{#each char}}…{{/each}}: 그룹의 캐릭터마다 되풀이
   if (text.indexOf('{{') >= 0 && /\{\{\s*#(if|unless)/i.test(text)) text = condBlocks(text, cond => evalCond(macro(askCond(cond, c), c), condEnv(c)));   // {{#if 조건}}…{{else}}…{{/if}}
@@ -545,6 +549,12 @@ export const GROUP_NUDGE = '[Write the next reply only as {{char}}. Do not write
 export const CONTINUE_NUDGE = '[Continue your last message exactly from where it stopped. Do not repeat or restart it; write only the continuation.]';
 export const IMPERSONATE_NUDGE = "[Write the next message from {{user}}'s point of view, in {{user}}'s voice, based on the story so far. Write only {{user}}'s message and do not write for {{char}}.]";
 
+/** 이번 생성의 프롬프트에 실을 로어북들 (기능이 항목을 거를 수 있다: X.loreFilter) */
+export function loreBooksFor(chat: Chat, chars: Char[], persona?: Persona | null): LoreBook[] {
+  const books = activeBooks(chat, chars, persona);
+  if (!X.loreFilter) return books;
+  try { return X.loreFilter(books, { chat, chars, persona }); } catch (e) { console.warn('[로어북 거르기]', e); return books; }
+}
 export function activeBooks(chat: Chat, chars: Char[], persona?: Persona | null): LoreBook[] {
   const ids = new Set([...(S.settings.activeLore || []), ...(chat.loreIds || []), ...chars.flatMap(c => c.loreIds || []), ...(persona?.loreIds || [])]);
   return [...ids].map(id => S.get('lore', id) as LoreBook | undefined).filter(Boolean) as LoreBook[];
@@ -647,7 +657,7 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
     if (m.role === 'assistant' && isGroup) text = text.split('\n').filter(l => l.trim()).map(l => `${m.name || char.name}: ${l}`).join('\n');
     return { role: m.role, content: `${stamp}${text}`, src: 'history', images: m.images?.length ? m.images : undefined };
   });
-  const lore = scanLore(activeBooks(chat, chars, persona), history, ctx, { state: (chat.loreState ||= {}) as LoreState, count: msgs.length, commit, type, char, persona, names: source.map(m => m.role === 'system' ? '' : m.role === 'user' ? ctx.user as string : (m.name || char.name)) });
+  const lore = scanLore(loreBooksFor(chat, chars, persona), history, ctx, { state: (chat.loreState ||= {}) as LoreState, count: msgs.length, commit, type, char, persona, names: source.map(m => m.role === 'system' ? '' : m.role === 'user' ? ctx.user as string : (m.name || char.name)) });
   const card = (c: Char) => [`<character name="${c.name}">`, macro(c.description, { ...ctx, char: c.name }), c.personality && `Personality: ${macro(c.personality, { ...ctx, char: c.name })}`, c.scenario && `Situation: ${macro(c.scenario, { ...ctx, char: c.name })}`, c.mesExample && `How they talk:\n${macro(c.mesExample, { ...ctx, char: c.name }).replace(/<START>/gi, '').trim()}`, '</character>'].filter(Boolean).join('\n');
   const before: PromptMsg[] = [{ role: 'system', src: '대화 모드 지시문', content: `<instructions>\n${mx(M.talkPrompt || TALK_DEFAULT)}${isGroup ? `\nThis is a group chat. You write only ${char.name}'s messages; ${chars.filter(c => c.id !== char.id).map(c => c.name).join(', ')} write their own, so never speak for them.` : ''}\n</instructions>` },
     { role: 'system', src: '캐릭터 카드', content: [card(char), ...chars.filter(c => c.id !== char.id).map(card)].join('\n\n') }];
@@ -739,7 +749,7 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
   });
 
   // 2) 로어북
-  const lore = scanLore(activeBooks(chat, chars, persona), history, ctx, { state: (chat.loreState ||= {}) as LoreState, count: msgs.length, commit, type, char, persona, names: source.map(m => m.role === 'system' ? '' : m.role === 'user' ? ctx.user as string : (m.name || char.name)) });
+  const lore = scanLore(loreBooksFor(chat, chars, persona), history, ctx, { state: (chat.loreState ||= {}) as LoreState, count: msgs.length, commit, type, char, persona, names: source.map(m => m.role === 'system' ? '' : m.role === 'user' ? ctx.user as string : (m.name || char.name)) });
   const at = (pos: string) => lore.filter(e => e.position === pos).map(e => e.text).join('\n');
   ctx.outlets = {};
   for (const e of lore) if (e.position === 'outlet') (ctx.outlets[(e.outlet || e.name) as string] ||= []).push(e.text);

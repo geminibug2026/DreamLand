@@ -3,6 +3,7 @@
 import { DB, S, emit, on, uid } from './core';
 import { Server } from './server';
 import { frameHooks, framePost, bridgeFrames } from './format';
+import { frameReady } from '../chat/frameEvents';
 import { ejs } from './ejs';
 import { cur } from '../chat/store';
 import { confirmBox } from '../ui';
@@ -95,6 +96,25 @@ function ensureEjs() {
   };
 }
 
+// ── 알려진 외부 모듈을 앱에 든 것으로: 카드가 인터넷 없이도 돌고, 실리태번 내부에 매인 원래 묶음을 돌리지 않는다 ──
+const MVU_BUNDLE = /https?:\/\/[^\s'"`]*MagVarUpdate[^\s'"`]*\/artifact\/bundle\.js[^\s'"`]*/g;
+const MVU_ZOD = /https?:\/\/[^\s'"`]*tavern_resource[^\s'"`]*\/dist\/util\/(?:mvu_zod|variable_zod)\.js[^\s'"`]*/g;
+const absVendor = (f: string) => new URL(vendor() + f, location.href).href;
+/** 스크립트 · 화면 글 속 모듈 주소 바꾸기: 변수 갱신 틀 묶음 → 앱 안의 빈 모듈 (앱이 직접 맡는다) · mvu_zod.js → 앱에 든 같은 일을 하는 모듈 */
+export function rewriteImports(code: string): string {
+  if (code.indexOf('MagVarUpdate') < 0 && code.indexOf('tavern_resource') < 0) return code;
+  return code.replace(MVU_BUNDLE, () => absVendor('mvu_bundle.js')).replace(MVU_ZOD, () => absVendor('mvu_zod.js'));
+}
+frameHooks.src = rewriteImports;
+/** 스크립트 본문: 통째로 ``` 로 감쌌으면 벗긴다 (Tavern Helper 와 같다) */
+const bodyOf = (content: string) => content.match(/^\s*```[^\n]*\n(.*)\n```\s*$/is)?.[1] ?? content;
+let syncing: Promise<void> = Promise.resolve();
+/** 켜 둔 스크립트가 다 실렸을 때 (허락을 묻는 중이면 답을 기다린다. 늦는 화면은 기다리지 않는다) */
+export async function scriptsReady(): Promise<void> {
+  await loaded; await syncing;
+  await Promise.all([...running.values()].map(f => frameReady(f)));
+}
+
 function start(s: ThScript) {
   if (running.has(s.id)) return;
   ensureMenu(); ensureEjs(); bridgeFrames();
@@ -105,8 +125,9 @@ function start(s: ThScript) {
     removeEventListener('message', onReady);
     await ensureJq();
     const init = await Promise.resolve(frameHooks.init?.(f)).catch(() => ({}));
-    const code = s.content.replace(/<\/script/gi, '<\\/script');
-    f.contentWindow?.postMessage({ dlHtml: `<!doctype html><html><head></head><body><script>${code}</script></body></html>`, init: init || {} }, '*');
+    const code = rewriteImports(bodyOf(s.content)).replace(/<\/script/gi, '<\\/script');
+    // Tavern Helper 처럼 모듈 스크립트로 돌린다 (import 를 쓸 수 있다)
+    f.contentWindow?.postMessage({ dlHtml: `<!doctype html><html><head></head><body><script type="module">\n${code}\n</script></body></html>`, init: { ...(init as object || {}), script: true } }, '*');
     setTimeout(() => f.contentWindow?.postMessage({ dlEvent: 'app_ready', args: [] }, '*'), 300);
   };
   addEventListener('message', onReady);
@@ -139,10 +160,10 @@ export function charScripts(ch: Char | undefined | null): ThScript[] {
 }
 /** 카드 스크립트 하나씩 켜고 끄기 (카드에 적힌 켜짐 상태보다 앞선다) */
 const onMap = () => ((S.settings as unknown as { thScriptOn?: Record<string, boolean> }).thScriptOn ||= {});
-export async function setCharScript(id: string, on: boolean) { onMap()[id] = on; S.saveSettings(); await syncChar(); emit('thscripts:changed'); }
+export async function setCharScript(id: string, on: boolean) { onMap()[id] = on; S.saveSettings(); await (syncing = syncChar()); emit('thscripts:changed'); }
 const allow = () => ((S.settings as unknown as { thCharAllow?: Record<string, boolean> }).thCharAllow ||= {});
 export const charAllowed = (id: string) => allow()[id];
-export async function setCharAllowed(id: string, v: boolean | undefined) { if (v === undefined) delete allow()[id]; else allow()[id] = v; S.saveSettings(); await syncChar(); emit('thscripts:changed'); }
+export async function setCharAllowed(id: string, v: boolean | undefined) { if (v === undefined) delete allow()[id]; else allow()[id] = v; S.saveSettings(); await (syncing = syncChar()); emit('thscripts:changed'); }
 let asking = false;
 async function syncChar() {
   const chat = cur.chat, ids = chat?.charIds || [];
@@ -162,4 +183,4 @@ async function syncChar() {
   emit('thscripts:changed');
 }
 
-on('chat:open', () => { framePost({ dlEvent: 'chat_id_changed', args: [cur.chat?.id || ''] }); void syncChar(); });
+on('chat:open', () => { framePost({ dlEvent: 'chat_id_changed', args: [cur.chat?.id || ''] }); syncing = syncChar().catch(e => console.warn('[스크립트]', e)); });
