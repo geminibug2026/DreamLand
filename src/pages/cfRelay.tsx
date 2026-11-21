@@ -1,4 +1,4 @@
-// Vertex 연결의 "Cloudflare 중계로 429 피하기" 안내 창: 워커 코드 복사 · 암호 만들기 · 주소 확인 · 이 연결에 쓰기
+// Vertex 연결의 "중계로 429 피하기" 안내 창 (Cloudflare 워커 · Vercel 함수): 코드 복사 또는 배포 단추 · 암호 만들기 · 주소 확인 · 이 연결에 쓰기
 import { useState } from 'react';
 import { Btn } from '../kit';
 import { openModal, toast } from '../ui';
@@ -7,13 +7,17 @@ import { t } from '../i18n';
 import { Secrets } from '../lib/core';
 import code from '../../relay/cloudflare-worker.js?raw';
 
-const STEPS = ['s1', 's2', 's3', 's4', 's5'];
+const STEPS = { cf: ['s1', 's2', 's3', 's4', 's5'], vc: ['v1', 'v2', 'v3'] } as const;
+const RELAY_HOST = /\.(workers\.dev|vercel\.app)$/i;
+/** Vercel 배포 단추: 이 저장소의 relay/vercel 폴더를 내 GitHub 에 복사해 미국 동부에 올린다. RELAY_KEY 를 물어본다 */
+const VERCEL = 'https://vercel.com/new/clone?repository-url=' + encodeURIComponent('https://github.com/geminibug2026/DreamLand/tree/main/relay/vercel') + '&project-name=dreamland-relay&repository-name=dreamland-relay&env=RELAY_KEY&envDescription=' + encodeURIComponent('DreamLand relay password');
 const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(18)), b => 'abcdefghijkmnpqrstuvwxyz23456789'[b % 32]).join('');
 /** 지금 주소가 중계 주소면 [워커 주소, 암호] */
-const parse = (u?: string) => { const m = String(u || '').trim().match(/^(https:\/\/[^/]+\.workers\.dev)\/([^/]+)\/?$/i); return m ? [m[1], m[2]] : ['', '']; };
+const parse = (u?: string) => { const m = String(u || '').trim().match(/^(https:\/\/[^/]+\.(?:workers\.dev|vercel\.app))\/([^/]+)\/?$/i); return m ? [m[1], m[2]] : ['', '']; };
 
 function Guide({ c, onSave, close }: { c: Conn; onSave: () => void; close: () => void }) {
   const [a0, k0] = parse(c.baseUrl);
+  const [kind, setKind] = useState<'cf' | 'vc'>(/vercel\.app/i.test(a0) ? 'vc' : 'cf');
   const [addr, setAddr] = useState(a0), [key, setKey] = useState(k0 || newKey()), [out, setOut] = useState<{ ok: boolean; text: string } | null>(null);
   const base = addr.trim().replace(/\/+$/, '');
   const copy = async (s: string, msg: string) => { try { await navigator.clipboard.writeText(s); toast(msg, 'ok'); } catch { toast(t('conns.cf.copyFail'), 'err'); } };
@@ -30,7 +34,7 @@ function Guide({ c, onSave, close }: { c: Conn; onSave: () => void; close: () =>
   const rehost = async (add: string | null) => {
     for (const f of ['apiKey', 'serviceAccount'] as const) {
       const v = c[f] as string | undefined; if (!v || !Secrets.is(v)) continue;
-      const old = Secrets.items[c.id]?.[f]?.hosts || [], hosts = [...new Set([...old.filter(h => !/\.workers\.dev$/i.test(h)), ...(add ? [add] : [])])];
+      const old = Secrets.items[c.id]?.[f]?.hosts || [], hosts = [...new Set([...old.filter(h => !RELAY_HOST.test(h)), ...(add ? [add] : [])])];
       if (hosts.join() === old.join()) continue;
       const value = await Secrets.reveal(c.id, f); (c as unknown as Record<string, string>)[f] = await Secrets.put(c.id, f, value, hosts, c.name);
     }
@@ -43,13 +47,17 @@ function Guide({ c, onSave, close }: { c: Conn; onSave: () => void; close: () =>
   const remove = async () => { try { await rehost(null); } catch { /* 남겨 둬도 워커 주소로만 더 갈 수 있을 뿐 */ } c.baseUrl = ''; onSave(); toast(t('conns.cf.removed'), 'ok'); close(); };
   return <div className="col cf-guide">
     <p>{t('conns.cf.intro')}</p>
-    <ol className="cf-steps">{STEPS.map(s => <li key={s}>{t('conns.cf.' + s)}</li>)}</ol>
-    <div className="row"><Btn label={t('conns.cf.copyCode')} ic="copy" cls="primary" onClick={() => void copy(code, t('conns.cf.codeCopied'))} /><a className="btn ghost" href="https://dash.cloudflare.com/" target="_blank" rel="noreferrer">{t('conns.cf.openDash')}</a></div>
+    <div className="seg-row" role="tablist">{(['cf', 'vc'] as const).map(k => <button key={k} type="button" role="tab" aria-selected={kind === k} className={'chip' + (kind === k ? ' on' : '')} onClick={() => setKind(k)}>{t('conns.cf.kind.' + k)}</button>)}</div>
+    <p className="hint">{t('conns.cf.kindHint.' + kind)}</p>
+    <ol className="cf-steps">{STEPS[kind].map(s => <li key={s}>{t('conns.cf.' + s)}</li>)}</ol>
+    <div className="row">{kind === 'cf'
+      ? <><Btn label={t('conns.cf.copyCode')} ic="copy" cls="primary" onClick={() => void copy(code, t('conns.cf.codeCopied'))} /><a className="btn ghost" href="https://dash.cloudflare.com/" target="_blank" rel="noreferrer">{t('conns.cf.openDash')}</a></>
+      : <><Btn label={t('conns.cf.copyKeyFirst')} ic="copy" cls="ghost" onClick={() => void copy(key, t('conns.cf.keyCopied'))} /><a className="btn primary" href={VERCEL} target="_blank" rel="noreferrer">{t('conns.cf.deployVercel')}</a></>}</div>
     <label className="field"><span className="field-label">{t('conns.cf.key')}</span>
       <div className="row"><input className="inp" value={key} spellCheck={false} onChange={e => setKey(e.target.value.replace(/[^\w-]/g, ''))} /><Btn label={t('conns.cf.copy')} ic="copy" cls="ghost" onClick={() => void copy(key, t('conns.cf.keyCopied'))} /><Btn label={t('conns.cf.keyMake')} ic="refresh" cls="ghost" onClick={() => setKey(newKey())} /></div>
       <small className="hint">{t('conns.cf.keyHint')}</small></label>
     <label className="field"><span className="field-label">{t('conns.cf.addr')}</span>
-      <div className="row"><input className="inp" value={addr} placeholder="https://dreamland-relay.myname.workers.dev" spellCheck={false} onChange={e => setAddr(e.target.value.trim())} /><Btn label={t('conns.cf.test')} ic="play" cls="ghost" onClick={() => void test()} /></div></label>
+      <div className="row"><input className="inp" value={addr} placeholder={kind === 'cf' ? 'https://dreamland-relay.myname.workers.dev' : 'https://dreamland-relay.vercel.app'} spellCheck={false} onChange={e => setAddr(e.target.value.trim())} /><Btn label={t('conns.cf.test')} ic="play" cls="ghost" onClick={() => void test()} /></div></label>
     {out ? <p className={'hint ' + (out.ok ? 'ok' : 'bad')} role="status">{out.text}</p> : null}
     <p className="hint">{t('conns.cf.note')}</p>
     <div className="row"><Btn label={t('conns.cf.apply')} ic="check" cls="primary" onClick={() => void apply()} />{a0 ? <Btn label={t('conns.cf.remove')} ic="x" cls="ghost" onClick={() => void remove()} /> : null}</div>

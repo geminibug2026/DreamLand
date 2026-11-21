@@ -6,7 +6,7 @@ import type { AutoPlan, ChatApi } from './types';
 import { bump, cur, flush, ui } from './store';
 import { ux } from '../features/usersettings';
 import type { Cast, CmdItem, GenOpt, GenType, Motive, Msg, Room, SceneSpec, Swipe } from './types';
-import { DB, S, emit, fmtTime, msgText, newChat, newMsg, uid } from '../lib/core';
+import { DB, S, emit, on, fmtTime, msgText, newChat, newMsg, uid } from '../lib/core';
 import { go, route } from '../lib/router';
 import { applyRegex, macro, makeCtx, roll, tpl } from '../lib/engine';
 import { Live, cdHours, inQuietHours, mo, newLater, quietLeft } from '../lib/live';
@@ -50,6 +50,8 @@ export const drawDossier = () => bump('dossier');
 export const drawDrawer = () => bump('drawer');
 export const drawGauge = () => bump('gauge');
 export function setStatus(t: string) { cur.status = t; bump('status'); }
+// 429 자동 재시도 중이면 상태 줄에 알린다 (연결 설정에서 켠 경우만)
+on('conn:retry', d => { const x = d as { conn: string; n: number; of: number; sec: number }; if (cur.busy) setStatus(t('chat.status.retry429', x)); });
 export function setBusy(b: boolean) { cur.busy = b; bump('busy'); }
 function setPrep(b: boolean) { cur.prep = b; bump('busy'); }
 /** 답변 · 답변 전 준비 · 스크립트(QR) 가운데 하나라도 돌고 있나. 그동안 입력창의 보내기 단추는 멈추기가 되고 보낼 수 없다 */
