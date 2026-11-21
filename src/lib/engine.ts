@@ -1468,6 +1468,9 @@ async function streamChatRaw(conn: Conn | null | undefined, Pin: Params, message
   Object.assign(body, logitBiasOf(P));
   if (P.effort) { if (conn.provider === 'openrouter') body.reasoning = { effort: P.effort }; else body.reasoning_effort = P.effort; }
   else if (P.lowThink && conn.provider === 'openrouter') body.reasoning = { effort: 'low' };   // OpenRouter 는 추론하지 않는 모델이면 이 값을 그냥 넘긴다
+  // 보조 호출(기억 정리 등): 프리셋에 추론 강도가 없어도 Gemini 계열은 'low' 를 적어 보낸다 — OpenAI 호환 주소(중계 · 사용자 지정)로 가면 모델 기본값(높음)으로 생각을 길게 해서 잘리거나 실패하고 요금이 몇 배로 든다.
+  // 받지 않는 곳이면 quickCall 이 그 설정을 빼고 한 번 더 보낸다
+  else if (P.lowThink && /gemini/i.test(model)) body.reasoning_effort = 'low';
   if (stream && official) body.stream_options = { include_usage: true };
   Object.assign(body, extra);
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
