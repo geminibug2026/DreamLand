@@ -3,7 +3,7 @@
 // 실리태번에 매인 부분(이벤트 · 매크로 · 알림)은 host 로 받는다. 카드 스크립트가 듣는 이벤트도 원래와 같은 차례 · 같은 인자로 부른다.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { clone, get, has, isArray, isDate, isEqual, isObject, isPlainObject, merge, set, toPath, unset } from './lo';
-import { parseCommandValue, parseString, trimQuotesAndBackslashes } from './parse';
+import { loadMath, needsMath, parseCommandValue, parseString, trimQuotesAndBackslashes } from './parse';
 import { cleanStructuredUpdate, findUpdateMarkupBlocks, scanUpdateMarkup } from './markup';
 import { cleanUpMetadata, generateSchema, getSchemaForPath, reconcileAndApplySchema } from './schema';
 import { isArraySchema, isObjectSchema, variable_events, type Command, type CommandNames, type Emit, type MvuData, type TemplateType } from './types';
@@ -238,6 +238,8 @@ export async function updateVariables(current_message_content: string, variables
   await host.emit(variable_events.COMMAND_PARSED + '_for_zod', variables, commands, current_message_content, errors === undefined ? undefined : (e: string) => errors.push(e));
   await host.emit(variable_events.COMMAND_PARSED + '_ended_for_zod', variables, commands, current_message_content);
   pathFixPass(commands);
+  // 셈이 필요한 값(따옴표 없는 식 · 낱말)이 있을 때만 셈 모듈을 불러 둔다 (값 읽기는 동기라 미리)
+  if (commands.some(c => c.args.slice(1).some(needsMath))) await loadMath();
 
   for (const command of commands) {
     const path = command.args[0], reason_str = command.reason ? `(${command.reason})` : '';

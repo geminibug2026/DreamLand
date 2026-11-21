@@ -113,7 +113,7 @@ function isPage(lang: string, code: string) {
   if (lang && !/^(html?|xml)$/i.test(lang)) return false;
   return /<(!doctype|html|body|head|script)\b/i.test(code) || (/<style[\s>]/i.test(code) && /<(div|section|main|table)\b/i.test(code));
 }
-const frameSrc = new Map<string, string>();
+const frameSrc = new Map<string, string>(), frameH = new Map<string, number>();   // 화면 글 · 마지막으로 잰 높이
 /** 화면(iframe)의 시작 자료와 도우미 호출을 채팅 쪽이 채운다 (src/chat/frameBridge) */
 export const frameHooks: { init?: (f: HTMLIFrameElement) => unknown; call?: (f: HTMLIFrameElement, fn: string, args: unknown[]) => unknown; /** 듣기 시작 · 부름 결과 · 준비됨 알림 (src/chat/frameEvents) */ msg?: (f: HTMLIFrameElement, d: Record<string, unknown>) => void; /** 화면에 넣기 전에 글을 고친다 (알려진 외부 모듈 주소를 앱에 든 것으로) */ src?: (code: string) => string } = {};
 /** 열려 있는 모든 화면에 알린다 */
@@ -143,19 +143,29 @@ function watchFrames() {
         const id = d.dlCall;
         void Promise.resolve().then(() => { if (!frameHooks.call) throw new Error('not available'); return frameHooks.call(f, String(d.fn), Array.isArray(d.args) ? d.args : []); })
           .then(val => w.postMessage({ dlRet: id, ok: true, val: val === undefined ? null : val }, '*'), err => w.postMessage({ dlRet: id, ok: false, err: String((err as Error)?.message || err) }, '*'));
-      } else f.style.height = Math.min(Math.max(40, Number(d.h) || 0), 6000) + 'px';
+      } else { const h = Math.min(Math.max(40, Number(d.h) || 0), 6000); f.style.height = h + 'px'; if (f.dataset.frame) frameH.set(f.dataset.frame, h); }
       return;
     }
   });
+  // 화면은 보이는 곳 근처에 올 때 만든다 — 상태창이 수십 개인 방을 열 때 한꺼번에 수십 개의 문서(jQuery · Tailwind 포함)를 띄우면 그동안 화면이 멈춘다.
+  // 마지막 몇 개 메시지의 화면은 바로 만든다 (이벤트를 듣는 상태창이 늦게 뜨지 않게). 한 번 잰 높이는 기억해 두어 나중에 만들 때 자리가 튀지 않게 한다
+  const mount = (el: HTMLElement) => {
+    if (el.dataset.on) return; el.dataset.on = '1'; io?.unobserve(el);
+    const id = el.dataset.frame || '', f = document.createElement('iframe');
+    f.className = 'dl-frame-el'; f.dataset.frame = id;
+    f.setAttribute('sandbox', 'allow-scripts allow-popups allow-forms allow-modals'); f.setAttribute('referrerpolicy', 'no-referrer');
+    const h = frameH.get(id); if (h) f.style.height = h + 'px';
+    f.src = Server.frameUrl;
+    el.style.minHeight = ''; el.append(f);
+  };
+  const io = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver(es => { for (const e of es) if (e.isIntersecting) mount(e.target as HTMLElement); }, { rootMargin: '900px 0px' });
   const hydrate = () => {
-    for (const el of document.querySelectorAll<HTMLElement>('.dl-frame:not([data-on])')) {
+    const recent = new Set([...document.querySelectorAll<HTMLElement>('.msgs > article.msg')].slice(-3));
+    for (const el of document.querySelectorAll<HTMLElement>('.dl-frame:not([data-on]):not([data-wait])')) {
       if (frameSrc.get(el.dataset.frame || '') == null) continue;
-      el.dataset.on = '1';
-      const f = document.createElement('iframe');
-      f.className = 'dl-frame-el'; f.dataset.frame = el.dataset.frame;
-      f.setAttribute('sandbox', 'allow-scripts allow-popups allow-forms allow-modals'); f.setAttribute('referrerpolicy', 'no-referrer');
-      f.src = Server.frameUrl;
-      el.append(f);
+      const art = el.closest<HTMLElement>('.msgs > article.msg');
+      if (!io || !art || recent.has(art)) { mount(el); continue; }
+      el.dataset.wait = '1'; el.style.minHeight = (frameH.get(el.dataset.frame || '') || 160) + 'px'; io.observe(el);
     }
   };
   new MutationObserver(hydrate).observe(document.body, { childList: true, subtree: true });

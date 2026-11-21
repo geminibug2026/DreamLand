@@ -1,0 +1,1 @@
+export{r as similar}from"./lint-QXr1FOUT.js";
