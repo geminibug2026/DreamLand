@@ -155,7 +155,7 @@ def('newchat', {
   help: '',
   run: async a => {
     const { chat } = need(), del = yes(N(a, 'delete', 'false'));
-    const fresh = await startChat(chat.charIds, { mode: chat.mode, open: !del });
+    const fresh = await startChat(chat.charIds, { mode: chat.mode, open: !del, setup: false });
     if (del && fresh) { if (cur.gen?.chat === chat) cur.abort?.abort(); await Assets.removeOwner('chat:' + chat.id); await S.remove('chats', chat.id); go('chat', fresh.id); }
     return '';
   },
@@ -181,7 +181,7 @@ def('renamechat', {
 });
 def('getchatname', { help: '', run: () => { const { chat } = chatApi.current(); return chat ? roomName(chat) : ''; } });
 def('closechat', { help: '', run: () => { cur.chat = null; S.set({ lastChat: '' }); go('home'); return ''; } });
-def('tempchat', { help: '', run: async () => { const { chat } = need(); const { startChat } = await import('../../chat/start'); await startChat(chat.charIds, { temp: true }); return ''; } });
+def('tempchat', { help: '', run: async () => { const { chat } = need(); const { startChat } = await import('../../chat/start'); await startChat(chat.charIds, { temp: true, setup: false }); return ''; } });
 def('forcesave', {
   help: '',
   run: async (_a, c) => { S.saveSettings(); if (chatApi.current().chat) await chatApi.save(); c.host.echo(K('saved'), 'success'); return ''; },
@@ -372,7 +372,7 @@ def('go', {
     const ch = findChar(raw);
     if (ch) {
       const last = S.chats.filter(x => x.charIds.length === 1 && x.charIds[0] === ch.id).sort((p, q) => q.updatedAt - p.updatedAt)[0];
-      if (last) go('chat', last.id); else await startChat([ch.id]);
+      if (last) go('chat', last.id); else await startChat([ch.id], { setup: false });
       return ch.name;
     }
     const k = raw.toLowerCase(), room = S.chats.filter(x => x.charIds.length > 1 && (roomName(x).toLowerCase() === k || (x.name || '').toLowerCase() === k || chatApi.groupTitle?.(x).toLowerCase() === k)).sort((p, q) => q.updatedAt - p.updatedAt)[0];
@@ -402,7 +402,7 @@ def('random', {
     const tag = str(a.unnamed).trim().toLowerCase();
     const pool = S.chars.filter(c => !tag || (c.tags || []).some(x => x.toLowerCase() === tag));
     if (!pool.length) return '';
-    await startChat([pool[Math.floor(Math.random() * pool.length)].id]);
+    await startChat([pool[Math.floor(Math.random() * pool.length)].id], { setup: false });
     return '';
   },
 });

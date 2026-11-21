@@ -9568,5 +9568,19 @@
   "chat.status.hop429": "{conn}: 429 — 다른 지역의 중계로 다시 보내요 ({n}/{of})",
   "conns.cf.appliedMany": "이 연결은 이제 중계 {n}곳을 돌려 써요. 429 가 나면 다음 지역으로 넘어갑니다",
   "conns.cf.addrHint.cf": "한 지역만 쓰면 그 지역도 결국 429 가 납니다. 워커를 지역만 달리해 여러 개 만들고(같은 코드 · 같은 암호) 주소를 빈칸으로 띄워 모두 적으면, 429 가 날 때 다음 워커로 자동으로 넘어갑니다.",
-  "conns.cf.addrHint.vc": "한 번 배포하면 미국 4곳 · 유럽 2곳이 함께 열립니다. \"이 연결에 쓰기\"를 누르면 여섯 곳을 모두 등록해, 429 가 날 때 다음 지역으로 자동으로 넘어갑니다."
+  "conns.cf.addrHint.vc": "한 번 배포하면 미국 4곳 · 유럽 2곳이 함께 열립니다. \"이 연결에 쓰기\"를 누르면 여섯 곳을 모두 등록해, 429 가 날 때 다음 지역으로 자동으로 넘어갑니다.",
+  "chat.setup.title": "{name} 설정",
+  "chat.setup.lead": "고른 값이 프리셋의 해당 자리에 들어가요. 대화를 시작한 뒤에도 장면 패널에서 바꿀 수 있어요.",
+  "chat.setup.multi": "여러 개",
+  "chat.setup.slots": "빈자리",
+  "chat.setup.slotsHint": "프리셋에 {{…}} 으로만 적혀 있고 고를 것이 정해져 있지 않은 자리예요. 비워 두면 아무것도 들어가지 않아요.",
+  "chat.setup.slotPh": "직접 적기 (비워 두면 빈칸)",
+  "chat.setup.quiet": "이 프리셋은 다음부터 묻지 않고 바로 시작",
+  "chat.setup.reset": "기본값으로",
+  "chat.setup.resetHint": "프리셋에 정해 둔 처음 값으로 되돌려요",
+  "chat.setup.go": "설정 후 시작",
+  "chat.setup.goN": "설정 후 시작 · {n}개 바꿈",
+  "chat.setup.askEach": "새 대화를 열 때마다 이 설정을 먼저 묻기",
+  "presets.vars.f.multi": "여러 개 고르기",
+  "presets.vars.f.multiHint": "고른 것들의 글이 줄을 바꿔 차례로 들어가요. 처음 값도 여러 개 고를 수 있어요."
 }
