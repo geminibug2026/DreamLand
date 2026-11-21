@@ -140,6 +140,84 @@ const usable = (sc: Bag) => !!(str(sc.prompt) || str(sc.camera) || (sc.character
 const isAuto = (sc: unknown) => !!(sc as { _auto?: boolean } | null)?._auto;
 const markAuto = (sc: object) => Object.defineProperty(sc, '_auto', { value: true, enumerable: false });
 
+// ── 화면용 그림 주소 ──
+// 대화를 열 때 방의 삽화를 통째로 읽지 않는다. 그림 칸이 저마다 제 그림만 청하고, 같은 순간에 청한 것은 한 번에 읽는다.
+// 한 번 본 그림은 따로 둔 그림 상자(dreamland-pics, 지워도 되는 사본)에 파일로 넣어 두어, 다음부터는 긴 글자(data:)를 풀지 않고 바로 띄운다.
+const urls = new Map<string, string>(), gone = new Set<string>(), picSubs = new Set<() => void>();
+let asked = new Set<string>(), askTimer = 0;
+const busyIds = new Set<string>();
+/** data: 주소 → 파일(Blob) */
+function dataToBlob(d: string): Blob | null {
+  if (!d.startsWith('data:')) return null;
+  try {
+    const at = d.indexOf(','), head = d.slice(5, at), b64 = /;base64$/i.test(head), body = d.slice(at + 1);
+    const bin = b64 ? atob(body) : decodeURIComponent(body), u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return new Blob([u], { type: head.split(';')[0] || 'image/png' });
+  } catch { return null; }
+}
+/** 그림 상자: 화면용 사본. 없거나 열리지 않으면 그냥 원본을 읽는다 */
+let picDb: Promise<IDBDatabase | null> | undefined;
+const pics = () => picDb ||= new Promise<IDBDatabase | null>(res => {
+  try { const r = indexedDB.open('dreamland-pics', 1); r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains('pic')) r.result.createObjectStore('pic'); }; r.onsuccess = () => res(r.result); r.onerror = () => res(null); r.onblocked = () => res(null); } catch { res(null); }
+});
+async function picGet(ids: string[]): Promise<(Blob | undefined)[]> {
+  const d = await pics(); if (!d) return [];
+  return new Promise(res => { const out: (Blob | undefined)[] = []; try { const tx = d.transaction('pic', 'readonly'), st = tx.objectStore('pic'); ids.forEach((id, i) => { const q = st.get(id); q.onsuccess = () => { out[i] = q.result as Blob | undefined; }; }); tx.oncomplete = () => res(out); tx.onerror = tx.onabort = () => res([]); } catch { res([]); } });
+}
+async function picSet(id: string, b: Blob | null) {
+  const d = await pics(); if (!d) return;
+  try { const tx = d.transaction('pic', 'readwrite'); if (b) tx.objectStore('pic').put(b, id); else tx.objectStore('pic').delete(id); } catch { }
+}
+/** 그림 상자에 넣을 사본: 긴 변 1536 까지 줄인 WebP. 더 커지거나 WebP 를 못 만들면 원본 파일 그대로 */
+const keepQ: [string, Blob][] = []; let keeping = false;
+function keep(id: string, b: Blob) { keepQ.push([id, b]); if (!keeping) { keeping = true; idle(keepNext); } }
+const idle = (f: () => void) => { const w = window as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }; if (w.requestIdleCallback) w.requestIdleCallback(f, { timeout: 3000 }); else setTimeout(f, 200); };
+async function keepNext() {
+  const job = keepQ.shift(); if (!job) { keeping = false; return; }
+  const [id, b] = job; let out: Blob = b;
+  try {
+    const bmp = await createImageBitmap(b), k = Math.min(1, 1536 / Math.max(bmp.width, bmp.height)), w = Math.max(1, Math.round(bmp.width * k)), h = Math.max(1, Math.round(bmp.height * k));
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d')?.drawImage(bmp, 0, 0, w, h); bmp.close();
+    const webp = await new Promise<Blob | null>(r => cv.toBlob(r, 'image/webp', .9));
+    if (webp && webp.type === 'image/webp' && webp.size < b.size) out = webp;
+  } catch { }
+  await picSet(id, out);
+  idle(keepNext);
+}
+function show(id: string, b: Blob | null, data: string, save: boolean) {
+  if (urls.has(id)) return;
+  if (b) { urls.set(id, URL.createObjectURL(b)); if (save) keep(id, b); } else if (data) urls.set(id, data);
+}
+/** 지운 그림의 사본을 치운다: 앱을 연 뒤 한 번, 한가할 때 (열쇠만 읽으므로 가볍다) */
+let tidied = false;
+async function tidy() {
+  const d = await pics(); if (!d) return;
+  const keys = (st: IDBObjectStore) => new Promise<IDBValidKey[]>(res => { const q = st.getAllKeys(); q.onsuccess = () => res(q.result); q.onerror = () => res([]); });
+  try {
+    const have = new Set((await (DB as unknown as { keys(s: string): Promise<IDBValidKey[]> }).keys('assets')).map(String));
+    if (!have.size) return;
+    const mine = await keys(d.transaction('pic', 'readonly').objectStore('pic')), tx = d.transaction('pic', 'readwrite'), st = tx.objectStore('pic');
+    for (const k of mine) if (!have.has(String(k))) st.delete(k);
+  } catch { }
+}
+function want(id: string) {
+  if (busyIds.has(id) || gone.has(id)) return;
+  if (!tidied) { tidied = true; setTimeout(() => idle(() => void tidy()), 30000); }
+  busyIds.add(id); asked.add(id);
+  if (!askTimer) askTimer = window.setTimeout(fetchAsked, 0);
+}
+const tell = () => { for (const f of [...picSubs]) try { f(); } catch (e) { console.warn('[삽화]', e); } };
+async function fetchAsked() {
+  askTimer = 0; const ids = [...asked]; asked = new Set(); if (!ids.length) return;   const kept = await picGet(ids), miss: string[] = [];
+  ids.forEach((id, i) => { const b = kept[i]; if (b instanceof Blob && b.size) { show(id, b, '', false); busyIds.delete(id); } else miss.push(id); });
+  if (miss.length < ids.length) tell();   if (!miss.length) return;
+  let rows: (AssetRec | undefined)[] = [];
+  try { rows = await (DB as unknown as { many(s: string, ids: string[]): Promise<(AssetRec | undefined)[]> }).many('assets', miss); } catch (e) { console.warn('[삽화]', e); }
+  miss.forEach((id, i) => { const r = rows[i]; busyIds.delete(id); if (r?.data) { cache.set(id, r.data); show(id, dataToBlob(r.data), r.data, true); } else gone.add(id); });
+  tell();
+}
+
 export const Illust = {
   /** 설정 (없는 항목은 기본값으로 채운다) */
   cfg(): IllustCfg {
@@ -163,7 +241,20 @@ export const Illust = {
   async load(chatId: string) { if (loaded.has(chatId)) return; for (const a of await db().byOwner('chat:' + chatId)) if (a.kind === 'illust') cache.set(a.id, a.data); loaded.add(chatId); },
   ready: (chatId: string) => loaded.has(chatId),
   data: (id: string) => cache.get(id) || '',
-  remember(rec: { id: string; data: string }) { cache.set(rec.id, rec.data); },
+  /** 화면에 그릴 주소. 아직 안 읽은 그림이면 그 한 장만 읽으러 가고 '' (다 읽으면 onPic 으로 알린다) */
+  url(id: string): string {
+    if (!id) return '';
+    const u = urls.get(id); if (u) return u;
+    const d = cache.get(id); if (d) { show(id, dataToBlob(d), d, true); return urls.get(id) || ''; }
+    want(id); return '';
+  },
+  /** 그림이 읽히면 부른다 → 끊는 함수 */
+  onPic(f: () => void) { picSubs.add(f); return () => { picSubs.delete(f); }; },
+  /** 그림 한 장의 원본(data:) — 안 읽었으면 그 한 장만 읽는다 */
+  async dataOf(id: string): Promise<string> { if (!id) return ''; const d = cache.get(id); if (d) return d; const r = await db().get('assets', id); if (r?.data) cache.set(id, r.data); return r?.data || ''; },
+  /** 읽어 봤는데 없는 그림 (지워졌거나 옮겨진 것) */
+  missing: (id: string) => gone.has(id),
+  remember(rec: { id: string; data: string }) { cache.set(rec.id, rec.data); gone.delete(rec.id); },
   wantsPlan(_chat: unknown, msgs: { role?: string }[], type = '') { const c = this.cfg(); return c.auto && c.mode === 'plan' && (msgs.filter(m => m.role === 'assistant').length + (type === 'regen' ? 0 : 1)) % Math.max(1, c.every || 1) === 0; },
 
   // ── 인물 · 세계관 설정: 대화 → 캐릭터 → 전체 순으로 적용 ──
@@ -473,7 +564,7 @@ export const Illust = {
     await db().put('assets', rec); cache.set(rec.id, rec.data);
     return rec;
   },
-  async remove(id: string) { await db().del('assets', id); cache.delete(id); },
+  async remove(id: string) { await db().del('assets', id); cache.delete(id); void picSet(id, null); const u = urls.get(id); if (u) { urls.delete(id); if (u.startsWith('blob:')) URL.revokeObjectURL(u); } },
   /** AI 검수: 그림을 볼 수 있는 연결로 결과를 평가한다. 의견만 남기고 그림은 바꾸지 않는다 → { summary, issues, created } */
   async review(id: string, scene: Bag | null | undefined, chat: IChat | null | undefined, signal?: AbortSignal) {
     const rec = await db().get('assets', id), image = rec?.data || cache.get(id);

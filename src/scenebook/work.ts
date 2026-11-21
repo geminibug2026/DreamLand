@@ -66,7 +66,7 @@ export async function compose(msg: Msg | null = lastReply(), { manual = true, in
   let scenes = initial || (sw.illustDraft?.length ? sw.illustDraft : null), cfg = config || (!initial && sw.illustDraftConfig) || null;
   if (!scenes && !manual) scenes = await analyzeInto(msg);
   if (!scenes) { const plan = sw.illustPlan?.raw ? Illust.readPlan(sw.illustPlan.raw) : null; scenes = plan?.scenes.length ? plan.scenes.slice(0, 6) : [blankScene()]; }
-  if (!preview) { const it = (slot && sw.illust?.find(x => x.slotId === slot)) || sw.illust?.find(x => !x.hidden && x.id); preview = it ? Illust.data(it.id) : ''; }   // 배치판 배경: 고치는 그림, 없으면 이 답변의 첫 그림
+  if (!preview) { const it = (slot && sw.illust?.find(x => x.slotId === slot)) || sw.illust?.find(x => !x.hidden && x.id); preview = it ? await Illust.dataOf(it.id) : ''; }   // 배치판 배경: 고치는 그림, 없으면 이 답변의 첫 그림
   if (cfg?.references?.length) { const have = new Set((await C.DB.byOwner(IL.REF_OWNER)).map(r => r.id)), kept = cfg.references.filter(r => have.has(r.id)); if (kept.length !== cfg.references.length) { cfg = { ...cfg, references: kept }; toast(t('scenebook.work.refsDropped')); } }
   openComposer({ chat, msg, scenes: scenes.map(sc => Illust.compileScene(chat, sc)), config: Illust.genConfig(cfg), slot, preview });
 }

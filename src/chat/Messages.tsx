@@ -17,6 +17,7 @@ import { motiveLabel } from '../lib/f-schedule';
 import { S } from '../lib/core';
 import { X } from '../lib/hooks';
 import { Illust } from '../lib/illust';
+import { IllustPic } from './IllustPic';
 import { Clock } from '../lib/clock';
 import { t, getLang, fmtDate } from '../i18n';
 import { I } from '../lib/icons';
@@ -41,9 +42,9 @@ export function illustDialog(m: Msg, preset = '') {
 
 function Illusts({ m, s }: { m: Msg; s: Swipe }) {
   if (!s.illust?.length) return null;
-  const big = (it: IllustItem) => openModal({ title: '', wide: true, body: <div className="col"><img className="full-img" src={Illust.data(it.id)} />{it.title && <b>{it.title}</b>}<p className="hint">{[it.camera, it.prompt, ...(it.characters || []).map(x => typeof x === 'string' ? x : `${x.name || ''}: ${[x.outfit, x.action].filter(Boolean).join(', ')}`)].filter(Boolean).join(' · ')}</p></div> });
+  const big = (it: IllustItem) => openModal({ title: '', wide: true, body: <div className="col"><img className="full-img" src={Illust.url(it.id) || Illust.data(it.id)} />{it.title && <b>{it.title}</b>}<p className="hint">{[it.camera, it.prompt, ...(it.characters || []).map(x => typeof x === 'string' ? x : `${x.name || ''}: ${[x.outfit, x.action].filter(Boolean).join(', ')}`)].filter(Boolean).join(' · ')}</p></div> });
   return <div className="illusts">{s.illust.map(it => <figure className="illust" key={it.id}>
-    <img src={Illust.data(it.id)} alt={t('chat.illust.alt')} loading="lazy" onClick={() => big(it)} />
+    <IllustPic id={it.id} alt={t('chat.illust.alt')} onClick={() => big(it)} />
     <figcaption>
       <IconBtn ic="refresh" title={t('chat.illust.redraw')} cls="tiny" onClick={() => drawScene(m, { title: it.title, camera: it.camera, prompt: it.prompt, negative: it.negative, characters: it.characters })} />
       <IconBtn ic="edit" title={t('chat.illust.editDraw')} cls="tiny" onClick={() => illustDialog(m, it.prompt)} />

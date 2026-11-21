@@ -10,7 +10,7 @@ import { installMirror, type MirrorDb } from './datafolder/mirror';
 import { setMirror } from './datafolder/instance';
 import { toast } from './ui';
 import { Rail, openPalette } from './Shell';
-import { t } from './i18n';
+import { t, initLang } from './i18n';
 
 /** 화면 파일(src/pages/*.tsx)은 이것을 page 라는 이름으로 내보낸다. 파일을 두기만 하면 등록된다 */
 export interface PageDef { name: string; Component: ComponentType<{ arg?: unknown }> }
@@ -28,6 +28,8 @@ on('route', page => { if (!names.has(String(page))) drop(); });
 
 const railRoot = createRoot(document.getElementById('rail')!);
 let railUp = false;
+
+await initLang();
 
 await start({
   // 자료 폴더 거울: 브라우저 저장소에 쓰는 모든 것을 서버의 data/store 에도 보낸다. 불러온 직후, 무엇이든 저장하기 전에 한 번 (파일로 열었으면 감싸지 않는다)

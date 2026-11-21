@@ -395,3 +395,10 @@ button.top-room:hover { text-decoration: underline dotted; text-underline-offset
 .room.sub.on::before, .room.sub.on::after { background: color-mix(in srgb, var(--bg) 45%, transparent); }
 .room-kids { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; padding: 1px 5px; border: 1px solid var(--ink-line); cursor: pointer; flex: none; }
 .room-meta .room-kids::before { content: none !important; margin: 0; } .room-kids:hover { border-color: currentColor; } .room.on .room-kids { border-color: color-mix(in srgb, var(--bg) 45%, transparent); }
+
+/* 삽화를 읽는 동안: 엑박 대신 그림 크기만 한 빈 칸이 은은하게 빛난다 */
+.ill-wait { display: block; width: 100%; aspect-ratio: 832 / 1216; background: linear-gradient(100deg, color-mix(in srgb, var(--text) 5%, transparent) 35%, color-mix(in srgb, var(--text) 11%, transparent) 50%, color-mix(in srgb, var(--text) 5%, transparent) 65%) 0 0 / 300% 100%; animation: ill-shine 1.3s linear infinite; }
+.ill-wait.gone { animation: none; background: color-mix(in srgb, var(--text) 5%, transparent); }
+.illust[data-frame="image"] .sb-pic > .ill-wait { height: 100%; aspect-ratio: auto; }
+@keyframes ill-shine { from { background-position: 100% 0; } to { background-position: -50% 0; } }
+@media (prefers-reduced-motion: reduce) { .ill-wait { animation: none; } }

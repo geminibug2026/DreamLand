@@ -743,12 +743,34 @@ const server = http.createServer(async (req, res) => {
     const inData = (() => { const r = path.relative(DATA_DIR, file); return !r.startsWith('..') && !path.isAbsolute(r); })();
     if (!file.startsWith(ROOT + path.sep) || inData || path.basename(file).toLowerCase() === 'server.js' || /^data([\\/]|$)/i.test(path.relative(ROOT, file)) || /(^|[\\/])\./.test(path.relative(ROOT, file)) || /\.(bat|cmd|sh|md)$/i.test(file)) return send(res, 403, 'forbidden', 'text/plain');
     if (!(await exists(file)) || (await isDir(file))) return send(res, 404, 'not found', 'text/plain');
-    send(res, 200, await fsp.readFile(file), MIME[path.extname(file).toLowerCase()] || 'application/octet-stream');
+    await sendStatic(req, res, file);
   } catch (e) {
     if (!res.headersSent) send(res, 500, { error: e.message });
     else res.end();
   }
 });
+
+// ── 앱 파일 보내기 ──
+// 빌드된 dist/assets/ 의 파일은 이름에 내용의 지문이 들어 있어 바뀌지 않는다: 오래 들고 있게 한다.
+// 나머지(index.html · css · 그림)는 매번 바뀌었는지만 묻고(ETag) 그대로면 304 로 끝낸다. 글자 파일은 gzip 으로 줄여 보낸다 (줄인 것은 기억해 둔다).
+const gzMemo = new Map();
+async function sendStatic(req, res, file) {
+  const st = await fsp.stat(file), type = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
+  const rel = path.relative(ROOT, file).split(path.sep).join('/'), fixed = rel.startsWith('dist/assets/');
+  const etag = `W/"${st.size.toString(36)}-${Math.floor(st.mtimeMs).toString(36)}"`;
+  const head = { 'Content-Type': type, 'Cache-Control': fixed ? 'public, max-age=31536000, immutable' : 'no-cache', ETag: etag, Vary: 'Accept-Encoding', ...SEC_HEADERS };
+  if (req.headers['if-none-match'] === etag) { res.writeHead(304, head); return res.end(); }
+  let body = await fsp.readFile(file);
+  if (/^(text\/|application\/(json|javascript)|image\/svg)/.test(type) && body.length > 1024 && body.length < 16 * 1024 * 1024 && /\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) {
+    const memo = gzMemo.get(file);
+    if (memo && memo.etag === etag) body = memo.gz;
+    else { const gz = await new Promise((ok, no) => zlib.gzip(body, { level: 6 }, (e, b) => e ? no(e) : ok(b))); gzMemo.set(file, { etag, gz }); body = gz; }
+    head['Content-Encoding'] = 'gzip';
+  }
+  head['Content-Length'] = body.length;
+  res.writeHead(200, head);
+  res.end(req.method === 'HEAD' ? undefined : body);
+}
 
 /** src/ 를 고친 뒤 빌드하지 않았으면 알려 준다 (받는 사람은 dist/ 를 그대로 쓴다) */
 async function staleBuild() {

@@ -38,6 +38,9 @@ export interface IllustApi {
   cfg(): IllustCfg;
   saveCfg(patch: Partial<IllustCfg>, o?: { reason?: string; force?: boolean }): IllustCfg;
   data(id: string): string;
+  url(id: string): string;
+  dataOf(id: string): Promise<string>;
+  load(chatId: string): Promise<void>;
   validate<T extends GenConfig>(c: T): T;
   genConfig(over?: Partial<GenConfig> | null): GenConfig;
   enqueue(chat: Chat, msg: Msg, scene: Scene, onDone: (err?: Error | null) => unknown, opts?: EnqueueOpts): void;
