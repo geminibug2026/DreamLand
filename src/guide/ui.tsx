@@ -7,7 +7,7 @@ import { go, route } from '../lib/router';
 import { confirmBox, menu, toast } from '../ui';
 import { fmtDate, has, t, useLang } from '../i18n';
 import { cur } from '../chat/store';
-import { G, MAX_ROUNDS, apply, applyAll, closeGuide, discard, newTalk, openTalk, poke, removeTalk, resume, send, stop, undo } from './agent';
+import { G, apply, applyAll, closeGuide, discard, newTalk, openTalk, poke, removeTalk, resume, send, stop, undo } from './agent';
 import { targetOf, touchedSince } from './changes';
 import { diffWords, fold, tally } from './diff';
 import { Mark, startTour } from './Tour';
@@ -98,7 +98,7 @@ function ItemView({ it, last }: { it: Item; last?: boolean }) {
     <pre>{it.out.length > 2400 ? it.out.slice(0, 2400) + '\n⋯' : it.out}</pre>
   </details>;
   if (it.k === 'change') return <ChangeCard ch={it.change} />;
-  if (it.text === 'limit') return <div className="gd-e gd-limit" role="status"><p>{t('guide.err.limit')}</p>{last && !G.busy ? <button type="button" className="btn primary" onClick={() => void resume(t('guide.cont.say'))}><Icon name="play" size={15} />{t('guide.cont.btn')}</button> : null}</div>;
+  if (it.text === 'limit' || it.text === 'loop') return <div className="gd-e gd-limit" role="status"><p>{t(it.text === 'loop' ? 'guide.err.loop' : 'guide.err.limit')}</p>{last && !G.busy ? <button type="button" className="btn primary" onClick={() => void resume(t('guide.cont.say'))}><Icon name="play" size={15} />{t('guide.cont.btn')}</button> : null}</div>;
   return <div className="gd-e" role="alert"><span className="fx-lbl">{t('guide.err.label')}</span><p>{it.text === 'noconn' ? t('guide.err.noconn') : it.text === 'empty' ? t('guide.err.empty') : it.text}</p>{it.text === 'noconn' ? <button type="button" className="btn" onClick={() => { closeGuide(); go('conns'); }}>{t('nav.conns')}</button> : null}</div>;
 }
 
@@ -216,7 +216,7 @@ function Composer() {
 }
 function ConnLine() {
   const c = S.helperConn('guide', null);
-  return <p className="gd-meta"><span className="fx-num">{c ? `${c.name}${c.model ? ' · ' + c.model : ''}` : t('guide.noConn')}</span><span>{t('guide.cost', { n: MAX_ROUNDS })}</span></p>;
+  return <p className="gd-meta"><span className="fx-num">{c ? `${c.name}${c.model ? ' · ' + c.model : ''}` : t('guide.noConn')}</span><span>{t('guide.cost')}</span></p>;
 }
 
 // ── 빈 자리: 무엇을 물을 수 있는지 몇 줄 ──
@@ -256,7 +256,7 @@ function Panel() {
     <header className="gd-head">
       <Mark size={34} lit={G.busy} />
       <div className="gd-title"><span className="fx-lbl">Lampkeeper</span><h2 className="fx-serif">{t('guide.name')}</h2></div>
-      {G.status !== 'idle' ? <span className={'fx-pill gd-status is-' + G.status} role="status"><i className="fx-dot" />{t(STATUS_KEY[G.status])}{G.busy ? <b className="fx-num">{String(G.calls).padStart(2, '0')}/{String(MAX_ROUNDS).padStart(2, '0')}</b> : null}</span> : null}
+      {G.status !== 'idle' ? <span className={'fx-pill gd-status is-' + G.status} role="status"><i className="fx-dot" />{t(STATUS_KEY[G.status])}{G.busy ? <b className="fx-num">{t('guide.calls', { n: G.calls })}</b> : null}</span> : null}
       <span className="gd-hbtns">
         <button type="button" className="ibtn" title={t('guide.talk.list')} aria-label={t('guide.talk.list')} onClick={talks}><Icon name="note" size={17} /></button>
         <button type="button" className="ibtn" title={t('nav.help')} aria-label={t('nav.help')} onClick={e => menu(e.currentTarget, [{ label: t('nav.help'), ic: 'book', onclick: () => { closeGuide(); go('help'); } }, { label: t('guide.tour.again'), ic: 'play', onclick: () => { closeGuide(); startTour(); } }])}><Icon name="book" size={17} /></button>
