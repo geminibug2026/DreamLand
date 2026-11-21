@@ -9950,6 +9950,7 @@
   "guide.act.regen": "重新生成",
   "guide.act.retry": "重试",
   "guide.act.retryNoImg": "不带图片重试",
+  "guide.act.branchShort": "分支",
   "guide.act.branch": "从这里分支",
   "guide.act.branchHint": "把到这里为止的内容复制成新对话",
   "guide.act.branched": "已复制为新对话。原来的对话仍在对话记录里。",

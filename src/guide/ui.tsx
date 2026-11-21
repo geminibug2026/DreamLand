@@ -141,16 +141,18 @@ function FileChips({ files, onRemove }: { files: Attach[]; onRemove?: (a: Attach
   </span>)}</div>;
 }
 
-/** 말 한 줄의 ⋯ 단추: 고치기 · 다시 생성 · 여기서 분기 · 복사 */
-function MoreBtn({ it, idx, canRegen }: { it: Item; idx: number; canRegen?: boolean }) {
+/** 말 한 줄 아래의 단추 줄 — 내 말: 고치기 · 분기 · 복사 / 답: 복사 · 다시 생성 · 분기. 숨기지 않고 늘 보인다 (흐리게, 가리키면 진하게) */
+function MsgBar({ it, idx, canRegen }: { it: Item; idx: number; canRegen?: boolean }) {
   if (G.busy || (it.k !== 'user' && it.k !== 'ai')) return null;
-  const open = (e: React.MouseEvent<HTMLButtonElement>) => menu(e.currentTarget, [
-    it.k === 'user' ? { label: t('guide.act.edit'), ic: 'edit', onclick: () => { G.editing = idx; poke(); } } : null,
-    canRegen ? { label: t('guide.act.regen'), ic: 'refresh', onclick: () => void regen() } : null,
-    { label: t('guide.act.branch'), hint: t('guide.act.branchHint'), ic: 'branch', onclick: () => void branchAt(idx).then(() => toast(t('guide.act.branched'), 'ok')) },
-    { label: t('guide.act.copy'), ic: 'copy', onclick: () => void copy(it.text) },
-  ]);
-  return <button type="button" className="gd-mbtn" title={t('guide.act.more')} aria-label={t('guide.act.more')} onClick={open}><Icon name="more" size={16} /></button>;
+  const B = (ic: string, label: string, title: string, fn: () => void) => <button type="button" className="gd-act" title={title} aria-label={title} onClick={fn}><Icon name={ic} size={14} /><span>{label}</span></button>;
+  const branch = () => void branchAt(idx).then(() => toast(t('guide.act.branched'), 'ok'));
+  return <div className={'gd-acts' + (it.k === 'user' ? ' mine' : '')}>
+    {it.k === 'user' ? B('edit', t('guide.act.edit'), t('guide.act.edit'), () => { G.editing = idx; poke(); }) : null}
+    {it.k === 'ai' ? B('copy', t('guide.act.copyShort'), t('guide.act.copy'), () => void copy(it.text)) : null}
+    {it.k === 'ai' && canRegen ? B('refresh', t('guide.act.regen'), t('guide.act.regen'), () => void regen()) : null}
+    {B('branch', t('guide.act.branchShort'), t('guide.act.branchHint'), branch)}
+    {it.k === 'user' && it.text ? B('copy', t('guide.act.copyShort'), t('guide.act.copy'), () => void copy(it.text)) : null}
+  </div>;
 }
 /** 내 말 고치기: 고친 말부터 다시 (그 뒤의 답은 지운다) */
 function EditBox({ it, idx }: { it: Extract<Item, { k: 'user' }>; idx: number }) {
@@ -168,9 +170,9 @@ function EditBox({ it, idx }: { it: Extract<Item, { k: 'user' }>; idx: number })
 function ItemView({ it, idx, last, canRegen }: { it: Item; idx: number; last?: boolean; canRegen?: boolean }) {
   if (it.k === 'user') {
     if (G.editing === idx && !G.busy) return <div className="gd-u editing"><span className="fx-lbl kr">{t('guide.you')}</span><EditBox it={it} idx={idx} />{it.files?.length ? <FileChips files={it.files} /> : null}</div>;
-    return <div className="gd-u"><div className="gd-uh"><span className="fx-lbl kr">{t('guide.you')}</span><MoreBtn it={it} idx={idx} /></div>{it.refs?.length ? <div className="gd-refs">{it.refs.map(r => <span key={r.kind + r.id} className="fx-pill">@{r.name}</span>)}</div> : null}{it.text ? <p>{it.text}</p> : null}{it.files?.length ? <FileChips files={it.files} /> : null}</div>;
+    return <div className="gd-u"><div className="gd-uh"><span className="fx-lbl kr">{t('guide.you')}</span></div>{it.refs?.length ? <div className="gd-refs">{it.refs.map(r => <span key={r.kind + r.id} className="fx-pill">@{r.name}</span>)}</div> : null}{it.text ? <p>{it.text}</p> : null}{it.files?.length ? <FileChips files={it.files} /> : null}<MsgBar it={it} idx={idx} /></div>;
   }
-  if (it.k === 'ai') return it.text ? <div className="gd-a"><Md text={it.text} /><div className="gd-acts"><button type="button" className="gd-act gd-copy" title={t('guide.act.copy')} onClick={() => void copy(it.text)}><Icon name="copy" size={14} />{t('guide.act.copyShort')}</button>{canRegen ? <button type="button" className="gd-act" onClick={() => void regen()}><Icon name="refresh" size={14} />{t('guide.act.regen')}</button> : null}<MoreBtn it={it} idx={idx} canRegen={canRegen} /></div></div> : null;
+  if (it.k === 'ai') return it.text ? <div className="gd-a"><Md text={it.text} /><MsgBar it={it} idx={idx} canRegen={canRegen} /></div> : null;
   if (it.k === 'tool') { const sum = toolBrief(it.name, it.ok, it.out); return <details className={'gd-tool' + (it.ok ? '' : ' bad')}>
     <summary><svg className="fx-art" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">{it.ok ? <path d="M1.5 5.2l2.4 2.4L8.5 2.6" /> : <path d="M2 2l6 6M8 2l-6 6" />}</svg><code>{it.name}</code><span>{argBrief(it.args)}</span><em>{!it.ok ? t('guide.tool.bad') : /^(create|update|add|revise|delete)_/.test(it.name) ? t('guide.tool.proposed') : t('guide.tool.ok')}</em>{sum ? <small className="gd-tsum">{sum}</small> : null}</summary>
     <pre>{it.out || t('guide.tool.sum.none')}</pre>
