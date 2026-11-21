@@ -6,6 +6,7 @@ import type { Conn } from '../lib/types';
 import { t } from '../i18n';
 import { Server } from '../lib/server';
 import type { VoicePick } from './api';
+import { marksFromAlignment, type Marks } from './follow';
 
 export interface TtsDef extends ProviderDef { voiceStyle?: string }
 const D = (name: string, base: string, models: string[], extra: Partial<ProviderDef> = {}): ProviderDef => ({ name, group: '음성', base, models, kind: 'tts', ...extra });
@@ -60,8 +61,31 @@ const clamp = (x: number, a: number, b: number) => Math.min(b, Math.max(a, x));
 
 export interface VoiceOpt { id: string; label: string }
 
+/** 소리 파일 하나와, 공급자가 알려 준 글자별 시각(있을 때만 — 따라 읽기가 쓴다) */
+export interface Clip { blob: Blob; marks?: Marks | null }
 /** 한 조각을 소리 파일로 만든다 */
-export async function synth(c: Conn, v: VoicePick, text: string, speed: number, signal?: AbortSignal): Promise<Blob> {
+export async function synth(c: Conn, v: VoicePick, text: string, speed: number, signal?: AbortSignal): Promise<Blob> { return (await synthClip(c, v, text, speed, signal)).blob; }
+/** 한 조각을 소리 파일로 (글자별 시각을 주는 공급자면 그것도) */
+export async function synthClip(c: Conn, v: VoicePick, text: string, speed: number, signal?: AbortSignal): Promise<Clip> {
+  if (c.provider === 'tts_eleven') return elevenClip(c, v, text, speed, signal);
+  return { blob: await synthBlob(c, v, text, speed, signal) };
+}
+/** ElevenLabs: 글자별 시각이 함께 오는 주소(with-timestamps)로 받는다. 그 주소를 못 쓰는 곳(중계 서버 따위)이면 예전 주소로 */
+async function elevenClip(c: Conn, v: VoicePick, text: string, speed: number, signal?: AbortSignal): Promise<Clip> {
+  const key = needKey(c), voice = String(v.voice || '').trim(), model = String(v.model || c.model || defOf(c).models[0] || '').trim();
+  if (!voice || /^eleven_v4/.test(model)) return { blob: await synthBlob(c, v, text, speed, signal) };
+  const body = { text, model_id: model || 'eleven_multilingual_v2', voice_settings: { stability: num(v.stability, 0.5), similarity_boost: num(v.similarity, 0.75), style: num(v.style, 0), speed: clamp(speed, 0.7, 1.2) } };
+  try {
+    const r = await req(c, `${needBase(c)}/v1/text-to-speech/${encodeURIComponent(voice)}/with-timestamps?output_format=mp3_44100_128`, { headers: { ...JH, 'xi-api-key': key }, body: json(body), signal });
+    const j = await r.json() as { audio_base64?: string; alignment?: { characters?: string[]; character_start_times_seconds?: number[] } };
+    if (!j.audio_base64) throw new Error(t('tts.err.empty'));
+    return { blob: b64Blob(j.audio_base64), marks: marksFromAlignment(text, j.alignment) };
+  } catch (e) {
+    if (/^(404|405)\b/.test((e as Error)?.message || '')) return { blob: await synthBlob(c, v, text, speed, signal) };
+    throw e;
+  }
+}
+async function synthBlob(c: Conn, v: VoicePick, text: string, speed: number, signal?: AbortSignal): Promise<Blob> {
   const key = needKey(c), voice = String(v.voice || '').trim(), model = String(v.model || c.model || defOf(c).models[0] || '').trim();
   const pitch = num(v.pitch, 1);
   switch (c.provider) {

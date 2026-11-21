@@ -38,8 +38,11 @@ export interface CallCfg {
   auto: boolean; daily: number; gapHours: number; chance: number; night: boolean; ringSec: number; voicemail: boolean; afterText: boolean; conn: string;
   tokens: number; inPrompt: 'raw' | 'summary' | 'none'; rawMax: number; rawTotal: number; rec: boolean; recAudio: boolean; tones: boolean; ambient: 'off' | 'auto' | 'cafe' | 'rain' | 'street';
   prompts: Partial<Record<PromptKey, string>>;
+  /** 목소리를 전화기 너머처럼 (음성 연결의 목소리만) */ lineFx: boolean;
+  /** 캐릭터가 말하는 동안 배경 소리를 줄이기 */ duck: boolean;
+  /** 통화 화면 글자 크기 */ textSize: 's' | 'm' | 'l';
 }
-export const DEFAULTS: CallCfg = { aiCall: true, auto: false, daily: 1, gapHours: 6, chance: 8, night: false, ringSec: 25, voicemail: false, afterText: true, conn: '', tokens: 500, inPrompt: 'raw', rawMax: 2000, rawTotal: 8000, rec: false, recAudio: false, tones: true, ambient: 'off', prompts: {} };
+export const DEFAULTS: CallCfg = { aiCall: true, auto: false, daily: 1, gapHours: 6, chance: 8, night: false, ringSec: 25, voicemail: false, afterText: true, conn: '', tokens: 500, inPrompt: 'raw', rawMax: 2000, rawTotal: 8000, rec: false, recAudio: false, tones: true, ambient: 'off', prompts: {}, lineFx: false, duck: true, textSize: 'm' };
 
 type WithCall = { call?: Partial<CallCfg> };
 /** 설정 (빠진 칸은 기본값으로 채운다) */

@@ -21,6 +21,7 @@ import { t, getLang, fmtDate, has as hasKey } from '../i18n';
 import { COMMANDS as ST_COMMANDS } from '../stscript/run';
 import '../stscript/commands';
 import { TTS } from '../tts/api';
+import { readMessage } from '../tts/Dock';
 import { pickReply, streamReply } from '../reach/route';
 
 // ── 방 · 이름 ──
@@ -277,7 +278,8 @@ export async function removeIllust(m: Msg, s: Swipe, id: string) {
   const i = (s.illust || []).findIndex(x => x.id === id); if (i >= 0) s.illust!.splice(i, 1);
   await Illust.remove(id); await save(); redraw(m);
 }
-export function speak(text: string, charId?: string) {   // 읽어 주기(src/tts) — 읽던 것은 멈추고 새로 읽는다
+export function speak(text: string, charId?: string, key = '') {   // 읽어 주기(src/tts) — 읽던 것은 멈추고 새로 읽는다. key 가 있으면 읽는 동안 그 글을 띄워 따라간다
+  if (key) { void readMessage(text, { key, charId }).catch(e => toast(errMsg(e), 'err')); return; }
   TTS.stopAll();
   void TTS.speak(text, { charId }).catch(e => toast(errMsg(e), 'err'));
 }

@@ -6,7 +6,7 @@ import { SOUND_KINDS, customSound, setCustomSound, type SoundKind } from './audi
 import { Check, Field, Select, useRedraw } from '../addons/parts';
 import { S, chatConns } from '../lib/core';
 import { go } from '../lib/router';
-import { useLang } from '../i18n';
+import { t, useLang } from '../i18n';
 import { cfg, saveCfg, PROMPT_DEFAULTS, PROMPT_KEYS, type CallCfg } from './cfg';
 import { tt } from './strings';
 import { fmtDur, type Dir, type Result } from './logic';
@@ -85,6 +85,9 @@ export function CallStudio() {
       <Check label={tt('call.set.recAudio')} on={c.recAudio} onChange={v => set('recAudio', v)} />
       <Check label={tt('call.set.tones')} on={c.tones} onChange={v => set('tones', v)} />
       <Field label={tt('call.set.ambient')}><Select value={c.ambient} opts={(['off', 'auto', 'cafe', 'rain', 'street'] as const).map(k => [k, tt('call.amb.' + k)] as const)} onChange={v => set('ambient', v as CallCfg['ambient'])} /></Field>
+      {c.ambient !== 'off' ? <Check label={t('call.set.duck')} on={c.duck !== false} onChange={v => set('duck', v)} hint={t('call.set.duckHint')} /> : null}
+      <Check label={t('call.more.lineFx')} on={!!c.lineFx} onChange={v => set('lineFx', v)} hint={t('call.more.lineFxHint')} />
+      <Field label={t('call.more.size')}><Select value={c.textSize || 'm'} opts={(['s', 'm', 'l'] as const).map(k => [k, t('call.more.size.' + k)] as const)} onChange={v => set('textSize', v as CallCfg['textSize'])} /></Field>
     </section>
     <SoundFiles />
     <section className="card">

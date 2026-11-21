@@ -121,7 +121,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
       { label: s.showTr ? t('chat.msgMenu.original') : (s.tr ? t('chat.msgMenu.showTr') : t('chat.msgMenu.translate')), ic: 'lang', onclick: () => void translate(m) },
       s.tr && { label: t('chat.msgMenu.retranslate'), ic: 'refresh', onclick: () => void translate(m, { again: true }) },
       s.tr && { label: t('chat.translate.edit'), ic: 'edit', onclick: () => void editTranslation(m) },
-      { label: t('chat.msgMenu.speak'), ic: 'volume', onclick: () => speak(s.text, m.charId) },
+      { label: t('chat.msgMenu.speak'), ic: 'volume', onclick: () => speak(s.text, m.charId, 'msg:' + m.id) },
       '-',
       sub(t('chat.msgMenu.gLook'), 'image', [{ label: t('chat.illustDlg.title'), ic: 'image', onclick: () => illustDialog(m) }, ...of('look')]),
       sub(t('chat.msgMenu.gRecord'), 'note', of('record')),
