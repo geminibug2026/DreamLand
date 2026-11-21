@@ -102,7 +102,13 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
   if (m.role === 'system') return art(<div className="sys-line">{body}<div className="msg-tools"><IconBtn ic="edit" title={t('chat.msg.edit')} onClick={() => setEditing(true)} />{del}</div></div>);
 
   const canSwipe = m.role === 'assistant' && (m.swipes.length > 1 || last);
-  const more = (e: MouseEvent<HTMLButtonElement>) => menu(e.currentTarget, [
+  const copy = () => { void navigator.clipboard.writeText(s.text); toast(t('chat.msg.copied')); };
+  // 좁은 화면에서는 도구 줄에 넘기기 · 다시 생성 · 편집 · 더 보기만 남기고(css/roomy.css), 나머지는 이 메뉴 맨 위로 옮긴다
+  const more = (e: MouseEvent<HTMLButtonElement>) => { const narrow = matchMedia('(max-width: 820px)').matches, at = e.currentTarget; menu(at, [
+    narrow && m.role === 'assistant' && last && { label: t('chat.msg.continue'), ic: 'play', onclick: () => void generate('continue') },
+    narrow && m.role === 'assistant' && { label: t('extras.react.title'), ic: 'heart', onclick: () => emit('xt:react', { m, anchor: at }) },
+    narrow && { label: t('common.copy'), ic: 'copy', onclick: copy },
+    narrow && '-',
     { label: t('chat.msgMenu.branch'), ic: 'branch', hint: t('chat.msgMenu.branchHint'), onclick: () => void branch(cur.msgs.indexOf(m)) },
     { label: s.showTr ? t('chat.msgMenu.original') : (s.tr ? t('chat.msgMenu.showTr') : t('chat.msgMenu.translate')), ic: 'lang', onclick: () => void translate(m) },
     s.tr && { label: t('chat.msgMenu.retranslate'), ic: 'refresh', onclick: () => void translate(m, { again: true }) },
@@ -116,7 +122,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
     '-',
     { label: t('chat.msgMenu.delete'), ic: 'trash', danger: true, onclick: () => void delMsg(m) },
     { label: t('chat.msgMenu.deleteFrom'), ic: 'trash', danger: true, onclick: () => void delFrom(m) },
-  ]);
+  ]); };
   const clock = msgClock(m, s);
   const U = ux(), meta = [U.metaTime && clock, ...(S.settings.showMeta ? [U.metaModel && s.model, U.metaTimer && s.ms ? t('chat.meta.sec', { n: (s.ms / 1000).toFixed(1) }) : '', U.metaTokens && s.text ? t('chat.meta.tokens', { n: tokens(s.text) }) : ''] : []), s.fb ? t('reach.fb.tag') : ''].filter(Boolean).join(' · ');   // s.fb: 대체 연결로 받은 답장
   const why = m.why && mo('showWhy') !== false ? motiveLabel(m.why) : '';
@@ -135,11 +141,11 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
       <Illusts m={m} s={s} />
       <div className="msg-tools">
         {canSwipe && <div className="swipe"><IconBtn ic="left" title={t('chat.msg.prevSwipe')} onClick={() => void swipe(m, -1)} /><span>{`${m.sw + 1} / ${m.swipes.length}`}</span><IconBtn ic="right" title={last && m.sw === m.swipes.length - 1 ? t('chat.msg.newSwipe') : t('chat.msg.nextSwipe')} onClick={() => void swipe(m, 1)} /></div>}
-        {m.role === 'assistant' && last && <><IconBtn ic="refresh" title={t('chat.msg.regen')} onClick={() => void generate('regen')} /><IconBtn ic="play" title={t('chat.msg.continue')} onClick={() => void generate('continue')} /></>}
+        {m.role === 'assistant' && last && <><IconBtn ic="refresh" cls="t1" title={t('chat.msg.regen')} onClick={() => void generate('regen')} /><IconBtn ic="play" title={t('chat.msg.continue')} onClick={() => void generate('continue')} /></>}
         {m.role === 'assistant' && <IconBtn ic="heart" title={t('extras.react.title')} onClick={e => emit('xt:react', { m, anchor: e.currentTarget })} />}
-        <IconBtn ic="edit" title={t('chat.msg.edit')} onClick={() => setEditing(true)} />
-        <IconBtn ic="copy" title={t('common.copy')} onClick={() => { void navigator.clipboard.writeText(s.text); toast(t('chat.msg.copied')); }} />
-        <IconBtn ic="more" title={t('chat.msg.more')} onClick={more} />
+        <IconBtn ic="edit" cls="t1" title={t('chat.msg.edit')} onClick={() => setEditing(true)} />
+        <IconBtn ic="copy" title={t('common.copy')} onClick={copy} />
+        <IconBtn ic="more" cls="t1 t-more" title={t('chat.msg.more')} onClick={more} />
       </div>
     </div>
   </>);
