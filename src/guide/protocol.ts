@@ -125,12 +125,12 @@ export interface RoundHooks {
   onTick?(steps: number[]): void;
   aborted?(): boolean;
 }
-export interface RoundResult { rounds: number; calls: number; stopped: 'done' | 'limit' | 'abort' | 'empty' }
+export interface RoundResult { rounds: number; calls: number; stopped: 'done' | 'limit' | 'loop' | 'abort' | 'empty' }
 
 /** 한 번 말을 건 것에 대한 왕복: 답 → (도구 호출이면 실행 → 결과를 다음 메시지로) → … 호출이 없는 답이 나오거나 max 번을 채우면 끝.
  *  messages 에는 왕복하며 주고받은 것이 덧붙는다. 마지막 한 번은 도구를 못 쓴다고 알려 말로 맺게 한다 */
-export async function runRounds(messages: Turn[], hooks: RoundHooks, max = 8): Promise<RoundResult> {
-  let calls = 0, bad = 0;
+export async function runRounds(messages: Turn[], hooks: RoundHooks, max = Infinity): Promise<RoundResult> {
+  let calls = 0, bad = 0, same = 0, prevKey = '';
   for (let round = 1; round <= max + 1; round++) {
     if (hooks.aborted?.()) return { rounds: round - 1, calls, stopped: 'abort' };
     const last = round === max + 1;
@@ -146,7 +146,13 @@ export async function runRounds(messages: Turn[], hooks: RoundHooks, max = 8): P
       if (++bad >= 3) return { rounds: round, calls, stopped: 'limit' };
       messages.push({ role: 'user', content: wrapNote(p.error || 'Invalid tool call.') }); continue;
     }
-    bad = 0; calls++;
+    bad = 0;
+    // 되풀이 막기: 횟수 제한은 없지만, 똑같은 호출(같은 도구 · 같은 값)을 내리 되풀이하면 헛돌고 있는 것이다 — 두 번째부터는 실행하지 않고 알려 주고, 네 번째면 멈춘다
+    const key = p.call.tool + '\u0000' + JSON.stringify(p.call.args ?? {});
+    same = key === prevKey ? same + 1 : 0; prevKey = key;
+    if (same >= 3) return { rounds: round, calls, stopped: 'loop' };
+    if (same) { messages.push({ role: 'user', content: wrapNote('You just made this exact call and already have its result above. Do not repeat it: use that result, try something different, or finish and tell the user.') }); continue; }
+    calls++;
     let ok = true, out: string;
     try { out = await hooks.exec(p.call); } catch (e) { ok = false; out = e instanceof Error ? e.message : String(e); }
     hooks.onTool?.(p.call, ok, out);

@@ -1,0 +1,1 @@
+export{t as go}from"./router-BbWOO6_3.js";

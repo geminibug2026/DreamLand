@@ -10,7 +10,6 @@ import { runTool, setToolCtx, toolDocs } from './tools';
 import { applyChange, undoChange } from './changes';
 import type { Change, Item, Plan, Ref, Status, Talk, TalkHead } from './types';
 
-export const MAX_ROUNDS = 24;
 const INDEX = 'guide:talks', KEEP_TALKS = 30;
 const LANG: Record<string, string> = { ko: 'Korean', en: 'English', 'zh-CN': 'Simplified Chinese' };
 
@@ -24,7 +23,7 @@ You have no shell and no files. You act only through the tools listed below. To 
 \`\`\`json
 {"tool": "<name>", "args": {}}
 \`\`\`
-The app runs it and sends the result back as the next message. One call per message, at most {{max}} calls per user message (the user can press Continue to give you more). Before the block you may write one short line saying what you are about to do. If no tool is needed, answer normally and write no JSON block at all.
+The app runs it and sends the result back as the next message. One call per message. There is no fixed limit on calls, so take the steps the job needs, but stop as soon as it is done and never repeat a call whose result you already have. Before the block you may write one short line saying what you are about to do. If no tool is needed, answer normally and write no JSON block at all.
 JSON rules: double quotes only, line breaks inside strings written as \\n, no comments, no trailing commas.
 Plan ticks cost nothing extra: add "tick": [n] next to "tool" to mark plan step n done, e.g. {"tool": "st_check", "args": {"script": "/echo hi"}, "tick": [2]}. To tick steps while finishing without a tool, end your final answer with a block {"tick": [4, 5]}.
 
@@ -129,7 +128,7 @@ function screenNote(): string {
 /** 지금 계획을 모델에 다시 보여 줄 한 줄 */
 export const planNote = (p?: Plan) => p?.steps.length ? `<app_note>Your plan so far:\n${p.steps.map((st, i) => `${st.state === 'done' ? '[x]' : st.state === 'skip' ? '[-]' : st.state === 'doing' ? '[>]' : '[ ]'} ${i + 1}. ${st.text}`).join('\n')}</app_note>` : '';
 export function buildMessages(items: Item[], plan?: Plan): Turn[] {
-  const sys = SYSTEM.replace('{{lang}}', LANG[getLang()] || 'the user\'s language').replace('{{max}}', String(MAX_ROUNDS - 1)).replace('{{tools}}', toolDocs());
+  const sys = SYSTEM.replace('{{lang}}', LANG[getLang()] || 'the user\'s language').replace('{{tools}}', toolDocs());
   const out: Turn[] = [{ role: 'system', content: sys }], add = (role: Turn['role'], content: string) => { const l = out[out.length - 1]; if (l.role === role && role !== 'system') l.content += '\n\n' + content; else out.push({ role, content }); };
   const tools = items.filter(i => i.k === 'tool'), fresh = new Set(tools.slice(-6));
   let notes: string[] = [];
@@ -166,10 +165,11 @@ export async function send(text: string, { refs = [], ask }: SendOpts = {}): Pro
       exec: async call => { const r = await runTool(call.tool, call.args); if (r.change) pendingCard = r.change; return r.out; },
       onTick: steps => { tick(tk, steps); poke(); },
       onTool: (call, ok, out) => { tk.items.push({ k: 'tool', name: call.tool, args: call.args, ok, out, at: now() }); if (pendingCard) { tk.items.push({ k: 'change', change: pendingCard, at: now() }); pendingCard = null; } poke(); },
-    }, MAX_ROUNDS - 1);   // 도구 왕복은 MAX-1 번까지, 마지막 한 번은 말로 맺는다 → 모델 호출은 모두 MAX 번을 넘지 않는다
+    });   // 횟수 제한 없음 — 사용자가 멈춤을 누르거나, 같은 호출을 헛되이 되풀이하면 멈춘다
     if (res.stopped === 'empty') tk.items.push({ k: 'err', text: 'empty', at: now() });
     // 한도에 닿았다: 조용히 멈추지 않고 "이어서 할까요?"를 묻는다
     if (res.stopped === 'limit') tk.items.push({ k: 'err', text: 'limit', at: now() });
+    if (res.stopped === 'loop') tk.items.push({ k: 'err', text: 'loop', at: now() });
   } catch (e) {
     const abort = e instanceof Error && e.name === 'AbortError';
     if (G.stream.trim()) tk.items.push({ k: 'ai', text: G.stream, raw: G.stream, at: now() });
