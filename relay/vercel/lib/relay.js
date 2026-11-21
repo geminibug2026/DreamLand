@@ -3,6 +3,8 @@
 //
 // 주소 모양:  https://<프로젝트>.vercel.app/<지역>/<RELAY_KEY>/v1/projects/…   (지역을 빼면 iad1)
 // 환경 변수:  RELAY_KEY  (필수) 남이 내 중계를 쓰지 못하게 하는 암호
+import { openai } from './openai.js';
+
 const PASS = ['authorization', 'x-goog-api-key', 'x-goog-user-project', 'content-type', 'accept'];
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Max-Age': '86400' };
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
@@ -15,6 +17,10 @@ export async function relay(request, region) {
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   const url = new URL(request.url), given = url.searchParams.get('path');   // vercel.json 이 원래 길을 ?path= 로 넘긴다
   const parts = (given != null ? given : url.pathname).split('/').filter(Boolean), KEY = String(process.env.RELAY_KEY || '').trim();
+  // OpenAI 호환 길: /v1/… (암호는 API 키 칸) 또는 /<암호>/v1/… — Vertex 길(/v1/projects · /v1/publishers)과는 뒤의 낱말로 가린다
+  const oa = i => parts[i] === 'v1' && (parts[i + 1] === 'models' || (parts[i + 1] === 'chat' && parts[i + 2] === 'completions'));
+  if (oa(0)) return openai(request, region, parts, url, false);
+  if (KEY && parts.length > 1 && oa(1) && (await same(parts[0], KEY))) return openai(request, region, parts.slice(1), url, true);
   if (parts[0] === 'health') return json(200, { ok: true, key: !!KEY, colo: region, country: '' });
   if (!KEY) return json(500, { error: 'RELAY_KEY is not set on this project.' });
   if (!parts.length || !(await same(parts[0], KEY))) return json(403, { error: 'forbidden' });

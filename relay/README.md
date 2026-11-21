@@ -124,3 +124,24 @@ Vertex AI를 쓰는데 유독 429(혼잡 · 한도 초과)가 자주 뜨고, VPN
 한 지역에서만 계속 나가면 그 지역도 결국 429 가 납니다. Vertex 연결의 주소 칸에 중계 주소를 **빈칸이나 쉼표로 나눠 여럿** 적으면,
 429 가 날 때 기다리지 않고 다음 주소로 넘어가고, 통한 주소를 기억해 다음에도 거기부터 씁니다. 모두 429 면 한 바퀴만 돌고 멈춥니다.
 Vercel 은 안내 창이 여섯 지역을 알아서 등록합니다. Cloudflare 는 워커를 지역만 달리해 여러 개 만들어 주소를 모두 적으면 됩니다.
+
+---
+
+## 실리태번 · 마리나라 등 다른 프로그램에서 쓰기 (OpenAI 호환)
+
+같은 Vercel 중계에 **OpenAI 호환 길**이 들어 있습니다. 프로그램에서 "Custom (OpenAI-compatible)"을 고르고
+
+- 주소(Endpoint): `https://<내 주소>.vercel.app/v1`
+- API 키: `RELAY_KEY` 로 정한 암호
+
+를 넣으면 됩니다. 이 길은 프로그램이 OpenAI 형식으로만 말하므로 **구글 키를 중계에 넣어야** 합니다:
+Vercel 프로젝트 → Settings → Environment Variables 에 `API_1` 이라는 이름으로 서비스 계정 JSON 을 통째로 붙여넣고 다시 배포합니다.
+프로젝트가 여러 개면 `API_2`, `API_3` … 으로 더 넣습니다 (`API_` 로 시작하면 아무 이름이나 됩니다).
+
+- 429 가 나면 중계가 알아서 ① 다른 키(다른 프로젝트)로, ② 다 막히면 다른 지역으로 넘어갑니다 (미국 4 · 유럽 2). 프로그램 쪽에서 할 일은 없습니다.
+- `MODELS` 변수에 쉼표로 모델 이름을 적으면 모델 목록에 그대로 나옵니다. 비우면 기본 목록.
+- `reasoning_effort`(low · medium · high)를 보내면 추론을 켜고 생각 글을 따로 돌려줍니다. 모델이 그 설정을 받지 않으면 빼고 다시 보냅니다.
+- 빈도 · 존재 패널티는 0 이면 보내지 않습니다. 안전 설정은 모두 끕니다.
+- Gemini 만 됩니다 (Vertex 의 Claude 는 이 길로 안 됩니다). 함수 호출(도구)은 넘기지 않습니다.
+- 배포 링크 (암호와 키를 함께 묻습니다):
+  `https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fgeminibug2026%2FDreamLand%2Ftree%2Fmain%2Frelay%2Fvercel&project-name=dreamland-relay&repository-name=dreamland-relay&env=RELAY_KEY,API_1`
