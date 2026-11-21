@@ -2,6 +2,10 @@
 // 상태는 따로 저장하지 않는다 — 시작할 때의 값에 메시지마다 붙은 변화(fx)를 차례로 더해서 구한다.
 // 그래서 답변을 다시 받거나, 지우거나, 갈래를 나눠도 언제나 그 대화의 내용과 맞는다.
 import type { Chat, Msg } from '../lib/types';
+import { MOOD_WORDS, moodApply, moodDrift, moodPrompt, moodStart, type MoodEv } from './mood';
+import { REP_VERBS, verbOf, VERB_HELP, type Person } from './bonds';
+import type { RollRec, SlotRec } from './oneshot';
+import type { Enc, Seen } from './omens';
 
 export type StatKey = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
 /** 규칙서: 판정을 어떻게 굴리고 읽는지 */
@@ -25,17 +29,35 @@ export interface GameCfg {
   /** 가방: 물건이 놓인 자리와 걸친 것 (bag.ts) */
   bag?: { pos?: Record<string, { x: number; y: number; r?: boolean }>; eq?: Record<string, string> };
   /** 끝낸 세션의 요약 (차례대로). 프롬프트에 '지금까지의 이야기'로 들어간다 */
-  sessions?: { text: string; at: number }[];
+  sessions?: SessionNote[];
+  /** 한 번에 판정: 진행자가 성공 · 실패를 둘 다 써 두고 앱이 굴려 한쪽만 남긴다 (기본 끔 — 끄면 예전처럼 내가 굴린다) */
+  oneShot?: boolean;
+  /** 우연한 만남 · 눈썰미를 앱이 굴린다 (기본 켬) */
+  chance?: boolean; keen?: boolean;
+  /** 진행자가 읽는 내 수첩 */
+  notes?: string;
+  /** 인물 수첩에 내가 적은 메모 (이름 소문자 → 글) */
+  npcNotes?: Record<string, string>;
+  /** 캠페인 뼈대 (진행자만 본다. saga.ts) */
+  saga?: import('./saga').Saga;
+  /** 보스의 각본을 전투 시작 때 한 번 받아 온다 (요청 1회 · 기본 끔) */
+  bossScript?: boolean;
+  /** 지난 이야기를 아직 듣지 않았다 (세션을 마무리하면 켜진다) */
+  recap?: boolean;
 }
+/** 끝낸 세션 하나: 요약과, 다음 회로 이어 줄 것들 */
+export interface SessionNote { text: string; at: number; /** 작은 디테일 · 인물의 순간 · 다음 회에서 이어질 곳 · 동료의 변화 */ details?: string[]; moments?: string[]; hooks?: string[]; party?: string[]; /** 내가 다음 회에 바라는 것 */ wish?: string }
 export type Fx =
   | { k: 'hp'; n: number } | { k: 'hpmax'; n: number } | { k: 'gold'; n: number }
-  | { k: 'item'; name: string; n: number } | { k: 'quest'; title: string; done: boolean } | { k: 'place'; name: string }
+  | { k: 'item'; name: string; n: number; /** 진행자만 아는 진실 (가짜 물건) */ hid?: string } | { k: 'quest'; title: string; done: boolean } | { k: 'place'; name: string }
   /** 두 장소를 잇는 길 (아직 가 보지 않은 곳도 지도에 나타난다) */
   | { k: 'path'; a: string; b: string } | { k: 'xp'; n: number }
   /** 인물과의 사이 (-100 ~ 100) · 동료 · 작중 시간 · 날씨 · 진행 시계 */
-  | { k: 'rep'; name: string; n: number } | { k: 'party'; name: string; add: boolean } | { k: 'time'; text: string } | { k: 'weather'; text: string } | { k: 'scene'; key: string } | { k: 'fate'; n: number }
+  | { k: 'rep'; name: string; n: number; verb?: string } | { k: 'party'; name: string; add: boolean } | { k: 'time'; text: string } | { k: 'weather'; text: string } | { k: 'scene'; key: string } | { k: 'fate'; n: number }
   /** 수치(위젯) · 읽을거리 · 흐른 시간(분) · 음악 지정 */
-  | { k: 'meter'; name: string; v: number; max: number } | { k: 'doc'; title: string; text: string } | { k: 'pass'; min: number } | { k: 'music'; key: string } | { k: 'clock'; name: string; v: number; max: number };
+  | { k: 'meter'; name: string; v: number; max: number } | { k: 'doc'; title: string; text: string } | { k: 'pass'; min: number } | { k: 'music'; key: string } | { k: 'clock'; name: string; v: number; max: number }
+  /** 사기를 흔드는 일 · 인물 소개 · 가짜 물건이 드러남 */
+  | { k: 'mood'; ev: MoodEv } | { k: 'npc'; name: string; text: string } | { k: 'reveal'; name: string };
 export type MiniId = 'rps' | 'dice' | 'blackjack' | 'tictactoe' | 'numbers' | 'gomoku' | 'poker' | 'uno' | 'chess' | 'pool';
 export const MINIS: MiniId[] = ['rps', 'dice', 'blackjack', 'poker', 'uno', 'tictactoe', 'gomoku', 'chess', 'pool', 'numbers'];
 export type Element = 'fire' | 'ice' | 'bolt' | 'poison';
@@ -59,14 +81,18 @@ export type GameRec =
   | { kind: 'start' }
   | { kind: 'session'; n: number; text: string }
   | { kind: 'qte'; choice: string; took: number; secs: number; speed: 'fast' | 'ok' | 'late' | 'timeout' }
-  | { kind: 'check'; stat: StatKey; dc: number; die: number; mod: number; total: number; ok: boolean; crit?: 'hit' | 'miss'; why?: string; fx?: Fx[]; rule?: RuleId; dice?: number[]; grade?: Grade; note?: string; /** 실패했고 운명 점이 남아 있다: 받아들일지 다시 굴릴지 고르는 중 */ open?: boolean; rerolled?: boolean }
-  | { kind: 'fight'; name: string; outcome: 'win' | 'lose' | 'fled'; rounds: number; took: number; hp: number; hpMax: number; fx?: Fx[]; loot?: string; fallen?: string[] }
+  | { kind: 'check'; stat: StatKey; dc: number; die: number; mod: number; total: number; ok: boolean; crit?: 'hit' | 'miss'; why?: string; fx?: Fx[]; rule?: RuleId; dice?: number[]; grade?: Grade; note?: string; /** 사기가 준 보정 */ edge?: number; /** 진행자의 서술을 끊고 끼어든 판정 */ cut?: boolean; /** 실패했고 운명 점이 남아 있다: 받아들일지 다시 굴릴지 고르는 중 */ open?: boolean; rerolled?: boolean }
+  | { kind: 'fight'; name: string; outcome: 'win' | 'lose' | 'fled'; rounds: number; took: number; hp: number; hpMax: number; fx?: Fx[]; loot?: string; fallen?: string[]; /** 달아난 적 · 항복한 적 · 항복한 적을 베었다 · 우두머리가 있었다 · 원소 반응 횟수 */ ran?: string[]; yielded?: string[]; merciless?: boolean; boss?: boolean; reacts?: number; /** 졌을 때 이야기로 이어 가기로 했다 */ carried?: boolean }
   | { kind: 'play'; game: MiniId; outcome: Outcome; score: string; stake?: string; fx?: Fx[] };
-export interface Sheet { hp: number; hpMax: number; gold: number; items: { name: string; n: number }[]; quests: { title: string; done: boolean }[]; place: string; places: { name: string; seen: boolean }[]; paths: [string, string][]; xp: number; level: number; people: { name: string; v: number }[]; party: string[]; time: string; weather: string; scene: string; fate: number; /** 진행자가 날씨를 쓴 때(흐른 분) · 앱이 정한 날씨 */ weatherAt: number; wx: Wx | ''; meters: { name: string; v: number; max: number }[]; docs: { title: string; text: string }[]; mins: number; music: string; clocks: { name: string; v: number; max: number }[] }
+export interface Sheet { hp: number; hpMax: number; gold: number; items: { name: string; n: number; hid?: string; known?: boolean }[]; quests: { title: string; done: boolean }[]; place: string; places: { name: string; seen: boolean }[]; paths: [string, string][]; xp: number; level: number; people: Person[]; /** 사기 0~100 */ morale: number; party: string[]; time: string; weather: string; scene: string; fate: number; /** 진행자가 날씨를 쓴 때(흐른 분) · 앱이 정한 날씨 */ weatherAt: number; wx: Wx | ''; meters: { name: string; v: number; max: number }[]; docs: { title: string; text: string }[]; mins: number; music: string; clocks: { name: string; v: number; max: number }[] }
 
 export type GameChat = Chat & { game?: GameCfg };
-export type GameSwipe = { /** 연출: 흔들림 · 섬광 · 어두워짐 · 위아래 띠 */ gcine?: string[]; gfx?: Fx[]; gask?: Ask; /** 진행자가 내놓은 선택지 */ gchoices?: string[] };
-export type GameMsg = Msg & { gm?: GameRec };
+export type GameSwipe = { /** 연출: 흔들림 · 섬광 · 어두워짐 · 위아래 띠 */ gcine?: string[]; gfx?: Fx[]; gask?: Ask; /** 진행자가 내놓은 선택지 */ gchoices?: string[];
+  /** 한 번에 끝난 판정들 · 본문 속 굴림 · 풀기 전의 원문 (운명 점으로 뒤집을 때 다시 푼다) */ grolls?: RollRec[]; gdice?: SlotRec[]; graw?: string;
+  /** 이 답장이 받아 쓴 차례의 굴림 (만남 · 눈에 띈 것) — 화면에 보여 주려고 옮겨 둔다 */ gturn?: TurnOmen };
+/** 내 메시지에 붙는 그 차례의 굴림: 우연한 만남 · 눈에 띄는 것 · 가방에 없는 물건 · 떠나려는 동료 */
+export interface TurnOmen { enc?: Enc; seen?: Seen[]; miss?: string[]; waver?: string }
+export type GameMsg = Msg & { gm?: GameRec; gt?: TurnOmen };
 
 export const PRESET_IDS = ['balanced', 'fighter', 'rogue', 'scholar', 'charmer'] as const;
 const PRESET_TOP: Record<string, [StatKey, StatKey, StatKey]> = { fighter: ['str', 'con', 'dex'], rogue: ['dex', 'int', 'cha'], scholar: ['int', 'wis', 'cha'], charmer: ['cha', 'dex', 'wis'] };
@@ -91,12 +117,17 @@ export const gameOf = (chat: Chat | null | undefined): GameCfg | null => { const
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 const spot = (s: Sheet, name: string) => { let p = s.places.find(x => same(x.name, name)); if (!p) s.places.push(p = { name: name.trim(), seen: false }); return p; };
 const link = (s: Sheet, a: string, b: string) => { if (!s.paths.some(([x, y]) => (same(x, a) && same(y, b)) || (same(x, b) && same(y, a)))) s.paths.push([a, b]); };
-function apply(s: Sheet, fx: Fx) {
+/** 인물 수첩의 한 사람 (없으면 지금 있는 곳에서 처음 만난 것으로 적는다) */
+const person = (s: Sheet, name: string): Person => { let p = s.people.find(x => same(x.name, name)); if (!p) s.people.push(p = { name: name.trim(), v: 0, marks: [], ...(s.place ? { met: s.place } : {}) }); return p; };
+function apply(s: Sheet, fx: Fx, at = '') {
   if (fx.k === 'hp') s.hp = Math.min(s.hpMax, Math.max(0, s.hp + fx.n));
   else if (fx.k === 'hpmax') { s.hpMax = Math.max(1, s.hpMax + fx.n); s.hp = Math.min(s.hp, s.hpMax); }
   else if (fx.k === 'gold') s.gold = Math.max(0, s.gold + fx.n);
   else if (fx.k === 'xp') { s.xp = Math.max(0, s.xp + fx.n); const lv = levelOf(s.xp); if (lv > s.level) { const up = (lv - s.level) * 3; s.hpMax += up; s.hp += up; } s.level = Math.max(s.level, lv); }
-  else if (fx.k === 'rep') { let p = s.people.find(x => same(x.name, fx.name)); if (!p) s.people.push(p = { name: fx.name.trim(), v: 0 }); p.v = Math.min(100, Math.max(-100, p.v + fx.n)); }
+  else if (fx.k === 'rep') { const p = person(s, fx.name), from = repTier(p.v); p.v = Math.min(100, Math.max(-100, p.v + fx.n)); if (fx.verb) p.last = fx.verb; const to = repTier(p.v); if (to !== from) p.marks.push({ from, to, at, ...(fx.verb ? { verb: fx.verb } : {}) }); }
+  else if (fx.k === 'npc') { const p = person(s, fx.name); p.role = fx.text; }
+  else if (fx.k === 'mood') s.morale = moodApply(s.morale, fx.ev);
+  else if (fx.k === 'reveal') { const it = s.items.find(x => same(x.name, fx.name)) || s.items.find(x => x.hid && x.name.toLowerCase().includes(fx.name.trim().toLowerCase())); if (it?.hid) it.known = true; }
   else if (fx.k === 'party') { const i = s.party.findIndex(x => same(x, fx.name)); if (fx.add && i < 0 && s.party.length < 3) s.party.push(fx.name.trim()); if (!fx.add && i >= 0) s.party.splice(i, 1); }
   else if (fx.k === 'scene') s.scene = fx.key;
   else if (fx.k === 'fate') s.fate = Math.max(0, Math.min(5, s.fate + fx.n));
@@ -110,7 +141,7 @@ function apply(s: Sheet, fx: Fx) {
   else if (fx.k === 'path') { const a = spot(s, fx.a), b = spot(s, fx.b); if (!same(a.name, b.name)) link(s, a.name, b.name); }
   else if (fx.k === 'item') {
     const it = s.items.find(x => same(x.name, fx.name));
-    if (it) { it.n += fx.n; if (it.n <= 0) s.items.splice(s.items.indexOf(it), 1); } else if (fx.n > 0) s.items.push({ name: fx.name, n: fx.n });
+    if (it) { it.n += fx.n; if (fx.hid) it.hid = fx.hid; if (it.n <= 0) s.items.splice(s.items.indexOf(it), 1); } else if (fx.n > 0) s.items.push({ name: fx.name, n: fx.n, ...(fx.hid ? { hid: fx.hid } : {}) });
   } else if (fx.k === 'quest') {
     const q = s.quests.find(x => same(x.title, fx.title));
     if (q) q.done = q.done || fx.done; else s.quests.push({ title: fx.title, done: fx.done });
@@ -132,13 +163,26 @@ function rollWeather(seed: number, block: number, s: Sheet): Wx {
           : [['clear', .46], ['overcast', .2], ['rain', .16], ['wind', .08], ['fog', .06], ['storm', .04]];
   let acc = 0; for (const [k, p] of table) { acc += p; if (r < acc) return k; } return 'clear';
 }
+/** 메시지 하나에서 사기를 흔드는 일을 읽는다 (진행자가 [mood …] 로 쓴 것은 fx 로 따로 들어온다) */
+function moodEvents(m: GameMsg, sw: GameSwipe | undefined): MoodEv[] {
+  const out: MoodEv[] = [], r = m.gm, grade = (g?: Grade) => { if (g === 'crit') out.push('crit'); else if (g === 'fumble') out.push('fumble'); };
+  if (r?.kind === 'fight') { out.push(r.outcome === 'win' ? (r.boss ? 'boss' : 'win') : r.outcome === 'lose' ? 'lose' : 'fled'); for (let i = 0; i < Math.min(2, r.fallen?.length || 0); i++) out.push('down'); if (r.merciless) out.push('cruel'); else if (r.yielded?.length) out.push('mercy'); }
+  else if (r?.kind === 'check' && !r.open) grade(r.grade);
+  for (const x of sw?.grolls || []) grade(x.grade);
+  for (const fx of sw?.gfx || []) { if (fx.k === 'quest' && fx.done) out.push('quest'); else if (fx.k === 'party') out.push(fx.add ? 'joined' : 'left'); else if (fx.k === 'hp' && fx.n >= 9999) out.push('rest'); }
+  return out;
+}
 /** 지금의 시트: 시작값 + 손으로 고친 값 + 메시지마다의 변화 */
 export function sheetOf(g: GameCfg, msgs: Msg[]): Sheet {
-  const s: Sheet = { hp: g.hpMax, hpMax: g.hpMax, gold: g.gold, items: [], quests: [], place: '', places: [], paths: [], xp: 0, level: 1, people: [], party: [], time: '', weather: '', scene: '', fate: g.diff === 'easy' ? 2 : g.diff === 'hard' ? 0 : 1, weatherAt: -1, wx: '', meters: [], docs: [], mins: 0, music: '', clocks: [] };
+  const s: Sheet = { hp: g.hpMax, hpMax: g.hpMax, gold: g.gold, items: [], quests: [], place: '', places: [], paths: [], xp: 0, level: 1, people: [], morale: moodStart(g.diff), party: [], time: '', weather: '', scene: '', fate: g.diff === 'easy' ? 2 : g.diff === 'hard' ? 0 : 1, weatherAt: -1, wx: '', meters: [], docs: [], mins: 0, music: '', clocks: [] };
   for (const name of g.items) apply(s, { k: 'item', name, n: 1 });
   for (const m of msgs as GameMsg[]) {
-    for (const fx of m.gm && 'fx' in m.gm && m.gm.fx || []) apply(s, fx);
-    for (const fx of (m.swipes[m.sw] as GameSwipe | undefined)?.gfx || []) apply(s, fx);
+    const sw = m.swipes[m.sw] as GameSwipe | undefined;
+    for (const ev of moodEvents(m, sw)) s.morale = moodApply(s.morale, ev);
+    for (const fx of m.gm && 'fx' in m.gm && m.gm.fx || []) apply(s, fx, m.id);
+    for (const r of sw?.grolls || []) for (const fx of r.fx || []) apply(s, fx, m.id);
+    for (const fx of sw?.gfx || []) apply(s, fx, m.id);
+    if (m.role === 'assistant') s.morale = moodDrift(s.morale);
   }
   for (const fx of g.adj || []) apply(s, fx);
   // 날씨 자동: 진행자가 쓴 날씨는 여섯 시간 동안 그대로 두고, 그 뒤로는(또는 쓴 적이 없으면) 여섯 시간마다 계절과 장소에 맞게 굴린다
@@ -182,8 +226,8 @@ export function trackOf(s: Sheet, g: GameCfg, fighting: boolean): 'explore' | 't
 }
 
 // ── 진행자가 쓰는 표시 ──
-const TAG = /\[\s*(hp|maxhp|gold|xp|item|quest|place|path|rep|party|time|weather|backdrop|fx|fate|meter|note|pass|music|clock|choices|qte|check|save|fight|play)\b[\s:：]*([^[\]\n]{0,300})\]/gi;
-const STAT_ALIAS: Record<string, StatKey> = { str: 'str', strength: 'str', 힘: 'str', 근력: 'str', 力量: 'str', dex: 'dex', dexterity: 'dex', agi: 'dex', 민첩: 'dex', 敏捷: 'dex', con: 'con', constitution: 'con', 건강: 'con', 体质: 'con', int: 'int', intelligence: 'int', 지능: 'int', 智力: 'int', wis: 'wis', wisdom: 'wis', 지혜: 'wis', 感知: 'wis', cha: 'cha', charisma: 'cha', 매력: 'cha', 魅力: 'cha' };
+const TAG = /\[\s*(hp|maxhp|gold|xp|item|quest|place|path|rep|party|time|weather|backdrop|fx|fate|meter|note|pass|music|clock|choices|qte|check|save|fight|play|mood|npc|reveal)\b[\s:：]*([^[\]\n]{0,300})\]/gi;
+export const STAT_ALIAS: Record<string, StatKey> = { str: 'str', strength: 'str', 힘: 'str', 근력: 'str', 力量: 'str', dex: 'dex', dexterity: 'dex', agi: 'dex', 민첩: 'dex', 敏捷: 'dex', con: 'con', constitution: 'con', 건강: 'con', 体质: 'con', int: 'int', intelligence: 'int', 지능: 'int', 智力: 'int', wis: 'wis', wisdom: 'wis', 지혜: 'wis', 感知: 'wis', cha: 'cha', charisma: 'cha', 매력: 'cha', 魅力: 'cha' };
 const MINI_ALIAS: Record<string, MiniId> = { pool: 'pool', billiards: 'pool', '8ball': 'pool', poker: 'poker', holdem: 'poker', uno: 'uno', chess: 'chess', gomoku: 'gomoku', omok: 'gomoku', 'five-in-a-row': 'gomoku', rps: 'rps', dice: 'dice', blackjack: 'blackjack', tictactoe: 'tictactoe', 'tic-tac-toe': 'tictactoe', ttt: 'tictactoe', numbers: 'numbers', baseball: 'numbers' };
 const num = (s: string) => { const m = s.replace(/[−–]/g, '-').match(/[+-]?\s*\d+/); return m ? parseInt(m[0].replace(/\s+/g, ''), 10) : NaN; };
 const clampN = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
@@ -197,15 +241,25 @@ export function readTags(text: string): { text: string; fx: Fx[]; ask: Ask | nul
     if (k === 'hp' && /^\+?\s*(full|max|all|전부|완전|가득|全|满)/i.test(v.trim())) { fx.push({ k: 'hp', n: 9999 }); return ''; }
     if (k === 'hp' || k === 'gold' || k === 'maxhp' || k === 'xp') { const n = num(v); if (!isFinite(n) || !n) return ''; fx.push({ k: k === 'maxhp' ? 'hpmax' : k, n: clampN(n, -9999, 9999) }); return ''; }
     if (k === 'item') {
-      const m = v.match(/^([+-−–])\s*(.+?)(?:\s*[x×*]\s*(\d+))?$/); if (!m) return all;
+      // 가짜 물건: "+Silver Amulet (fake: a cursed lure)" — 괄호 안은 진행자만 아는 진실이다
+      const fake = v.match(/\s*[(（]\s*(?:fake|secret|truly|actually|가짜|실은)\s*[:：]\s*([^)）]{1,200})[)）]\s*/i), body = fake ? v.replace(fake[0], ' ').trim() : v;
+      const m = body.match(/^([+-−–])\s*(.+?)(?:\s*[x×*]\s*(\d+))?$/); if (!m) return all;
       const name = m[2].trim().slice(0, 60); if (!name) return all;
-      fx.push({ k: 'item', name, n: (m[1] === '+' ? 1 : -1) * clampN(parseInt(m[3] || '1', 10) || 1, 1, 999) }); return '';
+      fx.push({ k: 'item', name, n: (m[1] === '+' ? 1 : -1) * clampN(parseInt(m[3] || '1', 10) || 1, 1, 999), ...(fake && m[1] === '+' ? { hid: fake[1].trim() } : {}) }); return '';
     }
     if (k === 'quest') {
       const done = /^(done|complete|completed|✓|✔|-)\s*[:：]?\s*/i.test(v), title = v.replace(/^(done|complete|completed|new|✓|✔|\+|-)\s*[:：]?\s*/i, '').trim().slice(0, 100);
       if (!title) return all; fx.push({ k: 'quest', title, done }); return '';
     }
-    if (k === 'rep') { const m = v.match(/^(.+?)\s*([+-−–]\s*\d+)$/); if (!m) return all; fx.push({ k: 'rep', name: m[1].trim().slice(0, 40), n: clampN(num(m[2]), -100, 100) }); return ''; }
+    if (k === 'rep') {
+      const m = v.match(/^(.+?)\s*([+-−–]\s*\d+)$/); if (m) { fx.push({ k: 'rep', name: m[1].trim().slice(0, 40), n: clampN(num(m[2]), -100, 100) }); return ''; }
+      // 숫자 대신 있었던 일: "Mira saved" · "Mira: betrayed" — 얼마나 오르내릴지는 앱이 정한다
+      const w = v.match(/^(.+?)\s*[:：,]?\s+([^\s:：,]+)$/), verb = w ? verbOf(w[2]) : ''; if (!w || !verb) return all;
+      fx.push({ k: 'rep', name: w[1].trim().slice(0, 40), n: REP_VERBS[verb], verb }); return '';
+    }
+    if (k === 'mood') { const ev = MOOD_WORDS[v.toLowerCase().replace(/[^a-z]/g, '')]; if (ev) fx.push({ k: 'mood', ev }); return ''; }
+    if (k === 'npc') { const m = v.match(/^([^:：]{1,40})[:：]\s*(.+)$/); if (!m) return all; fx.push({ k: 'npc', name: m[1].trim(), text: m[2].trim().slice(0, 200) }); return ''; }
+    if (k === 'reveal') { if (!v) return all; fx.push({ k: 'reveal', name: v.slice(0, 60) }); return ''; }
     if (k === 'party') { const m = v.match(/^([+-−–])\s*(.+)$/); if (!m) return all; fx.push({ k: 'party', name: m[2].trim().slice(0, 40), add: m[1] === '+' }); return ''; }
     if (k === 'fx') { for (const w of v.toLowerCase().split(/[\s,|]+/)) if (['shake', 'flash', 'dark', 'letterbox'].includes(w) && !cine.includes(w)) cine.push(w); return ''; }
     if (k === 'fate') { const n = num(v); if (!isFinite(n) || !n) return ''; fx.push({ k: 'fate', n: clampN(n, -5, 5) }); return ''; }
@@ -246,33 +300,33 @@ export function readTags(text: string): { text: string; fx: Fx[]; ask: Ask | nul
 /** 화면에서만 가린다 (받는 중에는 아직 닫히지 않은 표시도) */
 export const hideTags = (text: string, streaming: boolean) => {
   let s = text.replace(TAG, '');
-  if (streaming) s = s.replace(/\[\s*(hp|maxhp|gold|xp|item|quest|place|path|rep|party|time|weather|backdrop|fx|fate|meter|note|pass|music|clock|choices|qte|check|save|fight|play)\b[^\]\n]*$/i, '');
+  if (streaming) s = s.replace(/\[\s*(hp|maxhp|gold|xp|item|quest|place|path|rep|party|time|weather|backdrop|fx|fate|meter|note|pass|music|clock|choices|qte|check|save|fight|play|mood|npc|reveal)\b[^\]\n]*$/i, '');
   return s;
 };
 
 // ── 주사위 ──
 export const d = (sides: number) => { const a = new Uint32Array(1); crypto.getRandomValues(a); return 1 + (a[0] % sides); };
 /** 판정을 굴린다. 규칙서마다 굴리는 법과 읽는 법이 다르다 */
-export function rollCheck(g: GameCfg, ask: Extract<Ask, { k: 'check' }>, level = 1) {
+export function rollCheck(g: GameCfg, ask: Extract<Ask, { k: 'check' }>, level = 1, /** 사기가 주는 보정 (+1 · 0 · -1) */ edge = 0) {
   const rule = ruleOf(g), stat = ask.stat, v = statVal(g, stat);
-  const base = { rule, stat, dc: ask.dc, die: 0, mod: 0, total: 0, ok: false, dice: [] as number[], grade: 'fail' as Grade, note: '' };
+  const base = { rule, stat, dc: ask.dc, die: 0, mod: 0, total: 0, ok: false, dice: [] as number[], grade: 'fail' as Grade, note: '', ...(edge ? { edge } : {}) };
   if (rule === '2d6') {
-    const dice = [d(6), d(6)], total = dice[0] + dice[1] + v, grade: Grade = total >= 10 ? 'ok' : total >= 7 ? 'partial' : 'fail';
-    return { ...base, dice, die: dice[0] + dice[1], mod: v, total, dc: 7, grade, ok: grade !== 'fail' };
+    const dice = [d(6), d(6)], total = dice[0] + dice[1] + v + edge, grade: Grade = total >= 10 ? 'ok' : total >= 7 ? 'partial' : 'fail';
+    return { ...base, dice, die: dice[0] + dice[1], mod: v + edge, total, dc: 7, grade, ok: grade !== 'fail' };
   }
   if (rule === 'd100') {
-    const die = d(100), target = Math.max(1, Math.floor(v / (ask.hard === 'extreme' ? 5 : ask.hard === 'hard' ? 2 : 1)));
+    const die = d(100), target = Math.max(1, Math.floor(v / (ask.hard === 'extreme' ? 5 : ask.hard === 'hard' ? 2 : 1)) + edge * 5);
     const grade: Grade = die >= 96 ? 'fumble' : die <= Math.max(1, Math.floor(target / 5)) ? 'crit' : die <= target ? 'ok' : 'fail';
     return { ...base, dice: [die], die, total: die, dc: target, grade, ok: grade === 'ok' || grade === 'crit', note: ask.hard || '' };
   }
   if (rule === 'pool') {
-    const dice = Array.from({ length: Math.max(1, v) }, () => d(6)), hits = dice.filter(x => x >= 5).length, need = clampN(ask.dc || 2, 1, 6);
+    const dice = Array.from({ length: Math.max(1, v + edge) }, () => d(6)), hits = dice.filter(x => x >= 5).length, need = clampN(ask.dc || 2, 1, 6);
     const grade: Grade = hits >= need + 2 ? 'crit' : hits >= need ? 'ok' : hits === 0 && dice.filter(x => x === 1).length * 2 >= dice.length ? 'fumble' : 'fail';
     return { ...base, dice, die: hits, total: hits, dc: need, grade, ok: hits >= need };
   }
   // d20 계열. 5e 는 유리 · 불리(두 번 굴려 큰/작은 값)와 숙련 보너스가 있다
   const two = rule === '5e' && ask.adv ? [d(20), d(20)] : [d(20)], die = ask.adv === 'dis' ? Math.min(...two) : Math.max(...two);
-  const prof = rule === '5e' && ask.prof ? 2 + Math.floor((level - 1) / 4) : 0, mod = modOf(g, stat) + prof, total = die + mod, dc = ask.dc || 12;
+  const prof = rule === '5e' && ask.prof ? 2 + Math.floor((level - 1) / 4) : 0, mod = modOf(g, stat) + prof + edge, total = die + mod, dc = ask.dc || 12;
   const grade: Grade = die === 20 ? 'crit' : die === 1 ? 'fumble' : total >= dc ? 'ok' : 'fail';
   return { ...base, dice: two, die, mod, total, dc, grade, ok: grade === 'crit' || grade === 'ok', crit: die === 20 ? 'hit' as const : die === 1 ? 'miss' as const : undefined, note: [ask.adv === 'adv' ? 'advantage' : ask.adv === 'dis' ? 'disadvantage' : '', prof ? 'proficient' : ''].filter(Boolean).join(', ') };
 }
@@ -290,22 +344,24 @@ const RULE_TEXT: Record<RuleId, { stats: string; check: string }> = {
 };
 /** 사용자가 올린 음악의 이름들 (진행자가 골라 틀 수 있게 알려 준다). 화면 쪽이 채워 넣는다 */
 export const library = { tracks: [] as string[] };
-export function rulesPrompt(g: GameCfg): string {
+/** 규칙서마다의 판정 표시 쓰는 법 (한 번에 판정의 안내가 이것을 가져다 쓴다) */
+export const checkHelp = (g: GameCfg) => RULE_TEXT[ruleOf(g)].check;
+export function rulesPrompt(g: GameCfg, o: { /** 판정 안내를 바꿔 끼운다 */ check?: string; /** 끝맺음 앞에 덧붙일 규칙 */ extra?: string } = {}): string {
   const diff = g.diff === 'easy' ? 'Be generous: prefer DC 8–12, give second chances, keep fights short.' : g.diff === 'hard' ? 'Be demanding: prefer DC 13–18, make mistakes cost something, enemies hit hard.' : 'Keep it fair: most checks DC 10–14.';
   return `[Game mode]
 Besides playing your role, you run this as a tabletop adventure for {{user}}${g.genre ? ` — genre: ${g.genre}` : ''}${g.tone ? `, tone: ${g.tone}` : ''}.${g.hero ? ` {{user}} plays: ${g.hero}.` : ''}${g.goal ? ` The adventure's goal: ${g.goal}.` : ''}
 Describe the scene, offer real choices with consequences, and let {{user}} decide. Never decide {{user}}'s actions, never roll dice, and never state the result of a roll yourself — the app rolls and reports it.
-${RULE_TEXT[ruleOf(g)].stats}${g.secret?.trim() ? `\nFor your eyes only — never state these outright; use them to steer events and to foreshadow:\n${g.secret.trim().slice(0, 3000)}` : ''}${g.sessions?.length ? `\nThe story so far (earlier sessions, oldest first):\n${g.sessions.map((x, i) => `Session ${i + 1}: ${x.text}`).join('\n')}` : ''}
+${RULE_TEXT[ruleOf(g)].stats}${g.secret?.trim() ? `\nFor your eyes only — never state these outright; use them to steer events and to foreshadow:\n${g.secret.trim().slice(0, 3000)}` : ''}${g.sessions?.length ? `\nThe story so far (earlier sessions, oldest first):\n${g.sessions.map((x, i) => `Session ${i + 1}: ${x.text}`).join('\n')}${sessionCarry(g.sessions[g.sessions.length - 1])}` : ''}
 When something changes, write the matching tag on its own line at the end of the reply. The app applies it to {{user}}'s sheet and hides it:
-[hp -3]  [hp +5]  [gold +10]  [gold -4]  [xp +20] (for clever play or a finished quest; 100 XP is a level)  [item +Torch]  [item +Arrow x5]  (name gear by what it is — "Iron Sword", "Leather Armor", "Oak Shield" — the app sizes it in {{user}}'s bag and lets them equip it; the bag is small, so hand out gear sparingly and make finds feel earned. Never hand out a bare "loot", "trophy", "material" or "core": every item gets a specific, concrete name, and the narration says what it is, what it looks like and why it matters — something {{user}} can picture and later use, sell, trade or show to someone)  [item -Rusty key]  [quest +Find the missing bell]  [quest done: Find the missing bell]
+[hp -3]  [hp +5]  [gold +10]  [gold -4]  [xp +20] (for clever play or a finished quest; 100 XP is a level)  [item +Torch]  [item +Arrow x5]  (name gear by what it is — "Iron Sword", "Leather Armor", "Oak Shield" — the app sizes it in {{user}}'s bag and lets them equip it; the bag is small, so hand out gear sparingly and make finds feel earned. Never hand out a bare "loot", "trophy", "material" or "core": every item gets a specific, concrete name, and the narration says what it is, what it looks like and why it matters — something {{user}} can picture and later use, sell, trade or show to someone)  [item -Rusty key]  [item +Silver Amulet (fake: a tracking charm planted by the Guild)] for a thing that is not what it seems — {{user}} sees only the name until you write [reveal Silver Amulet] at the moment the truth comes out.  [quest +Find the missing bell]  [quest done: Find the missing bell]
 HP changes only through these tags, so never skip them: whenever {{user}} is hurt in the story write [hp -N], and whenever {{user}} recovers — resting, sleeping, eating a proper meal, being bandaged or treated, healing magic, a potion, a healer — write [hp +N] in that same reply (a short rest about a quarter of max HP, treatment or magic about half, a full night's sleep [hp full]).
 [place Old Mill] when {{user}} arrives somewhere (keep place names short and reuse the exact same name later).  [path Old Mill - River Dock] to reveal a route to a place {{user}} has heard of or can see. The app draws the map from these.
-[rep Mira +10] / [rep Mira -15] when someone's opinion of {{user}} shifts (-100 enemy … +100 devoted).  [party +Mira] / [party -Mira] when someone joins or leaves as a companion (they fight alongside {{user}}; at most three).  [time Day 2, dusk]  [weather Heavy rain]  [backdrop forest] to change the backdrop when the setting changes — one of: ${SCENES.join(', ')}.  [clock Guards alerted 2/6] for a danger or countdown that fills step by step ([clock Guards alerted clear] to drop it).
-[fx shake] for an impact or explosion, [fx flash] for lightning or magic, [fx dark] when the lights go out, [fx letterbox] for a dramatic reveal — at most one, only for big moments.  [fate +1] rewards daring or selfless play ({{user}} spends fate points to re-roll a failed check).
+[rep Mira saved] / [rep Mira lied] when someone's opinion of {{user}} shifts: name what {{user}} did to them with one word and the app moves the standing by a fixed amount — ${VERB_HELP}. (A bare number also works for anything else: [rep Mira +10], from -100 enemy to +100 devoted.)  [npc Mira: innkeeper of the Gilded Hare, owes the guild money] the first time someone who will matter appears — a few words on who they are, kept in {{user}}'s notebook of people.  [party +Mira] / [party -Mira] when someone joins or leaves as a companion (they fight alongside {{user}}; at most three).  [time Day 2, dusk]  [weather Heavy rain]  [backdrop forest] to change the backdrop when the setting changes — one of: ${SCENES.join(', ')}.  [clock Guards alerted 2/6] for a danger or countdown that fills step by step ([clock Guards alerted clear] to drop it).
+[fx shake] for an impact or explosion, [fx flash] for lightning or magic, [fx dark] when the lights go out, [fx letterbox] for a dramatic reveal — at most one, only for big moments.  [fate +1] rewards daring or selfless play ({{user}} spends fate points to re-roll a failed check).  [mood rest] when the party's spirits move for a reason the app cannot see — one of: rest, feast, treasure, rescued, mercy / trap, betrayed, lost, dread, cruel (the app already counts fights, finished quests, critical rolls and companions joining or leaving).
 [meter Suspicion 40/100] for any number worth tracking on screen (trust, heat, supplies…; [meter Suspicion clear] to drop it).  [note Torn letter: the text {{user}} can read] when {{user}} finds something to read — it is kept in the journal.  [pass 2h] / [pass 30m] when time goes by.  [music dark] to set the mood music (explore, town, battle, dark, rest; [music auto] to let the app choose)${library.tracks.length ? `, or pick a track from {{user}}'s own library by its exact name, e.g. [music ${library.tracks[0]}] — available: ${library.tracks.slice(0, 24).join(' / ')}` : ''}. Change the music only when the mood of the scene really shifts.
 [choices Sneak around | Talk to the guard | Wait for night] — optional: two to four suggested actions shown as buttons; {{user}} may still type anything.
 To hand something to the app, use ONE of these as the very last line, then stop — do not narrate what happens next:
-${RULE_TEXT[ruleOf(g)].check}
+${o.check || RULE_TEXT[ruleOf(g)].check}
 [fight Goblin x2 hp=8 atk=2; Orc Chief hp=24 atk=5] — a tactical fight the app runs on a grid (up to 6 enemies; x2 means two of them; add the word ranged for archers and casters, boss for a leader with a telegraphed heavy attack, and fire, ice, bolt or poison for an elemental enemy — e.g. [fight Frost Wolf hp=10 atk=3 ice; Lich hp=30 atk=5 boss ranged]). The app also hands out gold and XP for a win. Guide: weak hp 8 atk 2, tough hp 18 atk 4, boss hp 30 atk 6.
 The app gives each enemy its own emblem and behaviour from its name, so name them by what they are ("Cave Spider", not "Crawler"; in {{user}}'s language is fine) and vary the mix: wolves and other beasts hunt as a pack; bats, crows and harpies fly over rocks; spiders and tentacled things pin their prey; snakes always poison; slimes split in two; golems, statues and machines are armoured but slow; ghosts drift through rocks and shrug off weapons that carry no element; plants are rooted but shoot and regrow; skeletons and zombies may rise once; dragons and drakes breathe along a whole line; watchers and beholders strike from afar. Goblins, bandits, mages and demons fight plainly. Foreshadow what is coming so {{user}} can prepare (a torch or oil against ghosts and slimes, antidote before a snake pit), and reward preparation.
 Keep the adventure varied: do not make every scene a fight. Mix fights with checks, puzzles, bargaining, chases, quiet rests and discoveries, let choices have lasting consequences, and let places, people and clocks from earlier come back.
@@ -315,11 +371,13 @@ ${diff}
 Language: keep the tag keywords in English exactly as shown, but write everything you put inside a tag — place names, times, weather, quest titles, item names, clock names, people's names, choices, reasons and stakes — in the language the story is being told in. The English wording above is only an example of the format.
 Keep those names short (a place name of two to four words; a time like "둘째 날 저녁" rather than a sentence).
 A message from {{user}} that starts with [OOC] is said to you as game master, outside the story: answer briefly out of character and do not advance the scene unless asked. One that starts with [To companions] is spoken to the companions inside the story.
-The result comes back as a bracketed line; narrate from there and honor it. Do not change the sheet without a tag, and do not show the tags' meaning to {{user}}.`;
+${o.extra ? o.extra + '\n' : ''}The result comes back as a bracketed line; narrate from there and honor it. Do not change the sheet without a tag, and do not show the tags' meaning to {{user}}.`;
 }
+/** 마지막 세션이 다음 회로 넘겨준 것: 이어질 곳 · 동료의 변화 · 내가 바란 것 */
+const sessionCarry = (x: SessionNote) => `${x.hooks?.length ? `\nThreads left open for this session: ${x.hooks.join(' | ')}` : ''}${x.party?.length ? `\nHow the companions changed: ${x.party.join(' | ')}` : ''}${x.details?.length ? `\nSmall details worth calling back to: ${x.details.join(' | ')}` : ''}${x.wish?.trim() ? `\n{{user}} asked for this in the session now being played — plan for it and deliver it without announcing it: ${x.wish.trim().slice(0, 600)}` : ''}`;
 export function sheetPrompt(g: GameCfg, s: Sheet, bag = ''): string {
-  const items = s.items.map(i => i.n > 1 ? `${i.name} x${i.n}` : i.name).join(', ') || 'nothing', open = s.quests.filter(q => !q.done).map(q => q.title), done = s.quests.filter(q => q.done).map(q => q.title);
-  return `[{{user}}'s sheet — HP ${s.hp}/${s.hpMax}${s.hp <= 0 ? ' (down: cannot act until helped or healed)' : ''} · Gold ${s.gold} · Fate ${s.fate} · Level ${s.level} (${s.xp} XP) · ${statsOf(g).map(k => `${STAT_EN[k]} ${ruleOf(g) === 'd20' || ruleOf(g) === '2d6' ? sign(statVal(g, k)) : statVal(g, k)}`).join(' ')} · Carrying: ${items}${bag}${open.length ? ` · Quests: ${open.join('; ')}` : ''}${done.length ? ` · Finished: ${done.join('; ')}` : ''}${s.place ? ` · Place: ${s.place}` : ''}${ways(s)}${s.time ? ` · Time: ${s.time}` : ''}${weatherOf(s) ? ` · Weather: ${weatherOf(s)}${s.weather ? '' : ' (set by the app for now — narrate it; write [weather …] to change it)'}` : ''}${s.party.length ? ` · Companions: ${s.party.join(', ')}` : ''}${s.people.length ? ` · Standing: ${s.people.map(p => `${p.name} ${sign(p.v)} (${REP_EN[repTier(p.v)]})`).join(', ')}` : ''}${s.meters.length ? ` · Meters: ${s.meters.map(m => `${m.name} ${m.v}/${m.max}`).join(', ')}` : ''}${s.mins ? ` · Elapsed: ${elapsedText(s.mins)}` : ''}${s.clocks.length ? ` · Clocks: ${s.clocks.map(c => `${c.name} ${c.v}/${c.max}${c.v >= c.max ? ' (FULL — it happens now)' : ''}`).join(', ')}` : ''}]`;
+  const items = s.items.map(i => (i.n > 1 ? `${i.name} x${i.n}` : i.name) + (i.hid ? i.known ? ` (revealed to be: ${i.hid})` : ` (GM-only truth: ${i.hid} — {{user}} has not found out)` : '')).join(', ') || 'nothing', open = s.quests.filter(q => !q.done).map(q => q.title), done = s.quests.filter(q => q.done).map(q => q.title);
+  return `[{{user}}'s sheet — HP ${s.hp}/${s.hpMax}${s.hp <= 0 ? ' (down: cannot act until helped or healed)' : ''} · Gold ${s.gold} · Fate ${s.fate} · Level ${s.level} (${s.xp} XP) · ${statsOf(g).map(k => `${STAT_EN[k]} ${ruleOf(g) === 'd20' || ruleOf(g) === '2d6' ? sign(statVal(g, k)) : statVal(g, k)}`).join(' ')} · Carrying: ${items}${bag}${open.length ? ` · Quests: ${open.join('; ')}` : ''}${done.length ? ` · Finished: ${done.join('; ')}` : ''}${s.place ? ` · Place: ${s.place}` : ''}${ways(s)}${s.time ? ` · Time: ${s.time}` : ''}${weatherOf(s) ? ` · Weather: ${weatherOf(s)}${s.weather ? '' : ' (set by the app for now — narrate it; write [weather …] to change it)'}` : ''}${s.party.length ? ` · Companions: ${s.party.join(', ')}` : ''}${s.people.length ? ` · Standing: ${s.people.map(p => `${p.name} ${sign(p.v)} (${REP_EN[repTier(p.v)]})`).join(', ')}` : ''}${moodPrompt(s.morale)}${s.meters.length ? ` · Meters: ${s.meters.map(m => `${m.name} ${m.v}/${m.max}`).join(', ')}` : ''}${s.mins ? ` · Elapsed: ${elapsedText(s.mins)}` : ''}${s.clocks.length ? ` · Clocks: ${s.clocks.map(c => `${c.name} ${c.v}/${c.max}${c.v >= c.max ? ' (FULL — it happens now)' : ''}`).join(', ')}` : ''}]`;
 }
 /** 흐른 시간을 "Day N, HH:MM" 으로 (첫날 아침 8시에서 시작) */
 export const elapsedOf = (mins: number) => { const t = 480 + mins; return { day: 1 + Math.floor(t / 1440), h: Math.floor(t % 1440 / 60), m: t % 60 }; };
@@ -342,16 +400,31 @@ export function recText(r: GameRec, user: string, foe: string): string {
     if (r.rule === 'd100') return `${head}d100 = ${r.die}, needed ${r.dc} or less → ${word}`;
     if (r.rule === 'pool') return `${head}${(r.dice || []).length}d6 [${(r.dice || []).join(', ')}] → ${r.total} hit${r.total === 1 ? '' : 's'}, needed ${r.dc} → ${word}`;
     if (r.open) return `${head}rolling…`;
+    if (r.cut) return `${user} cut into the narration mid-scene to act: ${cutLine(r, head, word)}`;
     return `${r.rerolled ? '(re-rolled with a fate point) ' : ''}${head}d20 ${(r.dice?.length || 0) > 1 ? `(${r.dice!.join(', ')} → ${r.die})` : r.die} ${sign(r.mod)} = ${r.total} vs DC ${r.dc} → ${word}`;
   }
-  if (r.kind === 'fight') return `Fight with ${r.name}: ${r.outcome === 'win' ? `${user} won` : r.outcome === 'fled' ? `${user} got away` : `${user} was beaten and is down`} after ${r.rounds} round${r.rounds === 1 ? '' : 's'}, taking ${r.took} damage (HP ${r.hp}/${r.hpMax}).${r.fallen?.length ? ` Knocked out during the fight: ${r.fallen.join(', ')}.` : ''}${r.loot ? ` The app awarded ${r.loot}. In your reply, show {{user}} finding each of these on the fallen — say plainly what each thing is, what it looks like and what it might be good for (in {{user}}'s language, keeping the item names exactly as given). Do not add [item] tags for them; they are already in the bag.` : ''}`;
+  if (r.kind === 'fight') return `Fight with ${r.name}: ${r.outcome === 'win' ? `${user} won` : r.outcome === 'fled' ? `${user} got away` : `${user} was beaten and is down`} after ${r.rounds} round${r.rounds === 1 ? '' : 's'}, taking ${r.took} damage (HP ${r.hp}/${r.hpMax}).${r.fallen?.length ? ` Knocked out during the fight: ${r.fallen.join(', ')}.` : ''}${r.ran?.length ? ` Broke and ran, still out there: ${r.ran.join(', ')} — they carry word of this, and may come back with help or a grudge.` : ''}${r.yielded?.length ? (r.merciless ? ` ${r.yielded.join(', ')} threw down their weapons and begged, and ${user} cut them down anyway — witnesses and companions react to that.` : ` Surrendered and now at ${user}'s mercy: ${r.yielded.join(', ')} — let ${user} decide what to do with them (question, bind, ransom, release, recruit); they are frightened and will talk.`) : ''}${r.outcome === 'lose' && r.carried ? ` Do not end the story and do not kill ${user}: turn the defeat into the next chapter — captured, robbed and left for dead, dragged to safety by someone with their own reasons, or waking somewhere unexpected. It costs something real (gold, an item, time, standing) — write those tags — and ${user} comes round with a little HP ([hp +N]).` : ''}${r.loot ? ` The app awarded ${r.loot}. In your reply, show {{user}} finding each of these on the fallen — say plainly what each thing is, what it looks like and what it might be good for (in {{user}}'s language, keeping the item names exactly as given). Do not add [item] tags for them; they are already in the bag.` : ''}`;
   return `${user} and ${foe} played ${MINI_EN[r.game]}${r.stake ? ` (at stake: ${r.stake})` : ''}: ${r.outcome === 'win' ? `${user} won` : r.outcome === 'lose' ? `${foe} won` : 'a draw'}${r.score ? ` — ${r.game === 'numbers' ? 'guesses used ' : ''}${r.score}` : ''}.`;
 }
 
+/** 끼어든 판정의 글: 성공하면 끊긴 곳부터 다시 쓰게, 실패하면 이어 가게 한다 */
+const cutLine = (r: Extract<GameRec, { kind: 'check' }>, head: string, word: string) => `${head}${r.total} vs ${r.dc} → ${word}. ${r.ok ? `The interruption lands. Your last reply was cut off where ${'{{user}}'} stepped in: do not finish what you were writing — pick up from the cut with this action taking effect first, and let the scene bend around it.` : `Too slow, or not enough. Carry on from where your last reply was cut off, with the failed attempt and what it costs as part of it.`}`;
 // ── 세션 요약 ──
-export const SESSION_PROMPT = `You are the record keeper of a tabletop adventure. Summarize the session below so the game can continue later without the transcript.
-Write 5–9 short sentences in the language the session was played in: what happened in order, where the party is now, what is unresolved, promises or debts, and how the main characters feel about each other.
-Facts only — no commentary, no headings, no lists. Do not invent anything that is not in the transcript.`;
+export const SESSION_PROMPT = `You are the record keeper of a tabletop adventure. Write up the session below so the game can continue later without the transcript.
+Answer with one JSON object and nothing else, every string in the language the session was played in:
+{"summary": "5–9 short sentences: what happened in order, where the party is now, what is unresolved, promises or debts, and how the main characters feel about each other",
+ "details": ["up to 4 small concrete details that would be a pleasure to see come back — an object, a phrase someone used, a habit, a place seen in passing"],
+ "moments": ["up to 3 moments that showed who a character is, one sentence each, naming the character"],
+ "hooks": ["up to 4 open threads the next session could pick up, most pressing first"],
+ "party": ["one line per companion whose mood, loyalty or situation changed, naming them — empty if none"]}
+Facts only. Do not invent anything that is not in the transcript; leave a list empty rather than pad it.`;
+/** 세션 정리 답을 읽는다. JSON 이 아니면 통째로 요약으로 친다 (옛 방식의 답도 그대로 쓸 수 있게) */
+export function readSession(raw: string): Omit<SessionNote, 'at'> {
+  const body = raw.replace(/^```(?:json)?\s*|\s*```$/g, '').trim(), a = body.indexOf('{'), b = body.lastIndexOf('}');
+  const list = (v: unknown, n: number) => Array.isArray(v) ? v.map(x => String(x || '').trim()).filter(Boolean).slice(0, n).map(x => x.slice(0, 300)) : [];
+  try { if (a >= 0 && b > a) { const o = JSON.parse(body.slice(a, b + 1)) as Record<string, unknown>, text = String(o.summary || '').trim(); if (text) return { text, details: list(o.details, 4), moments: list(o.moments, 3), hooks: list(o.hooks, 4), party: list(o.party, 4) }; } } catch { /* 아래에서 글로 친다 */ }
+  return { text: body };
+}
 
 // ── 지도: 장소를 모눈 위에 놓는다 (처음 간 곳에서 길을 따라 퍼져 나가며 빈 칸을 찾는다) ──
 export interface MapNode { name: string; seen: boolean; x: number; y: number; here: boolean }
@@ -374,11 +447,12 @@ export function layoutMap(s: Sheet): { nodes: MapNode[]; edges: [MapNode, MapNod
 }
 
 // ── 모험 일지: 있었던 일을 기록에서 그대로 뽑는다 (모델을 부르지 않는다) ──
-export type JournalRow = { kind: 'place' | 'quest' | 'questDone' | 'item' | 'party' | 'doc' | 'check' | 'fight' | 'play' | 'session'; text: string; ok?: boolean; id: string };
+export type JournalRow = { kind: 'place' | 'quest' | 'questDone' | 'item' | 'party' | 'doc' | 'check' | 'fight' | 'play' | 'session' | 'bond'; text: string; ok?: boolean; id: string };
 export function journalOf(msgs: Msg[]): JournalRow[] {
-  const out: JournalRow[] = [];
+  const out: JournalRow[] = [], standing = new Map<string, number>();
   for (const m of msgs as GameMsg[]) {
-    const r = m.gm, fxs = [...(r && 'fx' in r && r.fx || []), ...((m.swipes[m.sw] as GameSwipe | undefined)?.gfx || [])];
+    const r = m.gm, sw = m.swipes[m.sw] as GameSwipe | undefined, fxs = [...(r && 'fx' in r && r.fx || []), ...(sw?.gfx || [])];
+    for (const x of sw?.grolls || []) out.push({ kind: 'check', text: x.why || '', ok: x.ok, id: m.id });
     if (r?.kind === 'check') out.push({ kind: 'check', text: r.why || '', ok: r.ok, id: m.id });
     else if (r?.kind === 'fight') out.push({ kind: 'fight', text: r.name, ok: r.outcome === 'win', id: m.id });
     else if (r?.kind === 'play') out.push({ kind: 'play', text: r.game, ok: r.outcome === 'win', id: m.id });
@@ -389,6 +463,8 @@ export function journalOf(msgs: Msg[]): JournalRow[] {
       else if (fx.k === 'quest') out.push({ kind: fx.done ? 'questDone' : 'quest', text: fx.title, id: m.id });
       else if (fx.k === 'doc') out.push({ kind: 'doc', text: fx.title, id: m.id });
       else if (fx.k === 'party') out.push({ kind: 'party', text: fx.name, ok: fx.add, id: m.id });
+      // 사이의 단계가 바뀐 순간만 이정표로 남긴다 (text 끝의 숫자가 새 단계)
+      else if (fx.k === 'rep') { const key = fx.name.trim().toLowerCase(), was = standing.get(key) || 0, now = Math.min(100, Math.max(-100, was + fx.n)); standing.set(key, now); if (repTier(now) !== repTier(was)) out.push({ kind: 'bond', text: `${fx.name.trim()}\u0001${repTier(now)}`, ok: now > was, id: m.id }); }
       else if (fx.k === 'item' && fx.n > 0) out.push({ kind: 'item', text: fx.n > 1 ? `${fx.name} ×${fx.n}` : fx.name, id: m.id });
     }
   }

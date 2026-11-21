@@ -1,6 +1,6 @@
 // ── Dreamland hooks: 확장 기능이 끼어드는 지점들의 등록부 ── (옛 js/hooks.js 그대로)
 // 각 항목은 { owner, ... } 형태. owner 는 확장 id.
-import type { Char, Chat, Conn, Msg, Persona, Theme } from './types';
+import type { Char, Chat, Conn, LoreEntry, Msg, Persona, Theme } from './types';
 import type { Ctx } from './engine';
 
 export interface Owned { owner: string }
@@ -33,7 +33,7 @@ export interface PromptPiece { where: 'top' | 'before' | 'depth' | 'end'; role?:
 export interface PromptInfo { chat: Chat; char: Char; chars: Char[]; persona: Persona; history: { role: string; content: string }[]; msgs: Msg[]; type: string; commit?: boolean; ctx: Ctx }
 export interface PromptHook extends Owned { fn(info: PromptInfo): PromptPiece[] | null | undefined | void }
 export interface StudioTab extends Owned { title: string; render(): Node; [k: string]: unknown }
-export interface BeforeHook extends Owned { fn(o: { chat: Chat; msgs: Msg[]; type: string; signal?: AbortSignal; chars?: Char[]; persona?: Persona }): Promise<unknown> }
+export interface BeforeHook extends Owned { fn(o: { chat: Chat; msgs: Msg[]; type: string; signal?: AbortSignal; chars?: Char[]; persona?: Persona; /** 이번에 말할 캐릭터 */ speaker?: Char }): Promise<unknown> }
 
 export interface TranslateOpt { chat?: Chat | null; context?: { name: string; text?: string; mes?: string }[]; signal?: AbortSignal; name?: string | null; preset?: string; conn?: Conn | null }
 export interface Hooks {
@@ -43,6 +43,8 @@ export interface Hooks {
   loreVec: ((entryId: string) => boolean) | null;
   translate: ((text: string, language?: string, o?: TranslateOpt) => Promise<string>) | null;
   covered: ((chat: Chat) => number) | null;
+  /** 물음(판정문) · 매크로 보강이 엔진에 끼어드는 자리 (src/gate 가 채운다). cond: 조건식의 ask:"…" 를 판정 결과로 바꾼 식 · lore: 로어북 항목의 물음이 참인가 · each: {{#each char}} 블록 펴기 · post: 다 풀린 글의 마무리 */
+  gate: { cond(cond: string, c: Ctx): string; lore(e: LoreEntry, c: Ctx): boolean; each(text: string, c: Ctx): string; post(text: string): string } | null;
 }
 
 export const X: Hooks = {
@@ -60,6 +62,7 @@ export const X: Hooks = {
   loreVec: null,         // (entryId) → 벡터 검색이 이번 턴에 깨운 로어북 항목인가
   translate: null,       // (text, language, { chat, context, signal }) → 번역문. 번역 기능이 등록한다
   covered: null,         // (chat) → 장기기억이 기록해 둔 턴 수
+  gate: null,            // 물음(판정문)과 매크로 보강 — 없으면 ask: 조건은 거짓이다
 };
 type OwnedList = 'panels' | 'actions' | 'pages' | 'filters' | 'themes' | 'composer' | 'prompt' | 'before';
 export function dropOwner(owner: string) {
