@@ -85,9 +85,9 @@ function Stage({ picks, redraw }: { picks: Char[]; redraw: () => void }) {
   const day = <div className="hm-day"><i className="hm-star" />{`${DAYS[now.getDay()]} ${now.getDate()} ${MONTHS[now.getMonth()]}`}<b>{moon.name}</b></div>;
   const others = picks.map((p, i) => ({ p, i })).filter(x => x.i !== at).slice(0, 4);
   const wheel = <div className="hm-wheel"><WheelArt month={now.getMonth()} phase={cur} />
-    {c ? <button className="hm-core" style={artStyle(c)} title={c.name} onClick={() => charSheet(c)}>{!c.avatar && <Emblem o={c} />}</button> : <i className="hm-core"><Emblem o={{ tags: [], name: '' }} /></i>}
+    {c ? <button className="hm-core" style={artStyle(c)} title={c.name} onClick={() => charSheet(c)}>{!c.avatar && <Emblem o={c} center />}</button> : <i className="hm-core"><Emblem o={{ tags: [], name: '' }} center /></i>}
     {others.map(({ p, i }, n) => { const [x, y] = polar(128, [45, 135, 225, 315][n]); return <button key={p.id} className="hm-sat" style={{ left: x / 4 + '%', top: y / 4 + '%' }} title={p.name} onClick={() => { view.pick = i; redraw(); }}>
-      <i style={artStyle(p)}>{!p.avatar && <Emblem o={p} mini />}</i><span>{p.name}</span></button>; })}
+      <i style={artStyle(p)}>{!p.avatar && <Emblem o={p} mini center />}</i><span>{p.name}</span></button>; })}
     <i className="hm-ptr" /></div>;
   if (!c) return <div className="hm-hero"><Dust n={90} seed={5} /><Twinkle />{wheel}
     <div className="hm-tx">{day}<h1 className="hm-name">{t('home.empty.title')}</h1>

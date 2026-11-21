@@ -115,3 +115,5 @@
   .hm-grid, .hm-grid.md { grid-template-columns: repeat(3, 1fr); gap: 28px 18px; margin-top: 26px; padding: 0 4px; } .hm-grid.lg { grid-template-columns: repeat(2, 1fr); gap: 30px 24px; padding: 0 10px; } .hm-grid.sm { grid-template-columns: repeat(4, 1fr); gap: 22px 14px; }
   .hm-c b { font-size: 15px; margin-top: 14px; } .hm-c small { font-size: 12px; } .hm-grid.sm .hm-c b { font-size: 13.5px; letter-spacing: .03em; }
 }
+/* 둥근 자리의 문양은 원 한가운데에: 왼쪽으로 붙어 그려지던 것을 가운데로 민다 (그림 자체의 무게 중심은 kit 의 Emblem center 가 맞춘다) */
+.hm-core .emb, .hm-sat i .emb { margin: auto; justify-self: center; align-self: center; }
