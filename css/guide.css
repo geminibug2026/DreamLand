@@ -104,7 +104,7 @@
 .gd-bulk { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 16px; border-top: 1px solid var(--line-2); font-size: 12.5px; } .gd-bulk .btn { min-height: 30px; padding: 3px 12px; font-size: 12.5px; }
 
 /* ── 입력 ── */
-.gd-comp { position: relative; display: grid; gap: 7px; padding: 10px 16px calc(10px + var(--safe-b, 0px)); border-top: 1px solid var(--line-2); }
+.gd-comp { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; padding: 10px 16px calc(10px + var(--safe-b, 0px)); border-top: 1px solid var(--line-2); }
 .gd-box { display: flex; align-items: flex-end; gap: 6px; border: 1px solid var(--line-2); border-radius: 3px; padding: 4px 4px 4px 11px; transition: border-color .15s; } .gd-box:focus-within { border-color: var(--line-1); }
 .gd-box textarea { flex: 1; min-width: 0; resize: none; border: 0; outline: 0; background: none; color: inherit; font: inherit; font-size: 14px; line-height: 1.55; padding: 7px 0; max-height: 180px; }
 .gd-send { width: 34px; height: 34px; flex: none; display: grid; place-items: center; border-radius: 2px; background: var(--fx-ink); color: var(--fx-paper); transition: background .15s, opacity .15s; } .gd-send:disabled { opacity: .25; } .gd-send:not(:disabled):hover { background: var(--accent); color: var(--on-accent); } .gd-send.stop { background: none; color: var(--fx-ink); box-shadow: inset 0 0 0 1px var(--line-1); }

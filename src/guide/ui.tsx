@@ -27,8 +27,8 @@ function Code({ text }: { text: string }) {
 }
 // ── 작은 마크다운 ── 조수의 답을 HTML 을 거치지 않고 React 요소로 그린다 (문단 · 목록 · 굵게 · `코드` · 코드 덩이 · 제목)
 function inline(s: string, key: string): ReactNode[] {
-  const out: ReactNode[] = [], re = /\*\*([^*\n]+)\*\*|`([^`\n]+)`|\*([^*\n]+)\*/g; let last = 0, m: RegExpExecArray | null, n = 0;
-  while ((m = re.exec(s))) { if (m.index > last) out.push(s.slice(last, m.index)); out.push(m[1] ? <b key={key + n++}>{m[1]}</b> : m[2] ? <code key={key + n++}>{m[2]}</code> : <em key={key + n++}>{m[3]}</em>); last = re.lastIndex; }
+  const out: ReactNode[] = [], re = /\*\*([^*\n]+?)\*\*|`([^`\n]+)`|\*([^*\n]+)\*/g; let last = 0, m: RegExpExecArray | null, n = 0;
+  while ((m = re.exec(s))) { if (m.index > last) out.push(s.slice(last, m.index)); out.push(m[1] ? <b key={key + n++}>{inline(m[1], key + 'b' + n)}</b> : m[2] ? <code key={key + n++}>{m[2]}</code> : <em key={key + n++}>{m[3]}</em>); last = re.lastIndex; }
   if (last < s.length) out.push(s.slice(last)); return out;
 }
 export function Md({ text }: { text: string }) {
@@ -36,11 +36,13 @@ export function Md({ text }: { text: string }) {
     const out: ReactNode[] = [], lines = text.replace(/\r/g, '').split('\n'); let i = 0, k = 0;
     while (i < lines.length) {
       const ln = lines[i];
-      if (/^```/.test(ln)) { const buf: string[] = []; i++; while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]); i++; if (buf.join('').trim()) out.push(<Code key={k++} text={buf.join('\n')} />); continue; }   // 빈 코드 덩이(닫히지 않은 울타리 따위)는 그리지 않는다
+      // 코드 덩이: 들여 쓴 ``` · ~~~ 도 (목록 아래에 붙은 것). 같은 만큼 들여 쓴 줄은 그 들여쓰기를 걷어 낸다
+      const fm = /^(\s*)(```+|~~~+)/.exec(ln);
+      if (fm) { const pad = fm[1].length, mark = fm[2][0], close = new RegExp('^\\s*\\' + mark + '{3,}\\s*$'), buf: string[] = []; i++; while (i < lines.length && !close.test(lines[i])) { const l = lines[i++]; buf.push(l.slice(0, pad).trim() ? l : l.slice(pad)); } i++; if (buf.join('').trim()) out.push(<Code key={k++} text={buf.join('\n')} />); continue; }   // 빈 코드 덩이(닫히지 않은 울타리 따위)는 그리지 않는다
       if (!ln.trim()) { i++; continue; }
       const hd = /^(#{1,4})\s+(.*)$/.exec(ln); if (hd) { out.push(<h4 key={k++}>{inline(hd[2], 'h')}</h4>); i++; continue; }
       if (/^\s*([-*•]|\d+[.)])\s+/.test(ln)) { const ord = /^\s*\d+[.)]/.test(ln), items: ReactNode[] = []; while (i < lines.length && /^\s*([-*•]|\d+[.)])\s+/.test(lines[i])) { items.push(<li key={i}>{inline(lines[i].replace(/^\s*([-*•]|\d+[.)])\s+/, ''), 'l' + i)}</li>); i++; } out.push(ord ? <ol key={k++}>{items}</ol> : <ul key={k++}>{items}</ul>); continue; }
-      const buf: string[] = []; while (i < lines.length && lines[i].trim() && !/^```|^#{1,4}\s|^\s*([-*•]|\d+[.)])\s+/.test(lines[i])) buf.push(lines[i++]);
+      const buf: string[] = []; while (i < lines.length && lines[i].trim() && !/^\s*(```|~~~)|^#{1,4}\s|^\s*([-*•]|\d+[.)])\s+/.test(lines[i])) buf.push(lines[i++]);
       out.push(<p key={k++}>{buf.map((b, j) => <Fragment key={j}>{j ? <br /> : null}{inline(b, 'p' + j)}</Fragment>)}</p>);
     }
     return out;
