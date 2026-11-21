@@ -9586,5 +9586,14 @@
   "feed.side.refreshLine": "Fetches one batch of new posts, replies and likes from your characters. One model call each time.",
   "feed.side.suggest": "Who to follow",
   "feed.side.manage": "Manage members",
-  "feed.side.noMembers": "No members yet"
+  "feed.side.noMembers": "No members yet",
+  "chat.drawer.tab.base": "Basics",
+  "chat.drawer.tab.story": "Story",
+  "chat.drawer.tab.look": "Look",
+  "chat.drawer.tab.tools": "Tools",
+  "chat.msgMenu.gLook": "Art & expression",
+  "chat.msgMenu.gRecord": "Keep a record",
+  "chat.msgMenu.gRewrite": "Rewrite",
+  "chat.msgMenu.gMore": "Other",
+  "chat.msgMenu.back": "Back"
 }

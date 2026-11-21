@@ -62,3 +62,9 @@
 @media (max-width: 820px) {
   .msg:not(.sys):not(:last-child):not(:has(~ .msg:not(.sys))) .msg-main > .msg-tools:not(:has(.swipe)) { display: none; }
 }
+
+/* ── 장면 패널의 탭 ── 칸을 네 묶음으로 나눠 보인다 */
+.drawer-tabs { position: sticky; top: -4px; z-index: 3; display: grid; grid-template-columns: repeat(4, 1fr); margin: 0 0 4px; background: var(--bg); border-bottom: 1px solid var(--line-2); }
+.drawer-tabs button { min-height: 40px; padding: 0 4px; font: 500 13px/1 var(--font); color: var(--dim); white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s, border-color .15s; }
+.drawer-tabs button:hover { color: var(--text); }
+.drawer-tabs button.on { color: var(--text); font-weight: 700; border-bottom-color: var(--accent); }

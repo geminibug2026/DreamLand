@@ -16,7 +16,19 @@ import { X } from '../lib/hooks';
 import { Live } from '../lib/live';
 import { t } from '../i18n';
 
-const Sec = ({ title, ic, open, children }: { title: string; ic: string; open: boolean; children: ReactNode }) =>
+// 칸이 스물이 넘어 한 줄로 늘어놓으면 찾기 어렵다. 네 묶음으로 나눠 탭으로 보인다 (고른 탭은 화면을 떠났다 와도 남는다)
+type Group = 'base' | 'story' | 'look' | 'tools';
+const GROUPS: Group[] = ['base', 'story', 'look', 'tools'];
+let tab: Group = 'base';
+/** 다른 기능이 꽂은 칸의 묶음: 칸 id 가 먼저, 없으면 주인(owner). 모르는 칸(확장)은 도구로 */
+const PANEL_GROUP: Record<string, Group> = {
+  presetvars: 'base', 'reach-fit': 'base', 'flow-profile': 'base',
+  memoria: 'story', almanac: 'story', 'flow-cp': 'story', 'threads-links': 'story', 'threads-inner': 'story', game: 'story',
+  expr: 'look', scenebook: 'look', extras: 'look', modules: 'look',
+  crew: 'tools', gate: 'tools', 'flow-auto': 'tools', feed: 'tools', atlas: 'tools',
+};
+const groupOf = (p: { id?: string; owner: string }): Group => PANEL_GROUP[p.id || ''] || PANEL_GROUP[p.owner] || 'tools';
+const Sec = ({ title, ic, open, g = 'base', children }: { title: string; ic: string; open: boolean; g?: Group; children: ReactNode }) => g !== tab ? null :
   <details className="dsec" open={open}><summary><Icon name={ic} size={16} />{title}</summary><div className="dsec-body">{children}</div></details>;
 const Sel = ({ label, value, opts, onChange }: { label: string; value: string; opts: [string, string][]; onChange: (v: string) => void }) =>
   <label className="field"><span className="field-label">{label}</span><select className="inp" defaultValue={value} onChange={e => onChange(e.target.value)}>{opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>;
@@ -43,6 +55,7 @@ function Body({ c }: { c: Room }) {
   const hits = cur.lastPrompt?.lore || [];
   const trackOn = !!S.settings.tracker.enabled;
   return <div className="drawer-body">
+    <nav className="drawer-tabs" role="tablist">{GROUPS.map(g => <button key={g} type="button" role="tab" aria-selected={g === tab} className={g === tab ? 'on' : ''} onClick={() => { tab = g; drawDrawer(); }}>{t('chat.drawer.tab.' + g)}</button>)}</nav>
     <Sec title={t('chat.drawer.connSec')} ic="plug" open>
       <Sel label={t('chat.drawer.conn')} value={S.settings.activeConn || ''} opts={chatConns().length ? chatConns().map((x): [string, string] => [x.id, `${x.name}${x.model ? ' · ' + x.model : ''}`]) : [['', t('chat.drawer.noConn')]]} onChange={v => { S.set({ activeConn: v }); drawTop(); }} />
       <Sel label={t('chat.drawer.preset')} value={S.settings.activePreset || ''} opts={S.presets.map((x): [string, string] => [x.id, x.name])} onChange={v => { S.set({ activePreset: v }); drawGauge(); }} />
@@ -71,30 +84,30 @@ function Body({ c }: { c: Room }) {
         <option value="chat">{t('chat.drawer.notePosChat')}</option><option value="before">{t('chat.drawer.notePosBefore')}</option><option value="after">{t('chat.drawer.notePosAfter')}</option></select></label>
       <label className="field inline" title={t('chat.drawer.noteFreqHint')}><span className="field-label">{t('chat.drawer.noteFreq')}</span><input className="inp" type="number" min={0} defaultValue={c.note?.freq ?? 1} onChange={e => { c.note = { ...(c.note || { text: '', depth: 4, role: 'system' }), freq: Math.max(0, Math.round(+e.target.value || 0)) }; saveChat(); }} /></label>
     </Sec>
-    {c.summary ? <Sec title={t('chat.drawer.oldSummarySec')} ic="sparkle" open={false}>
+    {c.summary ? <Sec g="story" title={t('chat.drawer.oldSummarySec')} ic="sparkle" open={false}>
       <textarea className="inp" rows={5} defaultValue={c.summary} onChange={e => { c.summary = e.target.value; saveChat(); }} />
       <small className="hint">{t('chat.drawer.oldSummaryHint')}</small>
       <div className="row"><Btn label={t('chat.drawer.moveSummary')} ic="sparkle" cls="ghost" onClick={() => void moveOldSummary(c)} /><Btn label={t('chat.drawer.clear')} cls="ghost" onClick={() => { c.summary = ''; c.summaryAt = 0; saveChat(); drawDrawer(); }} /></div>
     </Sec> : null}
-    <Sec title={t('chat.drawer.trackerSec')} ic="heart" open={trackOn}>{trackOn ? <>
+    <Sec g="story" title={t('chat.drawer.trackerSec')} ic="heart" open={trackOn}>{trackOn ? <>
       {trk.length ? <div className="tracker read">{trk.map(([k, v]) => <div className="trk" key={k}><span>{k}{c.trackLock?.['w:' + k] ? <Icon name="lock" size={11} /> : null}</span><b>{v || '—'}</b></div>)}</div> : <p className="dim">{t('chat.drawer.trackerEmpty')}</p>}
       {people.length ? <small className="hint">{t('chat.drawer.people', { count: people.length, names: people.join(', ') })}</small> : null}
       <div className="row wrap"><Btn label={t('chat.drawer.trackerEdit')} ic="edit" cls="ghost" onClick={() => editState(c, hudOpts())} /><Btn label={t('chat.drawer.trackerNow')} ic="refresh" cls="ghost" title={t('chat.drawer.oneCall')} onClick={() => void track(c, cur.msgs)} /><Btn label={t('chat.drawer.trackerSettings')} ic="sliders" cls="ghost" onClick={() => liveSettings('tracker', c)} /></div>
     </> : <><p className="dim">{t('chat.drawer.trackerOff')}</p><Btn label={t('chat.drawer.trackerOn')} ic="sliders" cls="ghost" onClick={() => liveSettings('tracker', c)} /></>}</Sec>
-    <Sec title={t('chat.drawer.loreSec')} ic="book" open={false}>
+    <Sec g="story" title={t('chat.drawer.loreSec')} ic="book" open={false}>
       <LoreLinker holder={c} save={saveChat} fixed={() => S.lore.filter(b => globals.has(b.id) || charBooks.has(b.id)).map(b => [b, globals.has(b.id) ? t('chat.drawer.loreGlobal') : t('chat.drawer.loreChar')])} />
       {hits.length ? <div className="hits"><small className="hint">{t('chat.drawer.loreHits', { count: hits.length })}</small>{hits.map((e, i) => <span className="chip static" key={i}>{e.name || e.keys?.[0] || e.book}</span>)}</div> : null}
       <Btn label={t('awake.open')} ic="eye" cls="ghost" onClick={() => emit('lore:awake', c)} />
     </Sec>
-    <Sec title={t('chat.drawer.varsSec')} ic="code" open={false}>
+    <Sec g="story" title={t('chat.drawer.varsSec')} ic="code" open={false}>
       <textarea className="inp" rows={3} placeholder={t('chat.drawer.varsPh')} defaultValue={Object.entries(c.vars || {}).map(([k, v]) => `${k}=${v}`).join('\n')} onChange={e => { c.vars = Object.fromEntries(e.target.value.split('\n').map(l => l.split('=')).filter(p => p[0].trim()).map(p => [p[0].trim(), p.slice(1).join('=')])); saveChat(); }} />
       <small className="hint">{t('chat.drawer.varsHint')}</small>
     </Sec>
-    <Sec title={t('chat.drawer.bgSec')} ic="image" open={false}><div className="row">
+    <Sec g="look" title={t('chat.drawer.bgSec')} ic="image" open={false}><div className="row">
       <Btn label={t('chat.drawer.pickImage')} ic="upload" cls="ghost" onClick={async () => { const [f] = await pickFiles({ accept: 'image/*' }); if (!f) return; c.bg = await shrinkImage(await readDataURL(f), 1920, 'image/jpeg', 0.85); await S.save('chats', c, true); drawMain(); }} />
       <Btn label={t('extras.bg.open')} ic="shelf" cls="ghost" onClick={() => emit('xt:bgshelf', c)} />
       {c.bg && <Btn label={t('chat.drawer.clear')} cls="ghost" onClick={async () => { c.bg = ''; await S.save('chats', c, true); drawMain(); }} />}</div></Sec>
-    {X.panels.map((p, i) => { try { return <Sec key={i} title={p.title || ''} ic={p.icon || 'sparkle'} open={!!p.open}><Dom node={p.render(c, cur.msgs)} /></Sec>; } catch (e) { console.warn('[확장 패널]', p.owner, e); return null; } })}
+    {X.panels.map((p, i) => { try { if (groupOf(p) !== tab) return null; return <Sec key={i} g={tab} title={p.title || ''} ic={p.icon || 'sparkle'} open={!!p.open}><Dom node={p.render(c, cur.msgs)} /></Sec>; } catch (e) { console.warn('[확장 패널]', p.owner, e); return null; } })}
     <Btn label={t('chat.drawer.inspect')} ic="search" cls="ghost wide" onClick={inspector} />
   </div>;
 }
