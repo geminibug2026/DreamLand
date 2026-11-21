@@ -403,7 +403,7 @@ button.top-room:hover { text-decoration: underline dotted; text-underline-offset
 
 /* 긴 대화: 화면 밖 메시지는 배치 · 그리기를 건너뛴다 (본 적 있는 높이는 기억해 자리를 지킨다). 메시지가 수천 개여도 입력 · 스크롤이 무겁지 않게 */
 .msgs > article.msg, .msgs > .msg { content-visibility: auto; contain-intrinsic-size: auto 260px; }
-.msgs > article.msg:last-of-type, .msgs > article.msg.streaming, .msgs > article.msg:focus-within { content-visibility: visible; }
+.msgs > article.msg:last-of-type, .msgs > article.msg.streaming, .msgs > article.msg:focus-within, .msgs > article.msg:hover, .msgs > article.msg.picked { content-visibility: visible; }   /* 떠오르는 도구 상자가 메시지 밖으로 나오므로, 보고 있는 메시지는 잘라 그리지 않는다 */
 
 /* Cloudflare 중계 안내 */
 .cf-guide { gap: 12px; } .cf-steps { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 8px; line-height: 1.6; }
