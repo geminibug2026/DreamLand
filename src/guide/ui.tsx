@@ -328,7 +328,7 @@ function Composer() {
 }
 function ConnLine() {
   const c = S.helperConn('guide', null);
-  return <p className="gd-meta"><span className="fx-num">{c ? `${c.name}${c.model ? ' · ' + c.model : ''}` : t('guide.noConn')}</span><span>{t('guide.cost')}</span></p>;
+  return <p className="gd-meta" title={t('guide.cost')}><span>{c ? `${c.name}${c.model ? ' · ' + c.model : ''}` : t('guide.noConn')}</span><span>{t('guide.tips')}</span></p>;
 }
 
 // ── 빈 자리: 무엇을 물을 수 있는지 몇 줄 ──

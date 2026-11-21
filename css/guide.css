@@ -166,3 +166,17 @@
   .gd-tfoot .btn, .gd-tskip { min-height: 44px; } .gd-tkeys { display: none; } .gd-link { min-height: 44px; } .gd-x { width: 44px; height: 44px; right: 0; top: 0; }
   .gd-hintro svg { display: none; } .gd-hnav a { min-height: 44px; }
 }
+
+/* ── 입력칸: 한 글꼴 · 한 높이로 (아이콘 단추 · 보내기 · 한 줄 입력이 같은 높이에 나란히) ── */
+.gd-box { align-items: flex-end; gap: 2px; padding: 4px; border-radius: 10px; background: var(--surface); }
+.gd-box textarea { font: inherit; font-size: 15px; line-height: 22px; padding: 7px 6px; min-height: 36px; }
+.gd-box textarea::placeholder { color: var(--dim); opacity: .85; }
+.gd-box .gd-slash, .gd-box .gd-clip { width: 36px; height: 36px; margin: 0; display: grid; place-items: center; border-radius: 8px; font: 500 16px/1 inherit; font-family: inherit; color: var(--dim); }
+.gd-box .gd-send { width: 36px; height: 36px; border-radius: 8px; }
+.gd-meta { font: 400 11.5px/1.4 inherit; font-family: inherit; letter-spacing: 0; padding: 0 4px; }
+.gd-meta span { font-family: inherit; }
+@media (max-width: 820px) {
+  .gd-box textarea { font-size: 16px; line-height: 24px; padding: 8px 6px; min-height: 40px; }
+  .gd-box .gd-slash, .gd-box .gd-clip, .gd-box .gd-send { width: 40px; height: 40px; }
+  .gd-meta { font-size: 12px; }
+}
