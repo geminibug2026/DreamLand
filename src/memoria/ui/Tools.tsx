@@ -116,12 +116,18 @@ export function Tools({ st }: { st: StOpen }) {
   const fromRef = useRef<HTMLInputElement>(null), toRef = useRef<HTMLInputElement>(null), hidRef = useRef<HTMLInputElement>(null);
   const pending = M.pending(mem, msgs).length, hiddenN = msgs.filter(m => m.hidden).length;
   const file = (name: string) => `${name}-${chatTitle(chat).replace(/[\\/:*?"<>|]/g, '_').slice(0, 40)}`;
+  // 되돌릴 수 없는 일 앞에서 복구 지점을 만든다. 기록이 너무 커서 못 만들면 그냥 넘어가지 않고 파일 백업을 먼저 받게 한다 (취소하면 하지 않는다)
+  const guard = async (label: string) => {
+    if (await M.checkpoint(mem, label).catch(() => null)) return true;
+    if (!(await confirmBox(t('memoria.tools.cp.tooBig'), t('memoria.tools.cp.backupGo')))) return false;
+    download(`${file('memoria')}.json`, JSON.stringify(M.exportData(chat, mem), null, 2)); return true;
+  };
   const restore = async (p: CheckpointInfo) => {
     if (M.busy()) return toast(t('memoria.tools.cp.busyRestore'), 'err');
     const data = await M.checkpointData(chat.id, p.id), turns = mem.turns.length; if (!data) return;
     if (!(await review(M.diff(mem, data), t('memoria.tools.cp.restoreTitle', { label: p.label }), t('memoria.tools.cp.restoreNote')))) return;
     if (M.busy() || (M.get(chat.id) || mem) !== mem || mem.turns.length !== turns) return toast(t('memoria.tools.cp.changed'), 'err');
-    await M.checkpoint(mem, '복구 실행 전'); st.mem = await M.replace(chat.id, data); M.reconcile(st.mem, msgs); await M.save(st.mem); M.override(chat.id, null); st.draft = null; toast(t('memoria.tools.cp.restored'), 'ok'); st.draw();
+    if (!(await guard('복구 실행 전'))) return; st.mem = await M.replace(chat.id, data); M.reconcile(st.mem, msgs); await M.save(st.mem); M.override(chat.id, null); st.draft = null; toast(t('memoria.tools.cp.restored'), 'ok'); st.draw();
   };
   const readFile = async (choose = false): Promise<ExportRead | null> => {
     const [f] = await pickFiles({ accept: '.json,application/json' }); if (!f) return null;
@@ -164,7 +170,7 @@ export function Tools({ st }: { st: StOpen }) {
           if (!ch.length) return toast(t('memoria.tools.consolidate.none'));
           if (!(await review(ch, t('memoria.tools.consolidate.reviewTitle')))) return toast(t('memoria.tools.consolidate.notApplied'));
           if (M.busy() || (M.get(chat.id) || mem) !== mem || mem.turns.length !== turns0) return toast(t('memoria.tools.consolidate.changed'), 'err');
-          await M.checkpoint(mem, '서고 정리 전'); draft.consolidatedAt = draft.turns.length; st.mem = await M.replace(chat.id, draft); toast(t('memoria.tools.consolidate.done', { removed: c('removed'), changed: c('changed') }), 'ok'); st.draw();
+          if (!(await guard('서고 정리 전'))) return; draft.consolidatedAt = draft.turns.length; st.mem = await M.replace(chat.id, draft); toast(t('memoria.tools.consolidate.done', { removed: c('removed'), changed: c('changed') }), 'ok'); st.draw();
         } catch (e) { const err = e as Error; if (err.name === 'AbortError') throw err; console.error('[장기기억] 서고 정리 실패:', err); toast(t('memoria.tools.consolidate.fail', { error: err.message || '' }), 'err'); } finally { setCprog(''); }
       })} />
         <DBtn label={t('memoria.tools.regroup.btn')} ic="merge" cls="ghost" title={t('memoria.tools.regroup.btnTitle')} onClick={e => busyBtn(e.currentTarget, async () => { await M.checkpoint(mem, '연대기 병합 전'); const n = await M.regroup(chat, mem); await M.save(mem); toast(n == null ? t('memoria.tools.regroup.none') : t('memoria.tools.regroup.done', { count: n }), n ? 'ok' : ''); st.draw(); })} />
@@ -187,14 +193,14 @@ export function Tools({ st }: { st: StOpen }) {
           const r = await readFile(); if (!r) return; if (r.foreign) return toast(t('memoria.tools.backup.foreign'), 'err');
           const data = M.normalize(r.store, chat.id), turns = mem.turns.length; if (!(await review(M.diff(mem, data), t('memoria.tools.backup.reviewTitle'), t('memoria.tools.backup.reviewNote')))) return;
           if (M.busy() || (M.get(chat.id) || mem) !== mem || mem.turns.length !== turns) return toast(t('memoria.tools.backup.changed'), 'err');
-          await M.checkpoint(mem, '파일 복원 전'); st.mem = await M.replace(chat.id, data); M.reconcile(st.mem, msgs); await M.save(st.mem); M.override(chat.id, null); st.draft = null; toast(t('memoria.tools.backup.restored'), 'ok'); st.draw();
+          if (!(await guard('파일 복원 전'))) return; st.mem = await M.replace(chat.id, data); M.reconcile(st.mem, msgs); await M.save(st.mem); M.override(chat.id, null); st.draft = null; toast(t('memoria.tools.backup.restored'), 'ok'); st.draw();
         }} />
         <DBtn label={hiddenN ? t('memoria.tools.unhide.labelN', { count: hiddenN }) : t('memoria.tools.unhide.label')} ic="eye" cls="ghost" title={t('memoria.tools.unhide.title')} onClick={async () => { if (!hiddenN) return toast(t('memoria.tools.unhide.none')); if (!(await confirmBox(t('memoria.tools.unhide.ask', { count: hiddenN }), t('memoria.tools.unhide.ok')))) return; for (const m of msgs) { m.hidden = false; delete m.memHidden; } await persistMsgs(chat, msgs); toast(t('memoria.tools.unhide.done'), 'ok'); st.draw(); }} />
         {cfg.autoHide ? <DBtn label={t('memoria.tools.autoHide.label')} ic="eyeoff" cls="ghost" title={t('memoria.tools.autoHide.title')} onClick={async () => { const n = M.autoHide(chat, msgs); if (n) await persistMsgs(chat, msgs); toast(n ? t('memoria.tools.autoHide.done', { count: n }) : t('memoria.tools.autoHide.none')); st.draw(); }} /> : null}
         <DBtn label={t('common.reset')} ic="trash" cls="danger" title={t('memoria.tools.reset.title')} onClick={async () => {
           if (M.busy()) return toast(t('memoria.tools.reset.busy'), 'err');
           if (!(await confirmList(t('memoria.tools.reset.ask'), [t('memoria.tools.reset.line1'), t('memoria.tools.reset.line2'), t('memoria.tools.reset.line3')], t('memoria.tools.reset.ok'), true))) return;
-          await M.checkpoint(mem, '서고 초기화 전'); st.mem = await M.reset(chat.id); st.draft = null; st.log = []; let shown = 0; for (const x of msgs) if (x.memHidden) { x.hidden = false; delete x.memHidden; shown++; } if (shown) await persistMsgs(chat, msgs);
+          if (!(await guard('서고 초기화 전'))) return; st.mem = await M.reset(chat.id); st.draft = null; st.log = []; let shown = 0; for (const x of msgs) if (x.memHidden) { x.hidden = false; delete x.memHidden; shown++; } if (shown) await persistMsgs(chat, msgs);
           toast(t('memoria.tools.reset.done'), 'ok'); st.draw();
         }} /></div></Sec>
     <p className="mm-note"><b>{t('memoria.tools.note.commands')}</b>{' — '}{COMMANDS.map(([c, d, a], i) => <Fragment key={c}>{i ? ' · ' : null}<code>{a ? `${c} ${t(a)}` : c}</code>{' ' + t(d)}</Fragment>)}<br /><b>{t('memoria.tools.note.macros')}</b>{' — '}<code>{'{{memoria_story}}'}</code>{t('memoria.tools.note.macroStory')}<code>{'{{memoria_count}}'}</code>{t('memoria.tools.note.macroCount')}<br />

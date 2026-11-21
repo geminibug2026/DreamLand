@@ -58,8 +58,8 @@ export async function applyChange(ch: Change): Promise<void> {
   try {
     if (op.type === 'create') { kind = op.coll; after = build(kind, structuredClone(op.obj)); targetId = String(after.id); }
     else {
-      kind = op.type === 'entry' ? 'lore' : op.type === 'block' ? 'presets' : op.coll;
-      targetId = op.type === 'entry' ? op.loreId : op.type === 'block' ? op.presetId : op.id;
+      kind = op.type === 'entry' ? 'lore' : op.type === 'block' ? 'presets' : op.type === 'qritem' ? 'qr' : op.coll;
+      targetId = op.type === 'entry' ? op.loreId : op.type === 'block' ? op.presetId : op.type === 'qritem' ? op.setId : op.id;
       const cur = current(kind, targetId); if (!cur) throw new Error('gone');
       before = structuredClone(cur); after = cur;
       if (op.type === 'set') for (const [k, v] of Object.entries(op.fields)) setPath(after, k, structuredClone(v));
@@ -68,6 +68,10 @@ export async function applyChange(ch: Change): Promise<void> {
         if (e?.locked) throw new Error('locked');
         if (!e) { e = newEntry({ id: op.entryId }); b.entries.push(e); }
         Object.assign(e, structuredClone(op.fields));
+      } else if (op.type === 'qritem') {
+        const set = after as unknown as QrSet; let it = set.items.find(x => x.id === op.itemId);
+        if (!it) { it = newQrItem({ id: op.itemId }); set.items.push(it); }
+        Object.assign(it, structuredClone(op.fields));
       } else {
         const p = after as unknown as Preset; let bl = p.blocks.find(x => x.id === op.blockId);
         if (!bl) {
@@ -105,4 +109,4 @@ export async function undoChange(undoId: string): Promise<boolean> {
   return true;
 }
 /** 만든 자료의 id (적용된 만들기 카드에서 "열기"에 쓴다) */
-export const targetOf = (ch: Change): string => ch.op.type === 'create' ? String(ch.op.obj.id || '') : ch.op.type === 'entry' ? ch.op.loreId : ch.op.type === 'block' ? ch.op.presetId : ch.op.id;
+export const targetOf = (ch: Change): string => ch.op.type === 'create' ? String(ch.op.obj.id || '') : ch.op.type === 'entry' ? ch.op.loreId : ch.op.type === 'block' ? ch.op.presetId : ch.op.type === 'qritem' ? ch.op.setId : ch.op.id;

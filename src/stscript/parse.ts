@@ -7,7 +7,7 @@
 //   - 매크로({{…}})는 읽을 때가 아니라 돌릴 때 바꾼다
 import { t } from '../i18n';
 
-export interface Closure { kind: 'closure'; src: string; body: Cmd[]; args: string[]; /** {: … :}() — 그 자리에서 바로 돌린다 */ now?: boolean }
+export interface Closure { kind: 'closure'; src: string; body: Cmd[]; args: string[]; /** {: … :}() — 그 자리에서 바로 돌린다 */ now?: boolean; /** 원문에서 {: 가 놓인 자리 (점검용) */ at?: number }
 export type Part = string | Closure;
 /** 이름 붙은 값 · 이름 없는 값은 글자와 닫힌 블록이 섞일 수 있다 (대개는 하나) */
 export type Value = Part[];
@@ -15,7 +15,8 @@ export type Value = Part[];
 export interface Cmd { name: string; named: Record<string, Value>; unnamed: Value; raw: string; at: number; noPipe?: boolean }
 
 export class ParseError extends Error {
-  constructor(msg: string, public at: number) { super(msg); }
+  /** code: 어떤 잘못인지 (점검 도구가 언어와 상관없이 읽는다) */
+  constructor(msg: string, public at: number, public code = '') { super(msg); }
 }
 
 export function parse(src: string): Cmd[] {
@@ -33,7 +34,7 @@ class Parser {
     const out: Cmd[] = []; let noPipe = false;
     for (; ;) {
       this.ws();
-      if (this.i >= this.s.length) { if (inClosure) throw new ParseError(t('st.err.noClosureEnd'), this.i); return out; }
+      if (this.i >= this.s.length) { if (inClosure) throw new ParseError(t('st.err.noClosureEnd'), this.i, 'noClosureEnd'); return out; }
       if (inClosure && this.peek(':}')) return out;
       if (this.c === '|') { this.i++; if (this.c === '|') { this.i++; noPipe = true; } continue; }   // || : 다음 명령은 앞 결과를 받지 않는다
       if (this.peek('/*')) {   // 덩이 주석: /* … *|
@@ -55,7 +56,7 @@ class Parser {
       return { name: '#', named: {}, unnamed: [], raw: this.s.slice(at, this.i), at };
     }
     const m = /^[^\s|]+/.exec(this.s.slice(this.i));
-    if (!m) throw new ParseError(t('st.err.noName'), at);
+    if (!m) throw new ParseError(t('st.err.noName'), at, 'noName');
     let name = m[0];
     if (inClosure && name.includes(':}')) name = name.slice(0, name.indexOf(':}'));
     this.i += name.length;
@@ -100,7 +101,7 @@ class Parser {
       if (this.c === '\\' && this.i + 1 < this.s.length) { const n = this.s[this.i + 1]; out += n === '"' || n === '\\' ? n : '\\' + n; this.i += 2; continue; }
       out += this.c; this.i++;
     }
-    if (this.c !== '"') throw new ParseError(t('st.err.noQuoteEnd'), this.i);
+    if (this.c !== '"') throw new ParseError(t('st.err.noQuoteEnd'), this.i, 'noQuoteEnd');
     this.i++; return out;
   }
   closure(): Closure {
@@ -112,7 +113,7 @@ class Parser {
     const body = this.script(true);
     this.i += 2;   // ':}'
     const now = this.peek('()'); if (now) this.i += 2;
-    return { kind: 'closure', src: this.s.slice(st, this.i), body, args, ...(now ? { now: true } : {}) };
+    return { kind: 'closure', src: this.s.slice(st, this.i), body, args, at: st, ...(now ? { now: true } : {}) };
   }
   /** 이름 없는 값: 다음 | 까지. 닫힌 블록이 섞일 수 있다. top 이면 맨 글(명령 아님) */
   value(inClosure: boolean, _top: boolean, named?: Record<string, Value>): Value {

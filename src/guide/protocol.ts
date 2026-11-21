@@ -34,14 +34,23 @@ export function matchBrace(s: string, from: number): number {
   }
   return -1;
 }
+/** "tick": [1, 2] (또는 숫자 하나) → 걸음 번호들. 틀리면 undefined */
+export function ticksOf(v: unknown): number[] | undefined {
+  const list = Array.isArray(v) ? v : v == null ? [] : [v];
+  const out = list.map(Number).filter(n => Number.isInteger(n) && n > 0 && n < 100);
+  return out.length ? [...new Set(out)] : undefined;
+}
 const asCall = (v: unknown): ToolCall | string => {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return 'The block must be one JSON object.';
   const o = v as Record<string, unknown>, tool = o.tool ?? o.name;
   if (typeof tool !== 'string' || !tool.trim()) return 'Missing "tool" (a string).';
   const args = o.args ?? o.arguments ?? o.parameters ?? {};
   if (!args || typeof args !== 'object' || Array.isArray(args)) return '"args" must be an object.';
-  return { tool: tool.trim(), args: args as Record<string, unknown> };
+  const tick = ticksOf(o.tick ?? o.done);
+  return { tool: tool.trim(), args: args as Record<string, unknown>, ...(tick ? { tick } : {}) };
 };
+/** 도구 없이 계획 걸음만 표시하는 덩이: {"tick": [3, 4]} */
+const TICK_ONLY = /^\{\s*"(tick|done)"\s*:[^{}]*\}$/;
 
 /** 답에서 도구 호출을 찾는다. 울타리(```json · ```tool · ```) 안의 것을 먼저, 없으면 글 끝의 맨 {"tool": …}. 여러 개면 첫째만 받고 나머지는 버린다고 알린다 */
 export function parseReply(raw: string): Parsed {
@@ -51,16 +60,22 @@ export function parseReply(raw: string): Parsed {
   let m: RegExpExecArray | null;
   while ((m = fence.exec(src))) {
     const lang = m[1].toLowerCase(), body = m[2].trim();
-    if ((!lang || lang === 'json' || lang === 'tool' || lang === 'tool_call') && /^\{[\s\S]*["\u201c](tool|name)["\u201d]\s*:/.test(body)) found.push({ at: m.index, end: fence.lastIndex, body });
+    if ((!lang || lang === 'json' || lang === 'tool' || lang === 'tool_call') && (/^\{[\s\S]*["\u201c](tool|name)["\u201d]\s*:/.test(body) || TICK_ONLY.test(body))) found.push({ at: m.index, end: fence.lastIndex, body });
     if (!m[0].endsWith('```')) break;
   }
   if (!found.length) {
     // 울타리 없이 적은 경우: 줄 머리에서 시작하는 {"tool": 을 찾는다
-    const bare = /(^|\n)[ \t]*(\{\s*"tool"\s*:)/g;
+    const bare = /(^|\n)[ \t]*(\{\s*"(?:tool|tick)"\s*:)/g;
     while ((m = bare.exec(src))) { const at = m.index + m[1].length, open = src.indexOf('{', at), end = matchBrace(src, open); found.push({ at, end: end < 0 ? src.length : end + 1, body: src.slice(open, end < 0 ? undefined : end + 1) }); if (end < 0) break; bare.lastIndex = end + 1; }
   }
   if (!found.length) return { text: src.trim() };
-  const f = found[0], text = src.slice(0, f.at).trim();
+  // 계획 걸음만 적은 덩이({"tick": […]})는 호출이 아니다: 따로 모아 호출에 붙이거나, 호출이 없으면 끝맺음으로
+  const tickOnly = found.filter(x => TICK_ONLY.test(x.body)), calls = found.filter(x => !tickOnly.includes(x));
+  let tick: number[] | undefined;
+  for (const x of tickOnly) { try { const o = looseJson(x.body) as Record<string, unknown>; const n = ticksOf(o.tick ?? o.done); if (n) tick = [...new Set([...(tick || []), ...n])]; } catch { /* 버린다 */ } }
+  const cutTicks = (a: number, b: number) => { let out = ''; let pos = a; for (const x of tickOnly) { if (x.end <= a || x.at >= b) continue; out += src.slice(pos, Math.max(pos, x.at)); pos = Math.max(pos, x.end); } return (out + src.slice(pos, b)).trim(); };
+  if (!calls.length) return { text: cutTicks(0, src.length).replace(/\n{3,}/g, '\n\n'), ...(tick ? { tick } : {}) };
+  const f = calls[0], text = cutTicks(0, f.at);
   let val: unknown;
   try { val = looseJson(f.body); }
   catch (e) {
@@ -70,18 +85,19 @@ export function parseReply(raw: string): Parsed {
   }
   const call = asCall(val);
   if (typeof call === 'string') return { text, error: call + ' Expected: {"tool": "<name>", "args": {...}}' };
+  if (tick) call.tick = [...new Set([...(call.tick || []), ...tick])];
   const p: Parsed = { text, call };
-  if (found.length > 1) p.error = 'Only the first tool call of a message is run; the others were ignored. Send one call per message.';
+  if (calls.length > 1) p.error = 'Only the first tool call of a message is run; the others were ignored. Send one call per message.';
   return p;
 }
 
 /** 글이 흘러나오는 동안 보여 줄 부분: 도구 호출 덩이는 감춘다 (열리다 만 울타리도) */
 export function visible(raw: string): string {
   let s = raw.replace(/<think>[\s\S]*?(<\/think>|$)/g, '');
-  const i = s.search(/```[ \t]*(json|tool|tool_call)?[ \t]*\r?\n?\s*\{\s*"(tool|name)"/);
+  const i = s.search(/```[ \t]*(json|tool|tool_call)?[ \t]*\r?\n?\s*\{\s*"(tool|name|tick)"/);
   if (i >= 0) s = s.slice(0, i);
   else {
-    const j = s.search(/(^|\n)[ \t]*\{\s*"tool"\s*:/);
+    const j = s.search(/(^|\n)[ \t]*\{\s*"(tool|tick)"\s*:/);
     if (j >= 0) s = s.slice(0, j);
     // 울타리가 홀수 개면 마지막 것은 막 열린 것이다: 도구 호출이 될 수 있는 꼬리(```j · ```json { "to …)를 미리 감춘다
     else if ((s.match(/```/g) || []).length % 2) s = s.replace(/```[ \t]*(j(s(on?)?)?|t(o(ol?)?)?)?[ \t]*\r?\n?\s*\{?\s*("(t(o(ol?)?)?)?)?$/, '');
@@ -105,6 +121,8 @@ export interface RoundHooks {
   onStream?(shown: string): void;
   onSay?(text: string, raw: string): void;
   onTool?(call: ToolCall, ok: boolean, out: string): void;
+  /** 계획 걸음을 끝냈다고 표시한다 (호출에 붙은 tick · 끝맺음의 tick) */
+  onTick?(steps: number[]): void;
   aborted?(): boolean;
 }
 export interface RoundResult { rounds: number; calls: number; stopped: 'done' | 'limit' | 'abort' | 'empty' }
@@ -116,12 +134,13 @@ export async function runRounds(messages: Turn[], hooks: RoundHooks, max = 8): P
   for (let round = 1; round <= max + 1; round++) {
     if (hooks.aborted?.()) return { rounds: round - 1, calls, stopped: 'abort' };
     const last = round === max + 1;
-    if (last) messages.push({ role: 'user', content: wrapNote(`Tool budget for this turn is used up (${max} calls). Do not call a tool now. Tell the user in plain words what you found or did so far and what is left.`) });
+    if (last) messages.push({ role: 'user', content: wrapNote(`Tool budget for this turn is used up (${max} calls). Do not call a tool now. Tell the user in plain words what you found or did so far and what is left; the user can press Continue to give you another round of calls.`) });
     const raw = await hooks.ask(messages, all => hooks.onStream?.(visible(all)));
     const p = parseReply(raw);
     messages.push({ role: 'assistant', content: raw });
+    const tick = p.call?.tick || p.tick; if (tick) hooks.onTick?.(tick);
     if (p.text || p.call || !p.error) hooks.onSay?.(p.text, raw);
-    if (last || (!p.call && !p.error)) return { rounds: round, calls, stopped: last ? 'limit' : p.text ? 'done' : 'empty' };
+    if (last || (!p.call && !p.error)) return { rounds: round, calls, stopped: last ? 'limit' : p.text || p.tick ? 'done' : 'empty' };
     if (!p.call) {
       // 호출이 틀렸다: 까닭을 돌려주고 스스로 고치게 한다. 세 번 내리 틀리면 그만둔다
       if (++bad >= 3) return { rounds: round, calls, stopped: 'limit' };
