@@ -147,7 +147,7 @@ def('char-duplicate', {
   },
 });
 /** 실리태번의 캐릭터 데이터 이름으로 */
-const charData = (ch: Char) => ({
+export const charData = (ch: Char) => ({
   avatar: ch.id, name: ch.name, description: ch.description, personality: ch.personality, scenario: ch.scenario, first_mes: ch.firstMes, mes_example: ch.mesExample,
   creator_notes: ch.creatorNotes, system_prompt: ch.systemPrompt, post_history_instructions: ch.postHistory, creator: ch.creator, character_version: ch.version,
   tags: ch.tags || [], talkativeness: ch.talk ?? 0.5, fav: !!ch.fav, alternate_greetings: ch.altGreetings || [],
@@ -157,6 +157,14 @@ const charData = (ch: Char) => ({
 def('char-get', {
   help: '', alias: ['char-data'],
   async run(a, c) {
+    // LALib 꼴: /char-get index=칸 이름 — 이름 없는 값이 캐릭터(이름 · id), index= 가 칸. 결과는 한 줄 JSON 또는 그 칸
+    if (arg(a, 'index') !== undefined || (arg(a, 'char') === undefined && a.cmd.unnamed.length && str(a.unnamed).trim())) {
+      const key = str(a.unnamed).trim(), ch = key ? S.chars.find(x => low(x.id) === low(key) || low(x.name) === low(key)) : curChar();
+      if (!ch) { warn(c, key ? 'noChar' : 'noCurrentChar', { name: key }); return ''; }
+      const data: Record<string, unknown> = { ...charData(ch), data: { ...charData(ch), extensions: ch.ext || {} } }, k = arg(a, 'index');
+      const v = k ? data[k] ?? (ch as Record<string, unknown>)[k] : data;
+      return v === undefined || v === null ? '' : typeof v === 'string' ? v : JSON.stringify(v);
+    }
     const ch = targetChar(c, arg(a, 'char')); if (!ch) return '';
     const data = charData(ch) as Record<string, unknown>;
     const field = arg(a, 'field');

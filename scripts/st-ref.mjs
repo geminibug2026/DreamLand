@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/(\w:)/, '$1'));
-export const ST_FILES = ['src/stscript/commands.ts', ...['chat', 'misc', 'people', 'prompt', 'world'].map(n => `src/stscript/ext/${n}.tsx`)];
+export const ST_FILES = ['src/stscript/commands.ts', ...['chat', 'misc', 'people', 'prompt', 'world', 'lalib', 'lalib-app'].map(n => `src/stscript/ext/${n}.tsx`)];
 
 /** from 자리의 여는 괄호에서 짝이 맞는 닫는 괄호까지 (글자 · 틀 글자 · 주석 · 정규식은 건너뛴다). 못 찾으면 -1 */
 function close(s, from) {

@@ -1,0 +1,1 @@
+export{t as go}from"./router-DLb_25y0.js";
