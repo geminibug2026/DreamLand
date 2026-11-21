@@ -13,7 +13,7 @@ import './commands';
 import './ext';
 
 /** 드림랜드 기본 명령 가운데 스크립트에서 그대로 부를 수 있는 것 (나머지는 STscript 명령이 맡는다) */
-const NATIVE = new Set(['roll', 'r', 'dice', 'note', 'bg', 'help', '?']);
+export const NATIVE = new Set(['roll', 'r', 'dice', 'note', 'bg', 'help', '?']);
 let stopAll = 0, genStop = new AbortController();
 /** 돌고 있는 스크립트를 모두 멈춘다 (입력창의 멈추기 단추 · Esc). 스크립트 안의 /gen 요청도 끊는다 */
 export const stopScripts = () => { stopAll = Date.now(); genStop.abort(); genStop = new AbortController(); };

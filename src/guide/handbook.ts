@@ -57,7 +57,7 @@ export const TOPICS: Topic[] = [
   T('themes', 'look', 'themes', '꾸미기 테마 색 글꼴 배경 css theme color font 主题 字体 颜色'),
   T('backup', 'data', 'settings', '백업 내보내기 복원 자료 폴더 backup export restore data folder 备份 恢复'),
   T('guide', 'guide', undefined, '등불지기 조수 assistant helper 변경 카드 되돌리기 undo change card 掌灯人 助手 撤销'),
-  T('guideTips', 'guide', undefined, '@ 연결 칩 점검 check 새캐릭터 진단 diagnose 왜 mention slash 检查 诊断'),
+  T('guideTips', 'guide', undefined, '@ 연결 칩 점검 검사 check 새캐릭터 캐릭터 페르소나 persona 빠른답장 qr stscript mvu 변수 진단 diagnose 왜 mention slash 检查 诊断 角色 人设 变量'),
   T('tour', 'guide', undefined, '둘러보기 첫걸음 안내 tour onboarding 다시 보기 导览 引导'),
 ];
 export const GROUPS = ['start', 'people', 'chat', 'world', 'prompt', 'features', 'look', 'data', 'guide'];

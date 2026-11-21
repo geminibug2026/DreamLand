@@ -11,6 +11,7 @@ import { withDeadline, parsePhraseList, BUNDLE_EXCLUDED, resolveBundleName, swit
 import { isOocText, looksOocReply } from '../stage';
 import type { Usage } from '../craft';
 import { t } from '../../i18n';
+import { applyUndo } from './undo';
 
 /** waitForChatIdle 이 받는 일 이름(한국어 id) → 화면 글 키 */
 const WAIT_WHAT: Record<string, string> = { '기록': 'record', '연속성 검사': 'check', '턴 기록': 'turn', '장면 연출': 'direct', '요약·서고 정리': 'tidy' };
@@ -287,6 +288,9 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     }
     if (orphans.length) {
       const dead = new Set<string | undefined>(orphans.map(t => t.msgId)), idx = orphans.map(t => mem.turns.indexOf(t)), lost = new Set(idx), alive: (n: number) => boolean = n => Number.isInteger(n) && n >= 0 && n < mem.turns.length && !lost.has(n);
+      // 끝자락이 잘려 나간 경우(분기 · 스와이프 · 마지막 답변 삭제)는 턴마다 적어 둔 이전 모습으로 거꾸로 되돌린다 — 미래에 고친 인물 · 상태 · 물건이 남지 않게
+      const undone = applyUndo(mem, new Set(orphans));
+      if (undone) console.info(`[장기기억] 되돌리기: 사라진 턴 ${undone}개가 고친 인물 · 상태 · 설정 · 물건 · 관계를 그 앞 모습으로 되돌림`);
       // 인물 카드를 낳은 답변 (되돌리기가 카드의 msgId 를 비우기 전에 적어 둔다. 직접 적었거나 이어받은 카드에는 없다)
       const born = new Map(mem.cast.map(c => [c, Object.hasOwn(c, 'firstMsgId') ? c.firstMsgId || '' : (c.first === c.updated ? c.msgId || '' : '')]));
       for (const t of orphans) this.clearDerived(mem, t.msgId);

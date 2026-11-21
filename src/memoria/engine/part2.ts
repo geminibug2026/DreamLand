@@ -5,10 +5,11 @@ import type { Char as CharM } from '../../lib/types';
 import type { MemoryApi } from './api';
 import type { Part1 } from './part1';
 import type { Part3 } from './part3';
-import type { Mem, Msg, ChatM, CastCard, Bond, BondStep, MemItem, Pledge, Relation, StatusRow } from '../types';
+import type { Turn, Mem, Msg, ChatM, CastCard, Bond, BondStep, MemItem, Pledge, Relation, StatusRow } from '../types';
 import { SCOPES, NARRATOR, MEMORY_DEFAULTS, STANDING_KINDS, CHARACTER_LINES_MAX, CHARACTER_GROWTH_MAX, BOND_LOG_MAX, BOND_SETTLE_TURNS, cache, mesHashOf, list, low, cleanStr, clipStr, toSnake, num01, firstSentence, canonSlot, na, visibleProse, ekey, overlap, parseDurationDays, normKind, normLockKind, normVisibility, pledgeId, upsertRow } from './base';
 import { THREAD_KINDS, ungroundedFigures, roughTokens, groundedIn, soundsHedged, noteThreadSightings, threadTouched } from '../craft';
 import { chunkTurnsOf } from './base';
+import { snapUndo, diffUndo, trimUndo, mergeUndo, type Undo } from './undo';
 import { t as tr } from '../../i18n';
 
 /** 사서가 돌려준 JSON (읽기 전의 날것 — 칸마다 믿을 수 없다) */
@@ -350,10 +351,13 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     const failed = !ext || (!ext.turnSummary && !ext.memories.length);
     if (!ext) this.logActivity('error', tr('memoria.engine.log.turnFailed', { why: stale ? tr('memoria.engine.turn.stale') : tr('memoria.engine.turn.unreadable') }));
     if (!ext) ext = { turnSummary: '', importance: 0.3, elapsedDays: 0, memories: [], worldRules: [], entityStates: [], locks: [], characters: [], milestones: [], items: [], bonds: [], settledPledges: [], settledHow: {}, settledSaid: {}, movedPledges: [], outdated: [] };   // 사서가 실패해도 원문 발췌 기억은 남긴다
-    const turn = { msgId: ai.id, ...(batch && batch.length > 1 ? { span: Math.max(1, batch.filter(m => m.role === 'assistant').length) } : {}), hash: mesHashOf(ai), digest: ext.turnSummary, weight: ext.importance, days: cfg.storyClock !== false ? (ext.elapsedDays || 0) : 0, when: '', where: '', failed, error: failed ? (error || (answered ? tr('memoria.engine.turn.nothing') : tr('memoria.engine.turn.noAnswer'))) : '', ts: now() };
+    const turn: Turn = { msgId: ai.id, ...(batch && batch.length > 1 ? { span: Math.max(1, batch.filter(m => m.role === 'assistant').length) } : {}), hash: mesHashOf(ai), digest: ext.turnSummary, weight: ext.importance, days: cfg.storyClock !== false ? (ext.elapsedDays || 0) : 0, when: '', where: '', failed, error: failed ? (error || (answered ? tr('memoria.engine.turn.nothing') : tr('memoria.engine.turn.noAnswer'))) : '', ts: now() };
     at = mem.turns.findIndex(t => t.msgId === ai.id);   // 기다리는 사이 다른 턴이 지워졌을 수 있다 — 자리를 다시 잡는다
+    const prevUndo = at >= 0 ? mem.turns[at].undo as Undo | undefined : undefined;   // 같은 답변을 다시 기록할 때는 처음 기록하기 전 모습을 지킨다
     if (at >= 0) mem.turns[at] = turn; else { at = place(); mem.turns.splice(at, 0, turn); if (at < mem.turns.length - 1) this.shiftTurns(mem, at, 1); }
     if (stale) { await this.save(mem); return mem; }
+    // 되돌리기 기록: 이 턴이 고치기 전의 인물 · 상태 · 설정 · 물건 · 관계를 적어 둔다 — 이 답변이 나중에 지워지거나 분기로 잘려 나가면 그 앞 모습 그대로 돌아간다
+    const undoBefore = snapUndo(mem);
     // 원문 증거 기억(항상 남긴다) — 사서 없이도 회상할 수 있게. 요약 자리에는 턴 기록(없으면 첫 문장)만 넣고, 원문 발췌는 인용 칸에만 둔다.
     // 사서가 턴 기록에 원문을 그대로 복사해 온 경우(부분 문자열 일치)도 첫 문장으로 바꾼다
     const rawEpisode = cleanStr(assistantText, 240), digestIsCopy = ext.turnSummary && ext.turnSummary.length > 120 && cleanStr(assistantText, 100000).includes(ext.turnSummary);
@@ -434,6 +438,8 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     }
     mem.clockDays = mem.turns.reduce((a, t) => a + (t.days || 0), 0);
     this.prune(mem);
+    const undo = mergeUndo(diffUndo(undoBefore, mem), prevUndo); if (undo) turn.undo = undo; else delete turn.undo;
+    trimUndo(mem);
     if (!turn.failed) this.logActivity('record', tr('memoria.engine.log.recorded', { n: at + 1, count: rows.length }));
     await this.save(mem);
     if (!failed) await this.embedMemories(chat, mem, { signal }).catch(e => console.warn('[장기기억] 임베딩', e));

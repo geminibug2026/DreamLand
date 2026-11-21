@@ -32,6 +32,26 @@
 .gd-tool summary:hover { color: var(--fx-ink); } .gd-tool pre { margin: 0 0 8px; padding: 9px 10px; max-height: 220px; overflow: auto; font: 400 11px/1.5 var(--fx-mono); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--line-4); border-radius: 2px; }
 .gd-e { display: grid; gap: 6px; justify-items: start; padding: 10px 12px; border: 1px solid var(--line-1); border-radius: 2px; } .gd-e p { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 
+/* ── 할 일 목록 ── 조수가 plan 으로 세운 걸음. 기록 위에 붙어 있다 */
+.gd-plan { position: sticky; top: -16px; z-index: 1; margin: -16px -16px 14px; padding: 8px 16px 9px; background: var(--surface); border-bottom: 1px solid var(--line-2); }
+.gd-plan-h { display: flex; align-items: baseline; gap: 8px; width: 100%; min-height: 28px; text-align: left; } .gd-plan-h b { font-weight: 500; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .gd-plan-h .fx-num { margin-left: auto; font-size: 11px; color: var(--dim); flex: none; }
+.gd-plan ol { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 3px; }
+.gd-plan li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 6px; align-items: baseline; font-size: 13px; line-height: 1.5; }
+.gd-plan li i { font-style: normal; font: 400 11px var(--fx-mono); width: 13px; height: 13px; display: inline-grid; place-items: center; border: 1px solid var(--line-2); border-radius: 2px; transform: translateY(2px); }
+.gd-plan li.st-done span, .gd-plan li.st-skip span { color: var(--dim); text-decoration: line-through; text-decoration-color: var(--line-1); }
+.gd-plan li.st-done i { background: var(--fx-ink); color: var(--fx-paper); border-color: var(--fx-ink); } .gd-plan li.st-doing i { border-color: var(--fx-ink); color: var(--fx-ink); } .gd-plan li.st-doing span { font-weight: 500; }
+.gd-plan li small { font-size: 10.5px; }
+.gd-limit { border-style: dashed; } .gd-limit .btn { min-height: 32px; gap: 6px; }
+
+/* ── 시작 화면의 만들기 칩 · 입력창의 / 단추 · 분량 고르기 ── */
+.gd-tasks { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; width: 100%; margin-top: 14px; }
+.gd-task { display: grid; gap: 2px; justify-items: start; text-align: left; padding: 9px 11px; border: 1px solid var(--line-2); border-radius: 3px; min-height: 52px; transition: border-color .15s, background .15s; } .gd-task:hover { border-color: var(--line-1); background: var(--line-4); }
+.gd-task b { font-weight: 500; font-size: 13px; line-height: 1.4; } .gd-task small { font-size: 10.5px; color: var(--dim); }
+.gd-slash { flex: none; width: 30px; height: 30px; margin: 0 0 3px -6px; border-radius: 3px; font: 500 15px var(--fx-mono); color: var(--dim); } .gd-slash:hover { color: var(--fx-ink); background: var(--line-4); }
+.gd-opts { display: grid; gap: 5px; } .gd-og { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; } .gd-og small { min-width: 62px; font-size: 10.5px; }
+.gd-o { height: 26px; padding: 0 9px; border: 1px solid var(--line-2); border-radius: 13px; font-size: 12px; } .gd-o.on { background: var(--fx-ink); color: var(--fx-paper); border-color: var(--fx-ink); }
+.gd-redo { margin-left: 4px; }
+
 /* ── 변경 카드 ── 이중 괘선 틀. 상태의 강약은 잉크 농도로 */
 .gd-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; padding: 4px; min-width: 0; } .gd-card.strong { border-color: var(--line-1); }
 .gd-card.is-pending { border-color: var(--line-1); } .gd-card.is-dropped, .gd-card.is-undone { opacity: .55; } .gd-card.is-dropped .gd-fs, .gd-card.is-undone .gd-fs { display: none; }
@@ -114,7 +134,7 @@
 @media (max-width: 820px) {
   .gd-panel { width: 100vw; border-left: 0; padding-top: env(safe-area-inset-top, 0px); }
   .gd-hbtns .ibtn { width: 44px; height: 44px; } .gd-head { padding-right: 4px; gap: 9px; } .gd-status b { display: none; }
-  .gd-send { width: 44px; height: 44px; } .gd-box textarea { font-size: 16px; } .gd-tool summary { min-height: 40px; } .gd-cf .btn, .gd-bulk .btn { min-height: 44px; } .gd-more { min-height: 44px; } .gd-pop button { min-height: 44px; }
+  .gd-send { width: 44px; height: 44px; } .gd-box textarea { font-size: 16px; } .gd-tool summary { min-height: 40px; } .gd-cf .btn, .gd-bulk .btn { min-height: 44px; } .gd-more { min-height: 44px; } .gd-pop button { min-height: 44px; } .gd-slash { width: 40px; height: 40px; } .gd-o { height: 34px; }
   .gd-offer { right: 12px; left: 12px; width: auto; bottom: calc(74px + var(--safe-b, 0px)); }
   .gd-tfoot .btn, .gd-tskip { min-height: 44px; } .gd-tkeys { display: none; } .gd-link { min-height: 44px; } .gd-x { width: 44px; height: 44px; right: 0; top: 0; }
   .gd-hintro svg { display: none; } .gd-hnav a { min-height: 44px; }

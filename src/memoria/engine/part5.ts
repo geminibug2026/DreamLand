@@ -395,12 +395,12 @@ export const part5: Part5 & ThisType<MemoryApi> = {
 
   // ════════ 복구 지점 · 비교 · 백업 ════════
   snapshot: mem => copy(mem),
-  /** 지금 서고를 복구 지점으로 보관한다 (최근 3개 · 합계 6MB) */
+  /** 지금 서고를 복구 지점으로 보관한다 (최근 3개 · 하나 16MB · 합계 40MB 까지. 넘으면 null — 부른 쪽이 파일 백업을 권한다) */
   async checkpoint(mem, label) {
-    const data = JSON.stringify(copy(mem)), bytes = new Blob([data]).size; if (bytes > 3 * 1024 * 1024) return null;
+    const data = JSON.stringify(copy(mem)), bytes = new Blob([data]).size; if (bytes > 16 * 1024 * 1024) return null;
     const key = 'memcp:' + mem.id, rec: CheckpointRow = (await DB.get('kv', key) as CheckpointRow | undefined) || { id: key, list: [] };
     const point: CheckpointPoint = { id: uid(), label: String(label).slice(0, 100), at: now(), turn: mem.turns.length, bytes, data }; let total = 0;
-    rec.list = [point, ...(rec.list || [])].slice(0, 3).filter((p, i) => i === 0 || (total += p.bytes) + bytes <= 6 * 1024 * 1024);
+    rec.list = [point, ...(rec.list || [])].slice(0, 3).filter(p => (total += p.bytes || 0) <= 40 * 1024 * 1024 || p === point);
     await DB.put('kv', rec); emit('memory:checkpoint', mem.id);
     return point;
   },
