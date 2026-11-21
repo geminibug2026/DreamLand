@@ -106,7 +106,11 @@ function paragraph(line: string, style: string): string {
 // sandbox 에 allow-same-origin 을 주지 않으므로 안의 스크립트는 앱 저장소 · 쿠키 · 키에 닿지 못한다
 const noFrames = () => !!(S.settings as { security?: { noFrames?: boolean } }).security?.noFrames;
 function isPage(lang: string, code: string) {
-  if (noFrames() || (lang && !/^(html?|xml|)$/i.test(lang))) return false;
+  if (noFrames()) return false;
+  // 실리태번 JS-Slash-Runner(酒馆助手)와 같은 기준: 언어 표시와 상관없이 'html>' · '<head>' · '<body' 가 든 코드 블럭은 화면으로 그린다
+  if (['html>', '<head>', '<body'].some(tag => code.includes(tag))) return true;
+  // 드림랜드가 예전부터 그리던 것 (html 표시이거나 표시 없는 블럭의 <script> · <!doctype> · 스타일 붙은 HTML) — 이미 쓰던 카드가 깨지지 않게 둔다
+  if (lang && !/^(html?|xml)$/i.test(lang)) return false;
   return /<(!doctype|html|body|head|script)\b/i.test(code) || (/<style[\s>]/i.test(code) && /<(div|section|main|table)\b/i.test(code));
 }
 const frameSrc = new Map<string, string>();
@@ -167,9 +171,10 @@ export function render(text: unknown, { bubbles = true, style, prose = true }: R
   const HTML_BLOCK = /^\s*<(div|table|details|style|section|article|center|ul|ol|pre|blockquote|figure|svg|p|h[1-6]|span|font|img|br|hr)\b/i;
   while (i < lines.length) {
     const line = lines[i];
-    if (/^\s*```/.test(line)) {
-      const lang = line.trim().slice(3).trim(); const buf: string[] = []; i++;
-      while (i < lines.length && !/^\s*```/.test(lines[i])) buf.push(lines[i++]);
+    const fence = line.match(/^\s*(```+|~~~+)/);   // 실리태번(showdown)처럼 ``` 와 ~~~ 둘 다 코드 블럭
+    if (fence) {
+      const mark = fence[1], lang = line.trim().slice(mark.length).trim(), close = new RegExp('^\\s*' + (mark[0] === '`' ? '`' : '~') + '{' + mark.length + ',}\\s*$'); const buf: string[] = []; i++;
+      while (i < lines.length && !close.test(lines[i])) buf.push(lines[i++]);
       i++;
       const code = buf.join('\n');
       // 실리태번 JS 러너처럼: 코드블럭 안의 HTML 문서는 격리된 화면(iframe)으로 그린다
