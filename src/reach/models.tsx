@@ -84,6 +84,7 @@ function Picker({ chat, close }: { chat: RChat; close: () => void }) {
   const pick = async (c: Conn, model: string) => { await chooseFor(chat, c, model); redrawChat(); toast(t('reach.pick.chosen', { model: shortModel(model) || model }), 'ok'); close(); };
   const rowsOf = (list: { conn: Conn; m: string }[]): Row[] => list.map(x => ({ ...x, rank: rankModel(x.m, term, isStar(x.conn.id, x.m), true) })).filter(x => x.rank >= 0);
   const starred = rowsOf(stars().map(s => ({ conn: S.get('conns', s.c)!, m: s.m })).filter(x => x.conn));
+  const mixed = rowsOf(livePool().map(x => ({ conn: S.get('conns', x.c)!, m: x.m })));
   const saved = conns.map(c => ({ c, list: rowsOf([...new Set([c.model, ...((c as RConn).saved || [])].filter(Boolean))].map(mm => ({ conn: c, m: mm }))) })).filter(g => g.list.length);
   const all: Row[] = src ? (cachedModels(src) || PROVIDERS[src.provider]?.models || []).map(mm => ({ conn: src, m: mm, rank: rankModel(mm, term, isStar(src.id, mm), mm === src.model || ((src as RConn).saved || []).includes(mm)) })).filter(x => x.rank >= 0).sort((a, b) => a.rank - b.rank || a.m.localeCompare(b.m)) : [];
   const exact = term && src && !all.some(x => x.m === term);
@@ -116,6 +117,7 @@ function Picker({ chat, close }: { chat: RChat; close: () => void }) {
       <label className="rc-search"><Icon name="search" size={15} /><input ref={inp} value={q} placeholder={t('reach.pick.searchPh')} aria-label={t('reach.pick.searchPh')} spellCheck={false} autoComplete="off" onChange={e => setQ(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && term && src) void pick(src, all.length === 1 ? all[0].m : term); }} /></label>
     </div>
     <div className="rc-pick-list">
+      {mixed.length ? sec(t('reach.pick.secMix'), 'in the mix', <div className="fx-rows">{mixed.map((x, i) => row(x, 'x' + i))}</div>) : null}
       {starred.length ? sec(t('reach.pick.secStar'), 'starred', <div className="fx-rows">{starred.map((x, i) => row(x, 's' + i))}</div>) : null}
       {saved.length ? sec(t('reach.pick.secSaved'), 'saved', saved.map(g => <div className="rc-group" key={g.c.id}><div className="fx-rows">{g.list.map((x, i) => row(x, g.c.id + i, { forget: true }))}</div></div>)) : null}
       {sec(t('reach.pick.secAll'), 'all models', <>
