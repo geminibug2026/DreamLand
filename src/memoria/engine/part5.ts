@@ -7,7 +7,12 @@ import type { Mem, MemItem, Msg, ChatM, Plan, Relation, Bond, BondStep, CastNote
 import { KINDS, LOCKS, VIS, SCOPES, NARRATOR, PUBLIC_ONLY, SHELVES, SHELF_LABELS, DOSSIER_MAX, CHARACTER_LINES_MAX, CHARACTER_GROWTH_MAX, empty, clamp01, str, list, snake, clip, low, cleanStr, toSnake, canonSlot, copy, cleanRecord, visibleProse, prose, ekey, cleanMultiline, parseLoose, fmtDays, ago, normKind, normLockKind, normVisibility, overrides, audits, lasts, freezes, recallRuns, PACKET_HEADER, PACKET_FOOTER } from './base';
 import * as MP from '../prompts';
 import { t as tr } from '../../i18n';
-import { stripPhrases, pushRecallHistory } from '../craft';
+import { stripPhrases, pushRecallHistory, findConflicts, isEndedValue } from '../craft';
+import type { Claim, Conflict } from '../craft';
+import { VOLATILE } from './base';
+
+/** 견줄 기록 한 줄 — src: 어디서 왔나, name: 상태의 인물 · 캐논의 키 · 인물 카드의 이름, field: 상태 칸 · 카드 칸 · 기억 종류, show: 화면에 보일 값 */
+export interface RecordClaim extends Claim { src: 'status' | 'canon' | 'cast' | 'memory'; name: string; field: string; show: string }
 
 /** AI 에게 보내는 메시지 한 줄 (글 또는 조각 목록) */
 export interface PromptPart { type?: string; text?: string; [k: string]: unknown }
@@ -112,6 +117,12 @@ export interface Part5 {
   carry(mem: Mem, src: CarrySource, label?: string): CarryCount;
   importCarryOver(mem: Mem, src: CarrySource, label?: string): CarryCount;
   dossierChars(mem: Mem): number;
+  /** 서로 맞지 않는지 견줄 기록들 — 지금도 그렇다고 말하는 것만 (지나간 일 · 꺼 둔 것 · 믿음 · 장면 휘발 값 · 일어난 사건은 뺀다) */
+  conflictClaims(mem: Mem): RecordClaim[];
+  /** 같은 인물에 대해 서로 다른 말을 하는 기록 쌍 ("둘 다 맞아요"로 넘긴 것은 뺀다) */
+  currentConflicts(mem: Mem): Conflict<RecordClaim>[];
+  /** 어긋난 두 기록 가운데 한쪽을 거둔다 — 기억은 꺼 두고, 상태 · 캐논은 지우고, 인물 카드는 그 칸을 비운다 */
+  dropClaim(mem: Mem, key: string): boolean;
 }
 
 export const part5: Part5 & ThisType<MemoryApi> = {
@@ -409,6 +420,7 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     for (const k of ['memories', 'canon', 'status', 'cast', 'bonds', 'items', 'milestones', 'dossier', 'chunks', 'arcs'] as const) for (const x of m[k]) { if (!x.id) x.id = uid(); delete x.av; delete x.acv; }
     m.memories = m.memories.filter(x => typeof x.summary === 'string'); m.cast = m.cast.filter(x => typeof x.name === 'string'); m.dossier = m.dossier.filter(x => Array.isArray(x.chunks));
     for (const x of m.memories) if (x.knowers != null && !Array.isArray(x.knowers)) x.knowers = [];
+    if (m.conflictIgnore != null && !(Array.isArray(m.conflictIgnore) && m.conflictIgnore.every(x => typeof x === 'string'))) delete m.conflictIgnore;
     for (const c of m.cast) {   // 남긴 말 · 달라진 점 · 바탕 — 모양이 어긋난 것만 걷어 낸다
       c.lines = list(c.lines).filter(l => l && typeof l.text === 'string' && l.text.trim()).slice(-CHARACTER_LINES_MAX); c.growth = list(c.growth).filter(g => g && typeof g.text === 'string' && g.text.trim()).slice(-CHARACTER_GROWTH_MAX);
       if (c.core != null && typeof c.core !== 'string') c.core = '';
@@ -515,4 +527,38 @@ export const part5: Part5 & ThisType<MemoryApi> = {
   },
   importCarryOver(mem, src, label) { return this.carry(mem, src, label); },
   dossierChars: mem => (mem.dossier || []).reduce((n, d) => n + d.chunks.reduce((a, c) => a + c.length, 0), 0),
+
+  // ════════ 서로 맞지 않는 기록 — 같은 사람에 대해 서로 다른 말을 하는 캐논 · 상태 · 인물 카드 · 사실 기억 (모델을 부르지 않는다) ════════
+  conflictClaims(mem) {
+    const claims: RecordClaim[] = [], people = mem.cast.filter(c => !c.disabled), aboutOf = (name: string) => ekey(this.canonName(mem, name));
+    const firstPerson = (text: string) => { const l = low(text), c = people.find(p => [p.name, ...(p.aka || [])].some(n => n && String(n).length >= 2 && l.includes(low(n)))); return c ? ekey(c.name) : ''; };
+    const years = (v: unknown) => /^\d{1,3}$/.test(String(v ?? '').trim()) ? `${String(v).trim()}살` : String(v ?? '');   // 숫자만 적힌 나이는 "살"을 붙여 잣대에 걸리게
+    for (const s of mem.status) {
+      if (s.claim === 'belief' || s.expired != null || VOLATILE.has(canonSlot(s.slot)) || isEndedValue(s.value) || low(s.entity) === 'scene') continue;
+      // 칸 이름(habit · injury …)은 견주는 글에 넣지 않는다 — 값끼리 견준다
+      claims.push({ key: `s:${s.id}`, about: aboutOf(s.entity), text: canonSlot(s.slot) === 'age' ? years(s.value) : s.value, turn: s.turn || 0, src: 'status', name: s.entity, field: s.slot, show: s.value });
+    }
+    for (const r of mem.canon) { const about = firstPerson(`${r.key} ${r.value}`); if (about) claims.push({ key: `r:${r.id}`, about, text: r.value, turn: r.turn || 0, src: 'canon', name: r.key, field: r.scope, show: r.value }); }
+    for (const c of people) for (const field of ['age', 'appearance', 'occupation'] as const) {
+      const v = c[field]; if (!v) continue;
+      claims.push({ key: `c:${c.id}:${field}`, about: ekey(c.name), text: field === 'age' ? years(v) : String(v), turn: c.updated || 0, src: 'cast', name: c.name, field, show: String(v) });
+    }
+    for (const m of mem.memories) {
+      if (m.disabled || m.retired || !['fact', 'preference'].includes(m.kind)) continue;
+      for (const e of (m.entities || []).slice(0, 3)) claims.push({ key: `m:${m.id}`, about: aboutOf(e), text: m.summary, turn: m.turn ?? 0, src: 'memory', name: e, field: m.kind, show: m.summary });
+    }
+    return claims;
+  },
+  currentConflicts(mem) {
+    const names = mem.cast.flatMap(c => [c.name, ...(c.aka || [])]);
+    return findConflicts(this.conflictClaims(mem), { names, ignore: mem.conflictIgnore || [] }).filter(x => x.a.key.split(':').slice(0, 2).join(':') !== x.b.key.split(':').slice(0, 2).join(':'));   // 한 인물 카드의 서로 다른 칸끼리는 견주지 않는다
+  },
+  dropClaim(mem, key) {
+    const [kind, id, field] = String(key).split(':');
+    if (kind === 'm') { const m = mem.memories.find(x => x.id === id); if (!m) return false; m.disabled = true; return true; }
+    if (kind === 's') { const n = mem.status.length; mem.status = mem.status.filter(x => x.id !== id); return mem.status.length < n; }
+    if (kind === 'r') { const n = mem.canon.length; mem.canon = mem.canon.filter(x => x.id !== id); return mem.canon.length < n; }
+    if (kind === 'c') { const c = mem.cast.find(x => x.id === id); if (!c || !['age', 'appearance', 'occupation'].includes(field)) return false; c[field] = null; return true; }
+    return false;
+  },
 };

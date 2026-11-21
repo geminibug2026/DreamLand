@@ -7,7 +7,7 @@ import type { CastCard, Cfg, ChatM, Mem, MemItem, Msg, Summary, SummarySrc, Turn
 import { G, NARRATOR, PUBLIC_ONLY, PAST_QUERY_RE, str, list, clip, low, cleanStr, visibleProse, sanitizeRecord, ekey, vec, cos, cueText, indexText, vecOf, cleanMultiline, normScope, sameKnowledgeScope, storyFossilWeight, grams, lexical, gramOverlap, calibrate, parseLoose, toDays, ago, dcache, dvec, normLockKind, normVisibility, overrides, pendingEmbeds, queryEmbedCache, preps, overlap, canonSlot, VOLATILE, STANDING_KINDS, SETTLED_AT_SUMMARY, recallRuns } from './base';
 import * as MP from '../prompts';
 import { chunkTurnsOf } from './base';
-import { THREAD_KINDS, withDeadline, hasPhrase, splitClosedLine, isEndedValue, ungroundedFigures, recallCooldown } from '../craft';
+import { THREAD_KINDS, withDeadline, hasPhrase, splitClosedLine, isEndedValue, ungroundedFigures, recallCooldown, rareQueryWords, rareStrong } from '../craft';
 import { t as tr } from '../../i18n';
 
 type Chat = ChatM | null | undefined;
@@ -45,7 +45,7 @@ export interface SceneSnapshot { location: string; date: string; time: string; p
 /** 가장 최근 상태창 */
 export type LatestStatus = { msgId: string; mesId: number } & StatusBar;
 /** 회상 한 줄에 곁들이는 것 */
-export interface MemoryLineOpts { ages?: Map<number, number> | null; T?: number; banned?: string[] | null; notes?: Map<string, string> | null }
+export interface MemoryLineOpts { ages?: Map<number, number> | null; T?: number; banned?: string[] | null; notes?: Map<string, string> | null; /** 기억 id → 지금 장면에 있지만 이 비밀을 모르는 사람들 */ unaware?: Map<string, string[]> | null }
 /** 인물 한 줄 — brief: 장면 밖 인물 · sceneNow: 지금 장면에 있다 */
 export type CastLine = CastCard & { brief?: boolean; sceneNow?: boolean };
 
@@ -160,7 +160,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     if (!parts.length) return { text: '', unverified: [] };
     const cfg = this.cfg(), open = threads ? mem.pledges.filter(l => l.status === 'active' && THREAD_KINDS.includes(normLockKind(l.kind))).sort((a, b) => (a.turn || 0) - (b.turn || 0)).slice(0, 16) : [];
     const threadTags = new Map(open.map((l, i) => [`o${i + 1}`, l]));
-    const threadBlock = open.length ? `Open threads on file:\n${[...threadTags].map(([tag, l]) => `[${tag}] ${l.summary}`).join('\n')}\n` : '';
+    const threadBlock = open.length ? `Open threads on file:\n${[...threadTags].map(([tag, l]) => `[${tag}] ${l.summary}${l.latest?.text ? ` — now: ${l.latest.text}` : ''}`).join('\n')}\n` : '';
     const threadDirective = open.length
       ? '\n\nTHREAD CHECK: after the record, add ONE final line "CLOSED: o2, o5" naming every listed open thread that these turns (or the earlier records shown) have clearly settled, answered, carried out, abandoned, or made pointless. A thread nobody will plausibly return to — a passing errand, a small question already overtaken by events — counts as closed. Write "CLOSED: none" when all are still live. This line is filing metadata, not part of the record.'
       : '';
@@ -658,6 +658,8 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     // 이 대화에서 회상하지 않을 말 — 그 말이 든 기억은 후보에서 뺀다 (지우지 않는다. 고정한 기억은 사용자의 뜻이라 그대로)
     const mute = list<string>(mem.recallMute).map(w => low(w)).filter(w => w.length >= 2);
     const muted = (m: MemItem) => mute.length > 0 && !m.pinned && mute.some(w => low(`${m.summary} ${m.quote || ''} ${(m.hints || []).join(' ')}`).includes(w));
+    // 드문 낱말: 입력의 낱말 가운데 서고 전체에서 몇 기억에만 나오는 것 — 그 기억을 가리키는 강한 단서 (기억이 8개 미만이면 쓰지 않는다)
+    const indexLower = new Map(active.map(m => [m.id, low(indexText(m))])), rareWords = rareQueryWords(query, [...indexLower.values()]);
     for (const m of active) {
       if (muted(m)) continue;
       if (m.visibility !== 'public' && !this.knowsMemory(m, auth)) { out.hidden++; continue; }
@@ -682,21 +684,25 @@ export const part3: Part3 & ThisType<MemoryApi> = {
       const hitEnts = (m.entities || []).filter(e => e && ql.includes(low(e))), entityHit = hitEnts.length > 0;
       const hintHit = (m.hints || []).some(h => { const hl = low(h); return hl.length >= 2 && ql.includes(hl) && !hitEnts.some(e => low(e).includes(hl)); });   // 이미 맞은 인물 이름에 통째로 든 단서는 같은 일치의 중복이다
       const presenceHit = !entityHit && present.size > 0 && (m.entities || []).some(e => present.has(low(e)));
+      // 드문 낱말이 닿았는가 — 흔한 낱말이 겹치는 것(문맥 유사도의 잡음)보다 확실히 앞서도록 (그 낱말을 가진 기억은 몇 개뿐이다)
+      const idxLower = indexLower.get(m.id) || '', rareHits = rareWords.filter(r => idxLower.includes(r.word)), rare = rareStrong(rareHits);
+      const rareBoost = Math.min(0.2, rareHits.reduce((a, r) => a + 0.03 * r.idf, 0)) + (rare ? 0.06 : 0);
       // 관문: 사전확률만으로는 절반의 의미 유사도라도 있어야 통과 (무관한 기억이 쏟아지지 않게)
-      if (c < cfg.minCosine && lex < 0.035 && !entityHit && !hintHit && !(presenceHit && c >= cfg.minCosine * 0.5)) continue;
+      if (c < cfg.minCosine && lex < 0.035 && !entityHit && !hintHit && !rareHits.length && !(presenceHit && c >= cfg.minCosine * 0.5)) continue;
       // 지나간 기억(잃어버린 물건, 이미 치른 약속, 뒤집힌 사실)은 평소 회상에서 빠진다. 사용자가 그 일을 직접 꺼내거나 옛일을 되짚을 때만 후보가 되고, 실릴 때 "지금은 이렇다"가 붙는다
-      const direct = hintHit || this.raisedDirectly(m, ql, knownNames);
+      const direct = hintHit || rare || this.raisedDirectly(m, ql, knownNames);
       if (m.retired && !pastQ && !direct) continue;
       const age = Math.max(0, T - 1 - (m.turn ?? T));
       let fossil = this.fossilWeight(age, cfg);   // 화석화: 턴 나이와 이야기 나이 중 더 오래됐다고 말하는 쪽 (10년을 건너뛰면 직전 턴도 옛일)
       if (ages) fossil = Math.min(fossil, storyFossilWeight(ages.get(m.turn!) ?? 0));
       if ((m.importance || 0) >= 0.75) fossil = Math.max(fossil, 0.7);   // "잊으면 이야기가 깨지는 급" 기억은 깊은 화석화를 면한다
-      const rec = pastQ ? 0.55 : Math.exp(-age / 18) * fossil, bonus = (entityHit ? 0.08 : 0) + (hintHit ? 0.07 : 0) + (presenceHit ? 0.05 : 0);
-      const cool = coolHistory.length ? recallCooldown(coolHistory, m.id, { before: coolBefore, direct: direct || pastQ, echoed: (m.echoes || 0) > 0 && !((m.coldRun || 0) > 0) }) : 1;
+      // 옛일을 되짚는 질문이거나, 그 기억에만 있는 드문 낱말로 직접 가리켰으면 나이로 깎지 않는다 · 연달아 실렸어도 미루지 않는다
+      const rec = pastQ ? 0.55 : rare ? Math.max(0.55, Math.exp(-age / 18) * fossil) : Math.exp(-age / 18) * fossil, bonus = (entityHit ? 0.08 : 0) + (hintHit ? 0.07 : 0) + (presenceHit ? 0.05 : 0) + rareBoost;
+      const cool = coolHistory.length && !rare ? recallCooldown(coolHistory, m.id, { before: coolBefore, direct: direct || pastQ, echoed: (m.echoes || 0) > 0 && !((m.coldRun || 0) > 0) }) : 1;
       const score = (0.62 * Math.max(0, c) + 0.18 * lex + 0.12 * (m.importance || 0) + 0.08 * rec + bonus) * cool * (m.retired ? 0.7 : 1);
       if (score < cfg.minScore) continue;
       cands.push({ m, score, v: v.sum });
-      out.trace.set(m.id, { mode: 'direct', score, parts: { cos: Math.max(0, c), lex, imp: m.importance || 0, rec, bonus, sem }, reason: [cool < 0.8 && tr('memoria.engine.why.cooled'), m.retired && tr('memoria.engine.why.retired'), entityHit && tr('memoria.engine.why.entity'), hintHit && tr('memoria.engine.why.hint'), presenceHit && tr('memoria.engine.why.present'), lex >= 0.035 && tr('memoria.engine.why.lexical'), c >= cfg.minCosine && tr('memoria.engine.why.context')].filter(Boolean).join(' · ') || tr('memoria.engine.why.score') });
+      out.trace.set(m.id, { mode: 'direct', score, parts: { cos: Math.max(0, c), lex, imp: m.importance || 0, rec, bonus, sem }, reason: [rareHits.length && tr('memoria.engine.why.rare', { words: rareHits.map(r => r.word).join(', ') }), cool < 0.8 && tr('memoria.engine.why.cooled'), m.retired && tr('memoria.engine.why.retired'), entityHit && tr('memoria.engine.why.entity'), hintHit && tr('memoria.engine.why.hint'), presenceHit && tr('memoria.engine.why.present'), lex >= 0.035 && tr('memoria.engine.why.lexical'), c >= cfg.minCosine && tr('memoria.engine.why.context')].filter(Boolean).join(' · ') || tr('memoria.engine.why.score') });
     }
     cands.sort((a, b) => b.score - a.score);
     if (cfg.associative !== false) {
@@ -793,10 +799,12 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     return notes;
   },
   /** 회상 한 줄. x: { ages(이야기 시계), T(지금까지의 턴 수), banned(삼갈 표현), notes(당시 기준 꼬리표) } */
-  formatMemoryLine(m, withExcerpt, { ages = null, T = 0, banned = null, notes = null } = {}) {
+  formatMemoryLine(m, withExcerpt, { ages = null, T = 0, banned = null, notes = null, unaware = null } = {}) {
     const visNorm = normVisibility(m.visibility);
-    // 비밀은 "누가 아는가"까지 적어야 지켜진다 — 소유자만 적으면 함께 아는 인물까지 모르는 척하게 된다
-    const others = (m.knowers || []).filter(k => ekey(k) !== ekey(m.owner || '')), known = others.length ? ` · also known to ${others.join(', ')}` : '';
+    // 비밀은 "누가 아는가"까지 적어야 지켜진다 — 소유자만 적으면 함께 아는 인물까지 모르는 척하게 된다.
+    // 지금 장면에 있는데 모르는 사람은 이름으로 짚는다 — "모르는 사람이 있다"보다 "이 사람이 모른다"가 지키기 쉽다
+    const others = (m.knowers || []).filter(k => ekey(k) !== ekey(m.owner || '')), blind = unaware?.get(m.id) || [];
+    const known = (others.length ? ` · also known to ${others.join(', ')}` : '') + (blind.length ? ` · not known to ${blind.join(', ')}` : '');
     const vis = visNorm === 'public' ? '' : ` [${visNorm}${m.owner ? `:${m.owner}` : ''}${known}]`;
     // 인용은 짧을 때만 — 원문 발췌 기억(episode_raw)의 인용은 요약이 이미 담고 있어 싣지 않는다. 40턴이 지난 옛 대사는 모델이 되풀이하기 쉬워 요약만 남긴다 (고정 · 핵심 기억은 예외).
     // 삼갈 표현이 든 옛 대사는 걷어내면 말이 깨지므로 인용째로 뺀다

@@ -38,7 +38,18 @@ export interface Bond{ id: string; from: string; to: string; log: BondStep[]; di
 export interface RowHistory { id: string; turn: number; createdTurn?: number; prev?: string | null; prevTurn?: number | null; prevMsgId?: string; msgId?: string; reMsgId?: string; manual?: boolean }
 export interface CanonRow extends RowHistory { key: string; value: string; scope: string; scopeName?: string; [k: string]: unknown }
 export interface StatusRow extends RowHistory { entity: string; slot: string; value: string; claim?: string; owner?: string; /** 요약 때 "더는 맞지 않는다"고 본 턴 (다시 적히면 지워진다) */ expired?: number | null; [k: string]: unknown }
-export interface Pledge { id: string; kind: string; summary: string; status: string; turn?: number; msgId?: string; manual?: boolean; resolvedTurn?: number | null; resolution?: string | null; priority?: number; owner?: string; createdTurn?: number; created?: number; suggestResolved?: boolean; suggestTurn?: number | null; suggestBy?: string; resolvedBy?: string; updMsgId?: string; reMsgId?: string; prev?: { summary: string; status: string; priority?: number; owner?: string } | null; prevTurn?: number | null; sleptTurn?: number | null; [k: string]: unknown }
+export interface Pledge { id: string; kind: string; summary: string; status: string; turn?: number; msgId?: string; manual?: boolean; resolvedTurn?: number | null; resolution?: string | null; priority?: number; owner?: string; createdTurn?: number; created?: number; suggestResolved?: boolean; suggestTurn?: number | null; suggestBy?: string; resolvedBy?: string; updMsgId?: string; reMsgId?: string; prev?: { summary: string; status: string; priority?: number; owner?: string } | null; prevTurn?: number | null; sleptTurn?: number | null;
+  /** 사서가 "풀린 듯"이라며 적은 경위 (근거가 모자라 닫지 않았을 때 — ✔로 확정하면 해소 경위가 된다) */
+  suggestHow?: string | null;
+  /** 닫히지 않았지만 움직인 떡밥의 "지금" 한 줄 — turn · msgId 는 그 줄을 적은 턴과 답변, was 는 그 전 줄 (답변이 지워지면 되돌린다) */
+  latest?: PledgeNow | null;
+  /** 이 떡밥이 마지막으로 언급된 턴과 그 답변, 그 전 값 · 언급으로 깨어난 턴과 그 답변 (계산으로 적는다) */
+  seenTurn?: number | null; seenPrev?: number | null; seenBy?: string; wokeTurn?: number | null; wokeBy?: string;
+  /** 기한 — 그 말이 나온 턴(0부터)에서 작중 며칠 뒤까지인가 */
+  due?: PledgeDue | null;
+  [k: string]: unknown }
+export interface PledgeNow { text: string; turn: number; msgId?: string; was?: PledgeNow | null }
+export interface PledgeDue { turn: number; in: number; msgId?: string; was?: PledgeDue | null }
 /** 연대기로 합치기 전 묶음의 경계 (되살릴 때 쓴다) */
 export interface SummarySrc { from: number; to: number; text: string }
 export interface Summary { id: string; from: number; to: number; text: string; carried?: boolean; carriedFrom?: string; saga?: boolean; src?: SummarySrc[]; av?: unknown; avm?: string; /** 검수에서 걸린 곳 — 원문에서 찾지 못한 숫자, 빠진 전환점(★tN) */ unverified?: string[]; [k: string]: unknown }
@@ -59,6 +70,8 @@ export interface Mem {
   hideNoticed?: boolean;
   /** 이 대화에서 회상하지 않을 말 — 그 말이 든 기억 · 옛 묶음은 회상으로 싣지 않는다 (지우지 않는다) */
   recallMute?: string[];
+  /** "둘 다 맞아요"로 넘긴 서로 다른 기록 쌍 ('키|키') — 다시 묻지 않는다 */
+  conflictIgnore?: string[];
   /** 옛 서고의 이름 (chunks · chunked 로 옮긴다) */
   chapters?: Summary[]; chaptered?: number;
   [k: string]: unknown;
@@ -78,6 +91,11 @@ export interface Cfg {
   prompts: { supervisor: string; chunk: string; arc: string; [k: string]: string };
   recallWaitSec: number; yieldToChat: boolean; watchUpdates: boolean; splitInjection: boolean; stableRefreshTurns: number; styleGuard: boolean; recallQuotes: boolean; voiceSamples: number;
   /** 회상 쉬어가기 — 앞선 답변들에 연달아 실린 기억은 순서를 미룬다 */ recallCooldown: boolean;
+  /** OOC(이야기 밖) 대화는 기록하지 않는다 */ skipOoc?: boolean;
+  /** 약속 · 기한을 작중 시간으로 센다 (사서에게 기한을 함께 묻는다) */ dueDates?: boolean;
+  /** 장면에 있는 인물의 상태를 사람마다 한 줄로 */ presentNow?: boolean;
+  /** 대사에서 서로 부르는 말을 모아 싣는다 */ addressTerms?: boolean;
+  /** 비밀을 아는 사람은 그 자리에 있던 사람만, 장면에 있지만 모르는 사람을 이름으로 */ guardSecrets?: boolean;
   bannedPhrases: string; banInChat: boolean; banTell: boolean; threadSleepTurns: number; eraKeep: number;
   statusMode: string; statusPattern: string; statusInject: boolean; qrMode: string; replyCheck: boolean;
   bundles: Record<string, Record<string, unknown>>; bundleByOwner: Record<string, string>; activeBundle: string; bundleBase: Record<string, unknown> | null;

@@ -8,6 +8,7 @@ import { BATCH_TOKENS, G, PROMPTS, NARRATOR, PUBLIC_ONLY, LANG_DIRECTIVES, MEMOR
 import * as MP from '../prompts';
 import { findStatusBars, statusOneLine, isPauseDirective, isPauseMessage, verifyIssues } from '../scene';
 import { withDeadline, parsePhraseList, BUNDLE_EXCLUDED, resolveBundleName, switchBundle, noteUsage } from '../craft';
+import { isOocText, looksOocReply } from '../stage';
 import type { Usage } from '../craft';
 import { t } from '../../i18n';
 
@@ -372,7 +373,12 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     });
     for (const l of mem.pledges) {
       if (l.status === 'resolved' && (l.resolvedBy === msgId || (bySummary(l.resolvedBy, l.resolvedTurn, l) && l.resolution === SETTLED_AT_SUMMARY))) { l.status = 'active'; l.resolvedTurn = null; l.resolvedBy = ''; }   // 이 턴에서 "해소됨" 판정을 받은 서약은 다시 활성으로
-      if (l.suggestResolved && (l.suggestBy === msgId || (at >= 0 && !l.suggestBy && l.suggestTurn === at))) { l.suggestResolved = false; l.suggestTurn = null; l.suggestBy = ''; }
+      if (l.suggestResolved && (l.suggestBy === msgId || (at >= 0 && !l.suggestBy && l.suggestTurn === at))) { l.suggestResolved = false; l.suggestTurn = null; l.suggestBy = ''; l.suggestHow = null; }
+      // 이 답변이 붙인 "지금" 한 줄 · 언급 · 깨움 · 기한은 그 답변과 함께 물린다
+      while (l.latest && l.latest.msgId === msgId) l.latest = l.latest.was || null;
+      if (msgId && l.seenBy === msgId) { l.seenTurn = l.seenPrev ?? null; l.seenPrev = null; l.seenBy = ''; }
+      if (msgId && l.wokeBy === msgId) { if (l.status === 'active') { l.status = 'dormant'; l.sleptTurn = l.sleptTurn ?? l.wokeTurn ?? null; } l.wokeTurn = null; l.wokeBy = ''; }
+      while (msgId && l.due && l.due.msgId === msgId) l.due = l.due.was || null;
       if (l.resolution && l.status !== 'resolved') l.resolution = null;
     }
     // 인물 카드를 통째로 지울지는 여기서 보지 않는다(맞추기가 판단한다). 이 턴에 바뀐 칸만 한 단계 이전 값으로 되돌린다
@@ -400,7 +406,8 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     for (const m of mem.memories) if (m.retired && !m.retired.manual && m.retired.turn >= 0) mv(m.retired, 'turn');   // 직접 물린 것(-1)은 턴 번호가 아니다
     for (const k of ['canon', 'status'] as const) mem[k].forEach(x => mv(x, 'turn', 'prevTurn', 'createdTurn'));
     mem.status.forEach(x => mv(x, 'expired'));
-    mem.pledges.forEach(x => mv(x, 'turn', 'prevTurn', 'createdTurn', 'created', 'resolvedTurn', 'suggestTurn', 'sleptTurn'));
+    mem.pledges.forEach(x => mv(x, 'turn', 'prevTurn', 'createdTurn', 'created', 'resolvedTurn', 'suggestTurn', 'sleptTurn', 'seenTurn', 'seenPrev', 'wokeTurn'));
+    for (const l of mem.pledges) { for (let x = l.latest; x; x = x.was) mv(x, 'turn'); for (let x = l.due; x; x = x.was) if (x.turn >= 0) mv(x, 'turn'); }   // "지금" 줄 · 기한의 턴 (직접 정한 기한 -1 은 턴 번호가 아니다)
     mem.items.forEach(x => mv(x, 'turn', 'first', 'updated', 'dormant'));
     for (const c of mem.cast) { mv(c, 'first', 'updated', 'prevTurn', 'coreTurn'); for (const l of c.lines || []) if (l.msgId) mv(l, 'turn'); for (const g of c.growth || []) if (g.msgId) mv(g, 'turn'); }   // 직접 적은 줄(턴 0)은 턴 번호가 아니다
     for (const b of mem.bonds || []) for (const e of b.log || []) { mv(e, 'turn'); if (e.was) mv(e.was, 'turn'); }
@@ -436,8 +443,12 @@ export const part1: Part1 & ThisType<MemoryApi> = {
   // ════════ 이야기가 아닌 메시지 · 상태창 (기록이 쓰는 최소한) ════════
   /** 이야기가 아닌 메시지인가 — 롤플을 멈추고 뽑은 막간. 기록 · 회상 질의 · 연속성 검사 · 상태창에서 모두 뺀다. 사용자가 정한 값(memSide)이 자동 판정보다 우선한다 */
   isSideMessage(msg) {
-    const mode = this.cfg().qrMode || 'side'; if (!msg || mode === 'keep') return false;
+    if (!msg) return false;
+    const cfg = this.cfg(), mode = cfg.qrMode || 'side';
     if (msg.memSide === true) return true; if (msg.memSide === false) return false;
+    // 이야기 밖 대화(OOC): "OOC", "(OOC", "((" 로 시작하는 말과, 그런 질문에 이야기 밖으로 답한 것 — 기록하지 않는다 (설정 skipOoc. 켜고 끌 때마다 다시 본다)
+    if (cfg.skipOoc !== false && (msg.memOoc === true || isOocText(msgText(msg)))) return true;
+    if (mode === 'keep') return false;
     if (msg.type === 'comment') return true;
     return mode === 'all' && (msg.type === 'narrator' || msg.viaCommand === true || msg.role === 'system');
   },
@@ -461,8 +472,23 @@ export const part1: Part1 & ThisType<MemoryApi> = {
    * 명령어가 만든 메시지(viaCommand)는 직전에 알려 둔 생성 지시문이 "롤플을 멈춰라"였는지로, 그 밖의 답변은 바로 앞 사용자 메시지가 시스템 지시 모양의 멈춤 문구인지로 가린다 (그 사용자 메시지도 함께 막간이 된다)
    */
   tagSideMessage(chat, msgs, msg, type = '') {
-    if (!msg || msg.role === 'user' || (this.cfg().qrMode || 'side') === 'keep') return false;
+    if (!msg || msg.role === 'user') return false;
     if (typeof msg.memSide === 'boolean') return msg.memSide;
+    // 이야기 밖 질문(OOC) 바로 뒤의 답이 괄호로 싼 이야기 밖 대답이면 표시해 둔다 (스스로 OOC 로 시작하는 답은 표시 없이도 가려진다)
+    if (msg.memOoc === undefined && this.cfg().skipOoc !== false && !isOocText(msgText(msg))) {
+      const at = (msgs || []).indexOf(msg);
+      for (let i = at - 1; i >= 0 && i >= at - 3; i--) {
+        const u = msgs![i]; if (!u || u.role === 'system') continue;
+        if (u.role === 'user' && isOocText(msgText(u)) && looksOocReply(msgText(msg))) {
+          msg.memOoc = true;
+          if (chat) Promise.resolve(this.saveMsgMarks(chat, [msg])).catch(e => console.warn('[장기기억] OOC 표시 저장', e));
+          this.logActivity('side', t('memoria.engine.log.ooc', { n: at + 1 }));
+          return true;
+        }
+        break;
+      }
+    }
+    if ((this.cfg().qrMode || 'side') === 'keep') return false;
     const id = (msgs || []).indexOf(msg), marked = [msg]; let side = null;
     if (msg.viaCommand === true || type === 'command') {
       const recent = G.lastQuietPrompt && Date.now() - G.lastQuietPrompt.at < 30 * 60 * 1000 ? G.lastQuietPrompt : null;
@@ -487,7 +513,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     const saved = await S.msgs(chat.id); let n = 0;
     for (const m of marked || []) {
       const row = (saved || []).find(x => x.id === m?.id); if (!row || row === m) continue;
-      for (const k of ['memSide', 'memCheck']) { if (m![k] === undefined) { if (k in row) { delete row[k]; n++; } } else { row[k] = m![k]; n++; } }
+      for (const k of ['memSide', 'memCheck', 'memOoc']) { if (m![k] === undefined) { if (k in row) { delete row[k]; n++; } } else { row[k] = m![k]; n++; } }
     }
     if (n) await DB.put('msgs', { id: chat.id, list: saved });
     return n;
