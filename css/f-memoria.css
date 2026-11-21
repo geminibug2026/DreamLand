@@ -333,3 +333,15 @@
 /* 지나간 기억 · 상태 · 물건의 「지나감 ↺」 배지(누르면 되살린다) · 요약 검수 표시(⚠) */
 .mm-revive { background: none; font-family: inherit; cursor: pointer; } .mm-revive:hover { border-color: var(--accent); color: var(--accent); } .mm-slot.mm-dormant .mm-slot-k { opacity: .6; }
 .mm-st-card-top small.mm-st-check { flex: none; color: var(--bad); letter-spacing: 0; cursor: help; }
+
+/* 서로 맞지 않는 기록 · 기한 · 떡밥의 "지금" */
+.mm-conflicts { display: flex; flex-direction: column; gap: 12px; }
+.mm-conflict { display: flex; flex-direction: column; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--ink-line, var(--line)); }
+.mm-conflict:last-child { padding-bottom: 0; border-bottom: 0; }
+.mm-conflict-why { font-size: .84em; color: var(--bad); }
+.mm-conflict-side { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 8px 10px; border: 1px solid var(--ink-line, var(--line)); }
+.mm-conflict-side small { flex: 1 1 100%; color: var(--dim); font-size: .8em; }
+.mm-conflict-side span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.mm-conflict-side .btn { flex: none; }
+.mm-row .mm-due { color: var(--accent); font-variant-numeric: tabular-nums; }
+.mm-lock-now { color: var(--dim); }

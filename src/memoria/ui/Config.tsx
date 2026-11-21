@@ -133,6 +133,14 @@ export function Config({ st }: { st: St }) {
       <Tog k="storyClock" label={t('memoria.config.track.storyClock.label')} hint={t('memoria.config.track.storyClock.hint')} /></Grid>
     </Sec>
 
+    <Sec title={t('memoria.config.aid.title')} desc={t('memoria.config.aid.desc')}><Grid>
+      <Tog k="skipOoc" label={t('memoria.config.aid.skipOoc.label')} hint={t('memoria.config.aid.skipOoc.hint')} after={re} />
+      <Tog k="dueDates" label={t('memoria.config.aid.dueDates.label')} hint={t('memoria.config.aid.dueDates.hint')} after={re} />
+      <Tog k="presentNow" label={t('memoria.config.aid.presentNow.label')} hint={t('memoria.config.aid.presentNow.hint')} after={re} />
+      <Tog k="addressTerms" label={t('memoria.config.aid.addressTerms.label')} hint={t('memoria.config.aid.addressTerms.hint')} after={re} />
+      <Tog k="guardSecrets" label={t('memoria.config.aid.guardSecrets.label')} hint={t('memoria.config.aid.guardSecrets.hint')} after={re} /></Grid>
+    </Sec>
+
     <Sec title={t('memoria.config.model.title')} desc={t('memoria.config.model.desc')}
       tools={<Btn label={t('memoria.config.test')} ic="plug" cls="ghost" title={t('memoria.config.testTitle')} onClick={e => {
         const b = e.currentTarget; toast(t('memoria.config.model.testing')); void busyBtn(b, async () => {

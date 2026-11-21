@@ -4,6 +4,9 @@ import { Btn } from '../../kit';
 import { confirmBox, openModal, type FormDefs, toast } from '../../ui';
 import { bondMapSvg } from '../story';
 import type { Bond, BondStep, CanonRow, CastCard, CastNote, DossierDoc, Item, Pledge, StatusRow } from '../types';
+import type { RecordClaim } from '../engine/part5';
+import type { ConflictWhy } from '../craft';
+import { dueLabel, storyDays } from '../stage';
 import { Chip, Del, Ib, Ico, Meter, None, SceneLine, Sec, editBox, mergeCast, safe, type StOpen, Revive } from './parts';
 import { GROWTH_MAX, Gi, HAND, LINES_MAX, Mx, bondNow, bondViewRows, cut, storyState } from './viewsShared';
 import * as memMod from '../../lib/memory';
@@ -62,13 +65,27 @@ const pledgeDefs = (): FormDefs => [{ k: 'kind', label: t('memoria.world.pledge.
   { k: 'summary', label: t('memoria.world.content'), type: 'area', rows: 3, ph: t('memoria.world.pledge.f.summaryPh') }, { k: 'priority', label: t('memoria.world.pledge.f.priority'), type: 'select', opts: [[1, t('memoria.world.pledge.p1')], [2, t('memoria.world.pledge.p2')], [3, t('memoria.world.pledge.p3')]] }];
 const stDefs = (): FormDefs => [{ k: 'entity', label: t('memoria.world.status.f.entity'), half: true }, { k: 'slot', label: t('memoria.world.status.f.slot'), half: true, ph: 'location · outfit · condition · mood · activity …' }, { k: 'value', label: t('memoria.world.status.f.value'), type: 'area', rows: 2 }, { k: 'claim', label: t('memoria.world.status.f.claim'), type: 'select', opts: [['objective', t('memoria.world.status.objective')], ['belief', t('memoria.world.status.beliefOpt')]], half: true }, { k: 'owner', label: t('memoria.world.status.f.owner'), half: true }];
 const isScene = (n: unknown) => String(n).toLowerCase() === 'scene';
+/** 기한 꼬리표 (화면용) — 남은 날 · 오늘 · 지난 날 */
+function dueText(mem: { turns: { days?: number }[] }, p: Pledge): string {
+  const d = p.due; if (!d || !(d.in > 0)) return '';
+  const at = storyDays(mem.turns.map(x => x.days)), now = at.length ? at[at.length - 1] : 0, start = d.turn >= 0 && d.turn < at.length ? at[d.turn] : d.turn < 0 ? 0 : now, left = start + d.in - now;
+  if (!dueLabel(left)) return '';
+  return left > 0.75 ? t('memoria.world.pledge.dueLeft', { n: Math.max(1, Math.round(left)) }) : left >= -0.5 ? t('memoria.world.pledge.dueToday') : t('memoria.world.pledge.dueOver', { n: Math.max(1, Math.round(-left)) });
+}
+const WHY_LABEL = (w: ConflictWhy) => ({ age: t('memoria.world.conflict.why.age'), height: t('memoria.world.conflict.why.height'), weight: t('memoria.world.conflict.why.weight'), negation: t('memoria.world.conflict.why.negation') })[w] || '';
+function claimLabel(c: RecordClaim): string {
+  if (c.src === 'status') return t('memoria.world.conflict.src.status', { name: c.name, field: c.field });
+  if (c.src === 'canon') return t('memoria.world.conflict.src.canon', { key: c.name });
+  if (c.src === 'cast') return t('memoria.world.conflict.src.cast', { name: c.name, field: ({ age: t('memoria.world.cast.f.age'), appearance: t('memoria.world.cast.f.appearance'), occupation: t('memoria.world.cast.f.occupation') } as Record<string, string>)[c.field] || c.field });
+  return t('memoria.world.conflict.src.memory', { kind: c.field === 'preference' ? t('memoria.kindName.preference') : t('memoria.kindName.fact') });
+}
 const pline = (ic: ReactNode, title: string, ...body: ReactNode[]) => <p className="mm-pline" title={title}>{ic}<span>{Children.toArray(body)}</span></p>;
 const row = (key: string, cls: string, text: ReactNode, ...tools: ReactNode[]) => <div key={key} className={`mm-row${cls ? ' ' + cls : ''}`}><div className="mm-row-text">{text}</div>{Children.toArray(tools)}</div>;
 
 export function World({ st }: { st: StOpen }) {
   const { LOCKS, SCOPES, DOSSIER_MAX, chunkDossier } = memMod, { uid, now, pickFiles } = core, M = Mx();
   const LOCK_KO: Record<string, string> = { ...LOCKS, foreshadow: LOCKS.foreshadow || t('memoria.world.pledge.foreshadow') };
-  const mem = st.mem, cfg = M.cfg(), T = mem.turns.length, bonds = mem.bonds || [];
+  const mem = st.mem, cfg = M.cfg(), T = mem.turns.length, bonds = mem.bonds || [], Mc = M as typeof M & { currentConflicts(m: typeof mem): { a: RecordClaim; b: RecordClaim; why: ConflictWhy; pair: string }[]; dropClaim(m: typeof mem, key: string): boolean };
   type Flag = 'locked' | 'disabled';
   function tog<X extends { locked?: boolean; disabled?: boolean }>(x: X, key: Flag, onT: string, offT: string, onI = 'eye', offI = 'eyeoff', after?: (x: X) => void) {
     return <Ib name={x[key] ? offI : onI} title={x[key] ? offT : onT} onClick={async () => { x[key] = !x[key]; await M.save(mem); st.draw(); after?.(x); }} cls={x[key] && key === 'locked' ? 'on' : ''} />;
@@ -123,24 +140,33 @@ export function World({ st }: { st: StOpen }) {
   </Sec>;
 
   // ── 서약
+  // 기한은 "지금부터 작중 며칠 뒤"로 받는다 — 이미 있는 기한은 지금 남은 날로 보여 준다 (비우면 기한 없음)
+  const leftDays = (p?: Pledge) => { if (!p?.due) return ''; const at = storyDays(mem.turns.map(x => x.days)), now = at.length ? at[at.length - 1] : 0, start = p.due.turn >= 0 && p.due.turn < at.length ? at[p.due.turn] : p.due.turn < 0 ? 0 : now; return String(Math.max(0, Math.round((start + p.due.in - now) * 10) / 10)); };
   const editPledge = async (p?: Pledge) => {
-    const d = await editBox<{ kind: string; summary: string; priority: number | string }>(p ? t('memoria.world.pledge.edit') : t('memoria.world.pledge.add'), p ? { kind: p.kind, summary: p.summary, priority: p.priority || 2 } : { kind: 'loose_end', summary: '', priority: 2 }, pledgeDefs()); if (!d) return;
+    const defs = [...pledgeDefs(), ...(cfg.dueDates !== false && cfg.storyClock !== false ? [{ k: 'dueIn', label: t('memoria.world.pledge.f.due'), half: true, ph: t('memoria.world.pledge.f.duePh') }] : [])];
+    const d = await editBox<{ kind: string; summary: string; priority: number | string; dueIn: string }>(p ? t('memoria.world.pledge.edit') : t('memoria.world.pledge.add'), p ? { kind: p.kind, summary: p.summary, priority: p.priority || 2, dueIn: leftDays(p) } : { kind: 'loose_end', summary: '', priority: 2, dueIn: '' }, defs); if (!d) return;
     const summary = cut(d.summary, 200); if (!summary) return toast(t('memoria.world.contentEmpty'), 'err'); const rec = { kind: d.kind, summary, priority: +d.priority || 2 };
+    const dueIn = Number(String(d.dueIn ?? '').replace(',', '.').trim()), before = leftDays(p);
     if (p) Object.assign(p, rec, { manual: true }); else mem.pledges.push({ id: 'p' + (mem.pledges.reduce((a, x) => Math.max(a, +String(x.id).replace(/\D/g, '') || 0), 0) + 1), ...rec, status: 'active', owner: null as unknown as undefined, manual: true, turn: T, createdTurn: T });   // 수기 서약은 스와이프 롤백에서 보호
+    const row = p || mem.pledges[mem.pledges.length - 1];
+    if (String(d.dueIn ?? '').trim() !== before) row.due = String(d.dueIn ?? '').trim() && Number.isFinite(dueIn) && dueIn >= 0 ? { turn: T - 1, in: Math.max(1 / 24, dueIn) } : null;   // 직접 정한 기한은 답변에 묶이지 않는다 (스와이프로 사라지지 않게)
     await M.save(mem); st.draw(); if (!p) toast(t('memoria.world.pledge.added'), 'ok');
   };
   const flip = async (p: Pledge) => {
     p.status = p.status === 'active' ? 'resolved' : 'active';
     if (p.status === 'active') { p.turn = T; p.resolvedTurn = null; p.resolvedBy = null as unknown as undefined; p.resolution = null; p.sleptTurn = null; }   // 깨운 떡밥은 방금 다뤄진 것으로 친다 — 곧바로 다시 잠들지 않게
-    p.suggestResolved = false; p.suggestTurn = null; p.suggestBy = null as unknown as undefined;   // 직접 결정했으니 사서 의견은 정리
+    else if (p.suggestResolved && p.suggestHow) p.resolution = p.suggestHow;   // 사서가 "풀린 듯"이라며 적어 둔 경위가 있으면 확정할 때 그대로 남긴다
+    p.suggestResolved = false; p.suggestTurn = null; p.suggestBy = null as unknown as undefined; p.suggestHow = null;   // 직접 결정했으니 사서 의견은 정리
     await M.save(mem); st.draw();
   };
   const rank = (p: Pledge) => p.status === 'resolved' ? 2 : p.status === 'dormant' ? 1 : 0;
   const pledgeSec = <Sec title={t('memoria.world.pledge.title')} desc={t('memoria.world.pledge.desc')} tools={<Btn label={t('common.add')} ic="plus" cls="ghost" title={t('memoria.world.pledge.add')} onClick={() => void editPledge()} />}>
     <div className="mm-rows">{[...mem.pledges].sort((a, b) => rank(a) - rank(b) || (a.priority || 2) - (b.priority || 2)).map(p => row(p.id, p.status === 'resolved' ? 'done' : p.status === 'dormant' ? 'mm-dormant' : '', <><em className={`mm-lock l-${safe(p.kind)}`}>{LOCK_KO[p.kind] || p.kind}</em>
       {p.status === 'dormant' ? <em className="mm-tag dash" title={t('memoria.world.pledge.dormantTitle')}>{t('memoria.world.pledge.dormant')}</em> : null} <span className="mm-pledge-text">{p.summary}</span><small>{` (P${p.priority || 2}${p.turn != null ? ` · t${p.turn + 1}` : ''}${p.manual ? t('memoria.world.pledge.manual') : ''})`}</small>
+      {p.status !== 'resolved' && dueText(mem, p) ? <em className="mm-tag mm-due" title={t('memoria.world.pledge.dueTitle')}>{dueText(mem, p)}</em> : null}
+      {p.latest?.text && p.status !== 'resolved' ? <small className="mm-lock-now" title={t('memoria.world.pledge.nowTitle')}>{` ${t('memoria.world.pledge.now', { text: p.latest.text })}`}</small> : null}
       {p.resolution && p.status === 'resolved' ? <small className="mm-resolution" title={t('memoria.world.pledge.resolution')}>{` — ${p.resolution}`}</small> : null}
-      {p.suggestResolved && p.status === 'active' ? <em className="mm-suggest" title={t('memoria.world.pledge.suggestTitle')}><Ico name="bell" size={12} />{t('memoria.world.pledge.suggest')}</em> : null}</>,
+      {p.suggestResolved && p.status === 'active' ? <em className="mm-suggest" title={p.suggestHow ? t('memoria.world.pledge.suggestHowTitle', { how: p.suggestHow }) : t('memoria.world.pledge.suggestTitle')}><Ico name="bell" size={12} />{t('memoria.world.pledge.suggest')}</em> : null}</>,
       <Ib name={p.status === 'active' ? 'check' : 'refresh'} title={p.status === 'active' ? t('memoria.world.pledge.markResolved') : p.status === 'dormant' ? t('memoria.world.pledge.wake') : t('memoria.world.pledge.reactivate')} onClick={() => flip(p)} />, <Ib name="edit" title={t('common.edit')} onClick={() => editPledge(p)} />, <Del st={st} arr="pledges" x={p} what={t('memoria.world.pledge.what')} />))}
       {!mem.pledges.length ? <None text={t('memoria.world.pledge.empty')} /> : null}</div>
   </Sec>;
@@ -171,5 +197,17 @@ export function World({ st }: { st: StOpen }) {
     <div className="mm-rows">{mem.dossier.map(d => row(d.id, d.disabled ? 'off' : '', <><b>{d.title}</b><small>{t('memoria.world.doc.stats', { n: d.chunks.length, chars: d.chunks.reduce((n, c) => n + c.length, 0).toLocaleString() })}</small></>, <Ib name="note" title={t('memoria.world.doc.view')} onClick={() => showDoc(d)} />, tog(d, 'disabled', t('memoria.world.excludeInj'), t('memoria.world.include')), <Del st={st} arr="dossier" x={d} what={t('memoria.world.doc.what')} />))}
       {!mem.dossier.length ? <None text={t('memoria.world.doc.empty')} /> : null}</div>{chars ? <div className="mm-budget"><span className="mm-tok">{t('memoria.world.doc.usage', { chars: chars.toLocaleString(), max: DOSSIER_MAX.toLocaleString() })}</span><Meter v={chars} max={DOSSIER_MAX} cls="big" /></div> : null}
   </Sec>;
-  return <div className="mm-view">{castSec}{bondSec}{itemSec}{pledgeSec}{canonSec}{statusSec}{dossierSec}</div>;
+  // ── 서로 맞지 않는 기록 — 찾은 것이 있을 때만 맨 위에
+  const conflicts = Mc.currentConflicts ? Mc.currentConflicts(mem) : [];
+  const keepSide = async (x: { a: RecordClaim; b: RecordClaim }, keep: 'a' | 'b') => {
+    await M.checkpoint(mem, t('memoria.world.conflict.checkpoint')).catch(e => console.warn('[장기기억] 복구 지점', e));   // 고르기 전 상태는 복구 지점에 남긴다
+    Mc.dropClaim(mem, (keep === 'a' ? x.b : x.a).key); await M.save(mem); M.reinjectNow?.(st.chat); st.draw(); toast(t('memoria.world.conflict.kept'), 'ok');
+  };
+  const bothRight = async (pair: string) => { mem.conflictIgnore = [...new Set([...(mem.conflictIgnore || []), pair])].slice(-200); await M.save(mem); st.draw(); };
+  const conflictSec = conflicts.length ? <Sec title={t('memoria.world.conflict.title')} desc={t('memoria.world.conflict.desc')}>
+    <div className="mm-conflicts">{conflicts.slice(0, 20).map(x => <article key={x.pair} className="mm-conflict"><b className="mm-conflict-why">{WHY_LABEL(x.why)}</b>
+      {(['a', 'b'] as const).map(side => { const c = x[side]; return <div key={side} className="mm-conflict-side"><small>{claimLabel(c)}{c.turn ? ` · t${c.turn + 1}` : ''}</small><span>{c.show}</span><Btn label={t('memoria.world.conflict.keep')} cls="ghost" onClick={() => void keepSide(x, side)} /></div>; })}
+      <div className="row"><Btn label={t('memoria.world.conflict.both')} cls="ghost" title={t('memoria.world.conflict.bothTitle')} onClick={() => void bothRight(x.pair)} /></div></article>)}</div>
+  </Sec> : null;
+  return <div className="mm-view">{conflictSec}{castSec}{bondSec}{itemSec}{pledgeSec}{canonSec}{statusSec}{dossierSec}</div>;
 }

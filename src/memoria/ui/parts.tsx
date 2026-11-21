@@ -107,9 +107,10 @@ export function SceneLine({ m, sc = Memory.scene(m) }: { m: Mem; sc?: SceneNow }
 /** 숫자 띠 + 지금 장면 (개요 맨 위) */
 export function Stats({ st }: { st: StOpen }) {
   const m = st.mem, failed = m.turns.filter(t => t.failed).length, { fmtDays } = memMod;
+  let conflicts = 0; try { conflicts = Memory.currentConflicts(m).length; } catch (e) { console.warn('[장기기억] 서로 다른 기록 찾기', e); }   // 같은 사람에 대해 서로 다른 말을 하는 기록 — 세계 탭에서 고른다
   // 숫자 띠 — 누르면 그 탭으로 간다 (장면 패널의 숫자 띠와 같은 짝)
   const tile = (n: ReactNode, l: string, tab: string, cls?: string) => <button type="button" className={cls} onClick={() => { st.tab = tab; st.draw(); }}><b>{String(n)}</b><span>{l}</span></button>;
-  return <div className="mm-top"><div className="mm-stats">{tile(m.turns.length, t('memoria.parts.stat.turns'), 'summaries')}{tile(m.memories.length, t('memoria.parts.stat.memories'), 'memories')}{tile(m.cast.length, t('memoria.parts.stat.cast'), 'world')}{tile(m.pledges.filter(p => p.status === 'active').length, t('memoria.parts.stat.pledges'), 'world')}{tile(m.chunks.length + m.arcs.length, t('memoria.parts.stat.summaries'), 'summaries')}{tile(m.clockDays >= 1 / 24 ? fmtDays(m.clockDays) : '–', t('memoria.parts.stat.clock'), 'summaries')}{failed ? tile(failed, t('memoria.parts.stat.failed'), 'tools', 'bad') : null}</div>
+  return <div className="mm-top"><div className="mm-stats">{tile(m.turns.length, t('memoria.parts.stat.turns'), 'summaries')}{tile(m.memories.length, t('memoria.parts.stat.memories'), 'memories')}{tile(m.cast.length, t('memoria.parts.stat.cast'), 'world')}{tile(m.pledges.filter(p => p.status === 'active').length, t('memoria.parts.stat.pledges'), 'world')}{tile(m.chunks.length + m.arcs.length, t('memoria.parts.stat.summaries'), 'summaries')}{tile(m.clockDays >= 1 / 24 ? fmtDays(m.clockDays) : '–', t('memoria.parts.stat.clock'), 'summaries')}{failed ? tile(failed, t('memoria.parts.stat.failed'), 'tools', 'bad') : null}{conflicts ? tile(conflicts, t('memoria.parts.stat.conflicts'), 'world', 'bad') : null}</div>
     <SceneLine m={m} /></div>;
 }
 type ArrKey = 'memories' | 'canon' | 'status' | 'pledges' | 'cast' | 'chunks' | 'arcs' | 'items' | 'milestones' | 'dossier' | 'bonds';

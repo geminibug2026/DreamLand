@@ -7,7 +7,7 @@ import type { Part1 } from './part1';
 import type { Part3 } from './part3';
 import type { Mem, Msg, ChatM, CastCard, Bond, BondStep, MemItem, Pledge, Relation, StatusRow } from '../types';
 import { SCOPES, NARRATOR, MEMORY_DEFAULTS, STANDING_KINDS, CHARACTER_LINES_MAX, CHARACTER_GROWTH_MAX, BOND_LOG_MAX, BOND_SETTLE_TURNS, cache, mesHashOf, list, low, cleanStr, clipStr, toSnake, num01, firstSentence, canonSlot, na, visibleProse, ekey, overlap, parseDurationDays, normKind, normLockKind, normVisibility, pledgeId, upsertRow } from './base';
-import { THREAD_KINDS, ungroundedFigures, roughTokens } from '../craft';
+import { THREAD_KINDS, ungroundedFigures, roughTokens, groundedIn, soundsHedged, noteThreadSightings, threadTouched } from '../craft';
 import { chunkTurnsOf } from './base';
 import { t as tr } from '../../i18n';
 
@@ -15,13 +15,13 @@ import { t as tr } from '../../i18n';
 export interface RawExtraction {
   digest?: unknown; turn_summary?: unknown; weight?: unknown; importance?: unknown; time_passed?: unknown; memories?: unknown; settled?: unknown;
   canon?: unknown; world_rules?: unknown; status?: unknown; entity_states?: unknown; pledges?: unknown; locks?: unknown; cast?: unknown; characters?: unknown;
-  bonds?: unknown; milestones?: unknown; items?: unknown; outdated?: unknown;
+  bonds?: unknown; milestones?: unknown; items?: unknown; outdated?: unknown; moved?: unknown;
 }
 /** 정제한 사서의 답 (sanitizeExtraction) */
 export interface ExtMemory { kind: string; summary: string; excerpt: string | null; importance: number; entities: string[]; tags: string[]; hints?: string[]; visibility: string; owner: string | null; knowers?: string[] }
 export interface RuleInput { scope: string; scopeName?: string; key: string; value: string }
 export interface StateInput { entity: string; slot: string; value: string; claim?: string; owner?: string }
-export interface LockInput { kind: string; summary: string; status: string; priority?: number; owner?: string; manual?: boolean }
+export interface LockInput { kind: string; summary: string; status: string; priority?: number; owner?: string; manual?: boolean; /** 기한 — 이 교환이 끝난 때부터 작중 며칠 뒤 (0 = 없음) */ dueIn?: number }
 /** upsertCast 가 받는 인물 정보 — 사서의 답 · 화면의 직접 입력 둘 다 */
 export interface CastInput {
   name?: string; aka?: string[]; aliases?: string[]; provisional?: boolean; locked?: boolean; traits?: string[]; relationships?: Relation[];
@@ -39,8 +39,12 @@ export interface Extraction {
   turnSummary: string; importance: number; elapsedDays: number; memories: ExtMemory[]; worldRules: Required<RuleInput>[]; entityStates: Required<StateInput>[];
   locks: (Required<Omit<LockInput, 'manual'>>)[]; characters: ExtCast[]; milestones: Required<MilestoneInput>[]; items: Required<ItemInput>[]; bonds: Required<BondInput>[];
   settledPledges: string[]; settledHow: Record<string, string>;
-  /** 지나간 기억: 프롬프트에 준 [m1] 꼬리표 가운데 이번 교환으로 더는 맞지 않게 된 것과, 지금은 어떤지 */
-  outdated: { tag: string; now: string }[];
+  /** 서약이 풀렸다는 근거로 사서가 장면에서 옮긴 글귀 (원문에 있어야 닫는다) */
+  settledSaid?: Record<string, string>;
+  /** 닫히지 않았지만 이번 교환에서 움직인 떡밥 — 지금 어디까지 왔는지 한 구절, 새로 생긴 기한(작중 일수) */
+  movedPledges?: { tag: string; now: string; dueIn: number }[];
+  /** 지나간 기억: 프롬프트에 준 [m1] 꼬리표 가운데 이번 교환으로 더는 맞지 않게 된 것과, 지금은 어떤지 · 장면에서 옮긴 근거 글귀 */
+  outdated: { tag: string; now: string; said?: string }[];
 }
 /** 사서의 답 속 한 줄 (정제 전) */
 type RawRow = { [k: string]: unknown };
@@ -154,10 +158,15 @@ export const part2: Part2 & ThisType<MemoryApi> = {
       });
     }
     // 서약 자동 해소: 프롬프트에 준 [p1] 꼬리표 목록에서 이번 턴에 해소된 것. "p1" 또는 {"tag":"p1","how":"어떻게 풀렸는지"} — 복선은 어떻게 회수됐는지가 기록의 절반이다
-    out.settledHow = {};
-    out.settledPledges = arr(raw?.settled).map(t => { const tag = String((t && typeof t === 'object' ? t.tag : t) || '').trim().toLowerCase(), how = t && typeof t === 'object' ? cleanStr(t.how, 200) : ''; if (tag && how) out.settledHow[tag] = how; return tag; }).filter(Boolean).slice(0, 8);
+    out.settledHow = {}; out.settledSaid = {};
+    out.settledPledges = arr(raw?.settled).map(t => {
+      const obj = t && typeof t === 'object', tag = String((obj ? t.tag : t) || '').trim().toLowerCase(), how = obj ? cleanStr(t.how, 200) : '', said = obj ? cleanStr(t.said, 120) : '';
+      if (tag && how) out.settledHow[tag] = how; if (tag && said) out.settledSaid![tag] = said; return tag;
+    }).filter(Boolean).slice(0, 8);
+    // 진전: 아직 열려 있지만 이번 교환에서 움직인 떡밥 — "지금은 어디까지 왔는지" 한 구절, 또는 이번에 생긴 기한
+    out.movedPledges = arr(raw?.moved).map(t => ({ tag: String(t?.tag || '').trim().toLowerCase(), now: cleanStr(t?.now, 160), dueIn: parseDurationDays(t?.due) })).filter(t => /^p\d{1,2}$/.test(t.tag) && (t.now || t.dueIn > 0)).slice(0, 6);
     // 지나간 기억: "지금은 어떤지" 한 구절이 없는 항목은 받지 않는다 — 근거 없이 기억을 물리지 않는다
-    out.outdated = arr(raw?.outdated).map(o => ({ tag: String(o?.tag || '').trim().toLowerCase(), now: cleanStr(o?.now, 160) })).filter(o => /^m\d{1,2}$/.test(o.tag) && o.now).slice(0, 6);
+    out.outdated = arr(raw?.outdated).map(o => ({ tag: String(o?.tag || '').trim().toLowerCase(), now: cleanStr(o?.now, 160), said: cleanStr(o?.said, 120) })).filter(o => /^m\d{1,2}$/.test(o.tag) && o.now).slice(0, 6);
     for (const r of (Array.isArray(raw?.canon) ? raw.canon : arr(raw?.world_rules)).slice(0, 8)) {
       const key = toSnake(r?.key), value = cleanStr(r?.value, 200); if (!key || !value) continue;
       out.worldRules.push({ scope: SCOPES.includes(r?.scope) ? r.scope : 'session', scopeName: cleanStr(r?.scope_name, 60), key, value });
@@ -168,7 +177,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     }
     for (const l of (Array.isArray(raw?.pledges) ? raw.pledges : arr(raw?.locks)).slice(0, 8)) {
       const summary = cleanStr(l?.summary, 200); if (!summary) continue;
-      out.locks.push({ kind: normLockKind(l?.kind), summary, status: l?.status === 'resolved' ? 'resolved' : 'active', priority: [1, 2, 3].includes(Number(l?.priority)) ? Number(l.priority) : 2, owner: na(cleanStr(l?.owner, 60)) });
+      out.locks.push({ kind: normLockKind(l?.kind), summary, status: l?.status === 'resolved' ? 'resolved' : 'active', priority: [1, 2, 3].includes(Number(l?.priority)) ? Number(l.priority) : 2, owner: na(cleanStr(l?.owner, 60)), dueIn: parseDurationDays(l?.due) });
     }
     const naLike: (v: unknown) => string | null = v => na(cleanStr(v, 120)) || null;
     for (const c of (Array.isArray(raw?.cast) ? raw.cast : arr(raw?.characters)).slice(0, 5)) {
@@ -249,7 +258,8 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     const batch = this.batchSize(chat) > 1 ? msgs.slice(this.batchStart(mem, msgs, idx), idx + 1).filter(m => m && !m.hidden && !this.isSideMessage(m) && (m.role === 'user' || m.role === 'assistant') && msgText(m).trim()) : null;
     const persona0 = S.persona(chat), nameOf = (m: Msg) => m.name || (m.role === 'user' ? persona0?.name || 'User' : S.get('chars', m.charId)?.name || 'Assistant');
     // 사서에게는 화면에 보이는 이야기만 보여준다 — 연출 계획 · 상태창 · 그림 프롬프트 · 서식 태그를 걷어 낸다
-    const userText = batch ? batch.filter(m => m.role === 'user').map(m => visibleProse(msgText(m))).join('\n') : userMes ? visibleProse(msgText(userMes)) : '';
+    // 이야기 밖 대화(OOC)로 본 사용자 말은 사서에게 보내지 않는다 — 기억이 되지 않게 (답장이 그 지시대로 이야기를 이어 갔다면 답장은 기록된다)
+    const userText = batch ? batch.filter(m => m.role === 'user').map(m => visibleProse(msgText(m))).join('\n') : userMes && !this.isSideMessage(userMes) ? visibleProse(msgText(userMes)) : '';
     const assistantText = batch ? batch.filter(m => m.role === 'assistant').map(m => visibleProse(msgText(m))).join('\n') : visibleProse(msgText(ai)), h0 = mesHashOf(ai);
     // 묶음은 차례대로 주고받은 그대로 보낸다 (묶음은 BATCH_TOKENS 에서 끊기므로 대개 다 들어간다 — 그래도 넘치면 앞부분부터 덜어 낸다)
     let exchange: string[] = [];
@@ -268,13 +278,16 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     const userLabel = userMes?.name || persona?.name || 'User', charLabel = ai.name || char?.name || 'Assistant';
     // 활성 서약 목록 — 사서가 이번 턴에 해소된 서약을 판정할 수 있게 꼬리표를 붙여 건넨다
     const openPledges = mem.pledges.filter(l => l.status === 'active').slice(0, 12), pledgeTagMap = new Map<string, Pledge>();
-    const pledgeLines = openPledges.map((l, i) => { const tag = `p${i + 1}`; pledgeTagMap.set(tag, l); return `[${tag}] (${normLockKind(l.kind)}) ${l.summary}`; });
-    const pledgeDirective = pledgeLines.length ? '\n\nPLEDGE CHECK: the file below lists open pledges with tags like [p1]. If this exchange clearly settles one ON-SCREEN (the secret is revealed, the promise is kept, the thread is closed), include a top-level array "settled" naming the tag and, in one clause, how it was settled, e.g. "settled":[{"tag":"p1","how":"Mina read the letter aloud at dinner"}]. Only what actually happened — never predict, never guess.' : '';
+    const pledgeLines = openPledges.map((l, i) => { const tag = `p${i + 1}`; pledgeTagMap.set(tag, l); return `[${tag}] (${normLockKind(l.kind)}) ${l.summary}${l.latest?.text ? ` — now: ${l.latest.text}` : ''}`; });
+    // 기한: 이야기 시계가 켜져 있어야 셀 수 있다 — 꺼져 있으면 묻지 않는다
+    const askDue = cfg.dueDates !== false && cfg.storyClock !== false;
+    const pledgeDirective = pledgeLines.length ? `\n\nPLEDGE CHECK: the file below lists open pledges with tags like [p1]. If this exchange clearly settles one ON-SCREEN (the secret is revealed, the promise is kept, the thread is closed), include a top-level array "settled" naming the tag, how it was settled in one clause, and "said": a short phrase (a few words) copied character for character from the exchange that shows it, e.g. "settled":[{"tag":"p1","how":"Mina read the letter aloud at dinner","said":"she unfolded the letter and began to read"}]. Only what actually happened — never predict, never guess; something about to happen, half done, or only planned is not settled. If a pledge is still open but this exchange clearly moved it (part of it is done, the search narrowed, the plan changed${askDue ? ', a date was set' : ''}), include "moved":[{"tag":"p2","now":"one clause: where it stands now"${askDue ? ',"due":"only if a date was set: story time from the end of this exchange until it, e.g. 3d"' : ''}}] instead. Most exchanges settle and move nothing.` : '';
+    const dueDirective = askDue ? '\n\nDEADLINES: when a pledge you file has a deadline or a promised time stated in the text ("by Friday", "in three days", "tomorrow night"), add "due" to it: the story time from the end of this exchange until then, as one compact duration (6h, 1d, 3d, 2w). No stated time, no "due".' : '';
     // 지나간 기억 점검 — 이번 교환과 같은 사람 · 물건을 다루는 옛 기억을 꼬리표와 함께 보여 주고, 이 교환으로 더는 맞지 않게 된 것을 함께 묻는다 (호출을 따로 쓰지 않는다).
     // 잃어버린 물건, 이미 치른 약속, 뒤집힌 사실이 "지금도 그런 것"처럼 계속 회상되는 일을 막는다
     const shelfTagMap = new Map<string, MemItem>();
     const shelfLines = this.standingMemoriesNear(mem, `${userText}\n${assistantText}`, place()).map((m, i) => { const tag = `m${i + 1}`; shelfTagMap.set(tag, m); return `[${tag}] (${m.kind}) ${m.summary}`; });
-    const shelfDirective = shelfLines.length ? '\n\nSHELF CHECK: the file below lists earlier memories with tags like [m1] that touch the same people or things. If this exchange shows ON-SCREEN that one no longer holds — the object was used up, lost, handed over or destroyed; the plan was carried out or dropped; the fact was overturned; the taste or the tie changed — include a top-level array "outdated" naming the tag and, in one clause, what is true instead, e.g. "outdated":[{"tag":"m2","now":"Mina threw the key into the river"}]. A memory that is merely not mentioned, or still true, is NOT outdated. What happened stays happened: only a standing matter can go out of date. Most exchanges outdate nothing.' : '';
+    const shelfDirective = shelfLines.length ? '\n\nSHELF CHECK: the file below lists earlier memories with tags like [m1] that touch the same people or things. If this exchange shows ON-SCREEN that one no longer holds — the object was used up, lost, handed over or destroyed; the plan was carried out or dropped; the fact was overturned; the taste or the tie changed — include a top-level array "outdated" naming the tag, what is true instead in one clause, and "said": a short phrase copied character for character from the exchange that shows the change, e.g. "outdated":[{"tag":"m2","now":"Mina threw the key into the river","said":"the key sank out of sight"}]. A memory that is merely not mentioned, or still true, is NOT outdated. What happened stays happened: only a standing matter can go out of date. Most exchanges outdate nothing.' : '';
     // 인물 명단 — 누가 아직 카드가 없는지 사서가 추측하지 않게 한다. 명단에 없는 등장인물(주역 포함)은 이번 턴에 바로 카드를 연다.
     // 쓰지 않는 카드도 올린다 — 사용자가 치운 인물을 사서가 새 카드로 되살리지 못하게
     const tracking = cfg.cast !== false;
@@ -309,7 +322,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     ].filter(Boolean).join('\n');
     let ext: Extraction | null = null, error = '', answered = false; const note: { replied?: boolean } = {};   // note.replied: 모델이 답은 했는가
     try {   // 읽지 못한 답 · API 오류(순간 혼잡 · 속도 제한) 모두 간격을 두고 세 번까지 (callJson)
-      const parsed = await this.callJson(chat, `${this.promptText('archivist')}${this.archivistTrackingDirective()}${pledgeDirective}${shelfDirective}${this.langLine()}`, userPrompt, cfg.responseTokens || MEMORY_DEFAULTS.responseTokens, signal, 'record', note);
+      const parsed = await this.callJson(chat, `${this.promptText('archivist')}${this.archivistTrackingDirective()}${dueDirective}${pledgeDirective}${shelfDirective}${this.langLine()}`, userPrompt, cfg.responseTokens || MEMORY_DEFAULTS.responseTokens, signal, 'record', note);
       if (parsed) { answered = true; ext = this.sanitizeExtraction(parsed, userText, assistantText); }
     } catch (e: any) { if (e.name === 'AbortError' || signal?.aborted) throw e; error = e.message || String(e); }
     // 사서를 기다리는 동안 메시지가 바뀌었으면 낡은 결과를 버린다. 삭제 · 교체면 맞추기가 턴을 정리하므로 조용히 물러나고,
@@ -336,7 +349,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     }
     const failed = !ext || (!ext.turnSummary && !ext.memories.length);
     if (!ext) this.logActivity('error', tr('memoria.engine.log.turnFailed', { why: stale ? tr('memoria.engine.turn.stale') : tr('memoria.engine.turn.unreadable') }));
-    if (!ext) ext = { turnSummary: '', importance: 0.3, elapsedDays: 0, memories: [], worldRules: [], entityStates: [], locks: [], characters: [], milestones: [], items: [], bonds: [], settledPledges: [], settledHow: {}, outdated: [] };   // 사서가 실패해도 원문 발췌 기억은 남긴다
+    if (!ext) ext = { turnSummary: '', importance: 0.3, elapsedDays: 0, memories: [], worldRules: [], entityStates: [], locks: [], characters: [], milestones: [], items: [], bonds: [], settledPledges: [], settledHow: {}, settledSaid: {}, movedPledges: [], outdated: [] };   // 사서가 실패해도 원문 발췌 기억은 남긴다
     const turn = { msgId: ai.id, ...(batch && batch.length > 1 ? { span: Math.max(1, batch.filter(m => m.role === 'assistant').length) } : {}), hash: mesHashOf(ai), digest: ext.turnSummary, weight: ext.importance, days: cfg.storyClock !== false ? (ext.elapsedDays || 0) : 0, when: '', where: '', failed, error: failed ? (error || (answered ? tr('memoria.engine.turn.nothing') : tr('memoria.engine.turn.noAnswer'))) : '', ts: now() };
     at = mem.turns.findIndex(t => t.msgId === ai.id);   // 기다리는 사이 다른 턴이 지워졌을 수 있다 — 자리를 다시 잡는다
     if (at >= 0) mem.turns[at] = turn; else { at = place(); mem.turns.splice(at, 0, turn); if (at < mem.turns.length - 1) this.shiftTurns(mem, at, 1); }
@@ -346,6 +359,20 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     const rawEpisode = cleanStr(assistantText, 240), digestIsCopy = ext.turnSummary && ext.turnSummary.length > 120 && cleanStr(assistantText, 100000).includes(ext.turnSummary);
     const episodeSummary = ext.turnSummary && !digestIsCopy ? ext.turnSummary : firstSentence(assistantText);
     if (digestIsCopy) turn.digest = episodeSummary;
+    // 아는 사람은 그 자리에 있었거나 이 교환에 이름이 나온 사람뿐이다 — 자리에 없던 인물을 "안다"고 적으면 그 인물이 모르는 비밀을 아는 것처럼 군다.
+    // 장면 인물 목록(직전 장면 + 이번에 적힌 장면) · 이 교환의 화자들 · 원문으로 확인한다 (설정 guardSecrets)
+    const exchangeText = `${userText}\n${assistantText}`;
+    if (cfg.guardSecrets !== false && ext.memories.some(m => m.visibility !== 'public' && m.knowers?.length)) {
+      const runLower = low(exchangeText), sceneNow = this.scene(mem).present;
+      const presentKeys = new Set([sceneNow, ...ext.entityStates.filter(st => low(st.entity) === 'scene' && canonSlot(st.slot) === 'present').map(st => st.value)]
+        .flatMap(v => String(v || '').split(/[,，、·]+/)).map(n => ekey(this.canonName(mem, n.trim()))).filter(Boolean));
+      for (const n of [userLabel, charLabel, ...(batch || []).map(nameOf)]) if (n) presentKeys.add(ekey(this.canonName(mem, n)));   // 주고받은 사람은 그 자리에 있었다
+      const namesOf = (name: string) => { const card = mem.cast.find(c => ekey(c.name) === ekey(name) || (c.aka || []).some(x => ekey(x) === ekey(name))); return [name, ...(card ? [card.name, ...(card.aka || [])] : [])].map(n => low(n)).filter(n => n.length >= 2); };
+      const witnessed = (name: string) => presentKeys.has(ekey(this.canonName(mem, name))) || namesOf(name).some(n => runLower.includes(n));
+      let unwitnessed = 0;
+      for (const m of ext.memories) { if (m.visibility === 'public' || !m.knowers?.length) continue; const kept = m.knowers.filter(witnessed); unwitnessed += m.knowers.length - kept.length; m.knowers = kept; }
+      if (unwitnessed) this.logActivity('record', tr('memoria.engine.log.unwitnessed', { n: unwitnessed }));
+    }
     const rows: ExtMemory[] = [{ kind: 'event', summary: episodeSummary, excerpt: rawEpisode === episodeSummary ? null : rawEpisode, importance: Math.max(0.25, ext.importance - 0.1), entities: [charLabel], tags: ['episode_raw'], visibility: 'public', owner: null }, ...ext.memories];
     for (const m of rows) {
       const visibility = m.visibility || 'public';
@@ -365,26 +392,46 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     }
     for (const r of ext.worldRules) this.upsertWorldRule(mem, r, at, ai.id);
     for (const s of ext.entityStates) this.upsertEntityState(mem, s, at, ai.id);
-    for (const l of ext.locks) this.upsertLock(mem, l, at, ai.id);
+    for (const l of ext.locks) this.upsertLock(mem, askDue ? l : { ...l, dueIn: 0 }, at, ai.id);
     // 이 턴이 끝난 시점의 작중 시간 · 장소를 턴에 찍어 둔다 — 요약이 "언제 · 어디서"를 지어내지 않고 받아 적게.
     // 답변에 상태창이 있으면 그쪽이 더 정확하다 (모델이 적은 그대로)
     const sceneAt = this.scene(mem), ownBar = this.messageStatusBars(ai).slice(-1)[0];
     turn.when = ownBar?.when || [sceneAt.date, sceneAt.time].filter(Boolean).join(' ') || '';
     turn.where = ownBar?.place || sceneAt.location || '';
     // 사서가 해소됐다고 판정한 서약 (스와이프 때 되돌릴 수 있게 턴을 적어 둔다). 직접 적은 서약은 사서가 닫지 못한다 — "해소된 듯" 의견만 붙인다
+    // 근거 확인: 장면에서 옮긴 글귀가 원문에 실제로 있고, 판정이 말끝을 흐리지 않을 때만 닫는다. 모자라면 닫지 않고 "해소된 듯" 의견과 경위만 붙인다 — 사용자가 ✔로 확정한다
+    let unsure = 0;
     for (const tag of ext.settledPledges || []) {
       const lock = pledgeTagMap.get(tag); if (!lock || lock.status !== 'active') continue;
-      if (lock.manual) { lock.suggestResolved = true; lock.suggestTurn = at; lock.suggestBy = ai.id; }
-      else { lock.status = 'resolved'; lock.resolvedTurn = at; lock.resolvedBy = ai.id; lock.resolution = ext.settledHow?.[tag] || null; }   // 어떻게 풀렸는지 (복선 회수의 기록)
+      const how = ext.settledHow?.[tag] || '', grounded = groundedIn(ext.settledSaid?.[tag], exchangeText) && !soundsHedged(how);
+      if (lock.manual || !grounded) { lock.suggestResolved = true; lock.suggestTurn = at; lock.suggestBy = ai.id; if (how) lock.suggestHow = how; if (!lock.manual) unsure++; }
+      else { lock.status = 'resolved'; lock.resolvedTurn = at; lock.resolvedBy = ai.id; lock.resolution = how || null; }   // 어떻게 풀렸는지 (복선 회수의 기록)
+    }
+    if (unsure) this.logActivity('record', tr('memoria.engine.log.unsure', { n: unsure }));
+    // 진전: 닫히지 않았지만 움직인 떡밥에 "지금" 한 줄을 붙인다 (처음 문구는 그대로 둔다). 이번에 정해진 기한도 여기서 받는다
+    for (const mv of ext.movedPledges || []) {
+      const lock = pledgeTagMap.get(mv.tag); if (!lock || lock.status !== 'active') continue;
+      if (mv.now && lock.latest?.text !== mv.now) lock.latest = { text: mv.now, turn: at, msgId: ai.id, was: lock.latest || null };
+      if (askDue && mv.dueIn > 0) lock.due = { turn: at, in: mv.dueIn, msgId: ai.id, was: lock.due || null };
     }
     // 사서가 "더는 맞지 않는다"고 본 옛 기억을 물린다 — 지우지 않는다: 평소 회상에서만 빠지고, 그 일을 직접 꺼내거나 옛일을 되짚을 때는 "지금은 이렇다"는 꼬리표와 함께 다시 나온다
     let retiredNow = 0;
-    for (const o of ext.outdated || []) { const m = shelfTagMap.get(o.tag); if (!m || m.retired || !mem.memories.includes(m)) continue; m.retired = { turn: at, now: o.now, msgId: ai.id }; retiredNow++; }
+    for (const o of ext.outdated || []) {
+      const m = shelfTagMap.get(o.tag); if (!m || m.retired || !mem.memories.includes(m)) continue;
+      if (!groundedIn(o.said, exchangeText) || soundsHedged(o.now)) continue;   // 원문에서 옮긴 글귀가 없거나 말끝을 흐린 판정이면 물리지 않는다
+      m.retired = { turn: at, now: o.now, msgId: ai.id }; retiredNow++;
+    }
     if (retiredNow) this.logActivity('record', tr('memoria.engine.log.retired', { n: retiredNow }));
     for (const b of ext.bonds || []) this.upsertBond(mem, b, at, { msgId: ai.id });
     if (tracking) for (const c of ext.characters || []) this.upsertCast(mem, c, at, ai.id);
     if (cfg.milestones) for (const e of ext.milestones || []) this.upsertMilestone(mem, e, at, ai.id);
     if (cfg.items) for (const it of ext.items || []) this.upsertItem(mem, it, at, ai.id);
+    // 떡밥 언급 추적: 이번에 적은 턴 기록과 기억을 떡밥과 견주어, 언급된 떡밥은 "마지막으로 본 턴"을 적고 잠든 것은 깨운다 (모델 호출 없음)
+    if (answered) {
+      const told = [turn.digest, ...ext.memories.map(m => m.summary)].filter(Boolean).join('\n');
+      const { woke } = noteThreadSightings(mem.pledges, told, at, ai.id);
+      if (woke) this.logActivity('record', tr('memoria.engine.log.woke', { n: woke }));
+    }
     mem.clockDays = mem.turns.reduce((a, t) => a + (t.days || 0), 0);
     this.prune(mem);
     if (!turn.failed) this.logActivity('record', tr('memoria.engine.log.recorded', { n: at + 1, count: rows.length }));
@@ -403,7 +450,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     const turnNow = mem.turns.length - 1; let slept = 0;
     for (const l of mem.pledges || []) {
       if (l.status !== 'active' || l.manual || !THREAD_KINDS.includes(l.kind) || (l.priority ?? 2) <= 1) continue;
-      if (turnNow - (l.turn || 0) < after) continue;
+      if (turnNow - threadTouched(l) < after) continue;   // 다시 적힌 때 · 언급된 때 · "지금"이 바뀐 때 가운데 가장 늦은 것부터 센다
       l.status = 'dormant'; l.sleptTurn = turnNow; slept++;
     }
     return slept;
@@ -418,20 +465,23 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     state = { ...state, entity: this.canonName(mem, state.entity), slot: canonSlot(state.slot), claim: state.claim === 'belief' ? 'belief' : 'objective', owner: state.owner ? this.canonName(mem, state.owner) : '' };
     upsertRow(mem.status, mem.status.findIndex(s => ekey(s.entity) === ekey(state.entity) && canonSlot(s.slot) === state.slot && (s.claim || 'objective') === state.claim && ekey(s.owner || '') === ekey(state.owner)), state, turn, msgId);
   },
-  upsertLock(mem, lock, turn, msgId = '') {
-    lock = { ...lock, owner: lock.owner || '' };
+  upsertLock(mem, input, turn, msgId = '') {
+    // 기한은 서약의 문구와 따로 둔다 — 다시 적힐 때 기한이 빠져 있으면 있던 기한을 지킨다 (되돌리기는 답변별 이력 was 로)
+    const { dueIn = 0, ...rest } = input, lock = { ...rest, owner: rest.owner || '' };
+    const withDue = (row: Pledge) => { if (dueIn > 0 && !(row.due && row.due.in === dueIn && row.due.turn === turn)) row.due = { turn, in: dueIn, msgId, was: row.due || null }; return row; };
     let idx = mem.pledges.findIndex(l => l.kind === lock.kind && l.summary === lock.summary);
     if (idx < 0) idx = mem.pledges.findIndex(l => l.kind === lock.kind && overlap(l.summary, lock.summary) >= 0.55);   // 같은 종류의 사실상 같은 서약(문구만 다른 재발행)은 새 문구로 갱신 — 목록 증식 방지
-    if (idx < 0) { const row = { id: pledgeId(mem), ...lock, turn, createdTurn: turn, prev: null, prevTurn: null, msgId }; mem.pledges.push(row); return row; }
+    if (idx < 0) { const row: Pledge = { id: pledgeId(mem), ...lock, turn, createdTurn: turn, prev: null, prevTurn: null, msgId }; mem.pledges.push(row); return withDue(row); }
     const cur = mem.pledges[idx];
     if (cur.manual && !lock.manual) return cur;   // 직접 적은 서약은 사서의 재발행이 건드리지 못한다
     const createdTurn = cur.createdTurn ?? cur.created ?? cur.turn;   // 다시 적혀도 "처음 생긴 턴"은 지킨다
     if (cur.summary === lock.summary && cur.status === lock.status && cur.priority === lock.priority && (cur.owner || '') === lock.owner) {   // 내용은 그대로, 재확인만 — 이전 값 이력은 건드리지 않는다
       cur.turn = turn; cur.createdTurn = createdTurn; if (msgId && cur.msgId !== msgId && cur.updMsgId !== msgId) cur.reMsgId = msgId;
-      return cur;
+      return withDue(cur);
     }
     // 내용이 실제로 바뀐 재발행 — 이전 값을 남겨 둬야 이 턴이 지워질 때 되돌릴 수 있다
-    return mem.pledges[idx] = { id: cur.id, ...lock, turn, manual: cur.manual || lock.manual || false, createdTurn, msgId: cur.msgId || '', updMsgId: msgId, reMsgId: '', prev: { summary: cur.summary, status: cur.status, priority: cur.priority, owner: cur.owner || '' }, prevTurn: cur.turn };
+    const kept = { latest: cur.latest ?? null, seenTurn: cur.seenTurn ?? null, seenPrev: cur.seenPrev ?? null, seenBy: cur.seenBy || '', wokeTurn: cur.wokeTurn ?? null, wokeBy: cur.wokeBy || '', due: cur.due ?? null };   // "지금" 줄 · 언급 · 기한은 문구가 다시 적혀도 이어진다
+    return mem.pledges[idx] = withDue({ id: cur.id, ...kept, ...lock, turn, manual: cur.manual || lock.manual || false, createdTurn, msgId: cur.msgId || '', updMsgId: msgId, reMsgId: '', prev: { summary: cur.summary, status: cur.status, priority: cur.priority, owner: cur.owner || '' }, prevTurn: cur.turn });
   },
   /** 연표: 같은 제목 또는 사실상 같은 사건이면 건너뛴다 */
   upsertMilestone(mem, e, turn, msgId = '') {

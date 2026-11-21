@@ -42,7 +42,7 @@ export interface ActivityLog {
     readonly size: number;
 }
 /** 떡밥 관리가 보는 서약 칸 (턴 번호는 t1부터) */
-export interface ThreadLock { status: string; kind: string; summary: string; manual?: boolean; priority?: number; turnIndex?: number; sleptTurn?: number | null }
+export interface ThreadLock { status: string; kind: string; summary: string; manual?: boolean; priority?: number; turnIndex?: number; sleptTurn?: number | null; latest?: { text: string } | null }
 export interface PickPledgesOptions { turnNow?: number; sceneText?: string; overlap?: (a: string, b: string) => number; cap?: number; threadCap?: number; fresh?: number }
 
 /* ------------------------------------------------------------
@@ -489,7 +489,7 @@ export function pickPledges<L extends ThreadLock>(locks: L[] | null | undefined,
     const standing = active.filter(l => !THREAD_KINDS.includes(l.kind));
     const threads = active.filter(l => THREAD_KINDS.includes(l.kind)).map((l) => {
         const age = turnNow - (l.turnIndex || 0);
-        const near = sceneText ? overlap(l.summary, sceneText) : 0;
+        const near = sceneText ? overlap(`${l.summary} ${l.latest?.text || ''}`, sceneText) : 0;   // "지금" 한 줄도 장면과 견준다 — 반쯤 온 떡밥은 지금 상태로 닿는다
         const keep = (l.priority ?? 2) <= 1 || age <= fresh || near >= 0.34;
         return { l, keep, rank: ((l.priority ?? 2) <= 1 ? 2 : 0) + near * 2 + Math.max(0, 1 - age / 80) };
     }).filter(x => x.keep).sort((a, b) => b.rank - a.rank).slice(0, threadCap).map(x => x.l);
@@ -554,4 +554,212 @@ export function noteUsage(usage: Usage | null | undefined, task: string, input: 
 export function usageTotals(usage: Usage | null | undefined): UsageRow {
     const rows = Object.entries(usage?.tasks || {});
     return rows.reduce((a, [, r]) => ({ calls: a.calls + (+r.calls || 0), in: a.in + (+r.in || 0), out: a.out + (+r.out || 0) }), { calls: 0, in: 0, out: 0 });
+}
+
+/* ------------------------------------------------------------
+ * 근거 확인 — 닫거나 물릴 때는 장면 속 글귀를 대야 한다
+ *
+ * 서약을 닫고 기억을 물리는 일은 되돌리기 전까지 그 일을 장부에서 지운다. 사서가 짐작으로 닫으면
+ * 아직 살아 있는 떡밥이 사라진다. 그래서 장면에서 그대로 옮긴 짧은 글귀를 함께 받고, 그 글귀가
+ * 실제로 원문에 있는지 글자로 확인한다. 말끝을 흐린 판정("아직", "거의", "~인 듯")도 받지 않는다.
+ * ------------------------------------------------------------ */
+
+const squashText = (t: unknown) => String(t ?? '').toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, '');
+
+/** phrase 가 source 안에 글자 그대로 있는가 (띄어쓰기 · 문장부호 · 따옴표는 무시). 너무 짧은 글귀는 근거가 못 된다 */
+export function groundedIn(phrase: unknown, source: unknown, min = 4): boolean {
+    const p = squashText(phrase);
+    return p.length >= min && squashText(source).includes(p);
+}
+
+const HEDGE_RE = /(아직|거의|일부|반쯤|부분적|것 ?같|듯(?:하|싶|이|$)|모양이|지도 모른|려고 ?(?:했|한다|함)|하려|기로 ?(?:했|함)|\bnot yet\b|\balmost\b|\bnearly\b|\bpartly\b|\bpartially\b|\bseems?\b|\bappears? to\b|\bmight\b|\bmay\b|\bprobably\b|\bplans? to\b|\babout to\b|\bgoing to\b)/i;
+/** 끝났다고 말하면서 말끝을 흐리는가 — 그런 판정으로는 닫지 않는다 */
+export function soundsHedged(text: unknown): boolean {
+    return HEDGE_RE.test(String(text ?? ''));
+}
+
+/* ------------------------------------------------------------
+ * 떡밥이 마지막으로 언급된 때
+ *
+ * 오래 진전 없는 떡밥은 잠재운다. 그런데 "진전"을 사서가 그 떡밥을 다시 적은 때로만 재면,
+ * 이야기 속에서 계속 오가는 떡밥도 다시 적히지 않았다는 이유로 잠들어 버린다.
+ * 기록할 때마다 새 턴 기록과 떡밥을 견주어, 언급된 떡밥은 "마지막으로 본 턴"을 새로 적고
+ * 잠들어 있었으면 깨운다. 모델을 부르지 않는다.
+ * ------------------------------------------------------------ */
+
+const PARTICLE_TAIL = /(으로부터|에게서|한테서|으로서|으로써|에서는|에서도|에게는|까지는|부터는|이라도|처럼|보다|까지|부터|에서|에게|한테|께서|으로|이랑|하고|이나|라도|은|는|이|가|을|를|에|의|로|과|와|도|만|랑)$/;
+
+/** 견줄 낱말들 — 한국어는 붙은 조사를 떼고, 로마자는 짧은 낱말을 뺀다 */
+export function contentWords(text: unknown): Set<string> {
+    const out = new Set<string>();
+    for (const raw of String(text ?? '').toLowerCase().match(/[\p{L}\p{N}]+/gu) || []) {
+        if (/^[a-z0-9]+$/.test(raw)) { if (raw.length >= 4) out.add(raw); continue; }
+        if (/^\d+$/.test(raw)) continue;
+        const stem = raw.length >= 3 ? raw.replace(PARTICLE_TAIL, '') : raw;
+        if (stem.length >= 2) out.add(stem);
+    }
+    return out;
+}
+
+/** text 가 이 떡밥을 다루는가 — 떡밥의 낱말 가운데 둘 이상, 그리고 절반 이상이 글에 있어야 한다 */
+export function mentionsThread(threadText: unknown, text: unknown): boolean {
+    const words = [...contentWords(threadText)];
+    if (words.length < 2) return false;
+    const hay = String(text ?? '').toLowerCase();
+    const hits = words.filter(w => hay.includes(w)).length;
+    return hits >= 2 && hits / words.length >= 0.5;
+}
+
+/** 언급 추적이 보는 서약 칸. turn 은 0부터 세는 턴 번호, by 는 그 일을 한 답변(되돌리기용) */
+export interface SightedLock {
+    kind: string; status: string; summary: string; turn?: number; latest?: { text: string; turn?: number } | null;
+    seenTurn?: number | null; seenPrev?: number | null; seenBy?: string; wokeTurn?: number | null; wokeBy?: string; sleptTurn?: number | null;
+}
+
+/**
+ * 이번 기록에서 언급된 떡밥에 "본 턴"을 적고, 잠든 떡밥은 깨운다. 되돌리기용으로 이전 값과 그 답변을 남긴다.
+ * 반환: { seen, woke }
+ */
+export function noteThreadSightings(locks: SightedLock[] | null | undefined, text: unknown, turn: number, by = ''): { seen: number; woke: number } {
+    let seen = 0, woke = 0;
+    if (!String(text ?? '').trim()) return { seen, woke };
+    for (const l of locks || []) {
+        if (!THREAD_KINDS.includes(l.kind) || !['active', 'dormant'].includes(l.status)) continue;
+        if (!mentionsThread(`${l.summary} ${l.latest?.text || ''}`, text)) continue;
+        if (l.seenTurn !== turn) { l.seenPrev = l.seenTurn ?? null; l.seenTurn = turn; l.seenBy = by; seen++; }
+        if (l.status === 'dormant') { l.status = 'active'; l.wokeTurn = turn; l.wokeBy = by; l.sleptTurn = null; woke++; }
+    }
+    return { seen, woke };
+}
+
+/** 떡밥이 마지막으로 움직인 턴 — 다시 적힌 때, 언급된 때, "지금"이 바뀐 때 가운데 가장 늦은 것 */
+export function threadTouched(l: Pick<SightedLock, 'turn' | 'seenTurn' | 'latest'> | null | undefined): number {
+    return Math.max(l?.turn || 0, l?.seenTurn || 0, l?.latest?.turn || 0);
+}
+
+/* ------------------------------------------------------------
+ * 드문 낱말 회상
+ *
+ * "그 나침반 아직 있어?"의 "나침반"처럼 서고 전체에서 몇 번 안 나오는 낱말은, 그 낱말이 든 기억을
+ * 가리키는 아주 강한 단서다. 흔한 낱말(이름, "오늘", "말했다")은 아무것도 가리키지 않는다.
+ * ------------------------------------------------------------ */
+
+/**
+ * queryText 의 낱말 가운데 docs(기억 색인 글, 소문자) 몇 개에만 나오는 드문 것들. 반환: [{ word, idf }]
+ * share: 전체의 이 비율 이하에 나와야 드물다 (최소 1개). 기억이 적으면(8개 미만) 드물다는 말이 의미가 없어 빈 배열.
+ */
+export function rareQueryWords(queryText: unknown, docs: string[], { share = 0.05, minDocs = 8 }: { share?: number; minDocs?: number } = {}): { word: string; idf: number }[] {
+    const n = docs.length;
+    if (n < minDocs) return [];
+    const limit = Math.max(1, Math.floor(n * share));
+    const out: { word: string; idf: number }[] = [];
+    for (const word of contentWords(queryText)) {
+        let df = 0;
+        for (const d of docs) { if (d.includes(word) && ++df > limit) break; }
+        if (df >= 1 && df <= limit) out.push({ word, idf: Math.log((n + 1) / df) });
+    }
+    return out;
+}
+
+/** 드문 낱말이 이 기억을 "직접 가리켰는가" — 길고 드문 낱말 하나, 또는 드문 낱말 둘 */
+export function rareStrong(hits: { word: string }[]): boolean {
+    return hits.length >= 2 || hits.some(r => r.word.length >= 3 && !/^[a-z0-9]+$/.test(r.word)) || hits.some(r => r.word.length >= 6);
+}
+
+/* ------------------------------------------------------------
+ * 서로 맞지 않는 기록 찾기 — 같은 사람에 대해 서로 다른 말을 하는 기록
+ *
+ * 캐논 · 상태 · 인물 카드 · 사실 기억은 따로 쌓이므로, "키 170cm"와 "키 165cm", "술을 마신다"와
+ * "술을 마시지 않는다"가 함께 서고에 남아 둘 다 AI 에게 갈 수 있다. 모델을 부르지 않고 글자로 찾는다.
+ * 찾은 것은 고치지 않고 보여 주기만 한다 — 어느 쪽이 맞는지는 사용자가 고른다.
+ * ------------------------------------------------------------ */
+
+/** 한 사람에게 값이 하나뿐인 잣대 — 다르면 둘 중 하나는 틀렸다 */
+const MEASURES: [string, RegExp][] = [
+    ['age', /(\d{1,3})\s*(?:살|세(?!기)|years?[ -]old|y\/o|yo\b)/gi],
+    ['height', /(\d{2,3}(?:\.\d)?)\s*(?:cm|센티(?:미터)?)/gi],
+    ['weight', /(\d{2,3}(?:\.\d)?)\s*(?:kg|킬로(?:그램)?)/gi],
+];
+export function measuresIn(text: unknown): Record<string, Set<string>> {
+    const out: Record<string, Set<string>> = {};
+    for (const [kind, re] of MEASURES) {
+        for (const m of String(text ?? '').matchAll(re)) (out[kind] ||= new Set()).add(String(Number(m[1])));
+    }
+    return out;
+}
+
+const NEGATION_RE = /(못\s?하|못\S|않|없|아니|안\s|\bnot\b|n't\b|\bnever\b|\bno longer\b|\bcannot\b|\bwithout\b)/i;
+export function negated(text: unknown): boolean {
+    return NEGATION_RE.test(String(text ?? ''));
+}
+
+/** 부정하는 말을 뗀다 — "마시지 않는다" → "마시", "cannot swim" → "swim" */
+export function stripNegation(text: unknown): string {
+    return String(text ?? '')
+        .replace(/\s*지\s*(?:않|못)\S*/g, '')
+        .replace(/(^|\s)(?:안|못)\s+/g, '$1')
+        .replace(/\s*(?:않|못하|없|아니)\S*/g, '')
+        .replace(/\b(?:can't|cannot|won't|don't|doesn't|didn't|isn't|aren't|wasn't|weren't|not|never|no longer)\b/gi, ' ')
+        .replace(/n't\b/gi, '');
+}
+
+const bigramsOf = (text: unknown, drop: string[]) => {
+    let s = String(text ?? '').toLowerCase();
+    for (const d of drop) if (d) s = s.split(d).join(' ');
+    s = s.replace(/[^\p{L}\p{N}]+/gu, '');
+    const g = new Set<string>();
+    for (let i = 0; i < s.length - 1; i++) g.add(s.slice(i, i + 2));
+    return g;
+};
+
+/** 견줄 기록 한 줄 — about: 그 기록이 다루는 사람(정식 이름 키) */
+export interface Claim { key: string; about: string; text: string; turn?: number; [k: string]: unknown }
+export type ConflictWhy = 'age' | 'height' | 'weight' | 'negation';
+export interface Conflict<C extends Claim = Claim> { a: C; b: C; why: ConflictWhy; pair: string }
+
+/**
+ * 서로 맞지 않는 기록 쌍을 찾는다.
+ * names: 견줄 때 빼고 볼 이름들(모든 기록에 나오므로 겹쳐도 아무 뜻이 없다). ignore: 사용자가 "둘 다 맞음"으로 넘긴 쌍('a|b').
+ */
+export function findConflicts<C extends Claim>(claims: C[] | null | undefined, { names = [], ignore = [], perGroup = 60 }: { names?: unknown[]; ignore?: string[]; perGroup?: number } = {}): Conflict<C>[] {
+    const skip = new Set(ignore);
+    const drop = [...new Set(names.map(n => String(n ?? '').toLowerCase()).filter(n => n.length >= 2))].sort((a, b) => b.length - a.length);
+    const groups = new Map<string, C[]>();
+    for (const c of claims || []) {
+        if (!c?.about || !String(c.text ?? '').trim()) continue;
+        if (!groups.has(c.about)) groups.set(c.about, []);
+        groups.get(c.about)!.push(c);
+    }
+    const out: Conflict<C>[] = [];
+    const seen = new Set<string>();
+    for (const list of groups.values()) {
+        const recent = list.sort((x, y) => (y.turn || 0) - (x.turn || 0)).slice(0, perGroup)
+            .map(c => ({ c, m: measuresIn(c.text), neg: negated(c.text), g: bigramsOf(c.text, drop) }));
+        for (let i = 0; i < recent.length; i++) {
+            for (let j = i + 1; j < recent.length; j++) {
+                const A = recent[i], B = recent[j];
+                if (A.c.key === B.c.key) continue;
+                const pair = [A.c.key, B.c.key].sort().join('|');
+                if (skip.has(pair) || seen.has(pair)) continue;
+                let why: ConflictWhy | '' = '';
+                for (const kind of ['age', 'height', 'weight'] as const) {
+                    const a = A.m[kind], b = B.m[kind];
+                    // 한쪽에 값이 여럿이면(나이 차이, 두 사람의 키) 견주지 않는다
+                    if (a?.size === 1 && b?.size === 1 && [...a][0] !== [...b][0]) { why = kind; break; }
+                }
+                if (!why && A.neg !== B.neg) {
+                    // 부정한 쪽에서 부정하는 말을 떼어 낸 나머지가 다른 쪽에 거의 다 들어 있어야 같은 일을 두고 엇갈린 것이다
+                    const [N, P] = A.neg ? [A, B] : [B, A];
+                    const rest = bigramsOf(stripNegation(N.c.text), drop);
+                    let hit = 0;
+                    for (const x of rest) if (P.g.has(x)) hit++;
+                    if (rest.size >= 2 && P.g.size >= 2 && hit / rest.size >= 0.66) why = 'negation';
+                }
+                if (!why) continue;
+                seen.add(pair);
+                out.push({ a: A.c, b: B.c, why, pair });
+            }
+        }
+    }
+    return out;
 }
