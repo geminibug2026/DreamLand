@@ -514,12 +514,15 @@ export const part1: Part1 & ThisType<MemoryApi> = {
   },
   /** 메시지에 붙인 표시(memSide · memCheck)만 저장된 대화에 옮겨 적는다 — 그사이 대화 화면이 고친 메시지 목록을 통째로 덮어쓰지 않게. 반환: 옮겨 적은 칸 수 */
   async saveMsgMarks(chat, marked) {
-    const saved = await S.msgs(chat.id); let n = 0;
-    for (const m of marked || []) {
-      const row = (saved || []).find(x => x.id === m?.id); if (!row || row === m) continue;
-      for (const k of ['memSide', 'memCheck', 'memOoc']) { if (m![k] === undefined) { if (k in row) { delete row[k]; n++; } } else { row[k] = m![k]; n++; } }
-    }
-    if (n) await DB.put('msgs', { id: chat.id, list: saved });
+    // 저장된 대화에서 그 메시지들만 고쳐 쓴다 (긴 대화도 목록 전체를 읽고 다시 쓰지 않는다)
+    const by = new Map<string, Msg>(); for (const m of marked || []) if (m?.id) by.set(m.id, m);
+    if (!by.size) return 0;
+    let n = 0;
+    await S.patchMsgs(chat.id, [...by.keys()], row => {
+      const m = by.get(row.id); if (!m || row === m) return false; let changed = false;
+      for (const k of ['memSide', 'memCheck', 'memOoc']) { if (m[k] === undefined) { if (k in row) { delete row[k]; n++; changed = true; } } else { row[k] = m[k]; n++; changed = true; } }
+      return changed;
+    });
     return n;
   },
 

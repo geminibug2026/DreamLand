@@ -1,7 +1,8 @@
 // ── Dreamland core: 유틸 · IndexedDB · 스토어 · 기본값 ── (옛 js/core.js 그대로)
-import { fmtDate, getLang, locale, t as tr } from '../i18n';
+import { fmtDate, getLang, t as tr } from '../i18n';
 import { Server } from './server';
 import type { Char, Chat, Colls, CollName, Conn, KvRow, Lore, LoreEntry, Msg, MsgsRow, Persona, Preset, PresetBlock, Regex, Role, Settings, StoreName, Asset } from './types';
+import * as MS from './msgstore';
 
 // replaceChildren / append 에 null·false·undefined 가 섞여 들어가면 글자로 찍히므로 걸러 낸다
 type Kid = Node | string;
@@ -113,9 +114,8 @@ export function shrinkImage(src: string, max = 720, mime = 'image/webp', q = 0.9
 export function fmtTime(ts: number | string | Date | null | undefined) {
   if (!ts) return '';
   const d = new Date(ts), n = new Date();
-  const same = d.toDateString() === n.toDateString();
-  const hm = d.toLocaleTimeString(locale(), { hour: '2-digit', minute: '2-digit' });
-  if (same) return hm;
+  const same = d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+  if (same) return fmtDate(d, { hour: '2-digit', minute: '2-digit' });   // 만들어 둔 형식기를 다시 쓴다 (메시지마다 새로 만들면 느리다)
   if (d.getFullYear() === n.getFullYear()) return getLang() === 'ko' ? `${d.getMonth() + 1}월 ${d.getDate()}일` : fmtDate(d, { month: 'short', day: 'numeric' });
   return getLang() === 'ko' ? `${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}` : fmtDate(d, { year: 'numeric', month: 'numeric', day: 'numeric' });
 }
@@ -156,12 +156,24 @@ async function tx<T>(store: string, mode: IDBTransactionMode, fn: (o: IDBObjectS
   });
 }
 // 최근에 연 대화의 메시지 목록은 메모리에 들고 있는다 — 방에 다시 들어갈 때 통째로 읽어 오지 않게 (S.msgsFast)
-// 어디서든 msgs 저장소에 쓰면 그 방의 사본을 버린다. 다른 탭에서 쓴 것도 알려 받는다
-const msgCache = new Map<string, Msg[]>(); let msgVer = 0, msgBus: BroadcastChannel | null = null;
-const msgDrop = (id?: string | null) => { msgVer++; if (id == null) msgCache.clear(); else msgCache.delete(id); };
+// 어디서든 msgs 저장소에 쓰면 그 방의 사본을 버린다. 다른 탭에서 쓴 것도 알려 받는다.
+// 메시지 저장소는 긴 대화를 조각으로 나눠 둔다 (src/lib/msgstore.ts) — 이 앱이 아닌 쪽(다른 탭 · 가져오기 · 자료 폴더)이 쓰면 조각 배치도 잊는다
+const msgCache = new Map<string, Msg[]>(); let msgVer = 0, msgBus: BroadcastChannel | null = null; const extVer = new Map<string, number>();
+// own: 메시지 저장소(msgstore)가 메모리의 목록을 쓴 것 — 들고 있는 사본은 그대로 맞으므로 버리지 않는다
+const msgDrop = (id?: string | null, own = false) => {
+  msgVer++; if (own) return;
+  const c = id == null ? null : MS.chatOfId(id);
+  if (c == null) { msgCache.clear(); extVer.clear(); MS.forget(null); }
+  else { msgCache.delete(c); MS.forget(c); extVer.set(c, (extVer.get(c) || 0) + 1); }
+};
 const msgKeep = (id: string, list: Msg[]) => { msgCache.delete(id); msgCache.set(id, list); while (msgCache.size > 4) msgCache.delete(msgCache.keys().next().value as string); };
 try { msgBus = new BroadcastChannel('dreamland-msgs'); msgBus.onmessage = e => msgDrop(e.data); } catch { }
-const wrote = (s: string, id?: unknown) => { if (s !== 'msgs') return; msgDrop(id as string | null | undefined); try { msgBus?.postMessage(id ?? null); } catch { } };
+const wrote = (s: string, id?: unknown, own = false) => { if (s !== 'msgs') return; msgDrop(id as string | null | undefined, own); try { msgBus?.postMessage(id == null ? null : MS.chatOfId(id)); } catch { } };
+/** 메시지 저장소에 닿는 길 (msgstore 가 쓴다). 쓰기는 DB.batch 를 거친다 — 자료 폴더 거울이 그것을 감싸 따라 보낸다 */
+const msgIo: MS.Io = {
+  tx: (mode, fn) => tx<unknown>('msgs', mode, o => { fn(o); }),
+  batch: fn => DB.batch('msgs', fn as Parameters<typeof DB.batch>[1]),
+};
 
 /** 저장소 이름 → 한 줄의 꼴 */
 export interface Rows extends Colls { msgs: MsgsRow; kv: KvRow; assets: Asset; mem: { id: string; [k: string]: unknown } }
@@ -177,6 +189,12 @@ export const DB = {
   many: <K extends StoreName>(s: K, ids: IDBValidKey[]) => { const out: (Rows[K] | undefined)[] = []; return tx<unknown>(s, 'readonly', o => { ids.forEach((id, i) => { const q = o.get(id); q.onsuccess = () => { out[i] = q.result as Rows[K]; }; }); }).then(() => out); },
   byOwner: (owner: string) => tx<Asset[]>('assets', 'readonly', o => o.index('owner').getAll(owner)),
   bulk: (s: StoreName, list: object[]) => { wrote(s); return tx<undefined>(s, 'readwrite', o => { list.forEach(v => o.put(v)); }); },
+  /** 한 트랜잭션 안에서 여러 줄을 쓰고 지운다 (fn 이 그 자리에서 읽어 보고 정할 수 있다). 다 되면 쓴 줄 · 지운 id 를 돌려준다 */
+  batch: (s: StoreName, fn: (o: IDBObjectStore, log: { put(v: object): void; del(id: IDBValidKey): void }) => void) => {
+    const put: object[] = [], del: IDBValidKey[] = [];
+    return tx<unknown>(s, 'readwrite', o => { fn(o, { put: v => { o.put(v); put.push(v); }, del: id => { o.delete(id); del.push(id); } }); })
+      .then(() => { const ids = new Set([...put.map(v => (v as { id?: unknown }).id), ...del].map(id => s === 'msgs' ? MS.chatOfId(id) : id)); for (const id of ids) wrote(s, id, true); return { put, del }; });
+  },
 };
 
 // ── 기본값 ──
@@ -391,7 +409,17 @@ export interface Store {
   set(patch: { [K in keyof Settings]?: unknown }): void;
   msgs(chatId: string): Promise<Msg[]>;
   msgsFast(chatId: string): Promise<Msg[]>;
+  /** 메모리에 들고 있는 그 방의 목록 (없으면 undefined) — 읽기만 할 때 */
+  msgsCached(chatId: string): Msg[] | undefined;
   saveMsgs(chat: Chat, list: Msg[]): Promise<void>;
+  /** 메시지 목록만 저장한다 (대화방의 미리보기 · 개수 · 시각은 고치지 않는다) */
+  putMsgs(chatId: string, list: Msg[]): Promise<void>;
+  /** 저장된 대화에서 ids 의 메시지만 fn 으로 고쳐 쓴다 (화면이 들고 있는 목록을 통째로 덮어쓰지 않게). 고친 수 */
+  patchMsgs(chatId: string, ids: string[], fn: (row: Msg) => boolean): Promise<number>;
+  /** 이 메시지를 고쳤다고 알린다 — 오래된 메시지라도 다음 저장 때 바로 쓰인다 (알리지 않아도 저장한 뒤 한가할 때 견주어 쓴다) */
+  touchMsgs(...ms: (Msg | null | undefined)[]): void;
+  /** 예전 꼴(한 줄)로 저장된 긴 방인가 — 한가할 때 putMsgs 로 미리 조각으로 옮겨 두면 첫 저장이 가볍다 */
+  splitDue(chatId: string): boolean;
   conn(): Conn | undefined;
   helperConn(task: string, chat?: Chat | null): Conn | undefined;
   preset(): Preset;
@@ -451,29 +479,36 @@ export const S: Store = {
     self[coll] = self[coll].filter(x => x.id !== id);
     await DB.del(coll, id);
     if (coll === 'conns') await Secrets.del(id);
-    if (coll === 'chats') { await DB.del('msgs', id); await DB.del('mem', id); await DB.del('kv', 'vec:' + id).catch(() => { }); await DB.del('kv', 'memcp:' + id).catch(() => { }); emit('chat:deleted', id); }
+    if (coll === 'chats') { await MS.remove(msgIo, id); await DB.del('mem', id); await DB.del('kv', 'vec:' + id).catch(() => { }); await DB.del('kv', 'memcp:' + id).catch(() => { }); emit('chat:deleted', id); }
     emit(coll, null);
   },
   saveSettings: debounce(async () => DB.put('kv', await Vault.packSettings()), 200),
   set(patch) { Object.assign(this.settings, patch); this.saveSettings(); emit('settings', patch); },
-  async msgs(chatId) { return (await DB.get('msgs', chatId))?.list || []; },
+  async msgs(chatId) { return (await MS.read(msgIo, chatId, false)).list; },
   /** 대화 화면용: 방금까지 열어 둔 방이면 메모리의 목록을 바로 돌려준다 (저장된 것과 같은 내용) */
   async msgsFast(chatId) {
     const hit = msgCache.get(chatId); if (hit) { msgKeep(chatId, hit); return hit; }
-    const v = msgVer, list = await this.msgs(chatId);
-    if (v === msgVer) msgKeep(chatId, list);   // 읽는 사이 누가 저장했으면 들고 있지 않는다
-    return list;
+    const v = msgVer, r = await MS.read(msgIo, chatId, true);
+    if (r.missing) emit('msgs:partial', { chatId, missing: r.missing });   // 조각 일부를 찾지 못했다 (자료 폴더에서 아직 다 받아 오지 못했다): 있는 만큼 보여 준다
+    else if (v === msgVer) msgKeep(chatId, r.list);   // 읽는 사이 누가 저장했으면 들고 있지 않는다
+    return r.list;
   },
+  msgsCached: chatId => msgCache.get(chatId),
   async saveMsgs(chat, list) {
     chat.count = list.length;
-    const last = [...list].reverse().find(m => m.role !== 'system') || list[list.length - 1];
+    let last: Msg | undefined; for (let i = list.length - 1; i >= 0; i--) if (list[i].role !== 'system') { last = list[i]; break; }
+    last ||= list[list.length - 1];
     const tail = list[list.length - 1];
     chat.updatedAt = tail ? Math.max(tail.ts || 0, tail.swipes?.[tail.sw]?.ts || 0) || now() : now();
     chat.preview = last ? msgText(last).replace(/\s+/g, ' ').slice(0, 90) : '';
-    const put = DB.put('msgs', { id: chat.id, list }), v = msgVer; await put;
-    if (v === msgVer) msgKeep(chat.id, list);   // 그사이 다른 저장이 끼어들었으면 다음에 다시 읽는다
+    const e = extVer.get(chat.id) || 0; await MS.write(msgIo, chat.id, list);
+    if (e === (extVer.get(chat.id) || 0)) msgKeep(chat.id, list);   // 그사이 다른 곳에서 이 방을 썼으면 다음에 다시 읽는다
     await this.save('chats', chat, true);
   },
+  async putMsgs(chatId, list) { if (msgCache.get(chatId) !== list) msgCache.delete(chatId); await MS.write(msgIo, chatId, list); },
+  patchMsgs: (chatId, ids, fn) => MS.patch(msgIo, chatId, ids, fn),
+  touchMsgs: (...ms) => MS.touch(...ms),
+  splitDue: chatId => MS.splitDue(chatId),
   conn() { return this.get('conns', this.settings.activeConn); },
   // 번역·기억·삽화 같은 보조 작업에 쓸 연결 (지정하지 않으면 대화의 연결)
   helperConn(task, chat) {
@@ -497,6 +532,7 @@ export const S: Store = {
   async exportAll() {
     const out: Record<string, unknown> = { app: 'dreamland', version: 1, exportedAt: new Date().toISOString() };
     for (const c of STORES) out[c] = await DB.all(c);
+    out.msgs = MS.flatten(out.msgs as MS.HeadRow[]);   // 긴 대화의 조각은 한 방 한 줄({ id, list })로 합쳐 넣는다 — 예전 판 · 다른 도구도 읽게
     out.conns = (out.conns as Conn[]).map(({ sec: _sec, ...c }) => { void _sec; return { ...c, apiKey: '', serviceAccount: '' }; });   // 비밀 값은 백업에 넣지 않는다 (암호문도)
     out.mem = (out.mem as unknown[]).map(m => JSON.parse(JSON.stringify(m, (_k, v) => ArrayBuffer.isView(v) ? undefined : v)));   // 벡터는 다시 계산할 수 있는 캐시
     out.kv = (out.kv as KvRow[]).filter(r => !String(r.id).startsWith('vec:'));   // 벡터는 다시 만들 수 있는 캐시라 백업에 넣지 않는다
@@ -515,6 +551,7 @@ export const S: Store = {
       if (c === 'kv') rows = rows.filter(r => !/^(ext:|extdata:|vec:)/.test(String(r.id)) && (replace || r.id !== 'settings'))   // 합쳐 넣을 때는 지금 설정을 그대로 둔다
         .map(r => r.id === 'settings' ? { ...r, exts: oldSet?.exts || {}, ...(oldSet?.vault ? { vault: oldSet.vault } : {}), ...(oldSet?.illustSec ? { illustSec: oldSet.illustSec } : {}), illust: { ...(r.illust as Plain || {}), naiKey: (r.illust as Plain | undefined)?.naiKey || (oldSet?.illust as Plain | undefined)?.naiKey || '' } } : r);
       if (replace) { if (c === 'kv') { for (const r of await DB.all('kv')) if (!/^(ext:|extdata:)/.test(String(r.id))) await DB.del('kv', r.id); } else await DB.clear(c); }
+      else if (c === 'msgs') { const stale = await MS.staleParts(msgIo, rows as unknown as MS.HeadRow[]); if (stale.length) await DB.batch('msgs', (_o, log) => { for (const id of stale) log.del(id); }); }   // 덮어쓸 방에 남은 조각 (가져온 목록과 어긋난다)
       await DB.bulk(c, rows);
     }
     await this.load();

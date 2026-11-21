@@ -2540,6 +2540,7 @@
   "chat.start.rp": "RP mode",
   "chat.start.talk": "Talk mode",
   "chat.page.empty": "No chats yet. Pick a character and start your first scene.",
+  "chat.page.partial": "{n} earlier messages of this chat haven't loaded yet. They'll come back once the data folder finishes syncing (nothing was deleted).",
   "chat.page.toChars": "Browse characters",
   "translate.vars.language": "Target language",
   "translate.vars.prompt": "Text to translate",

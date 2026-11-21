@@ -150,25 +150,47 @@ function watchFrames() {
   // 화면은 보이는 곳 근처에 올 때 만든다 — 상태창이 수십 개인 방을 열 때 한꺼번에 수십 개의 문서(jQuery · Tailwind 포함)를 띄우면 그동안 화면이 멈춘다.
   // 마지막 몇 개 메시지의 화면은 바로 만든다 (이벤트를 듣는 상태창이 늦게 뜨지 않게). 한 번 잰 높이는 기억해 두어 나중에 만들 때 자리가 튀지 않게 한다
   const mount = (el: HTMLElement) => {
-    if (el.dataset.on) return; el.dataset.on = '1'; io?.unobserve(el);
+    if (el.dataset.on) return; el.dataset.on = '1'; delete el.dataset.wait; io?.unobserve(el);
     const id = el.dataset.frame || '', f = document.createElement('iframe');
     f.className = 'dl-frame-el'; f.dataset.frame = id;
     f.setAttribute('sandbox', 'allow-scripts allow-popups allow-forms allow-modals'); f.setAttribute('referrerpolicy', 'no-referrer');
     const h = frameH.get(id); if (h) f.style.height = h + 'px';
     f.src = Server.frameUrl;
     el.style.minHeight = ''; el.append(f);
+    if (el.closest('.msgs > article.msg')) { live.add(el); far?.observe(el); prune(); }
   };
   const io = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver(es => { for (const e of es) if (e.isIntersecting) mount(e.target as HTMLElement); }, { rootMargin: '900px 0px' });
+  // 화면에서 멀리 벗어난 메시지 속 화면은 내려놓는다 (잰 높이로 자리는 지킨다). 다시 가까이 오면 새로 띄운다 — 상태창이 수백 개인 방에서 iframe 이 끝없이 쌓여 느려지고 메모리가 모자라지 않게
+  const LIVE_MAX = 12, live = new Set<HTMLElement>(), away = new Set<HTMLElement>();
+  const far = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver(es => { for (const e of es) { const el = e.target as HTMLElement; if (e.isIntersecting) away.delete(el); else if (el.dataset.on) away.add(el); } prune(); }, { rootMargin: '2500px 0px' });
+  const unmount = (el: HTMLElement) => {
+    live.delete(el); away.delete(el); far?.unobserve(el);
+    const f = el.querySelector<HTMLIFrameElement>(':scope > iframe.dl-frame-el'); if (!f) return;
+    el.style.minHeight = (frameH.get(el.dataset.frame || '') || f.offsetHeight || 160) + 'px';
+    f.remove(); delete el.dataset.on; el.dataset.wait = '1'; io?.observe(el);
+  };
+  const prune = () => {
+    for (const el of live) if (!el.isConnected) { live.delete(el); away.delete(el); far?.unobserve(el); }
+    if (live.size <= LIVE_MAX || !away.size) return;
+    const arts = document.querySelectorAll<HTMLElement>('.msgs > article.msg'), recent = new Set([...arts].slice(-3));
+    for (const el of [...away]) { if (live.size <= LIVE_MAX) break; const art = el.closest<HTMLElement>('.msgs > article.msg'); if (art && recent.has(art)) continue; unmount(el); }
+  };
   const hydrate = () => {
-    const recent = new Set([...document.querySelectorAll<HTMLElement>('.msgs > article.msg')].slice(-3));
+    queued = false;
+    let recent: Set<Element> | null = null;
     for (const el of document.querySelectorAll<HTMLElement>('.dl-frame:not([data-on]):not([data-wait])')) {
       if (frameSrc.get(el.dataset.frame || '') == null) continue;
       const art = el.closest<HTMLElement>('.msgs > article.msg');
+      if (art?.classList.contains('streaming')) continue;   // 답변이 흘러나오는 동안은 띄우지 않는다 (매 화면 새로 그려져 iframe 이 계속 다시 뜬다). 다 받으면 다시 그릴 때 띄운다
+      recent ||= new Set([...document.querySelectorAll('.msgs > article.msg')].slice(-3));
       if (!io || !art || recent.has(art)) { mount(el); continue; }
       el.dataset.wait = '1'; el.style.minHeight = (frameH.get(el.dataset.frame || '') || 160) + 'px'; io.observe(el);
     }
   };
-  new MutationObserver(hydrate).observe(document.body, { childList: true, subtree: true });
+  // 새 화면 자리가 생겼을 때만 살핀다 (글자가 바뀔 때마다 문서 전체를 뒤지지 않게)
+  let queued = false;
+  const has = (n: Node) => n.nodeType === 1 && ((n as Element).classList.contains('dl-frame') || !!(n as Element).querySelector('.dl-frame'));
+  new MutationObserver(recs => { if (queued) return; for (const r of recs) for (const n of r.addedNodes) if (has(n)) { queued = true; queueMicrotask(hydrate); return; } }).observe(document.body, { childList: true, subtree: true });
   setTimeout(hydrate, 0);
 }
 

@@ -1292,9 +1292,10 @@ function termCallInfo(id: number, conn: Conn | null | undefined, P: Params, mess
 /** 서버 터미널로 보낸다. line 은 옛 서버(새로 켜지 않은 서버)도 찍는 한 줄 요약, more 는 새 서버가 보기 좋게 그리는 자료 */
 function termSend(kind: 'call' | 'req' | 'res' | 'done' | 'err', line: string, more: () => Record<string, unknown>) {
   if (termMode() === 'off' || typeof fetch === 'undefined') return;
-  let extra: Record<string, unknown> = {}; try { extra = more(); } catch (e) { console.warn('[터미널 로그]', e); }
-  termPost({ kind, line, v: 2, ...extra });
+  // 기록을 꾸미는 일(프롬프트 전체의 토큰 세기 · 한 줄로 줄이기)은 한가할 때 한다 — 보내기를 누른 순간 긴 대화에서 화면이 멈추지 않게. 찍히는 차례는 그대로
+  termQ = termQ.then(termIdle).then(() => { let extra: Record<string, unknown> = {}; try { extra = more(); } catch (e) { console.warn('[터미널 로그]', e); } return Server.post('log', { kind, line, v: 2, ...extra }); }).catch(() => { });
 }
+const termIdle = () => new Promise<void>(r => { const w = globalThis as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }; if (w.requestIdleCallback) w.requestIdleCallback(() => r(), { timeout: 1500 }); else setTimeout(r, 0); });
 /** 터미널 기록은 보낸 차례대로 찍히게 하나씩 보낸다 */
 let termQ: Promise<unknown> = Promise.resolve();
 const termPost = (body: { kind: string; line: string; [k: string]: unknown }) => { termQ = termQ.then(() => Server.post('log', body)).catch(() => { }); };

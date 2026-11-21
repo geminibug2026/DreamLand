@@ -35,7 +35,7 @@ const idle = () => new Promise<void>(r => { const w = window as unknown as { req
 async function scanRoom(c: Chat, since: number): Promise<RoomScan | null> {
   const k = c.updatedAt + ':' + c.count + ':' + dayKey(since), old = perRoom.get(c.id); if (old?.k === k) return old;
   await idle();
-  let msgs; try { msgs = await S.msgs(c.id); } catch { return null; }
+  let msgs; try { msgs = S.msgsCached(c.id) || await S.msgs(c.id); } catch { return null; }   // 방금까지 연 방은 메모리의 목록을 쓴다 (긴 방을 다시 읽지 않게 — 읽기만 한다)
   const days = new Map<string, [number, number]>(), quotes: Quote[] = [];
   for (const m of msgs) {
     if (m.role === 'system' || m.hidden) continue;

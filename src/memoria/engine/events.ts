@@ -24,7 +24,7 @@ on<ChatM | null | undefined>('chat:open', async chat => {
   try {
     for (const t of updateTimers.values()) clearTimeout(t); updateTimers.clear(); G.lastQuietPrompt = null;
     if (!chat?.id) return;
-    const mem = await Memory.load(chat.id), msgs = await S.msgs(chat.id);
+    const mem = await Memory.load(chat.id), msgs = await S.msgsFast(chat.id);   // 방금 연 방의 목록 (메모리에 있으면 다시 읽지 않는다 — 긴 대화를 두 번 읽지 않게)
     if (!Array.isArray(msgs) || (!msgs.length && mem.turns.length)) return;   // 메시지를 읽지 못했을 때 기록을 통째로 걷어내지 않는다
     if (Memory.reconcile(mem, msgs)) await Memory.save(mem);
   } catch (e: any) { console.warn('[장기기억]', e); Memory.logActivity('error', tr('memoria.engine.log.eventError', { why: e?.message || e })); }

@@ -108,5 +108,7 @@ let queued = false;
 export function watchChat() {
   // 다음 그림 때 한 번. 그림이 멈춘 창(뒤에 숨은 탭)에서도 단추가 빠지지 않게 잠깐 뒤에도 한 번 본다
   const run = () => { if (!queued) return; queued = false; try { decorate(); } catch (e) { console.warn('[번역 단추]', e); } };
-  new MutationObserver(() => { if (queued) return; queued = true; requestAnimationFrame(run); setTimeout(run, 100); }).observe(document.documentElement, { childList: true, subtree: true });
+  // 단추 칸(.msg-tools) · 입력창 틀이 새로 생겼을 때만 (답변이 흘러나오며 본문 글이 바뀔 때마다 문서 전체를 뒤지지 않게)
+  const has = (n: Node) => n.nodeType === 1 && ((n as Element).matches('article.msg, .msg-tools, .composer-box, .send') || !!(n as Element).querySelector('.msg-tools, .composer-box'));
+  new MutationObserver(recs => { if (queued) return; for (const r of recs) for (const n of r.addedNodes) if (has(n)) { queued = true; requestAnimationFrame(run); setTimeout(run, 100); return; } }).observe(document.documentElement, { childList: true, subtree: true });
 }

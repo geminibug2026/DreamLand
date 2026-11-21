@@ -23,7 +23,30 @@ const lsSave = () => { clearTimeout(lsTimer); lsTimer = window.setTimeout(() => 
 const roleOf = (m: Msg) => m.role === 'user' ? 'user' : m.role === 'system' ? 'system' : 'assistant';
 const view = (m: Msg, i: number) => ({ message_id: i, name: m.name || (m.role === 'user' ? S.persona(cur.chat!)?.name : '') || '', role: roleOf(m), is_hidden: !!m.hidden, message: msgText(m), data: varsOf(m) || {}, swipe_id: m.sw, swipes: m.swipes.map(s => s.text), swipes_data: swipesVars(m) });
 const LIMIT = 300;
-const snapshot = () => { const ms = cur.msgs, from = Math.max(0, ms.length - LIMIT); return ms.slice(from).map((m, j) => view(m, from + j)); };
+// 화면들이 들고 있는 메시지 사본 (실리태번 도우미의 getChatMessages 는 바로 답해야 한다).
+// 일이 있을 때마다 최근 300개를 통째로 화면마다 보내면 (변수가 큰 방은 수 MB) 그동안 화면이 멈춘다 — 지난번에 보낸 것과 달라진 메시지만 보낸다.
+// 화면은 받은 판(ver)을 적어 두고, 자기 판(base)이 아닌 것을 받으면 통째로 다시 달라고 한다 (vendor/th-shim.js)
+let stateVer = 0, sentFrom = 0, sentChat = '';
+const sent = new Map<number, string>(), sentView = new Map<number, Obj>();
+/** 지금 메시지들을 지난번 보낸 것과 견준다. 달라진 것이 없으면 null */
+function stateDelta(): Obj | null {
+  const ms = cur.msgs, from = Math.max(0, ms.length - LIMIT), lastId = ms.length - 1, chatId = cur.chat?.id || '';
+  if (chatId !== sentChat) { sent.clear(); sentView.clear(); sentChat = chatId; }
+  const upd: Obj[] = [], next = new Map<number, string>(), nextView = new Map<number, Obj>();
+  for (let i = from; i < ms.length; i++) {
+    const v = view(ms[i], i) as Obj; let j: string; try { j = JSON.stringify(v); } catch { j = String(Math.random()); }
+    next.set(i, j); nextView.set(i, v); if (sent.get(i) !== j) upd.push(v);
+  }
+  if (!upd.length && from === sentFrom && sent.size === next.size) return null;
+  const base = stateVer; stateVer++;
+  sent.clear(); sentView.clear(); for (const [k, j] of next) sent.set(k, j); for (const [k, v] of nextView) sentView.set(k, v); sentFrom = from;
+  return upd.length > LIMIT / 2 ? { ver: stateVer, messages: [...sentView.values()], lastId } : { ver: stateVer, base, from, lastId, upd };
+}
+/** 지금 상태를 보낸 것으로 맞춘 뒤 (달라졌으면 화면들에 먼저 알리고) 통째 사본 */
+function fullState() {
+  const d = stateDelta(); if (d) framePost({ dlState: d });
+  return { ver: stateVer, messages: [...sentView.values()] };
+}
 const vars = () => ({ chat: cur.chat?.vars || {}, global: S.settings.globalVars || {}, character: {}, message: {} });
 
 function msgIndexOf(f: HTMLIFrameElement) {
@@ -38,7 +61,8 @@ const mvuText = () => ({ path: t('mvu.zod.path'), input: t('mvu.zod.input'), cmd
 frameHooks.init = async f => {
   await lsReady;
   const chat = cur.chat, ch = chat ? S.get('chars', chat.charIds[0]) : undefined;
-  return { ls, msgId: msgIndexOf(f), lastId: cur.msgs.length - 1, messages: snapshot(), vars: vars(), user: chat ? S.persona(chat)?.name : '', char: ch?.name || '', charId: ch?.id || '', charAvatar: ch?.avatar || '', userAvatar: chat ? S.persona(chat)?.avatar || '' : '', viewH: innerHeight, mvuExtra: isDuringExtra(), mvuNotify: !!(S.settings as { mvu?: { notifyErr?: boolean } }).mvu?.notifyErr, mvuText: mvuText() };
+  const st = fullState();
+  return { ls, msgId: msgIndexOf(f), lastId: cur.msgs.length - 1, messages: st.messages, ver: st.ver, vars: vars(), user: chat ? S.persona(chat)?.name : '', char: ch?.name || '', charId: ch?.id || '', charAvatar: ch?.avatar || '', userAvatar: chat ? S.persona(chat)?.avatar || '' : '', viewH: innerHeight, mvuExtra: isDuringExtra(), mvuNotify: !!(S.settings as { mvu?: { notifyErr?: boolean } }).mvu?.notifyErr, mvuText: mvuText() };
 };
 
 async function commit() { await chatApi.save(); chatApi.redraw?.(); }
@@ -53,6 +77,7 @@ frameHooks.call = async (f, fn, args) => {
     case 'toast': { const [kind, m, title] = args as string[]; toast([title, m].filter(Boolean).join(' — '), (kind || '') as 'ok'); return null; }
     case 'slash': return await runQrScript(String(args[0] || ''));
     case 'emit': return await relayEmit(f, String(args[0] ?? ''), Array.isArray(args[1]) ? args[1] as unknown[] : []);   // 다른 화면 · 앱에도 알리고, 고쳐진 인자를 돌려준다
+    case 'state': return { ...fullState(), lastId: cur.msgs.length - 1 };   // 화면이 받은 판이 어긋났다: 통째로 다시
   }
   if (!chat) throw new Error('no chat open');
   const ms = cur.msgs;
@@ -99,10 +124,12 @@ frameHooks.call = async (f, fn, args) => {
 };
 
 // 앱에서 일어난 일을 화면들에 알린다 (실리태번 이벤트 이름으로)
-const send = (ev: string, i?: number) => framePost({ dlState: { lastId: cur.msgs.length - 1, messages: snapshot(), vars: vars(), mvuExtra: isDuringExtra() }, dlEvent: ev, args: i == null ? [] : [i] });
+const state = () => ({ ...(stateDelta() || {}), lastId: cur.msgs.length - 1, vars: vars(), mvuExtra: isDuringExtra() });
+const anyFrame = () => !!document.querySelector('iframe.dl-frame-el');   // 화면이 하나도 없으면 사본을 만들 것도 없다
+const send = (ev: string, i?: number) => { if (anyFrame()) framePost({ dlState: state(), dlEvent: ev, args: i == null ? [] : [i] }); };
 /** 변수 갱신이 끝난 뒤에 알린다 (실리태번에서 변수 갱신이 먼저 끝나는 것과 같게) */
 const after = (ev: string, d: unknown, i: () => number) => { const chat = (d as { chat?: unknown })?.chat || cur.chat; void Promise.resolve().then(() => mvuPending(chat as typeof cur.chat)).then(() => send(ev, i())); };
-on('mvu:updated', () => framePost({ dlState: { lastId: cur.msgs.length - 1, messages: snapshot(), vars: vars(), mvuExtra: isDuringExtra() } }));
+on('mvu:updated', () => { if (anyFrame()) framePost({ dlState: state() }); });
 const idx = (d: unknown) => { const m = (d as { msg?: Msg })?.msg; return m ? cur.msgs.indexOf(m) : cur.msgs.length - 1; };
 on('message:received', d => { const i = idx(d); after('message_received', d, () => i); });
 on('message:sent', d => { const i = idx(d); after('message_sent', d, () => i); });
