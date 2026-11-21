@@ -9551,5 +9551,6 @@
   "threads.why.named": "named",
   "threads.why.quiet": "quiet a while",
   "threads.why.talk": "talkative",
-  "threads.why.whisper": "was whispered to"
+  "threads.why.whisper": "was whispered to",
+  "threads.card.done": "Opened"
 }

@@ -94,7 +94,7 @@
 .at-mfoot { font-size: 12.5px; }
 
 /* ── 별이 켜지는 카드 ── 화면 오른쪽 아래 구석. 알림 줄(#toasts)과 겹치지 않게 옆으로 */
-.at-toasts { position: fixed; z-index: 95; right: 18px; bottom: calc(18px + var(--safe-b, 0px)); display: grid; gap: 8px; width: min(320px, calc(100vw - 24px)); pointer-events: none; }
+.at-toasts { position: fixed; z-index: 95; right: 18px; top: 72px; display: grid; gap: 8px; width: min(320px, calc(100vw - 24px)); pointer-events: none; }
 .at-card { pointer-events: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; padding: 10px 6px 10px 10px; animation: at-rise .42s var(--fx-out) both; }
 @keyframes at-rise { from { opacity: 0; transform: translateY(8px); } }
 .at-cmain { display: grid; grid-template-columns: 68px minmax(0, 1fr); gap: 12px; align-items: center; text-align: left; min-height: 68px; }
@@ -116,6 +116,6 @@
   .at-plate { max-width: 340px; width: 100%; justify-self: center; }
 }
 @media (max-width: 820px) {
-  .at-toasts { right: 12px; bottom: calc(84px + var(--safe-b, 0px)); }
+  .at-toasts { right: 10px; left: 10px; top: calc(58px + env(safe-area-inset-top, 0px)); width: auto; }
   .at-recent button, .at-set { min-height: 44px; }
 }

@@ -63,7 +63,7 @@ export function pieces({ chat, char, chars, persona, msgs, type, ctx }: PromptIn
   const tail = (again ? shown.slice(0, -1) : shown).pop(), g: string[] = [];
   if (t.notes) g.push(NOTES_GUIDE);
   if (t.cut && type !== 'continue' && tail?.role === 'user' && msgText(tail).length >= 140) g.push(CUT_GUIDE);
-  if (group && t.whisper !== false) g.push(WHISPER_GUIDE);
+  if (group && t.whisper === true) g.push(WHISPER_GUIDE);
   if (group && t.autoAway) g.push(AWAY_GUIDE);
   if (talk) {
     const rooms = reachable(chat, char); if (rooms.length) g.push(TO_GUIDE.replace('{{rooms}}', rooms.map(r => `"${r.name.replace(/[{}"]/g, '')}"`).join(', ')));
@@ -89,7 +89,7 @@ export function onReceived({ msg, chat }: { msg: Msg; chat: Chat }) {
     else if (tag.name === 'cut' && t.cut && list) {
       const i = list.indexOf(msg), prev = list[i - 1];
       if (prev?.role === 'user' && !prev.hidden) { const at = findCut(msgText(prev), unquote(tag.arg)); if (at > 0) { sw.thCut = { id: prev.id, at }; touched = prev; } }
-    } else if (tag.name === 'whisper' && group && t.whisper !== false) {
+    } else if (tag.name === 'whisper' && group && t.whisper === true) {
       const [name, text] = splitArg(tag.arg), id = findWho(name, who(chars), user);
       if (id && id !== msg.charId && text) (sw.thWh ||= []).push({ to: id, text: text.slice(0, 400) });
     } else if ((tag.name === 'leave' || tag.name === 'enter') && group && t.autoAway) {

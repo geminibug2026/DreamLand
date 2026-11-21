@@ -104,8 +104,8 @@ export function InnerPanel({ chat, msgs }: { chat: Chat; msgs: Msg[] }) {
         <span className="fx-num">{p2(i + 1)}</span><Seat away={away.has(c.id)} /><b>{c.name}</b><small>{away.has(c.id) ? t('threads.seat.away') : t('threads.seat.here')}</small></button></li>)}</ul>
       <small className="hint">{t('threads.seat.hint')}</small>
       <Check label={t('threads.seat.auto')} hint={t('threads.seat.autoHint')} on={th.autoAway} onChange={v => set(() => { th.autoAway = v; })} />
-      <Check label={t('threads.whisper.ai')} hint={t('threads.whisper.aiHint')} on={th.whisper !== false} onChange={v => set(() => { th.whisper = v; })} />
-      {th.whisper !== false ? <Check label={t('threads.whisper.veil')} hint={t('threads.whisper.veilHint')} on={th.veilMe} onChange={v => set(() => { th.veilMe = v; chatApi.redraw(); })} /> : null}
+      <Check label={t('threads.whisper.ai')} hint={t('threads.whisper.aiHint')} on={th.whisper === true} onChange={v => set(() => { th.whisper = v; })} />
+      {th.whisper === true ? <Check label={t('threads.whisper.veil')} hint={t('threads.whisper.veilHint')} on={th.veilMe} onChange={v => set(() => { th.veilMe = v; chatApi.redraw(); })} /> : null}
     </> : null}
     {talk ? <>
       <div className="fx-head th-head"><span className="fx-lbl kr">{t('threads.about.title')}</span></div>
@@ -117,7 +117,7 @@ export function InnerPanel({ chat, msgs }: { chat: Chat; msgs: Msg[] }) {
 }
 /** 자리 그림: 의자 하나. 없는 사람의 의자는 점선으로 비어 있다 */
 const Seat = ({ away }: { away: boolean }) => <svg className="fx-art th-seat-art" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-  <path d="M7 20v-7h10v7M7 13V5h10v8" className={away ? 'd' : ''} /><path d="M5 16h14" className="t" />{away ? null : <circle cx="12" cy="9" r="1.6" className="af" />}</svg>;
+  <path d="M7 3v18M7 13h10v8" className={away ? 'd' : ''} /><path d="M7 6h3M7 9h3" className="t" /><path d="M4 21h16" className="h" />{away ? null : <circle cx="13.5" cy="8.5" r="2" className="af" />}</svg>;
 
 // ════════ 입력창 위 줄: 귓속말 대상 · 눈치껏 다음 화자 · 돌아가기 ════════
 const WHY: Record<string, () => string> = {
@@ -215,7 +215,7 @@ export function ThreadCard({ m }: { m: Msg }) {
       {k.kind === 'arrived' && k.line ? <details><summary>{t('threads.card.plot')}</summary><p>{k.line}</p></details> : null}</div>
     <div className="th-card-stub">
       <svg className="fx-art" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9a7 7 0 0 1-9-9z" className={k.kind === 'visited' ? 't' : ''} /><path d="M17 4v3M15.5 5.5h3" className="a" /></svg>
-      {k.kind === 'invite' ? <button type="button" className="th-link" title={t('threads.stage.cost')} onClick={() => stageDialog(chat, k.premise, m)}>{t('threads.card.accept')}</button>
+      {k.kind === 'invite' ? (k.done ? <span className="fx-lbl kr">{t('threads.card.done')}</span> : <button type="button" className="th-link" title={t('threads.stage.cost')} onClick={() => stageDialog(chat, k.premise, m)}>{t('threads.card.accept')}</button>)
         : k.kind !== 'arrived' && room ? <button type="button" className="th-link" onClick={() => go('chat', room.id)}>{k.kind === 'left' ? t('threads.card.goScene') : t('threads.card.reopen')}</button>
           : k.kind === 'arrived' && room && thPeek(chat).origin ? <button type="button" className="th-link" onClick={() => void goBack(chat)}>{t('threads.back.go')}</button> : <span className="fx-lbl">{k.kind === 'arrived' ? 'SCENE' : 'STUB'}</span>}
     </div>

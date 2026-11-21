@@ -200,7 +200,7 @@ export function Cards() {
     // 별자리를 완성한 별 · 단계가 높은 별을 앞에
     const sorted = [...lits].sort((a, b) => +(b.done || 0) - +(a.done || 0) || b.tier - a.tier), show = sorted.length > 3 ? [...sorted.slice(0, 2), { kind: 'many', id: '', tier: 0, n: sorted.length - 2, done: true } as Lit] : sorted;
     const cards = show.map(lit => ({ key: ++seq, lit }));
-    setList(l => [...l, ...cards].slice(-4)); tone(sorted.some(l => l.done && l.kind === 'star'));
+    setList(l => [...l, ...cards].slice(-2));   // 입력창과 글을 가리지 않게 둘까지만 tone(sorted.some(l => l.done && l.kind === 'star'));
     for (const c of cards) setTimeout(() => setList(l => l.filter(x => x.key !== c.key)), 7500);
   }), []);
   return <div className="at-toasts" role="status" aria-live="polite">{list.map(c => <CardView key={c.key} lit={c.lit} onClose={() => setList(l => l.filter(x => x !== c))} />)}</div>;
