@@ -57,13 +57,30 @@ export async function applyChange(ch: Change): Promise<void> {
   let kind: Kind, targetId: string, before: Obj | null = null, after: Obj;
   try {
     if (op.type === 'create') { kind = op.coll; after = build(kind, structuredClone(op.obj)); targetId = String(after.id); }
+    else if (op.type === 'delete') {   // 통째로 지우기: 사본을 남기고 치운다 (되돌리면 사본을 다시 넣는다)
+      kind = op.coll; targetId = op.id;
+      const cur = current(kind, targetId); if (!cur) throw new Error('gone');
+      before = structuredClone(cur);
+      await DB.put('kv', { id: 'gdundo:' + id, before });
+      await drop(kind, targetId);
+      await saveLedger([...(await ledger()), { id, at: now(), kind, targetId, target: ch.target, created: false, stamp: 0 }]);
+      ch.state = 'applied'; ch.undoId = id; ch.at = now(); delete ch.err;
+      return;
+    }
     else {
-      kind = op.type === 'entry' ? 'lore' : op.type === 'block' ? 'presets' : op.type === 'qritem' ? 'qr' : op.coll;
-      targetId = op.type === 'entry' ? op.loreId : op.type === 'block' ? op.presetId : op.type === 'qritem' ? op.setId : op.id;
+      kind = op.type === 'entry' || op.type === 'entrydel' ? 'lore' : op.type === 'block' ? 'presets' : op.type === 'qritem' || op.type === 'qrdel' ? 'qr' : op.coll;
+      targetId = op.type === 'entry' || op.type === 'entrydel' ? op.loreId : op.type === 'block' ? op.presetId : op.type === 'qritem' || op.type === 'qrdel' ? op.setId : op.id;
       const cur = current(kind, targetId); if (!cur) throw new Error('gone');
       before = structuredClone(cur); after = cur;
       if (op.type === 'set') for (const [k, v] of Object.entries(op.fields)) setPath(after, k, structuredClone(v));
-      else if (op.type === 'entry') {
+      else if (op.type === 'entrydel') {
+        const b = after as unknown as Lore, e = b.entries.find(x => x.id === op.entryId);
+        if (!e) throw new Error('gone'); if (e.locked) throw new Error('locked');
+        b.entries = b.entries.filter(x => x.id !== op.entryId);
+      } else if (op.type === 'qrdel') {
+        const set = after as unknown as QrSet; if (!set.items.some(x => x.id === op.itemId)) throw new Error('gone');
+        set.items = set.items.filter(x => x.id !== op.itemId);
+      } else if (op.type === 'entry') {
         const b = after as unknown as Lore; let e = b.entries.find(x => x.id === op.entryId);
         if (e?.locked) throw new Error('locked');
         if (!e) { e = newEntry({ id: op.entryId }); b.entries.push(e); }
@@ -98,7 +115,7 @@ export async function touchedSince(undoId: string): Promise<boolean> {
   const r = (await ledger()).find(x => x.id === undoId); if (!r) return false;
   const cur = current(r.kind, r.targetId); return !!cur && !!r.stamp && Number(cur.updatedAt) !== r.stamp;
 }
-/** 되돌리기: 만든 것은 치우고, 고친 것은 사본으로 돌린다 */
+/** 되돌리기: 만든 것은 치우고, 고친 것 · 지운 것은 사본으로 돌린다 */
 export async function undoChange(undoId: string): Promise<boolean> {
   const list = await ledger(), r = list.find(x => x.id === undoId); if (!r) return false;
   const row = await DB.get('kv', 'gdundo:' + undoId) as { before?: Obj | null } | undefined;
@@ -109,4 +126,4 @@ export async function undoChange(undoId: string): Promise<boolean> {
   return true;
 }
 /** 만든 자료의 id (적용된 만들기 카드에서 "열기"에 쓴다) */
-export const targetOf = (ch: Change): string => ch.op.type === 'create' ? String(ch.op.obj.id || '') : ch.op.type === 'entry' ? ch.op.loreId : ch.op.type === 'block' ? ch.op.presetId : ch.op.type === 'qritem' ? ch.op.setId : ch.op.id;
+export const targetOf = (ch: Change): string => ch.op.type === 'create' ? String(ch.op.obj.id || '') : ch.op.type === 'entry' || ch.op.type === 'entrydel' ? ch.op.loreId : ch.op.type === 'block' ? ch.op.presetId : ch.op.type === 'qritem' || ch.op.type === 'qrdel' ? ch.op.setId : ch.op.id;
