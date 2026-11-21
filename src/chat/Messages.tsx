@@ -1,5 +1,7 @@
 // 메시지 목록: 필요한 만큼만 그리고, 바뀐 메시지 하나만 다시 그린다
 import { GameCard } from '../game/ui';
+import { ThreadCard, ThreadMarks } from '../threads/ui';
+import { TurnCards } from '../game/More';
 import { memo, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { Avatar, Btn, Icon, IconBtn } from '../kit';
@@ -20,6 +22,8 @@ import { Illust } from '../lib/illust';
 import { Clock } from '../lib/clock';
 import { t, getLang, fmtDate } from '../i18n';
 import { I } from '../lib/icons';
+import { emit } from '../lib/core';
+import { Reacts } from '../extras/reactions';
 
 if (!I.pin) I.pin = 'M12 17v5M8 3h8l-1 6 3 3v2H6v-2l3-3z';
 
@@ -91,6 +95,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
   if (m.role === 'system' && m.call) return art(<><CallCard m={m} /><div className="msg-tools">{del}</div></>);
   if (m.role === 'system' && (m as { gm?: unknown }).gm) return art(<><GameCard m={m} /><div className="msg-tools">{del}</div></>);
   if (m.role === 'system' && m.dice) return art(<><DiceCard m={m} /><div className="msg-tools">{del}</div></>);
+  if (m.role === 'system' && (m as { thCard?: unknown }).thCard) return art(<><ThreadCard m={m} /><div className="msg-tools">{del}</div></>);   // 방 사이 카드 (src/threads)
 
   const streaming = cur.paint.has(m.id);
   const body = editing ? <EditBox m={m} close={() => redraw(m)} /> : <div className="msg-body" dangerouslySetInnerHTML={{ __html: cur.paint.get(m.id) ?? bodyHtml(m) }} />;
@@ -113,7 +118,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
     { label: t('chat.msgMenu.deleteFrom'), ic: 'trash', danger: true, onclick: () => void delFrom(m) },
   ]);
   const clock = msgClock(m, s);
-  const U = ux(), meta = [U.metaTime && clock, ...(S.settings.showMeta ? [U.metaModel && s.model, U.metaTimer && s.ms ? t('chat.meta.sec', { n: (s.ms / 1000).toFixed(1) }) : '', U.metaTokens && s.text ? t('chat.meta.tokens', { n: tokens(s.text) }) : ''] : [])].filter(Boolean).join(' · ');
+  const U = ux(), meta = [U.metaTime && clock, ...(S.settings.showMeta ? [U.metaModel && s.model, U.metaTimer && s.ms ? t('chat.meta.sec', { n: (s.ms / 1000).toFixed(1) }) : '', U.metaTokens && s.text ? t('chat.meta.tokens', { n: tokens(s.text) }) : ''] : []), s.fb ? t('reach.fb.tag') : ''].filter(Boolean).join(' · ');   // s.fb: 대체 연결로 받은 답장
   const why = m.why && mo('showWhy') !== false ? motiveLabel(m.why) : '';
   return art(<>
     <Avatar o={who} cls={S.settings.avatarShape === 'tall' ? 'tall' : ''} />
@@ -122,13 +127,16 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
         {why ? <em className="why" title={t('chat.msg.whyTitle')}>{why}</em> : null}{m.hidden && <em className="badge">{t('chat.msg.hiddenBadge')}</em>}{m.pin && <em className="badge pin" title={t('chat.msgMenu.pinHint')}>{t('chat.msg.pinBadge')}</em>}</header>
       {m.images?.length ? <div className="msg-images">{m.images.map((u, i) => <img key={i} src={u} alt={t('chat.msg.attachAlt')} onClick={() => bigImage(u)} />)}</div> : null}
       {s.reasoning && S.settings.format?.reasoning?.show !== false ? <details className="reason" open={!streaming && !!S.settings.format?.reasoning?.autoExpand}><summary><Icon name="sparkle" size={14} />{t('chat.msg.reasoning')}</summary><div>{s.reasoning}</div></details> : null}
+      {streaming ? null : <TurnCards m={m} />}
       {body}
       {m.memo ? <p className="msg-memo" title={t('chat.msgMenu.memoHint')}><Icon name="note" size={13} />{m.memo}</p> : null}
-      {m.reactions?.length ? <div className="reacts">{m.reactions.map((r, i) => <span key={i} title={r.by || ''}>{r.emoji}</span>)}</div> : null}
+      {streaming ? null : <ThreadMarks m={m} />}
+      <Reacts m={m} />
       <Illusts m={m} s={s} />
       <div className="msg-tools">
         {canSwipe && <div className="swipe"><IconBtn ic="left" title={t('chat.msg.prevSwipe')} onClick={() => void swipe(m, -1)} /><span>{`${m.sw + 1} / ${m.swipes.length}`}</span><IconBtn ic="right" title={last && m.sw === m.swipes.length - 1 ? t('chat.msg.newSwipe') : t('chat.msg.nextSwipe')} onClick={() => void swipe(m, 1)} /></div>}
         {m.role === 'assistant' && last && <><IconBtn ic="refresh" title={t('chat.msg.regen')} onClick={() => void generate('regen')} /><IconBtn ic="play" title={t('chat.msg.continue')} onClick={() => void generate('continue')} /></>}
+        {m.role === 'assistant' && <IconBtn ic="heart" title={t('extras.react.title')} onClick={e => emit('xt:react', { m, anchor: e.currentTarget })} />}
         <IconBtn ic="edit" title={t('chat.msg.edit')} onClick={() => setEditing(true)} />
         <IconBtn ic="copy" title={t('common.copy')} onClick={() => { void navigator.clipboard.writeText(s.text); toast(t('chat.msg.copied')); }} />
         <IconBtn ic="more" title={t('chat.msg.more')} onClick={more} />

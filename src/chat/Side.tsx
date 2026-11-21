@@ -9,6 +9,7 @@ import type { Room } from './types';
 import { go } from '../lib/router';
 import { startMenu } from './start';
 import { S } from '../lib/core';
+import { RoomMarks } from '../threads/ui';
 import { t } from '../i18n';
 
 /** 실리태번 지난 대화 검색처럼: 낱말을 띄어 나눠 모두 들어 있어야 맞는다 */
@@ -24,6 +25,7 @@ function room(c: Room, max: number, depth = 0, isFlat = false, tree: { last?: bo
       {c.temp ? <i className="room-scene">{t('chat.side.temp')}</i> : null}{c.pinned ? <i className="room-pin">✦</i> : null}{c.unread ? <i className="room-unread">{String(c.unread)}</i> : null}{c.scene?.on ? <i className="room-scene">{t('chat.side.scene')}</i> : null}<time>{ago(c.updatedAt)}</time>
       <span className="room-edit" role="button" tabIndex={0} title={t('chat.menu.rename')} aria-label={t('chat.menu.rename')} onClick={e => { e.stopPropagation(); void renameRoom(c); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); void renameRoom(c); } }}><Icon name="edit" size={13} /></span></div>
     <small className="room-prev">{c.preview || t('chat.side.noMsgs')}</small>
+    <RoomMarks c={c} />
     <div className="room-meta"><span className="room-bar" title={t('chat.side.msgCount', { count: n })}><i style={{ width: Math.max(n ? 6 : 0, Math.round(n / Math.max(30, max) * 100)) + '%' }} /></span><span>{t('chat.side.count', { count: n })}</span><span>{t('chat.side.days', { count: daysOf(c) })}</span>
       {(c.diary || []).length ? <span>{t('chat.side.diary', { count: (c.diary || []).length })}</span> : null}{c.parent ? <span title={parent ? t('chat.side.branchedFrom', { name: roomName(parent) }) : ''}>{tree.via ? t('chat.side.branchVia', { n: c.parent.at, name: tree.via }) : t('chat.side.branchAt', { n: c.parent.at })}</span> : null}
       {tree.kids ? <span className="room-kids" role="button" tabIndex={0} aria-expanded={!tree.folded} onClick={e => { e.stopPropagation(); tree.toggle?.(); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); tree.toggle?.(); } }}><Icon name="branch" size={11} />{t('chat.side.branches', { count: tree.kids })}<Icon name={tree.folded ? 'right' : 'down'} size={11} /></span> : null}</div>

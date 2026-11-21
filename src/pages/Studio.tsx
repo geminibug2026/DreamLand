@@ -8,6 +8,7 @@ import * as libAssets from '../lib/assets';
 import { S, chatConns } from '../lib/core';
 import { Host, LForm, PageHead, textModal } from '../studio/parts';
 import { t } from '../i18n';
+import { JobsTable } from '../reach/jobs';
 
 interface StudioSettings { illust: { backend: string } }
 
@@ -70,9 +71,8 @@ function Studio() {
       { k: 'assets.random', label: t('studio.as.random'), type: 'check' },
       { k: 'assets.prompt', label: t('studio.as.prompt'), type: 'area', rows: 5, ph: ASSET_PROMPT, hint: t('studio.as.promptHint') }],
       <p className="hint" key="h">{t('studio.as.hint')}</p>),
-    '보조 연결': () => card([{ section: t('studio.hp.section') },
-      { k: 'helpers.all', label: t('studio.hp.all'), type: 'select', opts: conns, hint: t('studio.hp.allHint') },
-      { k: 'helpers.translate', label: t('studio.tab.translate'), type: 'select', opts: conns, third: true }, { k: 'helpers.memory', label: t('studio.tab.memoria'), type: 'select', opts: conns, third: true }, { k: 'helpers.illust', label: t('studio.hp.illust'), type: 'select', opts: conns, third: true }]),
+    // 일(작업 키) → 연결 · 모델 표. 작업 키 목록은 src/reach/jobs.tsx 의 JOBS 한 곳에서 나온다
+    '보조 연결': () => <JobsTable />,
   };
   // 기능 모듈이 등록한 탭이 같은 이름의 기본 탭을 대신한다
   for (const t of libHooks.X.studio) views[t.title] = () => <ExtTab render={() => t.render()} />;

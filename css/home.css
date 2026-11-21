@@ -1,37 +1,47 @@
 /* ── 홈: 성도 · 최근 대화 · 캐릭터 ──
    성도 칸과 그림 없는 캐릭터의 창은 어느 테마에서나 밤하늘이고, 나머지는 테마 색을 따른다. */
-.home.hm { gap: 0; --h-sub: color-mix(in srgb, var(--text) 74%, var(--bg)); --h-hair: color-mix(in srgb, var(--text) 13%, transparent); --h-hair2: color-mix(in srgb, var(--text) 27%, transparent);
-  --h-serif: "Noto Serif KR", "Nanum Myeongjo", "Apple SD Gothic Neo", serif; --h-mono: "DM Mono", ui-monospace, monospace; --h-it: "Cormorant Garamond", Georgia, serif;
+.home.hm { gap: 0; container: hm / inline-size; --h-sub: color-mix(in srgb, var(--text) 74%, var(--bg)); --h-hair: var(--line-3); --h-hair2: var(--line-2);
+  --h-serif: var(--fx-serif); --h-mono: var(--fx-mono); --h-it: var(--fx-it);
   --n-bg: #0c0c0b; --n-ink: #ece7da; --n-sub: #b4afa1; --n-gold: #c9b27c; --n-line: rgba(236, 231, 218, .6); }
 .hm button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; }
 .hm-star { display: inline-block; width: 10px; height: 10px; background: var(--n-gold); clip-path: polygon(50% 0, 60% 40%, 100% 50%, 60% 60%, 50% 100%, 40% 60%, 0 50%, 40% 40%); }
 .hm-dust { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; fill: #ece7da; }
 
-/* 성도 */
+/* 성도 — 밤하늘 물건: 선은 fine.css 의 네 단계를 쓰되 잉크만 별빛 색으로 바꾼다 (선 변수는 정한 자리에서 계산되므로 여기서 다시 섞는다) */
+.hm-hero, .hm-im { --fx-ink: #ece7da; --fx-paper: #0c0c0b; --line-1: color-mix(in srgb, var(--fx-ink) 64%, transparent); --line-2: color-mix(in srgb, var(--fx-ink) 24%, transparent); --line-3: color-mix(in srgb, var(--fx-ink) 12%, transparent); --line-4: color-mix(in srgb, var(--fx-ink) 6%, transparent); }
+/* 종이 결과, 느리게 반짝이는 먼지 별 두 겹 (타일 173 · 211 은 서로소, 주기 7초 · 11초) */
+.hm-hero::after { content: ""; position: absolute; inset: 0; background: var(--fx-grain); mix-blend-mode: screen; opacity: .1; pointer-events: none; }
+.hm-tw { position: absolute; inset: 0; pointer-events: none; animation: hm-tw 7s ease-in-out infinite; }
+.hm-tw.a { background: radial-gradient(circle at 23px 41px, #ece7da 0 .7px, transparent 1.2px), radial-gradient(circle at 131px 17px, #ece7da 0 .5px, transparent 1px), radial-gradient(circle at 88px 142px, #ece7da 0 .6px, transparent 1.1px); background-size: 173px 173px; }
+.hm-tw.b { background: radial-gradient(circle at 57px 163px, #ece7da 0 .6px, transparent 1.1px), radial-gradient(circle at 176px 71px, #c9b27c 0 .7px, transparent 1.2px), radial-gradient(circle at 109px 9px, #ece7da 0 .5px, transparent 1px); background-size: 211px 211px; animation-duration: 11s; animation-delay: -4s; }
+@keyframes hm-tw { 0%, 100% { opacity: .12; } 50% { opacity: .62; } }
+@media (prefers-reduced-motion: reduce) { .hm-tw { animation: none; opacity: .3; } }
 .hm-hero { position: relative; min-height: 452px; border-radius: 10px; overflow: hidden; color: var(--n-ink); border: 1px solid var(--h-hair);
   background: radial-gradient(520px 520px at 76% 50%, rgba(201, 178, 124, .12), transparent 70%), radial-gradient(900px 500px at 20% 0, #15171c, transparent 70%), var(--n-bg); }
 .hm-tx { position: relative; z-index: 2; box-sizing: border-box; min-height: 452px; width: min(560px, 54%); padding: 40px 0 40px 48px; display: flex; flex-direction: column; }
-.hm-day { display: flex; align-items: center; gap: 9px; font: 400 10px var(--h-mono); letter-spacing: .2em; color: var(--n-sub); } .hm-day b { font: 400 12px var(--font); letter-spacing: .04em; padding-left: 9px; border-left: 1px solid rgba(236, 231, 218, .3); }
+.hm-day { display: flex; align-items: center; gap: 9px; font: 400 10px var(--h-mono); letter-spacing: .2em; color: var(--n-sub); } .hm-day b { font: 400 12px var(--font); letter-spacing: .04em; padding-left: 9px; border-left: 1px solid var(--line-2); }
 .hm-lb { margin-top: auto; padding-top: 24px; font: 400 14px var(--h-serif); letter-spacing: .12em; color: var(--n-gold); }
-.hm-name { margin: 2px 0 0; font: 400 clamp(34px, 4.6vw, 54px)/1.2 var(--h-serif); letter-spacing: .12em; overflow-wrap: anywhere; color: #f3eee1; }
+.hm-name { margin: 2px 0 0; font: 400 clamp(34px, 5.6cqi, 54px)/1.2 var(--h-serif); letter-spacing: .12em; overflow-wrap: anywhere; text-wrap: balance; color: #f3eee1; }
 .hm-q { margin: 14px 0 0; padding-left: 14px; border-left: 1px solid var(--n-gold); font: 400 16.5px/1.75 var(--h-serif); color: var(--n-ink); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .hm-tg { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 14px; font-size: 13.5px; color: #cfcabc; }
 .hm-mt { margin-top: 10px; font-size: 12.5px; color: var(--n-sub); min-height: 1em; }
 .hm-acts { display: flex; gap: 8px; margin-top: 20px; flex-wrap: wrap; }
 .hm .hm-acts .btn { height: 44px; padding: 0 20px; border-radius: 6px; border: 1px solid transparent; font-weight: 600; font-size: 14.5px; gap: 8px; box-shadow: none; background: none; color: #cfcabc; }
-.hm .hm-acts .btn.hm-p { background: var(--n-gold); color: #17150f; } .hm .hm-acts .btn.hm-o { border-color: rgba(236, 231, 218, .4); color: var(--n-ink); }
+.hm .hm-acts .btn.hm-p { background: var(--n-gold); color: #17150f; } .hm .hm-acts .btn.hm-o { border-color: var(--line-1); color: var(--n-ink); }
 .hm .hm-acts .btn:hover { filter: brightness(1.1); }
 .hm-wheel { position: absolute; z-index: 1; right: 70px; top: 50%; width: 400px; height: 400px; margin-top: -200px; }
 .hm-wheel svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; fill: none; }
-.hm-wheel .w-rim { stroke: var(--n-line); } .hm-wheel .w-hair { stroke: rgba(236, 231, 218, .16); } .hm-wheel .w-ring { stroke: rgba(236, 231, 218, .3); stroke-width: .7; }
-.hm-wheel .w-tick { stroke: var(--n-ink); stroke-width: .5; opacity: .5; } .hm-wheel .w-dust { fill: var(--n-ink); } .hm-wheel .w-link { stroke: rgba(236, 231, 218, .45); stroke-width: .7; stroke-dasharray: 2 4; }
+/* 바퀴의 선은 깊이 순서대로 굵기와 옅기를 같이 내린다: 테 > 달 눈금 > 안쪽 고리 > 닷새 눈금 > 하루 눈금 > 머리카락 선 */
+.hm-wheel .w-rim { stroke: var(--line-1); stroke-width: 1.1; } .hm-wheel .w-hair { stroke: var(--line-3); stroke-width: .5; } .hm-wheel .w-ring { stroke: var(--line-2); stroke-width: .7; }
+.hm-wheel .w-tick { stroke: var(--n-ink); stroke-width: .9; opacity: .7; } .hm-wheel .w-tick.t2 { stroke-width: .6; opacity: .5; } .hm-wheel .w-tick.t3 { stroke-width: .4; opacity: .34; }
+.hm-wheel .w-dust { fill: var(--n-ink); } .hm-wheel .w-link { stroke: var(--line-1); stroke-width: .6; stroke-dasharray: 2 4; }
 .hm-wheel .w-month { font: 400 8.5px var(--h-mono); letter-spacing: 2.4px; fill: #9a9687; text-anchor: middle; dominant-baseline: middle; } .hm-wheel .w-month.on { fill: var(--n-gold); }
-.hm-wheel .w-moon circle { fill: var(--n-bg); stroke: var(--n-line); stroke-width: .7; } .hm-wheel .w-moon path { fill: var(--n-ink); opacity: .75; } .hm-wheel .w-moon.on circle { stroke: var(--n-gold); stroke-width: 1.3; } .hm-wheel .w-moon.on path { fill: var(--n-gold); opacity: 1; }
+.hm-wheel .w-moon circle { fill: var(--n-bg); stroke: var(--line-1); stroke-width: .7; } .hm-wheel .w-moon path { fill: var(--n-ink); opacity: .75; } .hm-wheel .w-moon.on circle { stroke: var(--n-gold); stroke-width: 1.3; } .hm-wheel .w-moon.on path { fill: var(--n-gold); opacity: 1; }
 .hm .hm-core { position: absolute; left: 50%; top: 50%; width: 43%; height: 43%; transform: translate(-50%, -50%); border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: #14130f center 12% / cover no-repeat;
   box-shadow: 0 0 0 1px var(--n-gold), 0 0 0 7px var(--n-bg), 0 0 0 8px rgba(201, 178, 124, .45), 0 0 60px 10px rgba(201, 178, 124, .2); transition: box-shadow .25s; }
 .hm button.hm-core:hover { box-shadow: 0 0 0 1px var(--n-gold), 0 0 0 7px var(--n-bg), 0 0 0 8px var(--n-gold), 0 0 70px 14px rgba(201, 178, 124, .3); }
 .hm-core .emb { width: 74%; }
-.hm .hm-sat { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; } .hm-sat i { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: #24231e center 12% / cover no-repeat; box-shadow: 0 0 0 1px rgba(236, 231, 218, .5), 0 0 0 4px var(--n-bg); transition: box-shadow .2s, transform .2s; }
+.hm .hm-sat { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; } .hm-sat i { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; display: grid; place-items: center; background: #24231e center 12% / cover no-repeat; box-shadow: 0 0 0 1px var(--line-1), 0 0 0 4px var(--n-bg); transition: box-shadow .2s, transform .2s; }
 .hm-sat:hover i { box-shadow: 0 0 0 1px var(--n-gold), 0 0 0 4px var(--n-bg); transform: scale(1.08); }
 .hm-sat span { position: absolute; top: calc(100% + 6px); left: 50%; transform: translateX(-50%); max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12.5px var(--h-serif); letter-spacing: .06em; color: #d8d3c5; text-shadow: 0 0 6px var(--n-bg), 0 0 6px var(--n-bg); }
 .hm-sat .emb { width: 76%; --paper: #24231e; }
@@ -42,7 +52,9 @@
 
 /* 구획 머리 */
 .hm-sh { display: flex; align-items: center; gap: 10px; margin: 34px 0 14px; } .hm-sh h2 { margin: 0; white-space: nowrap; font: 500 20px var(--h-serif); letter-spacing: .06em; }
-.hm-sh h2 i { font: italic 400 17px var(--h-it); color: var(--accent); margin-left: 10px; letter-spacing: .02em; } .hm-sh em { white-space: nowrap; font-style: normal; font-size: 13px; color: var(--dim); } .hm-sp { flex: 1; }
+.hm-sh h2 i { font: italic 400 17px var(--h-it); color: var(--accent); margin-left: 10px; letter-spacing: .02em; } .hm-sh em { white-space: nowrap; font-style: normal; font: 400 12px var(--h-mono); font-variant-numeric: tabular-nums; color: var(--dim); }
+/* 머리말의 빈 자리는 가는 선과 끝점으로 채운다 (.fx-head 와 같은 꼴) */
+.hm-sp { flex: 1; min-width: 12px; height: 5px; background: linear-gradient(var(--line-3) 0 0) 0 50% / calc(100% - 9px) 1px no-repeat, radial-gradient(circle at calc(100% - 2.5px) 50%, var(--line-1) 0 2px, transparent 2.4px); }
 .hm .btn.hm-line, .hm .ibtn.hm-line, .hm .btn.hm-fill { height: 40px; padding: 0 14px; border-radius: 6px; border: 1px solid var(--h-hair2); background: none; color: var(--text); font-size: 13.5px; font-weight: 500; gap: 7px; box-shadow: none; }
 .hm .ibtn.hm-line { width: 40px; padding: 0; display: grid; place-items: center; } .hm .btn.hm-fill { background: var(--text); color: var(--bg); border-color: var(--text); font-weight: 600; }
 .hm .btn.hm-line.on { border-color: var(--accent); color: var(--accent); } .hm .btn.hm-line:hover, .hm .ibtn.hm-line:hover { border-color: var(--text); }
@@ -56,7 +68,7 @@
 .hm-th time { position: absolute; left: 30px; top: -28px; font-size: 12px; color: var(--dim); background: var(--bg); padding: 0 6px; white-space: nowrap; }
 .hm-pt { width: 58px; height: 76px; border-radius: 40px 40px 3px 3px; overflow: hidden; display: grid; place-items: center; background: #0e0e0d center 12% / cover no-repeat; color: var(--n-gold); } .hm-pt .emb { width: 78%; }
 .hm-tt { min-width: 0; } .hm-tt b { display: block; font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .hm-tt span { display: block; font-size: 12.5px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.hm-tt p { margin: 6px 0 0; font-size: 13px; line-height: 1.5; color: var(--h-sub); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.hm-tt p { margin: 6px 0 0; font-size: 13px; line-height: 1.5; color: var(--h-sub); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-wrap: pretty; }
 
 /* 캐릭터 */
 .hm-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -81,7 +93,7 @@
 .hm-c b { display: block; margin-top: 16px; font: 500 16.5px var(--h-serif); letter-spacing: .08em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hm-c small { display: block; min-height: 1.5em; margin-top: 3px; font-size: 12.5px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hm-c.add .hm-im { background: none; outline-style: dashed; color: var(--dim); } .hm-c.add .hm-im::before { display: none; }
-.hm-grid .folder-empty { grid-column: 1 / -1; }
+.hm-grid .folder-empty, .hm-grid .hm-none { grid-column: 1 / -1; } .hm-none p { margin: 0; } .hm-none svg { width: 72px; height: 72px; opacity: .9; }
 
 @media (max-width: 980px) {
   .hm-wheel { right: 28px; width: 340px; height: 340px; margin-top: -170px; } .hm-tx { padding-left: 32px; width: 50%; }
@@ -89,7 +101,7 @@
 }
 @media (max-width: 700px) {
   .hm-hero { min-height: 0; border-radius: 14px; padding-bottom: 22px; background: radial-gradient(360px 360px at 50% 200px, rgba(201, 178, 124, .13), transparent 70%), var(--n-bg); }
-  .hm-wheel { position: relative; right: auto; top: auto; margin: 44px auto 0; width: min(318px, 84vw); height: auto; aspect-ratio: 1; }
+  .hm-wheel { position: relative; right: auto; top: auto; margin: 44px auto 0; width: min(318px, 88cqi); height: auto; aspect-ratio: 1; }
   .hm .hm-core { width: 37%; height: 37%; } .hm .hm-sat { width: 34px; height: 34px; margin: -17px 0 0 -17px; } .hm-sat span { top: calc(100% + 3px); font-size: 11.5px; max-width: 70px; }
   .hm-tx { width: auto; min-height: 0; padding: 26px 20px 0; align-items: center; text-align: center; }
   .hm-day { position: absolute; left: 18px; top: 16px; } .hm-hero { display: flex; flex-direction: column; } .hm-tx { position: static; }

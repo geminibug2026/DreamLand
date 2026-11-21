@@ -4,7 +4,7 @@ import { Avatar, Icon, Moon, mountInto, useEvents } from './kit';
 import type { Char, NavItem } from './types';
 import { menu, openModal } from './ui';
 import { go, route } from './lib/router';
-import { S } from './lib/core';
+import { S, emit } from './lib/core';
 import { navItems } from './lib/boot';
 import { startChat } from './chat/start';
 import { t, useLang } from './i18n';
@@ -29,6 +29,7 @@ export function Rail() {
     <div className="rail-nav">{items.map(tab)}<button className="more" title={t('common.more')} onClick={moreSheet}><Icon name="menu" size={21} /><span className="ko">{t('common.more')}</span></button></div>
     <div className="rail-foot">
       <button title={t('shell.palette')} onClick={openPalette}><Icon name="search" size={19} /></button>
+      <button title={t('guide.entry.rail')} aria-label={t('guide.entry.rail')} data-gd="open" onClick={() => emit('guide:toggle')}><Icon name="guide" size={19} /></button>
       <button title={t('nav.themes')} onClick={() => go('themes')}><Icon name="heart" size={19} /></button>
       <button title={t('shell.moreMenu')} onClick={e => menu(e.currentTarget, rest.map(([p, label, ic]) => ({ label, ic, onclick: () => go(p) })))}><Icon name="menu" size={19} /></button>
     </div>
@@ -43,6 +44,7 @@ function Palette({ close }: { close: () => void }) {
   const all = useMemo<PaletteItem[]>(() => {
     return [
       ...navItems().map(([page, label, ic]) => ({ key: 'n' + page, label, hint: t('shell.hintMenu'), ic, run: () => go(page) })),
+      { key: 'nshop', label: t('reach.shop.title'), hint: t('shell.hintMenu'), ic: 'book', run: () => go('shop') },   // 메뉴에는 없는 화면
       ...S.chars.map(c => ({ key: 'c' + c.id, label: c.name, hint: t('shell.hintChar'), av: c, run: () => { const last = S.chats.filter(x => x.charIds.includes(c.id)).sort((a, b) => b.updatedAt - a.updatedAt)[0]; if (last) go('chat', last.id); else void startChat([c.id]); } })),
       ...[...S.chats].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 200).map(c => ({ key: 'r' + c.id, label: (c.name || c.preview || t('shell.chatFallback')).slice(0, 60), hint: c.charIds.map(i => S.get('chars', i)?.name).filter(Boolean).join(', '), ic: 'chat', run: () => go('chat', c.id) })),
     ];

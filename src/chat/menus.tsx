@@ -17,6 +17,8 @@ import { startMenu } from './start';
 import { Assets } from '../lib/assets';
 import { t } from '../i18n';
 
+/** 다른 기능이 대화 메뉴에 끼우는 항목 (삭제 바로 위에 놓인다) */
+export const chatMenuExtras: ((c: Room, anchor: Element) => MenuItem[])[] = [];
 export interface TopHooks { narrow: boolean; setMode(k: 'rp' | 'talk'): void; find(): void; me(a: Element): void; pres(a: Element): void }
 
 export const presItems = (c: Room, chars: Cast[]): MenuItem[] => [
@@ -64,6 +66,7 @@ export function chatMenu(anchor: Element, c: Room, top: TopHooks | null = null) 
       download(`${titleOf(c)}.md`, out, 'text/markdown');
     } },
     { label: t('chat.menu.exportTxt'), ic: 'note', onclick: async () => { const ms = await S.msgs(c.id); download(`${titleOf(c)}.txt`, ms.filter(m => !m.hidden).map(m => `${m.role === 'user' ? S.persona(c).name : m.role === 'system' ? '나레이션' : (m.name || titleOf(c))}: ${msgText(m)}`).join('\n\n'), 'text/plain'); } },
+    ...chatMenuExtras.flatMap(f => { try { return f(c, anchor); } catch (e) { console.warn('[대화 메뉴]', e); return []; } }),
     '-',
     { label: t('chat.menu.delete'), ic: 'trash', danger: true, onclick: async () => {
       if (!(await confirmBox(t('chat.menu.deleteConfirm', { name: titleOf(c) }), t('common.delete'), true))) return;

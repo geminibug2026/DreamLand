@@ -9,7 +9,7 @@ import { editState } from './Hud';
 import { inspector } from './Inspector';
 import { liveSettings } from './LiveSettings';
 import type { Cast, Room } from './types';
-import { S, chatConns, pickFiles, readDataURL, shrinkImage } from '../lib/core';
+import { S, chatConns, emit, pickFiles, readDataURL, shrinkImage } from '../lib/core';
 import { STATUS, scheduleOf } from '../lib/f-schedule';
 import { LoreLinker } from '../editors/lore';
 import { X } from '../lib/hooks';
@@ -54,7 +54,7 @@ function Body({ c }: { c: Room }) {
         {chars.length > 1 && <IconBtn ic={muted(ch) ? 'eyeoff' : 'eye'} title={t('chat.drawer.mute')} onClick={() => { const mu = new Set(c.muted || []); if (!mu.delete(ch.id)) mu.add(ch.id); c.muted = [...mu]; saveChat(); drawDrawer(); }} />}
         {chars.length > 1 && <IconBtn ic="x" title={t('chat.drawer.removeChar')} onClick={async () => { c.charIds = c.charIds.filter(i => i !== ch.id); await S.save('chats', c, true); drawMain(); drawDrawer(); drawSide(); }} />}</div>)}</div>
       <div className="row"><Btn label={t('chat.drawer.invite')} ic="plus" cls="ghost" onClick={e => menu(e.currentTarget, S.chars.filter(x => !c.charIds.includes(x.id)).map(x => ({ label: x.name, onclick: async () => { c.charIds.push(x.id); await S.save('chats', c, true); drawMain(); drawDrawer(); drawSide(); } })))} /></div>
-      {chars.length > 1 && <Sel label={t('chat.drawer.order')} value={c.groupOrder || ''} opts={[['natural', t('chat.drawer.orderNatural')], ['list', t('chat.drawer.orderList')], ['pooled', t('chat.drawer.orderPooled')], ['manual', t('chat.drawer.orderManual')]]} onChange={v => { c.groupOrder = v; saveChat(); drawDrawer(); }} />}
+      {chars.length > 1 && <Sel label={t('chat.drawer.order')} value={c.groupOrder || ''} opts={[['natural', t('chat.drawer.orderNatural')], ['list', t('chat.drawer.orderList')], ['pooled', t('chat.drawer.orderPooled')], ['smart', t('threads.order.smart')], ['manual', t('chat.drawer.orderManual')]]} onChange={v => { c.groupOrder = v; saveChat(); drawDrawer(); }} />}
       {chars.length > 1 && c.mode !== 'talk' && c.groupOrder !== 'manual' && <>
         <label className="check"><input type="checkbox" defaultChecked={!!c.groupAuto?.on} onChange={e => { c.groupAuto = { delay: 5, max: 5, ...c.groupAuto, on: e.target.checked }; saveChat(); drawDrawer(); }} /><i /><span>{t('chat.drawer.groupAuto')}</span></label>
         {c.groupAuto?.on && <div className="row">
@@ -84,6 +84,7 @@ function Body({ c }: { c: Room }) {
     <Sec title={t('chat.drawer.loreSec')} ic="book" open={false}>
       <LoreLinker holder={c} save={saveChat} fixed={() => S.lore.filter(b => globals.has(b.id) || charBooks.has(b.id)).map(b => [b, globals.has(b.id) ? t('chat.drawer.loreGlobal') : t('chat.drawer.loreChar')])} />
       {hits.length ? <div className="hits"><small className="hint">{t('chat.drawer.loreHits', { count: hits.length })}</small>{hits.map((e, i) => <span className="chip static" key={i}>{e.name || e.keys?.[0] || e.book}</span>)}</div> : null}
+      <Btn label={t('awake.open')} ic="eye" cls="ghost" onClick={() => emit('lore:awake', c)} />
     </Sec>
     <Sec title={t('chat.drawer.varsSec')} ic="code" open={false}>
       <textarea className="inp" rows={3} placeholder={t('chat.drawer.varsPh')} defaultValue={Object.entries(c.vars || {}).map(([k, v]) => `${k}=${v}`).join('\n')} onChange={e => { c.vars = Object.fromEntries(e.target.value.split('\n').map(l => l.split('=')).filter(p => p[0].trim()).map(p => [p[0].trim(), p.slice(1).join('=')])); saveChat(); }} />
@@ -91,6 +92,7 @@ function Body({ c }: { c: Room }) {
     </Sec>
     <Sec title={t('chat.drawer.bgSec')} ic="image" open={false}><div className="row">
       <Btn label={t('chat.drawer.pickImage')} ic="upload" cls="ghost" onClick={async () => { const [f] = await pickFiles({ accept: 'image/*' }); if (!f) return; c.bg = await shrinkImage(await readDataURL(f), 1920, 'image/jpeg', 0.85); await S.save('chats', c, true); drawMain(); }} />
+      <Btn label={t('extras.bg.open')} ic="shelf" cls="ghost" onClick={() => emit('xt:bgshelf', c)} />
       {c.bg && <Btn label={t('chat.drawer.clear')} cls="ghost" onClick={async () => { c.bg = ''; await S.save('chats', c, true); drawMain(); }} />}</div></Sec>
     {X.panels.map((p, i) => { try { return <Sec key={i} title={p.title || ''} ic={p.icon || 'sparkle'} open={!!p.open}><Dom node={p.render(c, cur.msgs)} /></Sec>; } catch (e) { console.warn('[확장 패널]', p.owner, e); return null; } })}
     <Btn label={t('chat.drawer.inspect')} ic="search" cls="ghost wide" onClick={inspector} />

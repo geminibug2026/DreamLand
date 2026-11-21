@@ -14,6 +14,7 @@ import { CharVoiceField } from '../tts/ui';
 import { AssetsPane } from '../studio/AssetsPane';
 import * as engine from '../lib/engine';
 import { t } from '../i18n';
+import { CharCssField } from '../extras/ui';
 
 const TABS = ['기본', '설정', '인사말', '에셋', '고급 정의'] as const;
 const TAB_KEY: Record<typeof TABS[number], string> = { '기본': 'editors.char.tab.basic', '설정': 'editors.char.tab.settings', '인사말': 'editors.char.tab.greetings', '에셋': 'editors.char.tab.assets', '고급 정의': 'editors.char.tab.advanced' };
@@ -76,6 +77,8 @@ function Editor({ c }: { c: XChar }) {
       { section: t('editors.char.sec.bind') },
       { k: 'bind.connId', label: t('editors.char.f.conn'), type: 'select', opts: [['', t('editors.char.f.connDefault')], ...pick(chatConns())], third: true }, { k: 'bind.presetId', label: t('editors.char.f.preset'), type: 'select', opts: [['', t('editors.char.f.presetDefault')], ...pick(S.presets)], third: true }, { k: 'bind.personaId', label: t('editors.char.f.persona'), type: 'select', opts: [['', t('editors.char.f.personaDefault')], ...pick(S.personas)], third: true },
       { el: <CharVoiceField charId={c.id} /> },
+      { section: t('extras.css.sec') },
+      { el: <CharCssField c={c} save={saveNow} /> },
       { section: t('editors.char.sec.rest') },
       { el: <JsonField c={c} k="ext" label={t('editors.char.f.ext')} hint={t('editors.char.f.extHint')} save={saveNow} /> },
       { el: <JsonField c={c} k="more" label={t('editors.char.f.v3')} hint={t('editors.char.f.v3Hint')} save={saveNow} /> }],

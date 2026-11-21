@@ -131,6 +131,12 @@ export interface LoreEntry {
   ignoreBudget: boolean; excludeRecursion: boolean; delayUntilRecursion: number; groupOverride: boolean; groupWeight: number; useGroupScoring: boolean | null;
   matchPersona: boolean; matchCharDesc: boolean; matchCharPersonality: boolean; matchCharNote: boolean; matchScenario: boolean; matchCreatorNotes: boolean;
   charFilter: CharFilter; triggers: string[]; automationId: string;
+  /** 사람이 읽는 한 줄 메모 (프롬프트에는 들어가지 않는다) */
+  description?: string;
+  /** 잠금: 조수(설정 사서 등)가 이 항목을 고치지 못한다 */
+  locked?: boolean;
+  /** 물음(판정문) 한 줄과 방식 — off: 끔 · need: 깨어난 뒤 물음도 참이어야 · wake: 물음이 참이면 키워드 없이도 깨어남 */
+  ask?: string; askMode?: 'off' | 'need' | 'wake';
   [k: string]: unknown;
 }
 export interface Lore {

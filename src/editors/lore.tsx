@@ -10,6 +10,7 @@ import * as engine from '../lib/engine';
 import * as core from '../lib/core';
 import * as cards from '../lib/cards';
 import { t, tn } from '../i18n';
+import { loreLint, loreTextMenu } from '../lore/io';
 
 const POS_KEYS = ['before', 'after', 'em_top', 'em_bottom', 'an_top', 'an_bottom', 'depth', 'outlet'];
 const posShort = (p: string) => POS_KEYS.includes(p) ? t('lore.posShort.' + p) : '';
@@ -143,12 +144,14 @@ function EntryBody({ e, sv, changed, draw }: { e: Entry; sv: () => void; changed
     { k: 'name', label: t('lore.e.name'), half: true }, { k: 'position', label: t('lore.e.position'), type: 'select', opts: lorePosOpts(), half: true },
     depth && { k: 'depth', label: t('lore.e.depth'), type: 'num', min: 0, half: true }, depth && { k: 'role', label: t('lore.e.role'), type: 'select', opts: ['system', 'user', 'assistant'], half: true },
     outlet && { k: 'outlet', label: t('lore.e.outlet'), ph: t('lore.e.outletPh') },
+    { k: 'description', label: t('lore.e.memo'), ph: t('lore.e.memoPh') },
     { k: 'keys', label: t('lore.e.keys'), type: 'tags', ph: t('lore.e.keysPh'), half: true }, { k: 'keys2', label: t('lore.e.keys2'), type: 'tags', half: true },
     { k: 'logic', label: t('lore.e.logic'), type: 'select', opts: [[0, t('lore.e.logic.anyOf')], [3, t('lore.e.logic.allOf')], [2, t('lore.e.logic.noneOf')], [1, t('lore.e.logic.notAll')]] },
     { k: 'content', label: t('lore.e.content'), type: 'area', rows: 7 },
     { k: 'order', label: t('lore.e.order'), type: 'num', third: true }, { k: 'probability', label: t('lore.e.probability'), type: 'num', min: 0, max: 100, third: true }, { k: 'scanDepth', label: t('lore.e.scanDepth'), type: 'num', nullable: true, third: true, ph: t('lore.tri.inherit') },
     { k: 'constant', label: t('lore.e.constant'), type: 'check' },
     { k: 'vectorized', label: t('lore.e.vectorized'), type: 'check' },
+    { k: 'locked', label: t('lore.e.locked'), type: 'check', hint: t('lore.e.lockedHint') },
   ];
   return <div className="entry-body">
     {/* 위치가 바뀌면 그 위치에 딸린 칸을 다시 그린다 */}
@@ -161,6 +164,9 @@ function EntryBody({ e, sv, changed, draw }: { e: Entry; sv: () => void; changed
       <div className="field"><span className="field-label">{t('lore.e.match')}</span>
         <div className="lore-chips">{MATCH.map(k => <button type="button" key={k} className={'chip' + (e[k] ? ' on' : '')} onClick={() => { e[k] = !e[k]; sv(); redraw(); }}>{t('lore.match.' + k)}</button>)}</div></div>
       <Form obj={e} defs={[{ k: 'charFilter.names', label: t('lore.e.cfNames'), type: 'tags', half: true, ph: t('lore.e.cfNamesPh') }, { k: 'charFilter.tags', label: t('lore.e.cfTags'), type: 'tags', half: true, ph: t('lore.e.cfTagsPh') }, { k: 'charFilter.exclude', label: t('lore.e.cfExclude'), type: 'check' }]} onChange={fix} />
+    </Sec>
+    <Sec title={t('lore.e.sec.ask')} on={!!(e.ask || (e.askMode && e.askMode !== 'off'))}>
+      <Form obj={e} defs={[{ k: 'ask', label: t('lore.e.ask'), ph: t('lore.e.askPh') }, { k: 'askMode', label: t('lore.e.askMode'), type: 'select', opts: [['off', t('lore.e.askMode.off')], ['need', t('lore.e.askMode.need')], ['wake', t('lore.e.askMode.wake')]], hint: t('lore.e.askHint') }]} onChange={() => { if (!e.askMode) e.askMode = 'off'; sv(); changed(); }} />
     </Sec>
     <Sec title={t('lore.e.sec.group')} on={!!(e.group || e.ignoreBudget)}>
       <Form obj={e} defs={[{ k: 'group', label: t('lore.e.group'), half: true, ph: t('lore.e.groupPh') }, { k: 'groupWeight', label: t('lore.e.groupWeight'), type: 'num', min: 0, half: true },
@@ -222,6 +228,8 @@ export function LoreEditor({ b, api }: { b: Lore; api: EditorApi }) {
     <header className="editor-head"><h2>{b.name}</h2><div className="row">
       <Btn label={t('lore.addEntry')} ic="plus" cls="primary" onClick={() => { const e = newEntry(); b.entries.unshift(e); open.add(e.id); st.q = ''; setQText(''); st.filter = 'all'; pg.setPage(0); void api.save(); draw(); api.redraw(); }} />
       <IconBtn ic="play" title={t('lore.test.title')} onClick={() => openModal({ title: t('lore.test.titleOf', { name: b.name }), wide: true, body: <TestBody b={b} /> })} />
+      <IconBtn ic="note" title={t('loretext.menu')} onClick={ev => loreTextMenu(ev.currentTarget, b, () => { draw(); api.redraw(); })} />
+      <IconBtn ic="search" title={t('lorelint.open0')} onClick={() => loreLint(b, id => { const hit = b.entries.find(x => x.id === id); if (!hit) return; open.add(id); const q = hit.name || hit.keys?.[0] || ''; st.q = q; setQText(q); st.filter = 'all'; draw(); })} />
       <IconBtn ic="sliders" title={t('lore.global.title')} onClick={() => loreSettingsDialog()} />
       <IconBtn ic="import" title={t('lore.exportSt')} onClick={() => download(`${b.name}.json`, JSON.stringify(cards.loreToWorld(b), null, 2))} />
       <IconBtn ic="trash" title={t('lore.delete')} onClick={async () => { if (await confirmBox(t('lore.confirmDelete', { name: b.name }), t('common.delete'), true)) { await S.remove('lore', b.id); S.set({ activeLore: S.settings.activeLore.filter(i => i !== b.id) }); api.refresh(); } }} />
@@ -254,7 +262,7 @@ export function LoreEditor({ b, api }: { b: Lore; api: EditorApi }) {
           {st.pick ? <label className="check lore-pick"><input type="checkbox" checked={picked.has(e.id)} onChange={ev => { if (ev.target.checked) picked.add(e.id); else picked.delete(e.id); redraw(); }} /><i /></label> : null}
           <label className="switch"><input type="checkbox" checked={e.enabled !== false} onChange={ev => { e.enabled = ev.target.checked; touch(); redraw(); }} /><i /></label>
           <div className="lore-title"><b>{titleOf(e)}</b><small>{e.constant ? t('lore.filter.constant') : ((e.keys || []).slice(0, 5).join(', ') || t('lore.noKeys'))}</small></div>
-          <div className="lore-tags">{e.constant ? <em className="badge">{t('lore.badge.constant')}</em> : null}{e.group ? <em className="badge">{e.group}</em> : null}{(e.probability ?? 100) < 100 ? <em className="badge">{`${e.probability}%`}</em> : null}{(e.sticky || e.cooldown || e.delay) ? <em className="badge">{t('lore.badge.timed')}</em> : null}<em className="badge">{posShort(e.position || '') || t('lore.posShort.before')}</em></div>
+          <div className="lore-tags">{e.locked ? <em className="badge" title={t('lore.e.locked')}><Icon name="lock" size={11} /></em> : null}{e.ask && e.askMode && e.askMode !== 'off' ? <em className="badge">{t('lore.badge.ask')}</em> : null}{e.constant ? <em className="badge">{t('lore.badge.constant')}</em> : null}{e.group ? <em className="badge">{e.group}</em> : null}{(e.probability ?? 100) < 100 ? <em className="badge">{`${e.probability}%`}</em> : null}{(e.sticky || e.cooldown || e.delay) ? <em className="badge">{t('lore.badge.timed')}</em> : null}<em className="badge">{posShort(e.position || '') || t('lore.posShort.before')}</em></div>
           <span className="tokbadge">{`≈${tok(e)}`}</span>
           <IconBtn ic="more" title={t('lore.menu.title')} cls="tiny" onClick={ev => entryMenu(ev.currentTarget, e)} />
         </div>

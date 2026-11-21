@@ -8,6 +8,7 @@ import { S } from '../lib/core';
 import * as core from '../lib/core';
 import * as cards from '../lib/cards';
 import { t } from '../i18n';
+import { go } from '../lib/router';
 
 export const page = { name: 'import', Component: ImportPage };
 
@@ -110,7 +111,7 @@ function ImportPage() {
       <Btn label={t('import.find')} ic="search" onClick={() => void find(kind)} /><Btn label={t('import.pickDir')} ic="folder" cls="ghost" onClick={() => void pickDir(kind)} /></div>
   </div>;
   return <section className="pagebox">
-    <PageHead eyebrow="migrate" title={t('import.title')} />
+    <PageHead eyebrow="migrate" title={t('import.title')}><Btn label={t('reach.shop.menu')} ic="book" cls="ghost" onClick={() => go('shop')} /></PageHead>
     <p className="hint">{t('import.intro')}</p>
     {section('st')}{section('marinara')}
     <div className="card import-card"><h3 className="form-sec">{t('import.files')}</h3>
