@@ -1,5 +1,5 @@
 // 기본 부품: 아이콘 · 달 · 엠블럼 · 버튼 · 초상 + 화면을 다시 그리게 하는 훅
-import { useEffect, useReducer, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useReducer, useSyncExternalStore, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { on } from './lib/core';
@@ -8,7 +8,7 @@ import { moonPhase } from './lib/moon';
 import { Emblems } from './lib/emblems';
 import { tint } from './lib/tone';
 import type { Char } from './types';
-import { shownUrl } from './lib/blobUrl';
+import { shownUrl, thumbUrl, thumbSub, thumbVer } from './lib/blobUrl';
 
 export function Icon({ name, size = 18 }: { name: string; size?: number }) {
   return <svg viewBox="0 0 24 24" width={size} height={size} className="ic"><path d={I[name] || I.sparkle} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" /></svg>;
@@ -39,6 +39,9 @@ const EMO = /(\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic}️?)*
 export const InkName = ({ name }: { name?: string }) => <>{String(name ?? '').split(EMO).map((s, i) => i % 2 ? <span className="emo" key={i}>{s}</span> : s)}</>;
 
 export const artStyle = (c?: { avatar?: string } | null): CSSProperties => c?.avatar ? { backgroundImage: `url("${shownUrl(c.avatar)}")` } : {};
+/** 작게 그리는 자리(목록 · 동그라미)용: 큰 초상은 줄인 그림으로. 쓰는 컴포넌트는 useThumbs() 를 불러 준비되면 다시 그린다 */
+export const thumbStyle = (c?: { avatar?: string } | null): CSSProperties => { if (!c?.avatar) return {}; const u = thumbUrl(c.avatar); return u ? { backgroundImage: `url("${u}")` } : {}; };
+export const useThumbs = () => useSyncExternalStore(thumbSub, thumbVer);
 
 export function Btn({ label, ic, cls = '', title, onClick }: { label?: string; ic?: string; cls?: string; title?: string; onClick?: (e: MouseEvent<HTMLButtonElement>) => void }) {
   return <button type="button" className={`btn ${cls}`.trim()} title={title ?? (label ? undefined : '')} onClick={onClick}>{ic && <Icon name={ic} />}{label && <span>{label}</span>}</button>;
@@ -52,7 +55,8 @@ export const tintRef = (o?: Char | null) => (el: HTMLElement | null) => { if (el
 
 /** 작은 동그란 초상 */
 export function Avatar({ o, cls = '' }: { o?: { avatar?: string; name?: string; tags?: string[] } | null; cls?: string }) {
-  if (o?.avatar) return <div className={`avatar ${cls}`.trim()} style={artStyle(o)} />;
+  useThumbs();
+  if (o?.avatar) return <div className={`avatar ${cls}`.trim()} style={thumbStyle(o)} />;
   if (Array.isArray(o?.tags) && cls !== 'xs') return <div className={`avatar ${cls} blank`.replace(/\s+/g, ' ')}><Emblem o={{ tags: o.tags, name: o.name || '' }} mini /></div>;
   return <div className={`avatar ${cls} blank`.replace(/\s+/g, ' ')}>{(o?.name || '?').trim().slice(0, 1)}</div>;
 }

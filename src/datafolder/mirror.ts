@@ -154,6 +154,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
   }
 
   // ── 무거운 보내기 일꾼 (못 만들면 예전처럼 화면에서) ──
+  const WORKER_STORES = new Set(['msgs', 'chars', 'assets', 'mem', 'lore', 'personas']);
   let worker: Worker | null | undefined; let wn = 0; const waits = new Map<number, (r: WorkerReply) => void>();
   const pusher = () => {
     if (worker !== undefined) return worker;
@@ -186,8 +187,9 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
     const nb: [string, string | null][] = []; let bad = 0;
     for (const e of q) {
       const b = base.has(e.k) ? base.get(e.k) : undefined;
-      // 메시지 묶음(긴 방은 수 MB)은 일꾼이 화면 밖에서 읽고 · 바꾸고 · 보낸다
-      if (e.store === 'msgs' && !e.del && pusher()) {
+      // 무거운 것(메시지 묶음 · 초상이 든 캐릭터 · 그림 · 기억 · 로어북 — 하나가 수 MB 일 수 있다)은 일꾼이 화면 밖에서 읽고 · 바꾸고 · 보낸다.
+      // 화면에서 하면 그동안 화면이 멈춘다 (캐릭터 탭이 몇 초씩 안 뜨던 까닭)
+      if (WORKER_STORES.has(e.store) && !e.del && pusher()) {
         const r = await viaWorker({ store: e.store, id: e.id, base: b ?? null, dev, url: Server.url('store/put'), headers: { ...SERVER_HEADERS } });
         if (r.gone || r.same) { done.push(e); continue; }
         if (r.error) throw new Error(r.error);
@@ -327,9 +329,15 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
         for (const m of pulls) { const k = keyOf(m.store, m.id), got = vals.get(k); if (!got) continue; await writeLocal(m.store, got.value, local.get(k)?.v); nb.push([k, got.hash]); }
       }
       for (const a of asides) if (!pulls.some(p => keyOf(p.store, p.id) === keyOf(a.store, a.id))) await raw.del(a.store, a.id);   // 저절로 만들어진 기본값만: 서버 _conflicts 에 남긴 뒤
-      // 올리기
-      const res = await sendOps(pushes);
-      res.forEach((r, i) => { const p = pushes[i]; if (r.ok) nb.push([keyOf(p.store, p.id), p.op === 'del' ? null : r.hash || null]); });
+      // 올리기 — 무거운 저장소의 보통 올리기는 일꾼이 화면 밖에서 (화면에서 수 MB 를 보내면 그동안 화면이 멈춘다)
+      const viaW = pusher() ? pushes.filter(p => p.op === 'put' && !p.keep && WORKER_STORES.has(p.store)) : [], rest = pushes.filter(p => !viaW.includes(p));
+      for (const p of viaW) {
+        const r = await viaWorker({ store: p.store, id: p.id, base: p.base ?? null, dev, url: Server.url('store/put'), headers: { ...SERVER_HEADERS } });
+        if (r.same) { nb.push([keyOf(p.store, p.id), r.hash || null]); continue; }
+        if (r.result?.ok) nb.push([keyOf(p.store, p.id), r.result.hash || r.hash || null]);
+      }
+      const res = await sendOps(rest);
+      res.forEach((r, i) => { const p = rest[i]; if (r.ok) nb.push([keyOf(p.store, p.id), p.op === 'del' ? null : r.hash || null]); });
       await setBases(nb);
       // 맞추기 전에 쌓여 있던 줄은 이제 처리했다 (그 사이 다시 바뀐 것은 남긴다)
       await mtx(qdb, 'q', 'readwrite', o => { for (const e of queued) { const g = o.get(e.k); g.onsuccess = () => { const cur = g.result as QEntry | undefined; if (cur && cur.t === e.t) o.delete(e.k); }; } });

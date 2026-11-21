@@ -1,12 +1,12 @@
 // 책상 위젯들이 같이 쓰는 작은 부품: 초상 · 한 줄 · 빈 자리 · 대화의 그 메시지로 가기
 import type { ReactNode } from 'react';
-import { Emblem, artStyle } from '../kit';
+import { Emblem, thumbStyle, useThumbs } from '../kit';
 import type { Char } from '../lib/types';
 import { go } from '../lib/router';
 import { chatApi, jumpTo } from '../chat/actions';
 
 /** 초상: 그림이 없으면 밤하늘 바탕에 문양 */
-export const Port = ({ c, cls = '' }: { c?: Char | null; cls?: string }) => <i className={'dk-port ' + cls} style={artStyle(c)}>{c && !c.avatar ? <Emblem o={c} mini /> : null}</i>;
+export const Port = ({ c, cls = '' }: { c?: Char | null; cls?: string }) => { useThumbs(); return <i className={'dk-port ' + cls} style={thumbStyle(c)}>{c && !c.avatar ? <Emblem o={c} mini /> : null}</i>; };
 /** 목록의 한 줄: 표식 · 글 두 줄 · 오른쪽의 모노 메타 */
 export const Row = ({ mark, main, sub, meta, onClick, label }: { mark?: ReactNode; main: ReactNode; sub?: ReactNode; meta?: ReactNode; onClick: () => void; label?: string }) =>
   <li><button className="dk-row fx-tap" onClick={onClick} aria-label={label}>{mark ? <span className="dk-mk">{mark}</span> : null}<span className="dk-rt"><b>{main}</b>{sub ? <small>{sub}</small> : null}</span>{meta ? <span className="dk-meta fx-num">{meta}</span> : null}</button></li>;
