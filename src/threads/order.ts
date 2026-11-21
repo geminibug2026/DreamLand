@@ -12,7 +12,7 @@ export function called(text: string, name: string): boolean {
 const asks = (text: string) => /[?？]\s*["”’」』)]*\s*$/.test(text.trim()) || /[?？]/.test(text.split('\n').pop() || '');
 /**
  * 점수표. 큰 것부터: 귓속말을 들었다(+8) · 방금 말에 이름이 불렸다(+5) · 내 말에 이름이 있었다(+3) · 질문을 받았다(+2, 이름 없이 던진 질문은 모두에게 +1)
- * · 오래 조용했다(턴당 +0.7, 최대 +2.8 · 아직 한마디도 안 했으면 +2) · 수다 정도(×2) · 방금 말했다(−4). 자리에 없거나 쉬게 한 사람은 빠진다.
+ * · 오래 조용했다(턴당 +0.7, 최대 +2.8 · 아직 한마디도 안 했으면 +2) · 수다 정도(×2) · 방금 말했다(−4, 내 말 뒤에는 −2). 자리에 없거나 쉬게 한 사람은 빠진다.
  */
 export function scoreSpeakers(cast: OCast[], msgsIn: OMsg[]): Score[] {
   const msgs = msgsIn.filter(m => !m.hidden && m.role !== 'system'), tail = msgs[msgs.length - 1];
@@ -31,7 +31,8 @@ export function scoreSpeakers(cast: OCast[], msgsIn: OMsg[]): Score[] {
     for (let i = msgs.length - 1; i >= 0; i--) { const m = msgs[i]; if (m.role !== 'assistant') continue; if (m.charId === c.id) { spoke = true; break; } quiet++; }
     if (!spoke && msgs.length) add('fresh', 2); else if (quiet > 0) add('quiet', Math.min(4, quiet) * 0.7);
     add('talk', Math.max(0, Math.min(1, c.talk ?? 0.5)) * 2);
-    if (lastAi?.charId === c.id) add('just', -4);
+    // 방금 말한 사람은 한 박자 쉰다. 내가 끼어든 뒤라면 덜 쉬고, 이름이 불렸거나 귓속말을 들었으면 쉬지 않는다
+    if (lastAi?.charId === c.id && !why.some(w => w.key === 'named' || w.key === 'whisper')) add('just', tail?.role === 'user' ? -2 : -4);
     return { id: c.id, name: c.name, score: Math.round(why.reduce((n, w) => n + w.pts, 0) * 10) / 10, out: false, why };
   });
 }

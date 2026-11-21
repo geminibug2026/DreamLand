@@ -162,7 +162,7 @@ export function ShopPage() {
     {blocked() && view.items.some(x => x.thumb) ? <p className="rc-note"><Icon name="eyeoff" size={13} /><span>{t('reach.shop.blockedNote')}</span><button type="button" onClick={() => { view.peek = true; draw(); }}>{t('reach.shop.peekOn')}</button></p> : null}
     {err ? <div className="fx-empty rc-shop-err"><Shelf seed="err" /><p>{t('reach.shop.err.lead', { site: src.name })}</p><small>{err}</small><button type="button" className="btn ghost" onClick={() => void load()}>{t('reach.shop.retry')}</button></div>
       : !view.items.length ? <div className="fx-empty"><Shelf seed="none" /><p>{busy ? t('reach.shop.searching') : view.key ? t('reach.shop.none') : t('reach.shop.searching')}</p></div>
-      : <div className="rc-grid">{view.items.map((it, i) => <button type="button" key={it.id} className="rc-book fx-in" style={{ ['--d' as string]: Math.min(i % 24, 12) * 22 + 'ms' }} onClick={() => open(it)}>
+      : <div className={'rc-grid' + (busy ? ' busy' : '')} aria-busy={busy}>{view.items.map((it, i) => <button type="button" key={it.id} className="rc-book fx-in" style={{ ['--d' as string]: Math.min(i % 24, 12) * 22 + 'ms' }} onClick={() => open(it)}>
         <Cover it={it} />
         {view.got.has(it.src + ':' + it.id) ? <em className="rc-got"><Icon name="check" size={11} />{t('reach.shop.gotTag')}</em> : null}
         <b>{it.name}</b><small>{it.creator || src.site}</small>

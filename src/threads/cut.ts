@@ -28,3 +28,10 @@ export function findCut(original: string, phrase: string): number {
 }
 /** 끊긴 모습: 그 자리까지의 말 뒤에 긴 줄표 */
 export const cutText = (original: string, at: number) => at > 0 && at < original.length ? original.slice(0, at).replace(/[\s,.…-]+$/, '') + '—' : original;
+interface CMsg { role: string; swipes: object[]; sw: number }
+/** 끊긴 자리 표: 내 메시지 id → 글자 위치. 그 뒤 답장의 "지금 고른 스와이프"가 정한다. skipLast = 다시 쓰는 중인 마지막 답장의 것은 세지 않는다 */
+export function cutsOf(msgs: CMsg[], skipLast = false): Map<string, number> {
+  const out = new Map<string, number>();
+  for (let i = 0; i < msgs.length - (skipLast ? 1 : 0); i++) { const c = msgs[i].role === 'assistant' ? (msgs[i].swipes[msgs[i].sw] as { thCut?: { id: string; at: number } } | undefined)?.thCut : undefined; if (c) out.set(c.id, c.at); }
+  return out;
+}

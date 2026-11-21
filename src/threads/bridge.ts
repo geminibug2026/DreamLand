@@ -7,6 +7,7 @@ import type { PromptPiece } from '../lib/hooks';
 import { chatApi, charsOf, modeOf, roomName, titleOf } from '../chat/actions';
 import { startChat } from '../chat/start';
 import { BLEND_SYSTEM, SHARE_N, STAGE_SYSTEM, frameBlock, linesDigest, matchRoom, memDigest, parseDraft, type MemLike, type StageDraft } from './link';
+import { cutText, cutsOf } from './cut';
 import { thOf, thPeek, type ThCard, type ThChat, type ThMsg } from './types';
 
 export const label = (c: Chat) => roomName(c) || titleOf(c);
@@ -43,8 +44,10 @@ export async function prep(chat: Chat) {
       let rows: string[] = [], kind: 'lines' | 'memory' = share;
       if (share === 'memory') rows = memDigest(mem, n);
       else {
-        const list = (await S.msgsFast(o.id)).filter(m => !m.hidden && !(m as ThMsg).thCard), early = memDigest(mem, 0);   // 기록이 있으면 묶음 요약 한 줄을 앞에
-        rows = [...early, ...linesDigest(list.map(m => lineOf(o, m)), n)];
+        const list = (await S.msgsFast(o.id)).filter(m => !m.hidden && !(m as ThMsg).thCard && !(m as ThMsg).thW && !(m as ThMsg).thGone?.length)   // 귓속말과, 누군가 자리에 없을 때 오간 말은 방 밖으로 나가지 않는다
+         , early = memDigest(mem, 0);   // 기록이 있으면 묶음 요약 한 줄을 앞에
+        const cuts = cutsOf(list);   // 끊긴 말은 끊긴 데까지만
+        rows = [...early, ...linesDigest(list.map(m => { const l = lineOf(o, m), at = cuts.get(m.id); return at == null ? l : { ...l, text: cutText(l.text, at) }; }), n)];
       }
       digests.set(o.id, { key, rows, kind });
     } catch (e) { console.warn('[이어진 방]', e); }

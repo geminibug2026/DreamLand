@@ -126,7 +126,7 @@ const WHY: Record<string, () => string> = {
 };
 const whyLine = (s: Score) => s.out ? WHY[s.why[0].key]() : s.why.map(w => `${WHY[w.key]()} ${w.pts > 0 ? '+' : '−'}${Math.abs(w.pts)}`).join(' · ');
 export function ThreadsBar() {
-  useCh('composer');
+  useCh('composer'); useCh('msgs');   // 새 말이 오가면 점수도 다시 센다
   const chat = cur.chat, chars = chat ? charsOf(chat) : [], group = chars.length > 1, th = thPeek(chat);
   const scores = chat && group ? scoresFor(chat, chars, cur.msgs) : [], smart = group && chat?.groupOrder === 'smart';
   const tips = scores.map(s => `${s.id}|${s.out ? '' : s.score}|${whyLine(s)}`).join('\n'), away = (th.away || []).join(',');

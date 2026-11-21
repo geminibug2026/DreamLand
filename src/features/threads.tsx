@@ -54,6 +54,7 @@ function setup() {
     for (const id of thPeek(chat).links || []) { const o = S.get('chats', id) as ThChat | undefined; if (o && !thPeek(o).links?.includes(chat.id)) { thOf(o).links = [...(thPeek(o).links || []), chat.id]; void S.save('chats', o, true); } }
   });
   on('threads:changed', () => bump('side', 'composer'));
+  on('generate:end', () => bump('composer'));   // 답이 끝나면 다음 화자 점수를 다시 센다
 }
 
 export const feature: FeatureDef = { name: OWNER, setup };

@@ -7,7 +7,7 @@ import { chatApi, charsOf } from '../chat/actions';
 import { bump } from '../chat/store';
 import { hideTags, splitArg, takeTags, unquote } from './tags';
 import { NOTES_GUIDE, cleanNote, liveNotes, notesBlock } from './notes';
-import { CUT_GUIDE, cutText, findCut } from './cut';
+import { CUT_GUIDE, cutText, cutsOf, findCut } from './cut';
 import { WHISPER_GUIDE, findWho, veilChar, veilUser } from './whisper';
 import { AWAY_GUIDE, BACK_NOTE, applyMoves, heard, missedTail } from './presence';
 import { pickSmart, scoreSpeakers, type Score } from './order';
@@ -24,12 +24,6 @@ const who = (chars: Char[]) => chars.map(c => ({ id: c.id, name: c.name }));
 const withText = (m: Msg, text: string): Msg => ({ ...m, swipes: [{ ...m.swipes[m.sw], text }], sw: 0 });
 
 // ── 끊긴 말 ── 어느 내 메시지가 어디서 끊겼는지는 그 뒤 답장의 "지금 고른 스와이프"가 정한다
-/** 끊긴 자리 표: 내 메시지 id → 글자 위치. skipLast = 다시 쓰는 중인 마지막 답장의 것은 세지 않는다 */
-export function cutsOf(msgs: Msg[], skipLast = false): Map<string, number> {
-  const out = new Map<string, number>();
-  for (let i = 0; i < msgs.length - (skipLast ? 1 : 0); i++) { const c = msgs[i].role === 'assistant' ? swOf(msgs[i]).thCut : undefined; if (c) out.set(c.id, c.at); }
-  return out;
-}
 let cutCache: { msgs: Msg[]; map: Map<string, number> } | null = null;
 export const dirty = () => { cutCache = null; };
 const cutsNow = (): Map<string, number> => { const { msgs } = chatApi.current(); if (cutCache?.msgs !== msgs) cutCache = { msgs, map: cutsOf(msgs) }; return cutCache.map; };

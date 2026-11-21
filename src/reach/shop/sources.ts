@@ -70,7 +70,7 @@ export function parseWyvernSearch(raw: unknown): SearchResult {
       url: 'https://app.wyvern.chat/characters/' + id, tokens: num(c.token_count),
       stats: [{ k: 'likes' as const, n: num(st.likes) || num(es.total_likes) || num(c.likes) }, { k: 'messages' as const, n: num(st.messages) || num(es.total_messages) }, { k: 'chats' as const, n: num(st.chats) || num(es.total_chats) }].filter(s => s.n), raw: c });
   }
-  return { items, more: data.hasMore === true, total: num(data.total) || null };
+  return { items, more: data.hasMore === true, total: null };   // 이 사이트의 total 은 전체 수가 아니라서 쓰지 않는다
 }
 const wyvGreets = (c: O) => [...arr(c.alternate_greetings), ...arr(c.greetings).map(g => typeof g === 'string' ? g : str(obj(g).content ?? obj(g).text ?? obj(g).message))].map(g => str(g)).filter(g => g.trim());
 export function parseWyvernDetail(raw: unknown): ShopDetail | null {
