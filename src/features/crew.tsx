@@ -29,8 +29,9 @@ function decorate() {
   queued = false;
   const { msgs } = chatApi.current(); if (!msgs.length) return;
   const asides = defs().filter(d => d.out === 'aside');
+  let byId: Map<string, (typeof msgs)[number]> | null = null;   // 메시지가 수천 개여도 칸마다 처음부터 찾지 않게 (꾸밀 칸이 있을 때만 만든다)
   for (const el of document.querySelectorAll<HTMLElement>('article.msg.ai[data-id]')) {
-    const m = msgs.find(x => x.id === el.dataset.id), s = m?.swipes[m.sw] as CrewSwipe | undefined, key = m ? `${m.sw}:${s?.crewOrig ? 1 : 0}:${asides.map(d => String(s?.crew?.[d.id] ?? '').length).join(',')}` : '';
+    const m = (byId ||= new Map(msgs.map(x => [x.id, x]))).get(el.dataset.id || ''), s = m?.swipes[m.sw] as CrewSwipe | undefined, key = m ? `${m.sw}:${s?.crewOrig ? 1 : 0}:${asides.map(d => String(s?.crew?.[d.id] ?? '').length).join(',')}` : '';
     const old = el.querySelector<HTMLElement>(':scope > .cr-under, :scope .cr-under');
     if (old?.dataset.k === key) continue;
     old?.remove(); if (!m || !s) continue;

@@ -8,6 +8,7 @@ import { moonPhase } from './lib/moon';
 import { Emblems } from './lib/emblems';
 import { tint } from './lib/tone';
 import type { Char } from './types';
+import { shownUrl } from './lib/blobUrl';
 
 export function Icon({ name, size = 18 }: { name: string; size?: number }) {
   return <svg viewBox="0 0 24 24" width={size} height={size} className="ic"><path d={I[name] || I.sparkle} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" /></svg>;
@@ -37,7 +38,7 @@ const EMO = /(\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic}️?)*
 /** 색이 흐르는 이름: 그림 문자는 따로 감싸 제 색으로 둔다 */
 export const InkName = ({ name }: { name?: string }) => <>{String(name ?? '').split(EMO).map((s, i) => i % 2 ? <span className="emo" key={i}>{s}</span> : s)}</>;
 
-export const artStyle = (c?: { avatar?: string } | null): CSSProperties => c?.avatar ? { backgroundImage: `url("${c.avatar}")` } : {};
+export const artStyle = (c?: { avatar?: string } | null): CSSProperties => c?.avatar ? { backgroundImage: `url("${shownUrl(c.avatar)}")` } : {};
 
 export function Btn({ label, ic, cls = '', title, onClick }: { label?: string; ic?: string; cls?: string; title?: string; onClick?: (e: MouseEvent<HTMLButtonElement>) => void }) {
   return <button type="button" className={`btn ${cls}`.trim()} title={title ?? (label ? undefined : '')} onClick={onClick}>{ic && <Icon name={ic} />}{label && <span>{label}</span>}</button>;
