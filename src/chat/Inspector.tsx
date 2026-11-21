@@ -54,8 +54,9 @@ function Inspect({ chat, built, fine }: { chat: Room; built: Built; fine: Built 
   </div>;
 }
 
-export function inspector() {
-  const chat = cur.chat; if (!chat) return;
+/** 지금 열린 대화로 보낼 프롬프트를 조립만 한다 (보내지 않는다 · 로어 상태도 바꾸지 않는다). [합친 것, 합치기 전 조각] */
+export function buildNow(): { built: Built; fine: Built } | null {
+  const chat = cur.chat; if (!chat) return null;
   const chars = charsOf(chat);
   let built: Built, fine: Built;
   const talkNow = modeOf(chat) === 'talk' && !chat.scene?.on, keep = chat.presence, pres = talkNow ? presenceOf(chat, chars[0]) : null;
@@ -66,8 +67,16 @@ export function inspector() {
     built = buildPrompt({ ...args, preset: pz });
     // 구성 보기용: 같은 역할끼리 합치기 전의 조각으로 한 번 더 조립해야 갈래별 크기가 정확하다
     try { fine = buildPrompt({ ...args, preset: { ...pz, params: { ...pz.params, squash: false } } }); } catch { fine = built; }
-  } catch (e) { return toast(e instanceof Error ? e.message : String(e), 'err'); }
-  finally { if (pres) { if (keep === undefined) delete chat.presence; else chat.presence = keep; } }
+  } finally { if (pres) { if (keep === undefined) delete chat.presence; else chat.presence = keep; } }
   cur.lastPrompt = built; drawGauge();
+  return { built, fine };
+}
+
+export function inspector() {
+  const chat = cur.chat; if (!chat) return;
+  let got: { built: Built; fine: Built } | null;
+  try { got = buildNow(); } catch (e) { return toast(e instanceof Error ? e.message : String(e), 'err'); }
+  if (!got) return;
+  const { built, fine } = got;
   openModal({ title: tr('chat.inspect.title'), wide: true, body: <Inspect chat={chat} built={built} fine={fine} /> });
 }
