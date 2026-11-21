@@ -282,6 +282,8 @@ export function buildPack(I: PackInput, env: CompatEnv, png?: Uint8Array): Pack 
 }
 
 // ════════ README.txt ════════
+/** Tavern Helper 가 화면에서 값으로 바꿔 주는 변수 자리 */
+const MACRO_VARS = /\{\{(?:get|format)_(?:message|chat|character|preset|global)_variable/;
 function makeReadme(I: PackInput, P: { files: string[]; needs: Need[]; notes: Note[]; scripts: number; regex: number; book: LoreBook | null }): string {
   const L: string[] = [], card = P.files[0], ln = (s = '') => L.push(s);
   const has = (dir: string) => P.files.filter(f => f.startsWith(dir + '/'));
@@ -306,6 +308,7 @@ function makeReadme(I: PackInput, P: { files: string[]; needs: Need[]; notes: No
   if (P.book) step(t('stx.rd.s.book'));
   if (P.regex) step(t('stx.rd.s.regex'));
   if (P.scripts) step(t('stx.rd.s.scripts'));
+  if (MACRO_VARS.test(JSON.stringify([I.regex, I.char]))) step(t('stx.rd.s.macro'));
   if (has('lorebooks').length) step(t('stx.rd.s.books'));
   if (has('quick-replies').length) step(t('stx.rd.s.qr'));
   if (P.files.includes('preset.json')) step(t('stx.rd.s.preset'));

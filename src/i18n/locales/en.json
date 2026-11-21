@@ -1584,6 +1584,7 @@
   "stx.rd.s.book": "When asked whether to import the embedded lorebook, say yes. It becomes the character's main lorebook.",
   "stx.rd.s.regex": "When asked about the character's regex scripts, allow them (they go to Extensions → Regex → Scoped).",
   "stx.rd.s.scripts": "When Tavern Helper asks whether to run this character's scripts, allow them.",
+  "stx.rd.s.macro": "Tavern Helper fills in the {{…}} spots (get_message_variable and the like) in status bars. If they show up as raw text, open Tavern Helper settings → Developer tools and turn OFF '禁用酒馆助手宏' (Disable Tavern Helper macros).",
   "stx.rd.s.books": "To use the lorebooks separately, import the files in the lorebooks folder via World Info → Import and link them to the character. They hold the same entries as the book in the card, so turn on only one of the two.",
   "stx.rd.s.qr": "Extensions → Quick Reply → Import set: add the files in the quick-replies folder, then add them to the global or chat sets.",
   "stx.rd.s.preset": "Import preset.json with the preset import button in the AI Response Configuration (Chat Completion) panel on the left.",

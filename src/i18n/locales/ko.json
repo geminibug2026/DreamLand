@@ -1545,6 +1545,7 @@
   "stx.rd.s.book": "카드에 든 로어북을 가져올지 물으면 「예」. 캐릭터의 기본 로어북으로 연결돼요.",
   "stx.rd.s.regex": "캐릭터 정규식을 쓸지 물으면 허락해요 (확장 → Regex 의 Scoped 칸에 들어가요).",
   "stx.rd.s.scripts": "Tavern Helper 가 이 캐릭터의 스크립트를 쓸지 물으면 허락해요.",
+  "stx.rd.s.macro": "상태창 같은 곳의 {{…}} 자리(get_message_variable 등)는 Tavern Helper 가 값으로 바꿔요. 글자 그대로 보이면 Tavern Helper 설정 → 개발 도구 → '禁用酒馆助手宏'(Tavern Helper 매크로 끄기)를 꺼 주세요.",
   "stx.rd.s.books": "로어북을 따로 쓰고 싶으면 World Info → 가져오기(Import)로 lorebooks 폴더의 파일을 넣고 캐릭터에 연결해요. 카드에 든 책과 같은 내용이니 둘 중 하나만 켜세요.",
   "stx.rd.s.qr": "확장 → Quick Reply → 세트 가져오기(Import)로 quick-replies 폴더의 파일을 넣고, 전역 세트나 이 채팅 세트에 더해요.",
   "stx.rd.s.preset": "왼쪽 AI 응답 구성(Chat Completion) 패널의 프리셋 가져오기 단추로 preset.json 을 넣어요.",

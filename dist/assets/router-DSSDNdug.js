@@ -1,1 +1,0 @@
-export{t as go}from"./router-5kt14KP5.js";

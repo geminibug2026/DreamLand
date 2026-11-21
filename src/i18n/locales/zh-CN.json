@@ -1545,6 +1545,7 @@
   "stx.rd.s.book": "询问是否导入内嵌世界书时选「是」。它会成为角色的主世界书。",
   "stx.rd.s.regex": "询问是否使用角色正则时允许（会放在扩展 → 正则的局部正则里）。",
   "stx.rd.s.scripts": "酒馆助手询问是否运行这个角色的脚本时允许。",
+  "stx.rd.s.macro": "状态栏等处的 {{…}}（get_message_variable 等）由酒馆助手替换成数值。如果原样显示，请到酒馆助手设置 → 开发工具，关闭「禁用酒馆助手宏」。",
   "stx.rd.s.books": "想分开用世界书，就在 World Info → 导入里导入 lorebooks 文件夹的文件并关联到角色。它们和角色卡里的书内容相同，两者只开一个。",
   "stx.rd.s.qr": "扩展 → 快速回复 → 导入组：导入 quick-replies 文件夹的文件，再加到全局组或本聊天组。",
   "stx.rd.s.preset": "在左侧 AI 回复配置 (Chat Completion) 面板用导入预设按钮导入 preset.json。",

@@ -1,0 +1,1 @@
+export{t as go}from"./router-CzLLubkj.js";
