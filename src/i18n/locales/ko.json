@@ -9506,5 +9506,14 @@
   "feed.side.refreshLine": "캐릭터들의 새 게시물과 답글·마음을 한 묶음 받아 와요. 한 번에 모델 호출 1번이에요.",
   "feed.side.suggest": "팔로우 추천",
   "feed.side.manage": "참여자 관리",
-  "feed.side.noMembers": "아직 참여한 캐릭터가 없어요"
+  "feed.side.noMembers": "아직 참여한 캐릭터가 없어요",
+  "chat.drawer.tab.base": "기본",
+  "chat.drawer.tab.story": "이야기",
+  "chat.drawer.tab.look": "꾸밈",
+  "chat.drawer.tab.tools": "도구",
+  "chat.msgMenu.gLook": "그림 · 표정",
+  "chat.msgMenu.gRecord": "기록",
+  "chat.msgMenu.gRewrite": "다시 쓰기",
+  "chat.msgMenu.gMore": "그 밖",
+  "chat.msgMenu.back": "뒤로"
 }
