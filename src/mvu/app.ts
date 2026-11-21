@@ -276,11 +276,11 @@ export function cleanupRange(msgs: Msg[], start: number, end: number, every: num
     let counted = false;
     m.swipes.forEach((_s, i) => {
       const v = varsOf(m, i);
-      if (v === undefined) { setVarsOf(m, {}, i); return; }
+      if (v === undefined) { setVarsOf(m, {}, i); S.touchMsgs(m); return; }
       if (v.snapshot === true) return;
-      if ((start + k) % every === 0) { v.snapshot = true; return; }
+      if ((start + k) % every === 0) { v.snapshot = true; S.touchMsgs(m); return; }
       if (!counted) { counted = true; n++; }
-      const o = { ...v }; for (const key of KEYS) if (!(keepLorebooks && key === 'initialized_lorebooks')) delete o[key]; setVarsOf(m, o, i);
+      const o = { ...v }; for (const key of KEYS) if (!(keepLorebooks && key === 'initialized_lorebooks')) delete o[key]; setVarsOf(m, o, i); S.touchMsgs(m);
     });
   });
   return n;

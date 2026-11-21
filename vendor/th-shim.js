@@ -12,13 +12,22 @@
   addEventListener("message", function (e) {
     var d = e.data; if (e.source !== parent || !d) return;
     if (d.dlRet != null && wait[d.dlRet]) { var w = wait[d.dlRet]; delete wait[d.dlRet]; if (d.ok) w.res(d.val); else w.rej(new Error(d.err || "error")); }
-    if (d.dlState) { if (d.dlState.messages) I.messages = d.dlState.messages; if (d.dlState.lastId != null) I.lastId = d.dlState.lastId; if (d.dlState.vars) V = d.dlState.vars; }
+    if (d.dlState) { takeState(d.dlState); if (d.dlState.lastId != null) I.lastId = d.dlState.lastId; if (d.dlState.vars) V = d.dlState.vars; }
     if (d.dlState && d.dlState.mvuExtra != null) I.mvuExtra = !!d.dlState.mvuExtra;
     if (d.dlState && d.dlState.viewH) setVh(d.dlState.viewH);
     if (d.dlState) checkMvuWait();
     if (d.dlEvent) fire(d.dlEvent, d.args || []);
     if (d.dlInvoke != null) invoke(d);
   });
+  // 메시지 사본: 통째(messages) 또는 지난 판(base)에서 달라진 것만(upd). 판이 어긋나면 통째로 다시 받는다
+  function takeState(st) {
+    if (st.messages) { I.messages = st.messages; if (st.ver != null) I.ver = st.ver; return; }
+    if (!st.upd) return;
+    if (st.base !== I.ver) { call("state", []).then(function (s) { if (s && s.messages && (I.ver == null || s.ver >= I.ver)) { I.messages = s.messages; I.ver = s.ver; } }, function () { }); return; }
+    var by = {}; (I.messages || []).forEach(function (m) { by[m.message_id] = m; }); st.upd.forEach(function (m) { by[m.message_id] = m; });
+    var out = []; for (var k in by) { var m = by[k]; if (m.message_id >= st.from && m.message_id <= st.lastId) out.push(m); }
+    out.sort(function (a, b) { return a.message_id - b.message_id; }); I.messages = out; I.ver = st.ver;
+  }
   // 앱이 부르는 이벤트 (변수 갱신 틀 등): 듣는 이를 차례로 기다리며 부르고, 고쳐진 인자를 돌려준다
   function wireClone(v) { try { return v === undefined ? null : JSON.parse(JSON.stringify(v)); } catch (e) { return null; } }
   function invoke(d) {

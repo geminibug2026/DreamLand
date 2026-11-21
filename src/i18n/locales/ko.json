@@ -2502,6 +2502,7 @@
   "chat.start.rp": "RP 모드",
   "chat.start.talk": "대화 모드",
   "chat.page.empty": "아직 대화가 없어요. 캐릭터를 골라 첫 장면을 열어 보세요.",
+  "chat.page.partial": "이 대화의 앞부분 메시지 {n}개를 아직 불러오지 못했어요. 자료 폴더에서 다 받아 오면 다시 보여요 (지워지지 않았어요).",
   "chat.page.toChars": "캐릭터 보러 가기",
   "translate.vars.language": "옮길 언어",
   "translate.vars.prompt": "번역할 글",

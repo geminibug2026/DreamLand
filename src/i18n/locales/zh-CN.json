@@ -2502,6 +2502,7 @@
   "chat.start.rp": "RP 模式",
   "chat.start.talk": "对话模式",
   "chat.page.empty": "还没有聊天。选一个角色，开启第一个场景吧。",
+  "chat.page.partial": "此聊天的 {n} 条较早消息尚未载入。数据文件夹同步完成后会重新显示（没有被删除）。",
   "chat.page.toChars": "去看看角色",
   "translate.vars.language": "目标语言",
   "translate.vars.prompt": "要翻译的文本",

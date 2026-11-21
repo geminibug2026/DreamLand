@@ -13,6 +13,8 @@ export interface MirrorDb {
   del: (s: string, id: unknown) => Promise<unknown>;
   clear: (s: string) => Promise<unknown>;
   bulk: (s: string, list: unknown[]) => Promise<unknown>;
+  /** 한 트랜잭션에서 여러 줄을 쓰고 지운다 (메시지 조각 저장) — 다 되면 쓴 줄 · 지운 id */
+  batch?: (s: string, fn: (...a: never[]) => void) => Promise<{ put: unknown[]; del: unknown[] }>;
   [k: string]: Fn | unknown;
 }
 export const STORES = ['chars', 'chats', 'msgs', 'personas', 'lore', 'presets', 'conns', 'regex', 'kv', 'assets', 'mem'];
@@ -110,6 +112,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
   DB.put = (s: string, v: unknown) => { if (frozen) return idle(); const p = raw.put(s, v); note(s, idOf(v), false, v); return p; };
   DB.del = (s: string, id: unknown) => { if (frozen) return idle(); const p = raw.del(s, id); note(s, id, true); return p; };
   DB.bulk = (s: string, list: unknown[]) => { if (frozen) return idle(); if (list.length >= 20) needBackup ||= 'pre-import'; const p = raw.bulk(s, list); for (const v of list) note(s, idOf(v), false, v); return p; };
+  if (typeof DB.batch === 'function') { const rawBatch = DB.batch.bind(DB); DB.batch = ((s: string, fn: (...a: never[]) => void) => { if (frozen) return Promise.resolve({ put: [], del: [] }); return rawBatch(s, fn).then(r => { for (const v of r.put) note(s, idOf(v), false, v); for (const id of r.del) note(s, id, true); return r; }); }) as MirrorDb['batch']; }
   DB.clear = (s: string) => frozen ? idle() : (async () => {
     needBackup ||= 'pre-delete';
     let rows: unknown[] = []; try { rows = (await raw.all(s)) as unknown[] || []; } catch { /* 없는 저장소 */ }
@@ -323,6 +326,10 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
       for (const a of asides) await post('conflict', { ...a, dev });
       st.conflicts += asides.length + pushes.filter(p => p.keep).length;
       // 받아 오기
+      // 긴 대화는 조각이 머리보다 먼저 닿아야 한다 (id 차례: '방!…' 이 '방' 앞) · 지우기는 쓰기를 모두 마친 뒤
+      const byKey = (a: { store: string; id: unknown }, b: { store: string; id: unknown }) => { const x = keyOf(a.store, a.id), y = keyOf(b.store, b.id); return x < y ? -1 : x > y ? 1 : 0; };
+      pulls.sort(byKey);
+      pushes.sort((a, b) => ((a.op === 'del' ? 1 : 0) - (b.op === 'del' ? 1 : 0)) || byKey(a, b));
       if (pulls.length || asides.length) frozen = true;
       if (pulls.length) {
         const vals = pulls.length > 200 ? await dump() : await fetchValues(pulls.map(m => ({ store: m.store, id: m.id })));
@@ -379,14 +386,17 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
   // 창을 닫기 전에: 들고 있는 작은 것들을 sendBeacon 으로 (나머지는 줄에 남아 다음에 보낸다)
   function beacon() {
     if (!st.enabled || st.server !== 'on' || !live.size || !navigator.sendBeacon) return;
-    const ops: Op[] = []; let size = 0;
+    let ops: Op[] = [], size = 0, msgsLeft = false;
     for (const l of live.values()) {
       try {
         const b = baseMem.get(keyOf(l.store, l.id)); const base = b === undefined ? {} : { base: b };
         if (l.del) { ops.push({ op: 'del', store: l.store, id: l.id, ...base }); size += 100; continue; }
-        const p = packSync(l.store, l.val); if (size + p.str.length > 60000) continue; ops.push({ op: 'put', store: l.store, id: l.id, value: p.json, ...base }); size += p.str.length;
-      } catch { /* Blob 등: 다음에 */ }
+        const p = packSync(l.store, l.val); if (size + p.str.length > 60000) { if (l.store === 'msgs') msgsLeft = true; continue; } ops.push({ op: 'put', store: l.store, id: l.id, value: p.json, ...base }); size += p.str.length;
+      } catch { if (l.store === 'msgs') msgsLeft = true; /* Blob 등: 다음에 */ }
     }
+    // 긴 대화의 머리와 조각은 함께여야 한다: 하나라도 못 보내면 메시지는 모두 다음에 (줄에 남아 있다). 지우기는 쓰기 뒤에
+    if (msgsLeft) ops = ops.filter(o => o.store !== 'msgs');
+    ops.sort((a, b) => (a.op === 'del' ? 1 : 0) - (b.op === 'del' ? 1 : 0));
     if (!ops.length) return;
     const blob = new Blob([JSON.stringify({ dev, ops })], { type: 'text/plain' });
     if (opts.base) navigator.sendBeacon(opts.base + Server.url('store/beacon'), blob); else Server.beacon('store/beacon', blob);

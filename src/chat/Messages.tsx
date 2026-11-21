@@ -29,7 +29,14 @@ import { Reacts } from '../extras/reactions';
 if (!I.pin) I.pin = 'M12 17v5M8 3h8l-1 6 3 3v2H6v-2l3-3z';
 
 const dayFmt = new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
-const dayOf = (ts: number) => { const d = new Date(ts || 0); return isNaN(+d) ? '' : getLang() === 'ko' ? dayFmt.format(d) : fmtDate(d, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }); };
+/** 그 시각의 날 (현지 달력) — 같은 날인지 견줄 때 · 날짜 줄 글을 기억해 둘 때 */
+const dayKey = (ts: number) => { const d = new Date(ts || 0); return isNaN(+d) ? -1 : d.getFullYear() * 512 + d.getMonth() * 32 + d.getDate(); };
+const dayText = new Map<string, string>();
+const dayOf = (ts: number) => {
+  const k = getLang() + dayKey(ts); let v = dayText.get(k); if (v !== undefined) return v;   // 메시지마다 날짜를 새로 꾸미지 않는다 (긴 목록을 그릴 때마다 수백 번)
+  const d = new Date(ts || 0); v = isNaN(+d) ? '' : getLang() === 'ko' ? dayFmt.format(d) : fmtDate(d, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
+  if (dayText.size > 2000) dayText.clear(); dayText.set(k, v); return v;
+};
 const bigImage = (src: string) => openModal({ title: '', wide: true, body: <img className="full-img" src={src} /> });
 
 /** 삽화 그리기: 프롬프트를 적거나 이 메시지에서 뽑는다 */
@@ -88,7 +95,8 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
   const grouped = chat.charIds.length > 1;
   const castNo = grouped && m.role === 'assistant' ? chat.charIds.indexOf(m.charId) + 1 : 0;
   const toned = grouped && m.role === 'assistant' && !!(who && 'avatar' in who && who.avatar);   // 여럿이 있는 방: 말하는 이마다 제 색
-  const cls = ['msg', m.role === 'user' ? 'user' : m.role === 'assistant' ? 'ai' : 'sys', m.hidden && 'hidden-msg', grouped && m.role !== 'system' && 'grouped', cont && 'cont', m.scene && 'in-scene', (m as { direct?: boolean }).direct && 'is-direct',
+  const streaming = cur.paint.has(m.id);
+  const cls = ['msg', streaming && 'streaming', m.role === 'user' ? 'user' : m.role === 'assistant' ? 'ai' : 'sys', m.hidden && 'hidden-msg', grouped && m.role !== 'system' && 'grouped', cont && 'cont', m.scene && 'in-scene', (m as { direct?: boolean }).direct && 'is-direct',
     m.role === 'system' && m.curtain && 'curtain-msg', m.role === 'system' && m.curtain?.kind, m.role === 'system' && !m.curtain && m.dice && 'dice-msg', still && 'still', picked && 'picked'].filter(Boolean).join(' ');
   const art = (kids: ReactNode) => <article className={cls} data-id={m.id} ref={el => { if (el && toned) tint(el, S.get('chars', m.charId) ?? null); }}>{kids}</article>;
   const del = <IconBtn ic="trash" title={t('common.delete')} onClick={() => void delMsg(m)} />;
@@ -104,7 +112,6 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
   if (m.role === 'system' && m.dice) return art(<><DiceCard m={m} /><div className="msg-tools">{del}</div></>);
   if (m.role === 'system' && (m as { thCard?: unknown }).thCard) return art(<><ThreadCard m={m} /><div className="msg-tools">{del}</div></>);   // 방 사이 카드 (src/threads)
 
-  const streaming = cur.paint.has(m.id);
   const body = editing ? <EditBox m={m} close={() => redraw(m)} /> : <div className="msg-body" dangerouslySetInnerHTML={{ __html: cur.paint.get(m.id) ?? bodyHtml(m) }} />;
   if (m.role === 'system') return art(<div className="sys-line">{body}<div className="msg-tools"><IconBtn ic="edit" title={t('chat.msg.edit')} onClick={() => setEditing(true)} />{del}</div></div>);
 
@@ -182,7 +189,7 @@ export function Messages() {
   for (let i = Math.max(0, cur.head); i < total; i++) {
     const m = list[i], prev = list[i - 1], sep = seps.get(i);
     if (sep !== undefined) out.push(<div className="daysep" key={`sep:${cur.epoch}:${i}`}><span>{sep}</span></div>);
-    const cont = grouped && m.role !== 'system' && !!prev && prev.role === m.role && (prev.charId || '') === (m.charId || '') && !prev.dice && new Date(prev.ts).toDateString() === new Date(m.ts).toDateString();
+    const cont = grouped && m.role !== 'system' && !!prev && prev.role === m.role && (prev.charId || '') === (m.charId || '') && !prev.dice && dayKey(prev.ts) === dayKey(m.ts);
     out.push(<MsgItem key={`${m.id}:${cur.epoch}:${cur.revs.get(m.id) || 0}`} m={m} idx={i} last={i === total - 1} cont={cont} still={!cur.fresh.has(m.id)} picked={picked === m.id} />);
   }
   // 누른 메시지 하나만 고른다 (좁은 화면 · 터치에서 도구를 여는 방법)

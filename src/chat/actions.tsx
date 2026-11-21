@@ -4,6 +4,7 @@ import * as engine from '../lib/engine';
 import { moN } from './order';
 import type { AutoPlan, ChatApi } from './types';
 import { bump, cur, flush, ui } from './store';
+import { flushSync } from 'react-dom';
 import { ux } from '../features/usersettings';
 import type { Cast, CmdItem, GenOpt, GenType, Motive, Msg, Room, SceneSpec, Swipe } from './types';
 import { DB, S, emit, on, fmtTime, msgText, newChat, newMsg, uid } from '../lib/core';
@@ -39,7 +40,8 @@ export const roomName = (c: Room) => { const ttl = titleOf(c), n = String(c.name
 export const daysOf = (c: Room) => Math.max(1, Math.round(((c.updatedAt || c.createdAt) - c.createdAt) / 86400000) + 1);
 export const ago = (ts: number) => { const d = (Date.now() - ts) / 60000; return d < 1 ? t('chat.ago.now') : d < 60 ? t('chat.ago.min', { n: Math.floor(d) }) : d < 1440 ? t('chat.ago.hour', { n: Math.floor(d / 60) }) : d < 43200 ? t('chat.ago.day', { n: Math.floor(d / 1440) }) : getLang() === 'ko' ? new Date(ts).toLocaleDateString('ko-KR', { year: '2-digit', month: 'numeric', day: 'numeric' }) : fmtDate(ts, { year: '2-digit', month: 'numeric', day: 'numeric' }); };
 const now = () => Date.now();
-const save = () => S.saveMsgs(cur.chat!, cur.msgs);
+/** 이 방을 저장한다. 고친 메시지를 넘기면 오래된 메시지라도 바로 쓰인다 (긴 대화는 바뀐 조각만 쓴다 — lib/msgstore) */
+const save = (...touched: Msg[]) => { S.touchMsgs(...touched); return S.saveMsgs(cur.chat!, cur.msgs); };
 const onChat = () => route.page === 'chat';
 const errMsg = (e: unknown) => e instanceof Error ? e.message : String(e);
 
@@ -81,26 +83,64 @@ const whenIdle = (fn: () => void) => { if ('requestIdleCallback' in window) requ
 let drawJob = 0;
 /** 메시지 목록을 새로 그린다. lazy(방에 막 들어왔을 때)면 보이는 끝부분만 먼저 그리고, 그 위쪽은 틈나는 대로 이어 붙인다 */
 export function drawMsgs({ lazy = false } = {}) {
-  const job = ++drawJob, list = cur.msgs, total = list.length, from = Math.max(0, total - cur.shown), FIRST = 12;
+  const list = cur.msgs, total = list.length, from = Math.max(0, total - cur.shown), FIRST = 12;
   cur.epoch++; cur.fresh.clear(); cur.from = from;
   cur.head = lazy && total - from > FIRST + 8 ? total - FIRST : from;
   flush('msgs');
-  if (cur.head <= from) return;
+  growUp();
+}
+/** 그려 둔 첫 메시지(head)를 cur.from 까지 조금씩 위로 넓힌다. 이미 그린 메시지는 다시 만들지 않고, 보던 자리를 지킨다 */
+// 보는 자리에서 위로 화면 몇 장 넘게 그려 두었으면 멈췄다가, 위로 스크롤해 다가오면 이어 그린다 (보지 않을 수백 개를 미리 그리느라 다른 동작이 느려지지 않게)
+let growPaused = 0;
+function growUp(first = false) {
+  const job = ++drawJob, list = cur.msgs, base = Math.max(0, list.length - truncation()); growPaused = 0;
+  if (cur.head <= cur.from) return;
   let per = 6;   // 한 번에 이어 붙이는 개수 — 걸린 시간을 보고 늘리거나 줄인다
   const step = () => {
     const sc = ui.scroll; if (job !== drawJob || list !== cur.msgs || !sc?.isConnected) return;   // 그사이 다시 그렸거나 방을 나갔다
+    if (cur.head <= base && sc.scrollTop > sc.clientHeight * 4) { growPaused = job; return; }   // 처음 그리는 몫(최근 100개)은 쉬지 않고 채운다
     const t = performance.now(), gap = sc.scrollHeight - sc.scrollTop;
-    cur.head = Math.max(from, cur.head - per); flush('msgs');
-    sc.scrollTop = sc.scrollHeight - gap;   // 위에 붙인 만큼 밀리지 않게 보던 자리를 지킨다
+    cur.head = Math.max(cur.from, cur.head - per); flush('msgs');
+    selfScroll(sc, sc.scrollHeight - gap);   // 위에 붙인 만큼 밀리지 않게 보던 자리를 지킨다
     per = Math.max(2, Math.min(24, Math.round(per * 12 / Math.max(1, performance.now() - t))));   // 한 묶음이 12ms 안팎이 되게
-    if (cur.head > from) whenIdle(step);
+    if (cur.head > cur.from) whenIdle(step);
   };
-  requestAnimationFrame(() => whenIdle(step));
+  if (first) step(); else requestAnimationFrame(() => whenIdle(step));
 }
 /** 처음 그릴 메시지 수 = "더 보기" 한 번에 더 그리는 수 (실리태번 chat_truncation, 기본 100, 0 이면 전부) */
 export function truncation() { const n = (S.settings as unknown as { chatTruncation?: number | null }).chatTruncation; return n == null || n < 0 ? 100 : n > 0 ? Math.round(n) : Infinity; }
-/** 이전 메시지 더 보기: 보던 자리를 지킨다 */
-export function showMore() { const sc = ui.scroll, hgt = sc?.scrollHeight || 0; cur.shown += truncation(); drawMsgs(); if (sc) sc.scrollTop = sc.scrollHeight - hgt; }
+/** 이전 메시지 더 보기: 이미 그린 메시지는 그대로 두고 위에 이어 붙인다 (보던 자리를 지킨다) */
+export function showMore() {
+  cur.shown += truncation(); cur.from = Math.max(0, cur.msgs.length - cur.shown);
+  flush('msgs'); growUp(true);
+}
+// ── 스크롤 ──
+// 맨 아래를 보고 있는지는 스크롤할 때 적어 둔다 (답변이 흘러나오는 동안 매 화면 높이를 다시 재지 않게)
+let atBottom = true, trimT = 0, selfAt = 0, softJob = 0;
+/** 앱이 스스로 스크롤한다 (사람이 스크롤한 것과 가린다) */
+const selfScroll = (sc: HTMLElement, top: number) => { selfAt = performance.now(); sc.scrollTop = top; };
+/** 대화 칸을 스크롤할 때 (pages/Chat 이 건다) */
+export function onChatScroll() {
+  atBottom = nearBottom();
+  if (performance.now() - selfAt < 80) return;   // 앱이 위에 메시지를 붙이며 자리를 맞춘 것: 사람이 움직인 것이 아니다
+  const sc = ui.scroll;
+  if (growPaused && growPaused === drawJob && sc && cur.head > cur.from && sc.scrollTop < sc.clientHeight * 3) { growPaused = 0; requestAnimationFrame(() => growUp(true)); }
+  // 위로 한참 펼쳐 봤다가 맨 아래로 돌아왔다: 화면 밖 위쪽 메시지는 내려놓는다 (수천 개를 들고 있으면 모든 동작이 느려진다)
+  clearTimeout(trimT);
+  if (atBottom && cur.msgs.length - cur.head > truncation() * 2 + 20) trimT = window.setTimeout(() => whenIdle(trimTop), 1200);
+}
+function trimTop() {
+  const sc = ui.scroll; if (!sc?.isConnected || !nearBottom() || cur.busy || document.querySelector('.msgs .edit-box')) return;
+  drawJob++; cur.shown = truncation(); cur.from = Math.max(0, cur.msgs.length - cur.shown);
+  if (cur.head >= cur.from) return;
+  const gap = sc.scrollHeight - sc.scrollTop; cur.head = cur.from; flush('msgs'); selfScroll(sc, sc.scrollHeight - gap);
+}
+// 맨 아래에 붙어 있기: 목록 높이가 바뀐 뒤(배치가 끝난 다음) 스크롤한다 — 그리는 도중에 높이를 재서 화면을 멈추지 않게
+const follow = { on: false, ro: null as ResizeObserver | null, box: null as Element | null };
+function followBottom(on: boolean) {
+  follow.on = on; const box = ui.msgs; if (!on || !box || !window.ResizeObserver) return;
+  if (follow.box !== box) { follow.ro?.disconnect(); follow.ro = new ResizeObserver(() => { const sc = ui.scroll; if (follow.on && sc?.isConnected) { selfScroll(sc, sc.scrollHeight); atBottom = true; } }); follow.ro.observe(box); follow.box = box; }
+}
 /** 보던 자리를 적어 둔다. 돌려받은 함수를 다시 그린 뒤 부르면 그 자리로 되돌린다.
  *  기준은 고친 메시지(id), 없으면 화면 맨 위에 걸친 메시지. 맨 아래를 보고 있었으면 맨 아래에 남는다 */
 export function holdView(id?: string): () => void {
@@ -172,7 +212,7 @@ export function fillLate(had: { assets: boolean; illust: boolean }, owners: stri
 export async function commitEdit(m: Msg, value: string) {
   const s = m.swipes[m.sw], changed = s.text !== value;
   s.text = m.role === 'system' ? value : applyRegex(value, { who: m.role === 'user' ? 'user' : 'ai', target: 'store', edit: true, charId: m.charId, chat: cur.chat });
-  delete s.tr; s.showTr = false; await save();
+  delete s.tr; s.showTr = false; await save(m);
   redraw(m); if (changed) emit('message:edited', { chat: cur.chat, msg: m, msgs: cur.msgs });
 }
 /** 메시지가 지워지거나 스와이프가 바뀌면 상태창을 그 시점으로 되감는다 */
@@ -197,19 +237,25 @@ export async function delFrom(m: Msg) {
   if (!(await confirmBox(t('chat.msg.confirmDeleteFrom'), t('common.delete'), true))) return;
   const i = cur.msgs.indexOf(m); if (i < 0) return; emit('message:trashed', { chat: cur.chat, gone: cur.msgs.splice(i), at: i, after: cur.msgs[i - 1]?.id || '' }); await afterDelete();
 }
-export async function toggleHidden(m: Msg) { m.hidden = !m.hidden; await save(); redraw(m); }
+export async function toggleHidden(m: Msg) { m.hidden = !m.hidden; await save(m); redraw(m); }
 /** 고정: 오래돼도 프롬프트에 남긴다. 숨겨져 있었으면 다시 보이게 한다 */
-export async function togglePin(m: Msg) { m.pin = !m.pin; if (m.pin && m.hidden && m.memHidden) { m.hidden = false; delete m.memHidden; } await save(); redraw(m); }
+export async function togglePin(m: Msg) { m.pin = !m.pin; if (m.pin && m.hidden && m.memHidden) { m.hidden = false; delete m.memHidden; } await save(m); redraw(m); }
 /** 나만 보는 메모 (모델에 보내지 않는다) */
-export async function setMemo(m: Msg, text: string) { const v = text.trim(); if (v) m.memo = v; else delete m.memo; await save(); redraw(m); }
+export async function setMemo(m: Msg, text: string) { const v = text.trim(); if (v) m.memo = v; else delete m.memo; await save(m); redraw(m); }
 export async function swipe(m: Msg, dir: number) {
   if (cur.busy) return;
   const n = m.sw + dir;
   if (n < 0) return;
   if (n >= m.swipes.length) { if (cur.msgs[cur.msgs.length - 1] === m) void generate('regen'); return; }
-  m.sw = n; rewindState(); await save(); redraw(m); emit('message:swiped', { chat: cur.chat, msg: m, msgs: cur.msgs });
+  m.sw = n; rewindState(); await save(m); redraw(m); emit('message:swiped', { chat: cur.chat, msg: m, msgs: cur.msgs });
 }
 const copy = <T,>(o: T): T => { try { return structuredClone(o); } catch { return JSON.parse(JSON.stringify(o)) as T; } };
+/** 메시지 목록의 사본. 긴 대화는 조금씩 나눠 베껴 그동안 화면이 멈추지 않게 한다 */
+async function copyList(list: Msg[]): Promise<Msg[]> {
+  const out: Msg[] = [], n = list.length;
+  for (let i = 0; i < n; i += 200) { for (const m of copy(list.slice(i, i + 200))) out.push(m); if (i + 200 < n) await new Promise(r => setTimeout(r, 0)); }
+  return out;
+}
 /** 대화방 이름 바꾸기 (곁 목록 · 위쪽 제목 · 메뉴가 함께 쓴다). 비우면 기본 이름으로 돌아간다 */
 export async function renameRoom(c: Room) {
   const v = await promptBox(t('chat.menu.renamePrompt'), c.name || '', { placeholder: t('chat.rename.ph') });
@@ -224,7 +270,7 @@ export async function branch(idx: number) {
     const asked = await promptBox(t('chat.branch.ask'), t('chat.branch.name', { room: roomName(c), n })); if (asked === null) return;
     const branchName = asked.trim().slice(0, 80) || t('chat.branch.name', { room: roomName(c), n });
     const chat = newChat({ ...copy(c), id: uid(), name: branchName, createdAt: now(), src: '', pinned: false, parent: { id: c.id, at: idx + 1 }, diary: copy((c.diary || []).filter(d => (d.to || 0) <= idx + 1)), diaryAt: Math.min(c.diaryAt || 0, idx + 1) });
-    const list = copy(cur.msgs.slice(0, idx + 1));
+    const list = await copyList(cur.msgs.slice(0, idx + 1));
     Live.rewind(chat, list); syncScene(chat, list); delete chat.owed; chat.later = [];
     // 삽화는 대화방마다 따로 보관하므로 새 방 몫으로 복사한다
     const pics = new Map((await DB.byOwner('chat:' + c.id)).filter(a => a.kind === 'illust').map(a => [a.id, a]));
@@ -238,13 +284,13 @@ export async function branch(idx: number) {
 }
 // 후처리(번역 · 삽화) 결과를 그 메시지가 속한 방에 저장한다. 기다리는 사이 방을 옮겼거나 다시 열었어도 같은 메시지를 찾아 옮겨 적는다
 async function saveIn(chat: Room, list: Msg[], m: Msg, carry: (live: Msg) => void) {
-  if (cur.chat?.id === chat.id) { let live = m; if (!cur.msgs.includes(m)) { const hit = cur.msgs.find(x => x.id === m.id); if (!hit) return; live = hit; carry(live); } await save(); redraw(live); }
+  if (cur.chat?.id === chat.id) { let live = m; if (!cur.msgs.includes(m)) { const hit = cur.msgs.find(x => x.id === m.id); if (!hit) return; live = hit; carry(live); } await save(live); redraw(live); }
   else if (S.get('chats', chat.id) && list.includes(m)) await S.saveMsgs(chat, list);
 }
 const translator = () => X.translate || translateText;
 export async function translate(m: Msg, { again = false, chat = cur.chat!, msgs: list = cur.msgs } = {}) {
   const s = m.swipes[m.sw];
-  if (s.tr && !again) { s.showTr = !s.showTr; await save(); return redraw(m); }
+  if (s.tr && !again) { s.showTr = !s.showTr; await save(m); return redraw(m); }
   setStatus(t('chat.status.translating'));
   try {
     const idx = list.indexOf(m), user = S.persona(chat).name, n = S.settings.translate.context || 0;
@@ -257,7 +303,7 @@ export async function translate(m: Msg, { again = false, chat = cur.chat!, msgs:
 export async function editTranslation(m: Msg) {
   const s = m.swipes[m.sw]; const v = await promptBox(t('chat.translate.edit'), s.tr || '', { area: true });
   if (v === null) return; if (v.trim()) { s.tr = v; s.showTr = true; } else { delete s.tr; s.showTr = false; }
-  await save(); redraw(m);
+  await save(m); redraw(m);
 }
 export async function translateInput() {
   const inp = ui.input, text = inp?.value.trim(); if (!inp || !text) return toast(t('chat.translate.empty'));
@@ -276,7 +322,7 @@ export function drawScene(m: Msg, scene: SceneSpec, at?: { chat: Room; msgs: Msg
 export async function removeIllust(m: Msg, s: Swipe, id: string) {
   if (!(await confirmBox(t('chat.illust.confirmRemove'), t('chat.illust.remove'), true))) return;
   const i = (s.illust || []).findIndex(x => x.id === id); if (i >= 0) s.illust!.splice(i, 1);
-  await Illust.remove(id); await save(); redraw(m);
+  await Illust.remove(id); await save(m); redraw(m);
 }
 export function speak(text: string, charId?: string, key = '') {   // 읽어 주기(src/tts) — 읽던 것은 멈추고 새로 읽는다. key 가 있으면 읽는 동안 그 글을 띄워 따라간다
   if (key) { void readMessage(text, { key, charId }).catch(e => toast(errMsg(e), 'err')); return; }
@@ -606,15 +652,19 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
   const tail = built.messages[built.messages.length - 1];
   if (target && type !== 'continue' && tail?.prefill && E.prefillOk(conn)) base = tail.content;
   if (stick) toBottom();
+  atBottom = stick || nearBottom();
 
-  let acc = '', raf = 0, apiThink = false;
+  let acc = '', raf = 0, apiThink = false, bodyEl: Element | null = null, reasonLen = -1;
   const talkStagger = !!built.talk && S.settings.modes.stagger !== false && type !== 'continue';
   const paint = () => {   // 이 메시지 하나만 고친다
     raf = 0; if (!target) return;
-    const keep = nearBottom();
-    cur.paint.set(target.id, (talkStagger ? '' : bodyHtml(target)) || TYPING);
-    flush('m:' + target.id);
-    if (keep && S.settings.autoScroll) toBottom();
+    const html = (talkStagger ? '' : bodyHtml(target)) || TYPING;
+    cur.paint.set(target.id, html);
+    // 본문만 바뀌었으면 React 를 거치지 않고 그 자리의 글만 바꾼다 (생각 글이 늘었거나 아직 그리지 않았으면 메시지를 다시 그린다)
+    const rl = (sw?.reasoning || '').length;
+    if (bodyEl?.isConnected && rl === reasonLen) bodyEl.innerHTML = html;
+    else { flush('m:' + target.id); reasonLen = rl; bodyEl = ui.msgs?.querySelector(`article.msg[data-id="${CSS.escape(target.id)}"] .msg-body`) || null; }
+    if (S.settings.autoScroll) followBottom(atBottom);
     // 상태창 변수 블록(<UpdateVariable>)은 화면에 숨는다 — 답이 끝난 것처럼 보여도 아직 받는 중이면 그렇다고 알린다
     const open = acc.lastIndexOf('<UpdateVariable'), inVars = open >= 0 && acc.indexOf('</UpdateVariable>', open) < 0;
     if (inVars !== varsNote) { varsNote = inVars; setStatus(inVars ? t('chat.status.vars') : ''); }
@@ -642,6 +692,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
     if (!(e instanceof Error && e.name === 'AbortError')) { console.error(e); toast(errMsg(e), 'err'); }
   } finally {
     if (raf) cancelAnimationFrame(raf);
+    follow.on = false;
     setBusy(false); cur.abort = null; if (varsNote) { varsNote = false; setStatus(''); }
     const alive = S.get('chats', chat.id) === chat;   // 답변이 나오는 동안 지워진 방은 되살리지 않는다
     if (target) cur.paint.delete(target.id);
@@ -768,10 +819,24 @@ export const chatApi: ChatApi = {
   addSystemMessage: text => command('/sys ' + text),
   save: () => cur.chat && save(),
   // 삽화 · 번역처럼 뒤에서 끝난 일이 목록을 다시 그려도 보던 자리를 지킨다 (맨 아래를 보고 있었으면 맨 아래에 머문다)
+  // 메시지 요소를 새로 만들지 않고 그려 둔 메시지마다 다시 그린다: 글이 그대로인 메시지는 화면(상태창 iframe)도 그대로 남는다
   redraw: () => {
     if (!cur.chat || !ui.msgs) return;
     const stick = nearBottom(), back = holdView();
-    drawMsgs(); back(); if (stick) pinBottom(1200);
+    cur.from = Math.max(0, cur.msgs.length - cur.shown); cur.head = Math.max(cur.from, Math.min(cur.head, cur.msgs.length));   // 메시지가 늘거나 줄었을 수 있다
+    // 최근 몇 개는 바로, 나머지는 한가할 때 조금씩 (그려 둔 100개를 한 번에 다시 그리면 그동안 화면이 멈춘다)
+    const list = cur.msgs, job = ++softJob, NOW = 6;
+    let i = list.length - NOW;
+    flushSync(() => { for (let k = Math.max(cur.head, i); k < list.length; k++) bump('m:' + list[k].id); bump('msgs'); });
+    back(); if (stick) pinBottom(1200);
+    let per = 6;
+    const more = () => {
+      if (job !== softJob || list !== cur.msgs) return;
+      const t0 = performance.now(); flushSync(() => { for (let k = 0; k < per && i > cur.head; k++) bump('m:' + list[--i].id); });
+      per = Math.max(2, Math.min(30, Math.round(per * 12 / Math.max(1, performance.now() - t0))));   // 한 묶음이 12ms 안팎이 되게
+      if (i > cur.head) whenIdle(more);
+    };
+    if (i > cur.head) whenIdle(more);
     if (cur.drawer) drawDrawer();
   },
   setStatus: t => setStatus(t),

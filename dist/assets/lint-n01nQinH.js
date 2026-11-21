@@ -1,0 +1,1 @@
+export{r as similar}from"./lint-QID4-yfN.js";
