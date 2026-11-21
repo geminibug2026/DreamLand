@@ -9506,5 +9506,14 @@
   "feed.side.refreshLine": "获取角色们的一批新帖子、回复和喜欢。每次调用模型 1 次。",
   "feed.side.suggest": "推荐关注",
   "feed.side.manage": "管理成员",
-  "feed.side.noMembers": "还没有成员"
+  "feed.side.noMembers": "还没有成员",
+  "chat.drawer.tab.base": "基本",
+  "chat.drawer.tab.story": "故事",
+  "chat.drawer.tab.look": "装饰",
+  "chat.drawer.tab.tools": "工具",
+  "chat.msgMenu.gLook": "插图 · 表情",
+  "chat.msgMenu.gRecord": "记录",
+  "chat.msgMenu.gRewrite": "重写",
+  "chat.msgMenu.gMore": "其他",
+  "chat.msgMenu.back": "返回"
 }
