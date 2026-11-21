@@ -103,12 +103,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
 
   const canSwipe = m.role === 'assistant' && (m.swipes.length > 1 || last);
   const copy = () => { void navigator.clipboard.writeText(s.text); toast(t('chat.msg.copied')); };
-  // 좁은 화면에서는 도구 줄에 넘기기 · 다시 생성 · 편집 · 더 보기만 남기고(css/roomy.css), 나머지는 이 메뉴 맨 위로 옮긴다
-  const more = (e: MouseEvent<HTMLButtonElement>) => { const narrow = matchMedia('(max-width: 820px)').matches, at = e.currentTarget; menu(at, [
-    narrow && m.role === 'assistant' && last && { label: t('chat.msg.continue'), ic: 'play', onclick: () => void generate('continue') },
-    narrow && m.role === 'assistant' && { label: t('extras.react.title'), ic: 'heart', onclick: () => emit('xt:react', { m, anchor: at }) },
-    narrow && { label: t('common.copy'), ic: 'copy', onclick: copy },
-    narrow && '-',
+  const more = (e: MouseEvent<HTMLButtonElement>) => { menu(e.currentTarget, [
     { label: t('chat.msgMenu.branch'), ic: 'branch', hint: t('chat.msgMenu.branchHint'), onclick: () => void branch(cur.msgs.indexOf(m)) },
     { label: s.showTr ? t('chat.msgMenu.original') : (s.tr ? t('chat.msgMenu.showTr') : t('chat.msgMenu.translate')), ic: 'lang', onclick: () => void translate(m) },
     s.tr && { label: t('chat.msgMenu.retranslate'), ic: 'refresh', onclick: () => void translate(m, { again: true }) },
