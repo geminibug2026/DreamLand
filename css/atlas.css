@@ -1,58 +1,110 @@
-/* ── 성좌 도감(atlas) ── 접두사 at-. 선은 fine.css 의 네 단계만, 색은 테마 변수만 쓴다.
-   밤하늘(.fx-night) 안에서는 잉크가 상아색으로 바뀌고, 완성한 별자리만 금색(--fx-gold) 한 색을 쓴다. 밤하늘 밖에서는 같은 자리에 포인트 색이 온다 */
+/* ── 성좌 도감(atlas) ── 접두사 at-. 화면의 선은 fine.css 의 네 단계만, 색은 테마 변수만 쓴다.
+   밤하늘(.fx-night) 안에서는 먹색 바탕 · 상아 잉크 · 금 한 색. 그 안의 선 그림은 옛 성도 판화처럼 굵기 네 단계(0.3 · 0.45 · 0.7 · 1.1)로 깊이를 만든다 */
 .at-page { max-width: 1180px; container: at / inline-size; }
 .at-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-bottom: 1px solid var(--line-1); padding-bottom: 0; }
 .at-head > div:first-child { display: grid; gap: 6px; padding-bottom: 10px; } .at-head h1 { margin: 0; }
 .at-head .tabs { margin: 0; border-bottom: 0; }
 .at-intro { margin: -4px 0 0; max-width: 60ch; }
 
-/* ── 별과 선 ── */
-.at-star { color: inherit; } .at-star .f { fill: currentColor; stroke: none; }
-.at-star .at-off { stroke-width: .8; opacity: .6; } .at-conart .at-off { stroke-width: .5; } .at-star.gold { color: var(--fx-gold, var(--accent)); }
-.at-star.hot { animation: at-lit 1.4s var(--fx-out) both; }
-@keyframes at-lit { 0% { opacity: 0; } 35% { opacity: 1; } 55% { opacity: .45; } 100% { opacity: 1; } }
-.at-ln { stroke-width: .8; opacity: .85; } .at-ln.d { stroke-width: .6; opacity: .4; }
-.at-conart .at-ln { stroke-width: .55; } .at-conart .at-ln.d { stroke-width: .4; stroke-dasharray: 1.2 2.4; } .at-conart .t { stroke-width: .45; } .at-conart .h { stroke-width: .3; } .at-conart .d { stroke-width: .35; stroke-dasharray: 1 2; }
-.done .at-ln { stroke: var(--fx-gold, var(--accent)); opacity: 1; }
+/* ── 선 그림의 바탕 ── */
+.at-skysvg, .at-conart { display: block; width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
 .at-hit { fill: transparent; stroke: none; }
-.at-num { font: 400 4.6px var(--fx-mono); fill: currentColor; stroke: none; opacity: .55; letter-spacing: .08em; }
-.at-conart { display: block; width: 100%; height: 100%; }
-/* 작은 그림(56~84px)에서는 선과 별을 굵게 — 줄어들어도 읽히게 */
-.at-conart.sm .at-ln { stroke-width: 1.3; } .at-conart.sm .at-ln.d { stroke-width: 1; stroke-dasharray: 2 4; } .at-conart.sm .at-off { stroke-width: 1.1; } .at-conart.sm .t, .at-conart.sm .h, .at-conart.sm .d { stroke-width: .9; }
-.at-one { width: 26px; height: 26px; flex: none; }
+
+/* ── 별 한 알 ── 꺼진 별: 빈 고리와 눈금 · 켜진 별: 가운데 점, 가는 고리, 끝이 가늘어지는 섬광 */
+.at-star { color: inherit; } .at-star .f { fill: currentColor; stroke: none; }
+.at-star.gold { color: var(--fx-gold, var(--accent)); }
+.at-off { stroke-width: .7; opacity: .62; } .at-tick { stroke-width: .5; opacity: .4; }
+.at-ring { stroke-width: .5; opacity: .6; } .at-ray { opacity: .95; }
+.at-halo { stroke-width: .4; opacity: .26; } .at-halo.two { opacity: .2; }
+.at-flash { fill: currentColor; stroke: none; opacity: 0; animation: at-flash 1.5s var(--fx-out) both; }
+@keyframes at-flash { 0% { opacity: 0; } 18% { opacity: .34; } 100% { opacity: 0; } }
+.at-star.hot .at-ray { animation: at-lit 1.5s var(--fx-out) both; }
+@keyframes at-lit { 0% { opacity: 0; } 30% { opacity: 1; } 55% { opacity: .4; } 100% { opacity: .95; } }
+.at-pop { animation: at-pop .7s var(--fx-out) both; animation-delay: var(--d, 0s); }
+@keyframes at-pop { from { opacity: 0; } }
+/* 도판은 상자 칸으로 그린다. --px(화면 1픽셀이 상자 몇 칸인가)를 곱해, 도판이 크든 작든 화면에서 같은 굵기가 되게 한다 */
+.at-conart.plate { --px: .34; }
+.at-conart.plate .at-off { stroke-width: calc(var(--px) * .7); } .at-conart.plate .at-tick, .at-conart.plate .at-ring { stroke-width: calc(var(--px) * .5); } .at-conart.plate .at-halo { stroke-width: calc(var(--px) * .4); }
+.at-conart.mid .at-off, .at-conart.min .at-off { stroke-width: .7; } .at-conart.mid .at-tick, .at-conart.min .at-tick, .at-conart.mid .at-ring, .at-conart.min .at-ring { stroke-width: .5; } .at-conart.mid .at-halo, .at-conart.min .at-halo { stroke-width: .4; }
+
+/* ── 별을 잇는 선 ── 둘 다 켜지면 실선, 아니면 점선 */
+.at-ln { stroke-width: .9; opacity: .9; } .at-ln.off { stroke-width: .6; opacity: .36; stroke-dasharray: 1.5 4; }
+.at-conart.plate .at-ln { stroke-width: calc(var(--px) * .9); } .at-conart.plate .at-ln.off { stroke-width: calc(var(--px) * .6); stroke-dasharray: calc(var(--px) * 1.6) calc(var(--px) * 4.4); }
+.at-conart.mid .at-ln, .at-conart.min .at-ln { stroke-width: .9; } .at-conart.mid .at-ln.off, .at-conart.min .at-ln.off { stroke-width: .7; stroke-dasharray: 1.4 3.4; }
+.done .at-ln { stroke: var(--fx-gold, var(--accent)); opacity: 1; }
+
+/* ── 형상 그림 ── 윤곽(fo) · 세부(ft) · 빗금(fh) · 점묘(fs) · 강조(fa). 켜진 별이 늘수록 또렷해진다 */
+.at-fig path { fill: none; stroke: currentColor; }
+.at-fig.plate .fo { stroke-width: calc(var(--px) * .8); } .at-fig.plate .ft { stroke-width: calc(var(--px) * .5); } .at-fig.plate .fh { stroke-width: calc(var(--px) * .32); } .at-fig.plate .fs { stroke-width: calc(var(--px) * 1.15); } .at-fig.plate .fa { stroke-width: calc(var(--px) * .9); }
+.at-fig.keep path, .at-fig.mid path, .at-fig.min path { vector-effect: non-scaling-stroke; }
+.at-fig.keep .fo { stroke-width: .7; } .at-fig.keep .ft { stroke-width: .45; } .at-fig.keep .fh { stroke-width: .3; } .at-fig.keep .fs { stroke-width: 1; } .at-fig.keep .fa { stroke-width: .8; }
+.at-fig.mid .fo { stroke-width: .8; } .at-fig.mid .ft { stroke-width: .5; } .at-fig.mid .fs { stroke-width: 1.1; } .at-fig.mid .fa { stroke-width: .9; }
+.at-fig.min .fo { stroke-width: .8; } .at-fig.min .fa { stroke-width: .9; }
+/* 0: 거의 보이지 않는 점선 윤곽 */
+.at-fig.p0 .fo { opacity: .26; stroke-dasharray: calc(var(--px, .34) * 1.2) calc(var(--px, .34) * 3.6); } .at-fig.p0 .fa { opacity: .22; stroke-dasharray: calc(var(--px, .34) * 1.2) calc(var(--px, .34) * 3.6); } .at-fig.p0 .ft, .at-fig.p0 .fh, .at-fig.p0 .fs { display: none; }
+.at-fig.p0.keep .fo, .at-fig.p0.keep .fa, .at-fig.p0.mid .fo, .at-fig.p0.mid .fa, .at-fig.p0.min .fo, .at-fig.p0.min .fa { stroke-dasharray: 1 3.4; }
+/* 1: 옅은 선 */
+.at-fig.p1 .fo { opacity: .4; } .at-fig.p1 .ft { opacity: .2; } .at-fig.p1 .fh { opacity: .1; } .at-fig.p1 .fs { opacity: .26; } .at-fig.p1 .fa { opacity: .5; }
+/* 2: 세부와 빗금이 드러난다 */
+.at-fig.p2 .fo { opacity: .6; } .at-fig.p2 .ft { opacity: .38; } .at-fig.p2 .fh { opacity: .24; } .at-fig.p2 .fs { opacity: .46; } .at-fig.p2 .fa { opacity: .75; }
+/* 3: 선명 + 금빛 강조 */
+.at-fig.p3 .fo { opacity: .95; } .at-fig.p3 .ft { opacity: .68; } .at-fig.p3 .fh { opacity: .44; } .at-fig.p3 .fs { opacity: .8; } .at-fig.p3 .fa { opacity: 1; stroke: var(--fx-gold, var(--accent)); }
+.at-fig.p3.plate .fa { stroke-width: calc(var(--px) * 1.2); } .at-fig.p3.keep .fa { stroke-width: 1.1; }
+/* 그려지며 나타나기 (도판에서만) */
+.at-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: fx-draw 2.4s var(--fx-out) forwards; animation-delay: var(--d, 0s); }
+.at-fade { animation: at-pop 1.2s ease-out both; animation-delay: var(--d, 0s); }
 
 /* ── 큰 성도 ── */
 .at-sky { aspect-ratio: 1200 / 760; overflow: hidden; }
-.at-skysvg { display: block; width: 100%; height: 100%; overflow: hidden; }
-.at-scale text { font: 400 13px var(--fx-mono); fill: currentColor; stroke: none; opacity: .4; letter-spacing: .12em; }
+.at-skysvg { overflow: hidden; }
+.at-g1 { stroke-width: .3; opacity: .2; } .at-g2 { stroke-width: .45; opacity: .3; }
+.at-f0 { stroke-width: .3; opacity: .42; } .at-f1 { stroke-width: .45; opacity: .6; } .at-f3 { stroke-width: 1.1; opacity: .85; }
+.at-conart .at-f1 { stroke-width: calc(var(--px) * .5); opacity: .42; }
+.at-mw { stroke-width: .9; opacity: .3; } .at-mw.two { stroke-width: 1.5; opacity: .34; }
+.at-fs.s0 { stroke-width: .9; opacity: .46; } .at-fs.s1 { stroke-width: 1.6; opacity: .62; } .at-fs.s2 { stroke-width: 2.5; opacity: .82; }
+.at-spark { fill: currentColor; stroke: none; opacity: .7; }
+.at-ecl { stroke-width: .5; opacity: .42; stroke-dasharray: 7 4 1 4; }
+.at-bound { stroke-width: .45; opacity: .2; stroke-dasharray: .4 4.2; }
+.at-rosebg, .at-cartbg { fill: var(--fx-paper); stroke: none; } .at-rosef { fill: currentColor; stroke: none; opacity: .8; }
+.at-scale { font: 400 14px var(--fx-mono); fill: currentColor; stroke: none; opacity: .5; letter-spacing: .1em; }
+.at-eclt { font-size: 14px; letter-spacing: .5em; opacity: .34; }
+.at-ctitle { font: 500 19px var(--fx-serif); fill: currentColor; stroke: none; letter-spacing: .08em; }
+.at-moonf { fill: currentColor; stroke: none; opacity: .85; }
 .at-con { cursor: pointer; outline: none; }
-.at-cname { font: 500 16px var(--fx-serif); fill: currentColor; stroke: none; letter-spacing: .08em; opacity: .78; transition: opacity .15s; }
-.at-cno { font: 400 12px var(--fx-mono); fill: currentColor; stroke: none; opacity: .45; letter-spacing: .18em; }
-.at-con .at-brk { opacity: 0; transition: opacity .15s; }
-.at-con:hover .at-brk { opacity: .55; } .at-con.on .at-brk { opacity: 1; stroke-width: 1; } .at-con:hover .at-cname, .at-con.on .at-cname { opacity: 1; }
-.at-con:focus-visible .at-brk { opacity: 1; stroke: var(--fx-gold); stroke-width: 1.4; }
+.at-cname { font: 500 17px var(--fx-serif); fill: currentColor; stroke: var(--fx-paper); stroke-width: 4px; paint-order: stroke; letter-spacing: .08em; opacity: .82; transition: opacity .15s; }
+.at-cno { font: 400 14px var(--fx-mono); fill: currentColor; stroke: var(--fx-paper); stroke-width: 4px; paint-order: stroke; opacity: .5; letter-spacing: .14em; }
+.at-brk { stroke-width: .7; opacity: 0; transition: opacity .15s; }
+.at-con:hover .at-brk { opacity: .5; } .at-con.on .at-brk { opacity: 1; stroke-width: 1.1; } .at-con:hover .at-cname, .at-con.on .at-cname { opacity: 1; }
+.at-con:focus-visible .at-brk { opacity: 1; stroke: var(--fx-gold); stroke-width: 1.5; }
 .at-con.done .at-cname { fill: var(--fx-gold); opacity: 1; }
 
-/* ── 별자리 카드 목록 (좁은 화면에서 성도 대신) ── */
-.at-cards { display: none; list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line-2); }
-.at-cards li { border-bottom: 1px solid var(--line-3); }
-.at-ccard { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; gap: 14px; align-items: center; width: 100%; min-height: 76px; padding: 10px 4px; text-align: left; outline-offset: -1px; }
-.at-ccard.on { background: var(--line-4); }
+/* ── 도판(별자리 하나를 크게) ── */
+.at-plate { position: relative; aspect-ratio: 154 / 122; padding: 5px; } .at-plate.tight { aspect-ratio: 122 / 120; }
+.at-plno { position: absolute; left: 50%; bottom: 9px; transform: translateX(-50%); color: var(--fx-ink); opacity: .55; max-width: calc(100% - 60px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--fx-paper); padding: 0 8px; }
+.at-pick { outline: none; } .at-pick:focus-visible .at-hit { stroke: var(--fx-gold); stroke-width: calc(var(--px) * 1); }
+.at-aim { stroke-width: calc(var(--px) * .5); opacity: .7; stroke-dasharray: calc(var(--px) * 1.6) calc(var(--px) * 2.6); }
+.at-call text { font-family: var(--fx-mono); font-weight: 400; fill: currentColor; stroke: var(--fx-paper); stroke-width: calc(var(--px) * 3.2); paint-order: stroke; letter-spacing: .02em; opacity: .76; }
+.at-lead { stroke-width: calc(var(--px) * .45); opacity: .5; }
+.at-call .on text { opacity: 1; fill: var(--fx-gold); } .at-call .on .at-lead { opacity: 1; stroke: var(--fx-gold); }
+.at-one { width: 30px; height: 30px; flex: none; }
+
+/* ── 별자리 카드 목록 (좁은 화면에서 성도 대신) ── 형상 그림이 카드의 절반 */
+.at-cards { display: none; list-style: none; margin: 0; padding: 0; gap: 12px; }
+.at-ccard { display: grid; grid-template-columns: minmax(0, 46%) minmax(0, 1fr); gap: 16px; align-items: center; width: 100%; padding: 0; text-align: left; outline-offset: 2px; border: 1px solid var(--line-2); border-radius: 3px; background: var(--fx-paper); overflow: hidden; }
+.at-ccard.on { border-color: var(--line-1); }
+.at-cplate { display: block; aspect-ratio: 1; padding: 4px; }
+.at-ctx { display: grid; gap: 7px; min-width: 0; padding: 12px 14px 12px 0; } .at-ctx b { font: 500 17px/1.3 var(--fx-serif); letter-spacing: .03em; } .at-ctx small { font-size: 12.5px; line-height: 1.5; color: var(--dim); text-wrap: pretty; }
 .at-thumb { display: block; width: 56px; height: 56px; border: 1px solid var(--line-2); border-radius: 2px; flex: none; }
-.at-ctx { display: grid; gap: 5px; min-width: 0; } .at-ctx b { font: 500 15px/1.3 var(--fx-serif); letter-spacing: .03em; }
-.at-ccard > .fx-num, .at-pbtn > .fx-num { font-size: 12px; color: var(--dim); }
+.at-pbtn > .fx-num { font-size: 12px; color: var(--dim); }
 
 /* ── 아래: 고른 별자리 + 진척 ── */
-.at-lower { display: grid; grid-template-columns: minmax(0, 1fr) 290px; gap: 34px; align-items: start; scroll-margin-top: 12px; }
-.at-detail { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 24px; align-items: start; min-width: 0; }
+.at-lower { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 32px; align-items: start; scroll-margin-top: 12px; }
+.at-detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; min-width: 0; }
 .at-back { display: none; align-items: center; gap: 4px; min-height: 44px; padding: 0 8px 0 2px; font-size: 13px; color: var(--dim); justify-self: start; }
-.at-plate { position: relative; aspect-ratio: 1; padding: 16px; }
-.at-plno { position: absolute; left: 14px; top: 12px; color: var(--fx-ink); opacity: .6; max-width: calc(100% - 28px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.at-pick { outline: none; } .at-pick:focus-visible .at-hit { stroke: var(--fx-gold); stroke-width: .5; }
 .at-dbody { display: grid; gap: 12px; min-width: 0; }
 .at-dbody header { display: grid; gap: 6px; } .at-dbody h2 { margin: 0; } .at-dbody header p { margin: 0; font-size: 13.5px; }
 .at-rows { list-style: none; margin: 2px 0 0; padding: 0; border-top: 1px solid var(--line-2); }
-.at-row { display: grid; grid-template-columns: 20px 26px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 4px; transition: background .15s; }
+.at-row { display: grid; grid-template-columns: 20px 30px minmax(0, 1fr) auto; gap: 9px; align-items: center; padding: 9px 4px; transition: background .15s; }
 .at-row.hot { background: var(--line-4); }
 .at-rno { font-size: 10px; color: var(--dim); }
 .at-rtx { min-width: 0; } .at-rtx b { display: flex; align-items: baseline; gap: 7px; font: 500 14.5px/1.35 var(--fx-serif); letter-spacing: .02em; }
@@ -61,12 +113,14 @@
 .at-row:not(.lit) .at-rtx b { color: var(--dim); font-weight: 400; }
 .at-rmeta { display: grid; justify-items: end; gap: 4px; font-size: 11.5px; white-space: nowrap; }
 .at-rmeta .fx-pips i { width: 6px; height: 6px; }
+/* 넓은 자리에서는 도판 옆에 목록을 둔다 */
+@container at (min-width: 1040px) { .at-lower .at-rows { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; } .at-lower .at-rows > * + * { border-top: 0; } .at-lower .at-rows > * { border-bottom: 1px solid var(--line-3); } }
 
 .at-side { display: grid; gap: 12px; min-width: 0; } .at-side h3 { margin: 6px 0 0; }
 .at-big { display: flex; align-items: baseline; gap: 8px; } .at-big b { font: 300 46px/1 var(--fx-mono); letter-spacing: -.02em; } .at-big .fx-lbl { margin-left: auto; }
 .at-kvs { display: grid; gap: 7px; font-size: 13px; }
 .at-recent { list-style: none; margin: 0; padding: 0; }
-.at-recent button { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 8px; align-items: center; width: 100%; min-height: 40px; padding: 4px 2px; text-align: left; font-size: 13.5px; outline-offset: -1px; }
+.at-recent button { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 8px; align-items: center; width: 100%; min-height: 40px; padding: 4px 2px; text-align: left; font-size: 13.5px; outline-offset: -1px; }
 .at-recent button > span:nth-child(2) { font-family: var(--fx-serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .at-recent .fx-num { font-size: 11px; }
 .at-none, .at-foot { font-size: 12.5px; margin: 0; text-wrap: pretty; }
 .at-set { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 0; cursor: pointer; }
@@ -74,48 +128,52 @@
 .at-pick-hint { align-self: center; }
 
 /* ── 사람별 ── */
-.at-split { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 34px; align-items: start; }
+.at-split { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 32px; align-items: start; }
+.at-split > .at-detail { max-width: 620px; }
 .at-people { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line-2); border-bottom: 1px solid var(--line-3); }
-.at-pbtn { display: grid; grid-template-columns: auto minmax(0, 1fr) 40px auto; gap: 11px; align-items: center; width: 100%; min-height: 58px; padding: 8px 4px; text-align: left; outline-offset: -1px; }
-.at-pbtn.on { background: var(--line-4); } .at-pbtn .at-thumb { width: 40px; height: 40px; }
+.at-pbtn { display: grid; grid-template-columns: auto minmax(0, 1fr) 48px auto; gap: 11px; align-items: center; width: 100%; min-height: 62px; padding: 7px 4px; text-align: left; outline-offset: -1px; }
+.at-pbtn.on { background: var(--line-4); } .at-pbtn .at-thumb { width: 48px; height: 48px; }
 .at-pname { font: 500 14.5px var(--fx-serif); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── 대화 서랍 패널 ── */
 .at-panel { display: grid; gap: 10px; }
-.at-pcard { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 13px; align-items: center; width: 100%; text-align: left; }
-.at-pplate { display: block; width: 84px; height: 84px; padding: 5px; border: 1px solid var(--line-2); border-radius: 2px; }
+.at-pcard { display: grid; grid-template-columns: 104px minmax(0, 1fr); gap: 13px; align-items: center; width: 100%; text-align: left; }
+.at-pplate { display: block; width: 104px; height: 104px; padding: 2px; border: 1px solid var(--line-2); border-radius: 2px; }
 .at-ptx { display: grid; gap: 6px; min-width: 0; } .at-ptx > b { font: 500 14.5px var(--fx-serif); letter-spacing: .02em; } .at-ptx small { font-size: 12px; color: var(--dim); }
 
 /* ── 홈에 놓는 작은 요약 ── */
-.at-mini { display: grid; gap: 10px; width: 100%; max-width: 360px; min-width: 0; padding: 14px 15px 13px; }
-.at-mhead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; min-height: 28px; text-align: left; } .at-mhead .fx-lbl { color: var(--fx-ink); } .at-mhead .fx-num { font-size: 12.5px; }
+.at-mini { display: grid; gap: 10px; width: 100%; max-width: 360px; min-width: 0; padding: 12px 14px 13px; }
+.at-mhead { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 14px; align-items: center; text-align: left; }
+.at-mart { display: block; width: 96px; height: 96px; }
+.at-mtx { display: grid; gap: 8px; min-width: 0; } .at-mtx .fx-lbl { color: var(--fx-ink); opacity: .8; }
+.at-mbig { display: flex; align-items: baseline; gap: 7px; } .at-mbig b { font: 300 32px/1 var(--fx-mono); letter-spacing: -.02em; } .at-mbig span { font-size: 12.5px; }
 .at-mini .dim, .at-card small { color: color-mix(in srgb, var(--fx-ink) 62%, transparent); }
 .at-mempty { display: grid; grid-template-columns: 40px 1fr; gap: 10px; align-items: center; } .at-mempty svg { width: 40px; height: 40px; opacity: .7; } .at-mempty p { margin: 0; font-size: 12.5px; opacity: .75; }
 .at-mfoot { font-size: 12.5px; }
 
 /* ── 별이 켜지는 카드 ── 화면 오른쪽 아래 구석. 알림 줄(#toasts)과 겹치지 않게 옆으로 */
-.at-toasts { position: fixed; z-index: 95; right: 18px; top: 72px; display: grid; gap: 8px; width: min(320px, calc(100vw - 24px)); pointer-events: none; }
-.at-card { pointer-events: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; padding: 10px 6px 10px 10px; animation: at-rise .42s var(--fx-out) both; }
+.at-toasts { position: fixed; z-index: 95; right: 18px; top: 72px; display: grid; gap: 8px; width: min(340px, calc(100vw - 24px)); pointer-events: none; }
+.at-card { pointer-events: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; padding: 8px 6px 8px 8px; animation: at-rise .42s var(--fx-out) both; }
 @keyframes at-rise { from { opacity: 0; transform: translateY(8px); } }
-.at-cmain { display: grid; grid-template-columns: 68px minmax(0, 1fr); gap: 12px; align-items: center; text-align: left; min-height: 68px; }
-.at-cart { display: block; width: 68px; height: 68px; }
+.at-cmain { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; align-items: center; text-align: left; min-height: 92px; }
+.at-cart { display: block; width: 92px; height: 92px; }
 .at-cbody { display: grid; gap: 3px; min-width: 0; } .at-cbody .fx-lbl { color: var(--fx-gold); } .at-cbody b { font: 500 15.5px/1.3 var(--fx-serif); letter-spacing: .03em; } .at-cbody small { font-size: 12px; text-wrap: pretty; }
 .at-cx { width: 28px; height: 28px; display: grid; place-items: center; opacity: .55; } .at-cx:hover { opacity: 1; }
 
-/* ── 좁은 자리 ── 성도 대신 카드 목록, 목록 ↔ 상세 */
-@container at (max-width: 880px) {
-  .at-sky { display: none; } .at-cards { display: block; }
+/* ── 좁은 자리 ── 성도 대신 카드 목록, 목록 ↔ 상세. 성도 안의 글자가 10px 아래로 내려가기 전에 바꾼다 */
+@container at (max-width: 900px) {
+  .at-sky { display: none; } .at-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
   .at-lower { grid-template-columns: minmax(0, 1fr); gap: 26px; }
   .at-pick-hint { display: none; }
   .at-page.has-con .at-cards { display: none; }
-  .at-back { display: inline-flex; grid-column: 1 / -1; }
+  .at-back { display: inline-flex; }
+  .at-detail { max-width: 620px; }
   .at-split { grid-template-columns: minmax(0, 1fr); } .at-split.has .at-people { display: none; }
 }
-@container at (max-width: 600px) {
-  .at-detail { grid-template-columns: minmax(0, 1fr); gap: 16px; }
-  .at-plate { max-width: 340px; width: 100%; justify-self: center; }
-}
+@container at (max-width: 420px) { .at-cards { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 820px) {
-  .at-toasts { right: 10px; left: 10px; top: calc(58px + env(safe-area-inset-top, 0px)); width: auto; }
+  .at-toasts { right: 10px; left: 10px; top: calc(58px + env(safe-area-inset-top, 0px)); bottom: auto; width: auto; }
   .at-recent button, .at-set { min-height: 44px; }
 }
+/* 움직임을 줄인 환경: 그려지는 선이 숨은 채로 남지 않게 */
+@media (prefers-reduced-motion: reduce) { .at-page .fx-draw, .at-toasts .fx-draw, .at-draw { stroke-dasharray: none; stroke-dashoffset: 0; } .at-flash { display: none; } }

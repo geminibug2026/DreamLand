@@ -9,7 +9,7 @@ import { ux } from '../features/usersettings';
 import { t, fmtNum } from '../i18n';
 import { CONS, MILES, STARS, conOf, starOf } from './defs';
 import { A, cfg, charTally, conDone, doneCount, litCount, recent, tierNow, worldTally } from './logic';
-import { ConArt, EmptyArt, PersonArt, Sky, StarGlyph, gradeOf } from './art';
+import { ConArt, EmptyArt, PersonArt, Sky, StarGlyph, VB, gradeOf } from './art';
 import type { ConDef, Lit, MileDef, StarDef, Tally } from './types';
 
 // ── 글 ──
@@ -24,7 +24,13 @@ const p2 = (n: number) => String(n).padStart(2, '0');
 const day = (ts: number) => { const d = new Date(ts); return `${d.getFullYear()}.${p2(d.getMonth() + 1)}.${p2(d.getDate())}`; };
 const ROMAN = ['', 'I', 'II', 'III'];
 const frac = (v: number, at: number, unit = 1) => `${fmtNum(Math.floor(Math.min(v, at) / unit))}/${fmtNum(at / unit)}`;
-const One = ({ grade, hidden, gold }: { grade: number; hidden?: boolean; gold?: boolean }) => <svg className="fx-art at-one" viewBox="-10 -10 20 20" aria-hidden="true"><StarGlyph x={0} y={0} grade={grade} k={1.15} hidden={hidden} gold={gold} /></svg>;
+const One = ({ grade, hidden, gold }: { grade: number; hidden?: boolean; gold?: boolean }) => <svg className="fx-art at-one" viewBox="-13 -13 26 26" aria-hidden="true"><StarGlyph x={0} y={0} grade={grade} k={.8} hidden={hidden} gold={gold} /></svg>;
+/** 도판의 크기를 재서, 좁은 도판인지와 상자 한 칸이 화면 몇 픽셀인지 돌려준다 — 도판이 커져도 선 굵기와 글자 크기가 그대로이게 */
+function useUnit(): { ref: React.RefObject<HTMLDivElement | null>; u: number; tight: boolean } {
+  const ref = useRef<HTMLDivElement>(null), [w, setW] = useState(() => matchMedia('(max-width: 560px)').matches ? 350 : 640);
+  useEffect(() => { const el = ref.current; if (!el) return; const fit = () => { const x = el.clientWidth - 10; if (x > 40) setW(x); }; fit(); const ro = new ResizeObserver(fit); ro.observe(el); return () => ro.disconnect(); }, []);
+  const tight = w < 520; return { ref, tight, u: +(w / VB[tight ? 'tight' : 'plate'][2]).toFixed(2) };
+}
 const Meter = ({ p, label }: { p: number; label: string }) => <div className="fx-meter" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(p * 100)} style={{ ['--p' as string]: Math.max(0, Math.min(1, p)) }} />;
 
 // ── 별자리 상세 ──
@@ -41,10 +47,10 @@ function StarRow({ s, i, W, hot, onHot, gold }: { s: StarDef; i: number; W: Tall
   </li>;
 }
 function ConDetail({ con, W, onBack }: { con: ConDef; W: Tally; onBack: () => void }) {
-  const [hot, setHot] = useState<string | null>(null), lit = con.stars.filter(s => tierNow(s.id) > 0).length, done = conDone(con.id);
+  const [hot, setHot] = useState<string | null>(null), lit = con.stars.filter(s => tierNow(s.id) > 0).length, done = conDone(con.id), pl = useUnit();
   return <section className="at-detail fx-in" key={con.id} aria-label={conName(con)}>
     <button className="at-back fx-tap" onClick={onBack}><Icon name="left" size={15} />{t('atlas.back')}</button>
-    <div className="at-plate fx-night fx-frame fx-grain"><ConArt con={con} tiers={tierNow} size="plate" hot={hot} onStar={setHot} starName={starName} /><span className="fx-lbl at-plno">tab. {con.no}</span></div>
+    <div className={'at-plate fx-night fx-frame fx-grain' + (pl.tight ? ' tight' : '')} ref={pl.ref}><ConArt con={con} tiers={tierNow} size="plate" u={pl.u} tight={pl.tight} hot={hot} onStar={setHot} starName={starName} /><span className="fx-lbl at-plno">tab. {con.no}</span></div>
     <div className="at-dbody">
       <header><span className="fx-lbl">{t('atlas.conLabel')} {con.no}</span><h2 className="fx-title">{conName(con)}</h2><p className="fx-body dim">{conLine(con)}</p></header>
       <div className="fx-kv"><span className="fx-lbl kr">{done ? t('atlas.conDone') : t('atlas.conProgress')}</span><i /><b>{p2(lit)}/{p2(con.stars.length)}</b></div>
@@ -57,10 +63,10 @@ function ConDetail({ con, W, onBack }: { con: ConDef; W: Tally; onBack: () => vo
 // ── 한 사람과의 별자리 ──
 const mileLit = (charId: string) => MILES.map(m => !!A.rec.per[charId]?.[m.id]);
 export function PersonView({ ch, onBack }: { ch: Char; onBack?: () => void }) {
-  const T = useMemo(() => charTally(ch.id), [ch.id, A.rec]), lit = mileLit(ch.id), n = lit.filter(Boolean).length, [hot, setHot] = useState<number | null>(null);
+  const T = useMemo(() => charTally(ch.id), [ch.id, A.rec]), lit = mileLit(ch.id), n = lit.filter(Boolean).length, [hot, setHot] = useState<number | null>(null), pl = useUnit();
   return <section className="at-detail fx-in" aria-label={t('atlas.person.title', { name: ch.name })}>
     {onBack && <button className="at-back fx-tap" onClick={onBack}><Icon name="left" size={15} />{t('atlas.back')}</button>}
-    <div className="at-plate fx-night fx-frame fx-grain"><PersonArt name={ch.name} lit={lit} size="plate" hot={hot} onStar={setHot} labels={MILES.map(mileName)} /><span className="fx-lbl at-plno">{ch.name.slice(0, 14)}</span></div>
+    <div className={'at-plate fx-night fx-frame fx-grain' + (pl.tight ? ' tight' : '')} ref={pl.ref}><PersonArt name={ch.name} lit={lit} size="plate" u={pl.u} tight={pl.tight} hot={hot} onStar={setHot} labels={MILES.map(mileName)} /><span className="fx-lbl at-plno">{ch.name.slice(0, 14)}</span></div>
     <div className="at-dbody">
       <header><span className="fx-lbl kr">{t('atlas.person.label')}</span><h2 className="fx-title">{t('atlas.person.title', { name: ch.name })}</h2><p className="fx-body dim">{t('atlas.person.line')}</p></header>
       <div className="fx-kv"><span className="fx-lbl kr">{t('atlas.conProgress')}</span><i /><b>{p2(n)}/{p2(MILES.length)}</b></div>
@@ -202,7 +208,7 @@ export function Cards() {
     // 별자리를 완성한 별 · 단계가 높은 별을 앞에
     const sorted = [...lits].sort((a, b) => +(b.done || 0) - +(a.done || 0) || b.tier - a.tier), show = sorted.length > 3 ? [...sorted.slice(0, 2), { kind: 'many', id: '', tier: 0, n: sorted.length - 2, done: true } as Lit] : sorted;
     const cards = show.map(lit => ({ key: ++seq, lit }));
-    setList(l => [...l, ...cards].slice(-2));   // 입력창과 글을 가리지 않게 둘까지만 tone(sorted.some(l => l.done && l.kind === 'star'));
+    setList(l => [...l, ...cards].slice(-2)); tone(sorted.some(l => l.done && l.kind === 'star'));   // 카드는 둘까지만: 입력창과 글을 가리지 않게
     for (const c of cards) setTimeout(() => setList(l => l.filter(x => x.key !== c.key)), 7500);
   }), []);
   return <div className="at-toasts" role="status" aria-live="polite">{list.map(c => <CardView key={c.key} lit={c.lit} onClose={() => setList(l => l.filter(x => x !== c))} />)}</div>;

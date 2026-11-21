@@ -92,7 +92,7 @@ function Backdrop() {
       const a = Math.min(64, Math.atan2(W / 2 + 10, Math.max(1, OY - Hh)) * 180 / Math.PI + 4), d = curve(arc(OX, OY, R, R, -90 - a, -90 + a, 26)), major = i % 2 === 1;
       if (major) boldG += d; else fineG += d;
       const dx = OX - IN, yy = R > dx ? OY - Math.sqrt(R * R - dx * dx) : -1;
-      if (major && yy > IN + 30 && yy < Hh - IN - 20) decs.push({ y: yy, label: `${(i - 11) * 5 >= 0 ? '+' : '−'}${String(Math.abs((i - 11) * 5)).padStart(2, '0')}°` });
+      if (major && yy > IN + 56 && yy < Hh - IN - 40) decs.push({ y: yy, label: `${(i - 11) * 5 >= 0 ? '+' : '−'}${String(Math.abs((i - 11) * 5)).padStart(2, '0')}°` });
     }
     for (let a = -60; a <= 60; a += 5) {
       const d = poly([pol(410, a), pol(1320, a)]); if (a % 15 === 0) boldG += d; else fineG += d;
@@ -187,7 +187,7 @@ export function Sky({ tiers, sel, onPick, name, starName, title }: { tiers: Tier
         <path className="at-brk" d={[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) => `M${c.cx + sx * h} ${c.cy + sy * h - sy * 12}v${sy * 12}h${-sx * 12}`).join('')} />
         {fig && <g transform={`translate(${c.cx} ${c.cy}) rotate(${c.rot}) scale(${c.s / 100}) translate(-50 -50)`}><FigLayers fig={fig} p={stage(n, c.stars.length)} mode="keep" /></g>}
         {c.edges.map(([a, b], i) => { const full = tiers(a) > 0 && tiers(b) > 0; return <path key={i} d={seg(pos.get(a)!, pos.get(b)!, 8)} pathLength={full ? 1 : undefined} className={full ? 'at-ln fx-draw' : 'at-ln off'} style={full ? css({ '--d': `${.15 + ci * .08 + i * .09}s` }) : undefined} />; })}
-        {c.stars.map(s => { const p = pos.get(s.id)!, tr = tiers(s.id); return <g key={s.id}><title>{tr || !s.hidden ? starName(s) : '?????'}</title><StarGlyph x={f1(p[0])} y={f1(p[1])} grade={gradeOf(tr, s.at.length)} k={1.12} hidden={s.hidden} gold={done} /></g>; })}
+        {c.stars.map(s => { const p = pos.get(s.id)!, tr = tiers(s.id); return <g key={s.id}><title>{tr || !s.hidden ? starName(s) : '?????'}</title><StarGlyph x={f1(p[0])} y={f1(p[1])} grade={gradeOf(tr, s.at.length)} k={.95} hidden={s.hidden} gold={done} /></g>; })}
         <text className="at-cname" x={c.cx} y={c.cy + h + 17} textAnchor="middle">{name(c)}</text>
         <text className="at-cno" x={c.cx} y={c.cy + h + 34} textAnchor="middle">{c.no} · {String(n).padStart(2, '0')}/{String(c.stars.length).padStart(2, '0')}</text>
       </g>;
@@ -202,45 +202,53 @@ interface Pt { key: string; x: number; y: number; grade: number; hidden?: boolea
 type Size = 'plate' | 'mid' | 'min';
 /** 글자 너비 어림 (상자 칸): 한글 · 한자는 넓고 라틴 글자는 좁다 */
 const textW = (s: string, fs: number) => [...s].reduce((n, ch) => n + (ch.charCodeAt(0) > 0x2e7f ? fs : fs * .58), 0);
-const VB = { plate: [-27, -11, 154, 122], mid: [-7, -7, 114, 114], min: [-7, -7, 114, 114] } as const, FS = 4.3;
-/** 별 옆 이름표: 가는 인출선을 비스듬히 뽑아 옆으로 꺾고, 그 끝에 작은 글자. 자리가 모자란 쪽이면 반대로 뻗는다 */
-function Callouts({ pts, hot }: { pts: Pt[]; hot: number | null }) {
-  const cy = pts.reduce((n, p) => n + p.y, 0) / (pts.length || 1), cx = pts.reduce((n, p) => n + p.x, 0) / (pts.length || 1), x0 = VB.plate[0] + 2, x1 = VB.plate[0] + VB.plate[2] - 2;
-  return <g className="at-call" aria-hidden="true">{pts.map((p, i) => {
-    const no = String(i + 1).padStart(2, '0'), txt = p.label ? `${no} ${p.label}` : no, w = textW(txt, FS), up = p.y <= cy ? -1 : 1;
-    let side = p.x >= cx ? 1 : -1; if (side > 0 ? p.x + 9 + w > x1 : p.x - 9 - w < x0) side = -side;
-    const ex = p.x + side * 5.2, ey = p.y + up * 5.2, tx = ex + side * 2.6;
-    return <g key={p.key} className={hot === i ? 'on' : ''}><path d={`M${f1(p.x + side * 2.5)} ${f1(p.y + up * 2.5)}L${f1(ex)} ${f1(ey)}H${f1(tx)}`} className="at-lead" /><text x={f1(tx + side * 1.1)} y={f1(ey + FS * .34)} textAnchor={side > 0 ? 'start' : 'end'}>{txt}</text></g>;
-  })}</g>;
+/** 그림 크기별 보는 틀. 도판은 양옆에 이름표 자리를 둔다 */
+export const VB = { plate: [-27, -11, 154, 122], tight: [-11, -10, 122, 120], mid: [-7, -7, 114, 114], min: [-7, -7, 114, 114] } as const;
+/** 별 옆 이름표: 가는 인출선을 비스듬히 뽑아 옆으로 꺾고, 그 끝에 작은 글자. 자리가 모자란 쪽이면 반대로 뻗고, 서로 겹치면 위아래로 민다. fs 는 글자 크기(상자 칸) */
+function Callouts({ pts, hot, fs, tight }: { pts: Pt[]; hot: number | null; fs: number; tight: boolean }) {
+  const vb = tight ? VB.tight : VB.plate, cy = pts.reduce((n, p) => n + p.y, 0) / (pts.length || 1), cx = pts.reduce((n, p) => n + p.x, 0) / (pts.length || 1), x0 = vb[0] + 4, x1 = vb[0] + vb[2] - 4, arm = fs * 1.15;
+  const rows = pts.map((p, i) => {
+    const no = String(i + 1).padStart(2, '0'), txt = p.label && !tight ? `${no} ${p.label}` : no, w = textW(txt, fs) + fs * .4, up = p.y <= cy ? -1 : 1;
+    let side = p.x >= cx ? 1 : -1; if (side > 0 ? p.x + arm * 2 + w > x1 : p.x - arm * 2 - w < x0) side = -side;
+    const ex = p.x + side * arm, tx = ex + side * arm * .55;
+    return { i, p, txt, side, up, ex, tx, ey: p.y + up * arm, a: side > 0 ? tx : tx - w, b: side > 0 ? tx + w : tx };
+  });
+  // 겹침 풀기: 위에서부터 훑으며, 가로로 겹치고 세로로 한 줄 높이 안에 든 이름표를 제 방향(위 · 아래)으로 민다
+  const by = [...rows].sort((q, z) => q.ey - z.ey);
+  for (let n = 0; n < 3; n++) for (let j = 1; j < by.length; j++) for (let m = 0; m < j; m++) { const A = by[m], B = by[j]; if (A.a < B.b && B.a < A.b && Math.abs(B.ey - A.ey) < fs * 1.25) { if (A.up < 0 && B.up < 0) A.ey = B.ey - fs * 1.25; else B.ey = A.ey + fs * 1.25; } }
+  return <g className="at-call" aria-hidden="true" style={{ fontSize: fs }}>{rows.map(q => <g key={q.p.key} className={hot === q.i ? 'on' : ''}>
+    <path d={`M${f1(q.p.x + q.side * arm * .45)} ${f1(q.p.y + Math.sign(q.ey - q.p.y) * arm * .45)}L${f1(q.ex)} ${f1(q.ey)}H${f1(q.tx)}`} className="at-lead" />
+    <text x={f1(q.tx + q.side * fs * .25)} y={f1(q.ey + fs * .34)} textAnchor={q.side > 0 ? 'start' : 'end'}>{q.txt}</text></g>)}</g>;
 }
 /** 도판의 눈금 틀: 네 변의 잔눈금과 귀의 꺾쇠 */
-const plateFrame = (() => {
-  const [x, y, w, h] = VB.plate, a = x + 3, b = y + 3, c = x + w - 3, d = y + h - 3; let t = '';
-  for (let i = 0; i <= 37; i++) { const X = a + (c - a) * i / 37, L = i % 5 === 0 ? 2.2 : 1.1; t += `M${f1(X)} ${b}v${L}M${f1(X)} ${d}v${-L}`; }
-  for (let i = 0; i <= 29; i++) { const Y = b + (d - b) * i / 29, L = i % 5 === 0 ? 2.2 : 1.1; t += `M${a} ${f1(Y)}h${L}M${c} ${f1(Y)}h${-L}`; }
+const frameOf = ([x, y, w, h]: readonly number[]) => {
+  const a = x + 3, b = y + 3, c = x + w - 3, d = y + h - 3, nx = Math.round((c - a) / 4), ny = Math.round((d - b) / 4); let t = '';
+  for (let i = 0; i <= nx; i++) { const X = a + (c - a) * i / nx, L = i % 5 === 0 ? 2.2 : 1.1; t += `M${f1(X)} ${b}v${L}M${f1(X)} ${d}v${-L}`; }
+  for (let i = 0; i <= ny; i++) { const Y = b + (d - b) * i / ny, L = i % 5 === 0 ? 2.2 : 1.1; t += `M${a} ${f1(Y)}h${L}M${c} ${f1(Y)}h${-L}`; }
   return { ticks: t, box: `M${a} ${b}H${c}V${d}H${a}Z` };
-})();
+};
+const FRAME = { plate: frameOf(VB.plate), tight: frameOf(VB.tight) };
 /** 별자리 · 개인 별자리가 함께 쓰는 판: 형상 → 잇는 선 → 별 → 이름표 */
-function Chart({ fig, pts, edges, size, hot, onStar, draw = true, k, done, children }: { fig: Fig | null; pts: Pt[]; edges: [number, number][]; size: Size; hot: number | null; onStar?: (i: number | null) => void; draw?: boolean; k?: number; done: boolean; children?: ReactNode }) {
-  const big = size === 'plate', lit = pts.filter(p => p.grade > 0).length, kk = k ?? (big ? .62 : size === 'mid' ? 1.05 : 1.5), vb = VB[size], go = draw && big;
-  return <svg className={`at-conart ${size}` + (done ? ' done' : '')} viewBox={vb.join(' ')} aria-hidden={onStar ? undefined : true}>
+function Chart({ fig, pts, edges, size, hot, onStar, draw = true, k, u = 3, tight = false, done, children }: { /** 좁은 도판: 옆 여백을 줄이고 이름표는 번호만 */ tight?: boolean; fig: Fig | null; pts: Pt[]; edges: [number, number][]; size: Size; hot: number | null; onStar?: (i: number | null) => void; draw?: boolean; k?: number; /** 도판에서 상자 한 칸이 화면 몇 픽셀인가 — 선 굵기 · 별 · 글자를 화면 크기에 맞춘다 */ u?: number; done: boolean; children?: ReactNode }) {
+  const big = size === 'plate', lit = pts.filter(p => p.grade > 0).length, kk = k ?? (big ? 1.5 / u : size === 'mid' ? 1.05 : 1.5), vb = big && tight ? VB.tight : VB[size], go = draw && big, plateFrame = FRAME[tight ? 'tight' : 'plate'];
+  return <svg className={`at-conart ${size}` + (done ? ' done' : '')} viewBox={vb.join(' ')} aria-hidden={onStar ? undefined : true} style={big ? css({ '--px': String(+(1 / u).toFixed(4)) }) : undefined}>
     {big && <g aria-hidden="true"><path d={plateFrame.box} className="at-f1" /><path d={plateFrame.ticks} className="at-f1" /></g>}
     {children}
     {fig && <FigLayers fig={fig} p={stage(lit, pts.length)} mode={big ? 'plate' : size} draw={draw} />}
-    {edges.map(([a, b], i) => { const full = pts[a].grade > 0 && pts[b].grade > 0; return <path key={i} d={seg([pts[a].x, pts[a].y], [pts[b].x, pts[b].y], big ? 3.4 : 5)} pathLength={full && go ? 1 : undefined} className={full ? 'at-ln' + (go ? ' fx-draw' : '') : 'at-ln off'} style={full && go ? css({ '--d': `${1.5 + i * .12}s` }) : undefined} />; })}
+    {edges.map(([a, b], i) => { const full = pts[a].grade > 0 && pts[b].grade > 0; return <path key={i} d={seg([pts[a].x, pts[a].y], [pts[b].x, pts[b].y], big ? Math.max(2.4, 8.5 / u) : 5)} pathLength={full && go ? 1 : undefined} className={full ? 'at-ln' + (go ? ' fx-draw' : '') : 'at-ln off'} style={full && go ? css({ '--d': `${1.5 + i * .12}s` }) : undefined} />; })}
     {pts.map((p, i) => {
       const g = <StarGlyph x={p.x} y={p.y} grade={p.grade} k={kk} hidden={p.hidden} gold={done} hot={hot === i} pop={go && p.grade ? 1.2 + i * .13 : undefined} />;
-      return onStar ? <g key={p.key} className={'at-pick' + (hot === i ? ' on' : '')} tabIndex={0} role="img" aria-label={p.aria || p.key} onFocus={() => onStar(i)} onBlur={() => onStar(null)} onMouseEnter={() => onStar(i)} onMouseLeave={() => onStar(null)}><circle cx={p.x} cy={p.y} r="6.5" className="at-hit" />{hot === i && <circle cx={p.x} cy={p.y} r="6" className="at-aim" />}{g}</g> : <g key={p.key}>{g}</g>;
+      return onStar ? <g key={p.key} className={'at-pick' + (hot === i ? ' on' : '')} tabIndex={0} role="img" aria-label={p.aria || p.key} onFocus={() => onStar(i)} onBlur={() => onStar(null)} onMouseEnter={() => onStar(i)} onMouseLeave={() => onStar(null)}><circle cx={p.x} cy={p.y} r={Math.max(4.5, 22 / u)} className="at-hit" />{hot === i && <circle cx={p.x} cy={p.y} r={Math.max(3.6, 15 / u)} className="at-aim" />}{g}</g> : <g key={p.key}>{g}</g>;
     })}
-    {big && <Callouts pts={pts} hot={hot} />}
+    {big && <Callouts pts={pts} hot={hot} fs={11.5 / u} tight={tight} />}
   </svg>;
 }
 
 /** 별자리 하나. size: plate = 이름표가 붙는 큰 도판 · mid = 카드용(빗금 없는 형상) · min = 작은 그림(간추린 윤곽). hot 은 도드라지게 할 별 */
-export function ConArt({ con, tiers, size = 'min', hot, onStar, starName, draw = true, k }: { con: ConDef; tiers: Tiers; size?: Size; hot?: string | null; onStar?: (id: string | null) => void; starName?: (s: StarDef) => string; draw?: boolean; k?: number }) {
+export function ConArt({ con, tiers, size = 'min', hot, onStar, starName, draw = true, k, u, tight }: { con: ConDef; tiers: Tiers; size?: Size; hot?: string | null; onStar?: (id: string | null) => void; starName?: (s: StarDef) => string; draw?: boolean; k?: number; u?: number; tight?: boolean }) {
   const pts: Pt[] = con.stars.map(s => { const tr = tiers(s.id), nm = starName && (tr || !s.hidden) ? starName(s) : ''; return { key: s.id, x: s.x, y: s.y, grade: gradeOf(tr, s.at.length), hidden: s.hidden, label: nm, aria: nm || '?????' }; });
   const ix = new Map(con.stars.map((s, i) => [s.id, i])), hi = hot ? ix.get(hot) ?? null : null;
-  return <Chart fig={figure(con.id)} pts={pts} edges={con.edges.map(([a, b]) => [ix.get(a)!, ix.get(b)!])} size={size} hot={hi} onStar={onStar ? i => onStar(i == null ? null : con.stars[i].id) : undefined} draw={draw} k={k} done={pts.every(p => p.grade > 0)} />;
+  return <Chart fig={figure(con.id)} pts={pts} edges={con.edges.map(([a, b]) => [ix.get(a)!, ix.get(b)!])} size={size} hot={hi} onStar={onStar ? i => onStar(i == null ? null : con.stars[i].id) : undefined} draw={draw} k={k} u={u} tight={tight} done={pts.every(p => p.grade > 0)} />;
 }
 
 // ── 한 사람과의 별자리: 이름을 씨앗으로 아홉 점을 놓고, 가장 가까운 것끼리 이어 나무 꼴을 만든다. 뒤에는 이름에서 나온 무늬 ──
@@ -266,10 +274,10 @@ export function personShape(name: string): Shape {
 const roses = new Map<string, Fig>();
 const roseOf = (name: string) => { let f = roses.get(name); if (!f) { f = rosette(hash(name || '?')); roses.set(name, f); } return f; };
 /** lit[i] = i 번째 마일스톤이 켜졌나. 큰 마일스톤(100일 · 1000마디)은 더 밝은 모양으로. labels 는 도판에 붙일 이름 */
-export function PersonArt({ name, lit, size = 'min', hot, draw = true, labels, onStar, k }: { name: string; lit: boolean[]; size?: Size; hot?: number | null; draw?: boolean; labels?: string[]; onStar?: (i: number | null) => void; k?: number }) {
+export function PersonArt({ name, lit, size = 'min', hot, draw = true, labels, onStar, k, u, tight }: { name: string; lit: boolean[]; size?: Size; hot?: number | null; draw?: boolean; labels?: string[]; onStar?: (i: number | null) => void; k?: number; u?: number; tight?: boolean }) {
   const sh = personShape(name), big = (i: number) => MILES[i].at >= 1000 || (MILES[i].m === 'days' && MILES[i].at >= 100) ? 3 : MILES[i].at > 1 ? 2 : 1;
   const pts: Pt[] = sh.pts.map((p, i) => ({ key: MILES[i].id, x: p[0], y: p[1], grade: lit[i] ? big(i) : 0, label: labels?.[i], aria: labels?.[i] }));
-  return <Chart fig={roseOf(name)} pts={pts} edges={sh.edges} size={size} hot={hot ?? null} onStar={onStar} draw={draw} k={k} done={lit.length > 0 && lit.every(Boolean)} />;
+  return <Chart fig={roseOf(name)} pts={pts} edges={sh.edges} size={size} hot={hot ?? null} onStar={onStar} draw={draw} k={k} u={u} tight={tight} done={lit.length > 0 && lit.every(Boolean)} />;
 }
 
 /** 빈 자리 그림: 아직 이어지지 않은 별 셋 */

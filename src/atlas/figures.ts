@@ -334,14 +334,20 @@ const made = new Map<string, Fig>();
 /** 그 별자리의 형상 그림 (처음 한 번만 만든다) */
 export function figure(id: string): Fig | null { const hit = made.get(id); if (hit) return hit; const mk = MAKE[id]; if (!mk) return null; const fg = mk(); made.set(id, fg); return fg; }
 
-/** 한 사람과의 별자리 뒤에 까는 무늬: 이름에서 나온 장미 곡선 두 겹과 눈금 고리 — 사람마다 다르다 */
+/** 한 사람과의 별자리 뒤에 까는 무늬: 이름에서 나온 장미 곡선을 조금씩 돌려 겹친 물결 띠(지폐의 기요셰 무늬처럼)와 눈금 고리 — 사람마다 다르다 */
 export function rosette(seed: number): Fig {
-  const r = rng(seed), k = 3 + Math.floor(r() * 6), k2 = k + (r() < .5 ? 2 : 4), a = 27 + r() * 5, b = 9 + r() * 6, ph = r() * 360, g = new Plate();
-  const rose = (K: number, A: number, Bv: number, p0: number, n = 180): P[] => Array.from({ length: n }, (_, i) => { const t = i / n * Math.PI * 2, rr = A + Bv * Math.cos(K * t + p0); return [50 + Math.cos(t) * rr, 50 + Math.sin(t) * rr] as P; });
-  g.main(poly(rose(k, a, b, ph * Math.PI / 180), true)); g.add('t', poly(rose(k2, a * .62, b * .7, 0), true), poly(rose(k, a * .3, b * .42, Math.PI), true));
-  g.add('o', curve(arc(50, 50, 47, 47, 0, 360, 48), true)); g.add('t', curve(arc(50, 50, 44.4, 44.4, 0, 360, 48), true));
-  for (let d = 0; d < 360; d += 5) { const t = d * Math.PI / 180, r0 = d % 30 ? (d % 10 ? 45.6 : 45) : 44.4; g.add('h', poly([[50 + Math.cos(t) * r0, 50 + Math.sin(t) * r0], [50 + Math.cos(t) * 47, 50 + Math.sin(t) * 47]])); }
-  for (let i = 0; i < k; i++) { const t = (i / k) * Math.PI * 2 - ph * Math.PI / 180 / k, p: P = [50 + Math.cos(t) * (a + b), 50 + Math.sin(t) * (a + b)]; g.add('s', dot(p[0], p[1])); g.add('h', poly([[50 + Math.cos(t) * 6, 50 + Math.sin(t) * 6], [50 + Math.cos(t) * (a + b - 2), 50 + Math.sin(t) * (a + b - 2)]])); }
-  g.add('a', curve(arc(50, 50, 4.4, 4.4, 0, 360, 16), true)); g.add('m', curve(arc(50, 50, 4.4, 4.4, 0, 360, 16), true));
+  const r = rng(seed), k = 3 + Math.floor(r() * 6), a = 25 + r() * 4, b = 7 + r() * 5, ph = r() * Math.PI * 2, turn = (Math.PI * 2 / k) / 9, g = new Plate();
+  const rose = (K: number, A: number, Bv: number, p0: number, n = 150): P[] => Array.from({ length: n }, (_, i) => { const t = i / n * Math.PI * 2, rr = A + Bv * Math.cos(K * t + p0); return [50 + Math.cos(t) * rr, 50 + Math.sin(t) * rr] as P; });
+  // 바깥 띠: 같은 곡선을 아홉 번 조금씩 돌려 겹친다 — 겹친 자리에 물결 무늬가 생긴다
+  for (let i = 0; i < 9; i++) g.add(i === 0 ? 't' : 'h', poly(rose(k, a, b, ph + i * turn * k), true));
+  g.add('m', poly(rose(k, a, b, ph, 90), true));
+  // 안쪽 띠: 꽃잎 수를 두 배로 한 작은 곡선 넷, 한가운데의 작은 꽃
+  for (let i = 0; i < 4; i++) g.add('h', poly(rose(k * 2, a * .5, b * .45, ph + i * Math.PI / 2, 120), true));
+  g.add('t', poly(rose(k, 6.4, 2, ph + Math.PI, 60), true));
+  // 눈금 고리: 5°마다 잔눈금, 30°마다 긴 눈금
+  g.main(curve(arc(50, 50, 47, 47, 0, 360, 48), true)); g.add('t', curve(arc(50, 50, 44.6, 44.6, 0, 360, 48), true), curve(arc(50, 50, 40.4, 40.4, 0, 360, 48), true));
+  for (let d = 0; d < 360; d += 5) { const t = d * Math.PI / 180, r0 = d % 30 ? (d % 10 ? 45.8 : 45.2) : 44.6; g.add('h', poly([[50 + Math.cos(t) * r0, 50 + Math.sin(t) * r0], [50 + Math.cos(t) * 47, 50 + Math.sin(t) * 47]])); }
+  for (let i = 0; i < k * 2; i++) { const t = i / (k * 2) * Math.PI * 2 - ph / k; g.add('s', dot(50 + Math.cos(t) * 42.5, 50 + Math.sin(t) * 42.5)); }
+  g.add('a', curve(arc(50, 50, 2.6, 2.6, 0, 360, 14), true));
   return g.done();
 }

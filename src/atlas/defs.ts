@@ -28,13 +28,13 @@ export const CONS: ConDef[] = [
   { id: 'dice', no: 'VI', cx: 1012, cy: 420, s: 196, rot: 4, edges: [...chain('crit', 'fights', 'boss', 'quests', 'minis', 'sessions', 'crit'), ['rolls', 'sessions'], ['rolls', 'fights'], ['rolls', 'quests'], ['sessions', 'places'], ['crit', 'fumble']],
     stars: stars('dice', [['crit', 68, 39.5, 'crit', [1, 5, 20]], ['fights', 87, 49.5, 'fights', [1, 10, 50]], ['boss', 87, 72.5, 'boss', [1, 5]], ['quests', 68, 83, 'quests', [1, 10, 30]], ['minis', 49, 72.5, 'minis', [1, 10, 30]], ['sessions', 49, 49.5, 'sessions', [1, 5, 20]], ['rolls', 68, 60, 'rolls', [10, 100]], ['places', 25, 33.5, 'places', [5, 30, 100]], ['fumble', 88, 22.2, 'fumble', [1], H]]) },
   // 마주 앉은 자리 — 등 아래 찻잔 둘: 등불 · 두 잔 · 가운데 꽃 · 피어오른 김 · 탁자의 발
-  { id: 'scene', no: 'VII', cx: 152, cy: 600, s: 170, rot: 0, edges: [['scenes', 'calls'], ['scenes', 'illust'], ['calls', 'react'], ['illust', 'react'], ['calls', 'hours'], ['react', 'missed']],
+  { id: 'scene', no: 'VII', cx: 152, cy: 588, s: 166, rot: 0, edges: [['scenes', 'calls'], ['scenes', 'illust'], ['calls', 'react'], ['illust', 'react'], ['calls', 'hours'], ['react', 'missed']],
     stars: stars('scene', [['scenes', 50, 25.4, 'scenes', [1, 10, 50]], ['calls', 30, 51.4, 'calls', [1, 10, 50]], ['illust', 70, 51.4, 'illust', [1, 20, 100]], ['react', 50.6, 46.2, 'react', [10, 100]], ['hours', 27.2, 36, 'callSecs', [3600, 36000], { unit: 3600 }], ['missed', 50, 92, 'missed', [1], H]]) },
   // 종이 서랍 — 열린 서랍과 편지: 손잡이 · 봉랍 · 봉투의 귀 · 접은 편지의 귀 · 서랍의 두 모서리
-  { id: 'paper', no: 'VIII', cx: 505, cy: 606, s: 168, rot: -3, edges: [['tr', 'letters'], ['letters', 'dreams'], ['letters', 'diary'], ['diary', 'notes'], ['diary', 'keeps'], ['dreams', 'keeps']],
+  { id: 'paper', no: 'VIII', cx: 505, cy: 590, s: 166, rot: -3, edges: [['tr', 'letters'], ['letters', 'dreams'], ['letters', 'diary'], ['diary', 'notes'], ['diary', 'keeps'], ['dreams', 'keeps']],
     stars: stars('paper', [['diary', 44, 72.6, 'diary', [1, 10, 50]], ['dreams', 87, 19.6, 'dreams', [1, 5, 20]], ['keeps', 90, 76, 'keeps', [1, 10, 30]], ['notes', 13, 89, 'notes', [1, 10]], ['letters', 50.4, 37.4, 'letters', [1, 3, 12]], ['tr', 38.6, 19, 'tr', [1, 50, 500]]]) },
   // 수집가 — 유리종 아래의 나비 표본: 꼭지 · 네 날개 끝 · 이름표
-  { id: 'keep', no: 'IX', cx: 835, cy: 610, s: 176, rot: 6, edges: [['faces', 'masks'], ['faces', 'rooms'], ['masks', 'books'], ['rooms', 'entries'], ['books', 'met'], ['entries', 'met']],
+  { id: 'keep', no: 'IX', cx: 835, cy: 590, s: 170, rot: 6, edges: [['faces', 'masks'], ['faces', 'rooms'], ['masks', 'books'], ['rooms', 'entries'], ['books', 'met'], ['entries', 'met']],
     stars: stars('keep', [['faces', 50, 10.4, 'nChars', [5, 20, 50]], ['masks', 30, 34.6, 'personas', [2, 5]], ['rooms', 70, 34.6, 'rooms', [10, 50, 200]], ['books', 36, 66.6, 'lore', [3, 10]], ['entries', 64, 66.6, 'entries', [100, 500, 2000]], ['met', 50, 91.2, 'met', [3, 10, 30]]]) },
 ];
 export const STARS: StarDef[] = CONS.flatMap(c => c.stars);

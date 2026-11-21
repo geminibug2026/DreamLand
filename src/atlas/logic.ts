@@ -9,7 +9,7 @@ import type { AtlasCfg, AtlasRec, Fresh, Lit, MsgStat, Tally } from './types';
 
 const KEY = 'atlas';
 const blank = (): AtlasRec => ({ id: KEY, v: 1, got: {}, per: {}, fresh: [], scan: {}, born: 0 });
-export const A: { rec: AtlasRec; loaded: boolean; busy: boolean } = { rec: blank(), loaded: false, busy: false };
+export const A: { rec: AtlasRec; loaded: boolean; busy: boolean; /** 앱을 열고 한 번 전부 대 봤다 — 그 전의 사건은 흘려보낸다 (일부만 훑은 숫자로 별을 켜고 알리지 않게) */ booted: boolean } = { rec: blank(), loaded: false, busy: false, booted: false };
 /** 설정 (S.settings.atlas). 카드와 소리는 켜짐, 캐릭터에게 알리기는 꺼짐이 기본 */
 export const cfg = (): AtlasCfg => { const st = S.settings as unknown as { atlas?: Partial<AtlasCfg> }; return (st.atlas = { card: true, sound: true, tell: false, ...(st.atlas || {}) }) as AtlasCfg; };
 
@@ -115,7 +115,7 @@ let t = 0, pending: Chat | null = null;
 export function poke(chat?: Chat | null, msgs?: Msg[]) {
   if (chat) pending = chat; clearTimeout(t);
   t = window.setTimeout(async () => {
-    const c = pending; pending = null; if (!A.loaded) return;
+    const c = pending; pending = null; if (!A.loaded || !A.booted) return;
     try { if (c && byId(c.id)) await touch(c, msgs); persist(); evaluate({ chat: c }); } catch (e) { console.warn('[성좌 도감]', e); }
   }, 700);
 }
@@ -126,7 +126,7 @@ export async function boot() {
     await load(); const first = !A.rec.born; await rescan();
     const lit = evaluate({ quiet: first, all: true });
     if (first) { A.rec.born = Date.now(); persist(); const n = lit.filter(l => l.kind === 'star').length; if (n) emit('atlas:lit', [{ kind: 'many', id: '', tier: 0, n }] as Lit[]); }
-  } finally { A.busy = false; emit('atlas:changed'); }
+  } finally { A.busy = false; A.booted = true; emit('atlas:changed'); }
 }
 /** 방이 지워지면 훑어 둔 숫자를 버린다 (켜진 별은 남는다) */
 export function wire() {
