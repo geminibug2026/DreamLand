@@ -1,1 +1,0 @@
-export{t as allNames,n as checkScript,r as commandInfo,i as searchCommands}from"./ref-J09p5VmH.js";
