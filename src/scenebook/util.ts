@@ -18,7 +18,9 @@ export const configLine = (c?: GenConfig | null) => c ? [modelLabel(c), `${c.wid
 export const flat = (s: unknown) => String(s ?? '').normalize('NFC').replace(/[\s*_~`"'“”‘’「」『』]/g, '');
 export const lastReply = (): Msg | null => { const { msgs } = cur(); return msgs ? [...msgs].reverse().find(m => m.role === 'assistant' && msgText(m).trim()) ?? null : null; };
 export const mustBeOpen = (msg: Msg) => { if (!cur().msgs?.includes(msg)) throw new Error(t('scenebook.err.chatNotOpen')); };
-export async function saveImage(src: string, name: string) { const blob = await (await fetch(src)).blob(); download(`${name}.${(blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg')}`, blob); }
+/** data: 주소 → 파일 (data: 는 fetch 로 읽지 못하는 창이 있다) */
+const dataBlob = (d: string) => { const at = d.indexOf(','), head = d.slice(5, at), bin = /;base64$/i.test(head) ? atob(d.slice(at + 1)) : decodeURIComponent(d.slice(at + 1)), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return new Blob([u], { type: head.split(';')[0] || 'image/png' }); };
+export async function saveImage(src: string, name: string) { const blob = src.startsWith('data:') ? dataBlob(src) : await (await fetch(src)).blob(); download(`${name}.${(blob.type.split('/')[1] || 'png').replace('jpeg', 'jpg')}`, blob); }
 export const blankScene = (n = 1): Scene => ({ title: `장면 ${n}`, prompt: '', camera: '', negative: '', anchor: '', finalPrompt: false, characters: [] });
 /** 지시문이 제목을 쓰지 않게 된 뒤로 붙는 기본 이름(장면 1 …)은 화면에 따로 적지 않는다 */
 export const shownTitle = (t?: string) => /^(?:장면 \d+|새 장면)$/.test(t || '') ? '' : (t || '');

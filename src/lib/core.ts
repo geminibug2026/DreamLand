@@ -171,6 +171,10 @@ export const DB = {
   put: <K extends StoreName>(s: K, v: Rows[K] | object) => { wrote(s, (v as { id?: unknown })?.id); return tx<IDBValidKey>(s, 'readwrite', o => o.put(v)); },
   del: (s: StoreName, id: IDBValidKey) => { wrote(s, id); return tx<undefined>(s, 'readwrite', o => o.delete(id)); },
   clear: (s: StoreName) => { wrote(s); return tx<undefined>(s, 'readwrite', o => o.clear()); },
+  /** 열쇠(id)만 */
+  keys: (s: StoreName) => tx<IDBValidKey[]>(s, 'readonly', o => o.getAllKeys()),
+  /** 여러 줄을 한 번의 읽기로 → 없는 것은 undefined */
+  many: <K extends StoreName>(s: K, ids: IDBValidKey[]) => { const out: (Rows[K] | undefined)[] = []; return tx<unknown>(s, 'readonly', o => { ids.forEach((id, i) => { const q = o.get(id); q.onsuccess = () => { out[i] = q.result as Rows[K]; }; }); }).then(() => out); },
   byOwner: (owner: string) => tx<Asset[]>('assets', 'readonly', o => o.index('owner').getAll(owner)),
   bulk: (s: StoreName, list: object[]) => { wrote(s); return tx<undefined>(s, 'readwrite', o => { list.forEach(v => o.put(v)); }); },
 };

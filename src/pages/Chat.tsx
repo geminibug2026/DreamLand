@@ -17,7 +17,6 @@ import { tint } from '../lib/tone';
 import { S, emit } from '../lib/core';
 import { Assets } from '../lib/assets';
 import { Memory } from '../lib/memory';
-import { Illust } from '../lib/illust';
 import { t } from '../i18n';
 
 export const page = { name: 'chat', Component: ChatPage };
@@ -59,8 +58,9 @@ function ChatPage({ arg }: { arg?: unknown }) {
       }
       route.arg = chat.id; S.set({ lastChat: chat.id });
       // 에셋 · 기억 · 삽화를 기다리지 않고 먼저 그린다. 처음 여는 방이라 아직 읽지 못한 것은 읽는 대로 채워 넣는다
-      const owners = assetOwners(), had = { assets: Assets.ready(owners), mem: !!Memory.get(chat.id), illust: Illust.ready(chat.id) };
-      const loading = Promise.all([Assets.load(owners), Memory.load(chat.id), Illust.load(chat.id)]).catch(e => console.warn(e));
+      // 삽화는 방 전체를 읽지 않는다: 그림 칸이 저마다 제 그림만 읽어 온다 (lib/illust 의 url)
+      const owners = assetOwners(), had = { assets: Assets.ready(owners), mem: !!Memory.get(chat.id), illust: true };
+      const loading = Promise.all([Assets.load(owners), Memory.load(chat.id)]).catch(e => console.warn(e));
       flushSync(() => setSt('ready'));
       drawMain({ lazy: true }); drawSide(); if (cur.drawer) drawDrawer();
       await loading;

@@ -74,7 +74,7 @@ export interface MirrorOpts { base?: string; reload?: () => void; toast?: (msg: 
 export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
   // 서버와의 통신은 Server 를 거친다. base 를 주면 (다른 주소의 서버) 그 앞에 붙여서 직접 부른다
   const call = (p: string, init?: RequestInit) => opts.base ? fetch(opts.base + Server.url('store/' + p), init) : Server.fetch('store/' + p, init);
-  const raw = { all: DB.all.bind(DB), get: DB.get.bind(DB), put: DB.put, del: DB.del, clear: DB.clear, bulk: DB.bulk };
+  const raw = { all: DB.all.bind(DB), get: DB.get.bind(DB), put: DB.put, del: DB.del, clear: DB.clear, bulk: DB.bulk, keys: typeof DB.keys === 'function' ? (DB.keys as (s: string) => Promise<unknown[]>).bind(DB) : null };
   const st: MirrorState = { server: 'unknown', enabled: lsGet('dl-datafolder') !== 'off', phase: 'idle', pending: 0, lastSync: Number(lsGet('dl-datafolder-last')) || 0, error: '', dir: '', pulled: 0, pushed: 0, conflicts: 0 };
   let snap = { ...st }; const subs = new Set<() => void>();
   const emit = () => { snap = { ...st }; subs.forEach(f => { try { f(); } catch { /* 화면 쪽 오류 */ } }); };
@@ -218,7 +218,12 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
 
   /** 시작할 때 맞추기. 서버에만 있거나 서버가 새로우면 받아 오고, 브라우저에만 있거나 브라우저가 새로우면 올린다 */
   let syncing: Promise<void> | null = null;
-  function reconcile(): Promise<void> { return syncing ||= locked(reconcileOnce).finally(() => { syncing = null; }); }
+  // 무거운 저장소(삽화 · 메시지 · 캐릭터 · 대화방 · 로어 · 기억)는 켤 때마다 통째로 읽어 해시를 다시 내지 않는다:
+  // 이 브라우저의 쓰기는 모두 줄(q)에 남으므로, 줄에 없고 지난번 서버와 같았던(base) 것은 그대로라고 본다. 열쇠만 읽어 지운 것은 알아챈다.
+  // 그래도 혹시 모를 어긋남을 위해 사흘에 한 번, 그리고 사용자가 '지금 맞추기'를 누르면 전부 읽는다.
+  const HEAVY = new Set(['assets', 'msgs', 'chars', 'chats', 'lore', 'mem']), FULL_EVERY = 3 * 864e5;
+  let wantFull = false;
+  function reconcile(full = false): Promise<void> { if (full) wantFull = true; return syncing ||= locked(reconcileOnce).finally(() => { syncing = null; }); }
   async function reconcileOnce() {
     if (!st.enabled || !(await ping())) return;
     st.phase = 'sync'; emit();
@@ -232,15 +237,30 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
       const server = new Map(metas.filter(m => !skip(m.store, m.id)).map(m => [keyOf(m.store, m.id), m]));
       const base = await bases();
       const stores = [...new Set([...STORES, ...metas.map(m => m.store)])];
-      const local = new Map<string, { store: string; id: unknown; v: unknown; hash: string; json: Json }>();
+      const local = new Map<string, { store: string; id: unknown; v?: unknown; hash: string; json?: Json }>();
       const known = new Set<string>();
+      const lastFull = Number(lsGet('dl-datafolder-full')) || 0, quick = !wantFull && !!raw.keys && base.size > 0 && Date.now() - lastFull < FULL_EVERY;
+      wantFull = false;
+      const inQueue = new Set([...queued.map(e => e.k), ...live.keys()]);
       for (const s of stores) {
+        if (quick && HEAVY.has(s)) {
+          let ids: unknown[] | null = null; try { ids = await raw.keys!(s); } catch { ids = null; }
+          if (!ids) continue; known.add(s);
+          for (const id of ids) {
+            if (skip(s, id)) continue; const k = keyOf(s, id), b = base.get(k);
+            if (b != null && !inQueue.has(k)) { local.set(k, { store: s, id, hash: b }); continue; }
+            const v = await raw.get(s, id); if (v === undefined) continue;
+            const p = await pack(s, v); local.set(k, { store: s, id, v, hash: p.hash, json: p.json });
+          }
+          await sleep(0); continue;
+        }
         const rows = await localRows(s); if (!rows) continue; known.add(s);
         for (const v of rows) { const id = idOf(v); if (skip(s, id)) continue; const p = await pack(s, v); local.set(keyOf(s, id), { store: s, id, v, hash: p.hash, json: p.json }); }
         await sleep(0);
       }
       const empty = ['chars', 'chats', 'msgs', 'lore', 'assets', 'mem'].every(s => ![...local.values()].some(l => l.store === s));
       const fresh = !base.size && empty && server.size > 0;   // 브라우저가 비었다 (지워졌거나 다른 기기): 서버 것을 따른다
+      const later: { store: string; id: unknown }[] = [];
       const pulls: Meta[] = [], pushes: Op[] = [], asides: { store: string; id: unknown; value: Json; note: string }[] = [], decide: string[] = [], nb: [string, string | null][] = [];
       for (const k of new Set([...local.keys(), ...server.keys()])) {
         const L = local.get(k), R = server.get(k), B = base.has(k) ? base.get(k) : undefined;
@@ -248,23 +268,25 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
         if (L && R && L.hash === R.hash) { if (B !== L.hash) nb.push([k, L.hash]); continue; }
         if (!L && R) { if (qDel.has(k) || (B !== undefined && B === R.hash)) pushes.push({ op: 'del', store: R.store, id: R.id, base: B }); else pulls.push(R); continue; }
         if (L && !R) {
-          if (fresh && ['presets', 'personas'].includes(L.store) && (timeOf(L.store, L.v) || 0) > Date.now() - 10 * 60000) { asides.push({ store: L.store, id: L.id, value: L.json, note: '처음 불러올 때 저절로 만들어진 것' }); continue; }
-          pushes.push({ op: 'put', store: L.store, id: L.id, value: L.json }); continue;
+          if (L.json === undefined) { later.push(L); continue; }   // 읽지 않고 넘긴 것: 아래에서 읽어 올린다
+          if (fresh && ['presets', 'personas'].includes(L.store) && (timeOf(L.store, L.v) || 0) > Date.now() - 10 * 60000) { asides.push({ store: L.store, id: L.id, value: L.json as Json, note: '처음 불러올 때 저절로 만들어진 것' }); continue; }
+          pushes.push({ op: 'put', store: L.store, id: L.id, value: L.json as Json }); continue;
         }
         if (!L || !R) continue;
         if (B === L.hash) { pulls.push(R); continue; }
-        if (B === R.hash) { pushes.push({ op: 'put', store: L.store, id: L.id, value: L.json, base: B }); continue; }
+        if (B === R.hash) { pushes.push({ op: 'put', store: L.store, id: L.id, value: L.json as Json, base: B }); continue; }
         decide.push(k);
       }
+      for (const L of later) { const v = await raw.get(L.store, L.id); if (v === undefined) continue; const p = await pack(L.store, v); pushes.push({ op: 'put', store: L.store, id: L.id, value: p.json }); }
       // 양쪽이 다 바뀌었거나 이전 기록이 없다: 고친 시각으로 고르고, 밀려난 쪽은 _conflicts 에 남긴다
       if (decide.length) {
         const sv = await fetchValues(decide.map(k => { const m = server.get(k)!; return { store: m.store, id: m.id }; }));
         for (const k of decide) {
-          const L = local.get(k)!, R = server.get(k)!, got = sv.get(k); if (!got) { pushes.push({ op: 'put', store: L.store, id: L.id, value: L.json }); continue; }
+          const L = local.get(k)!, R = server.get(k)!, got = sv.get(k); if (!got) { pushes.push({ op: 'put', store: L.store, id: L.id, value: L.json as Json }); continue; }
           const tl = timeOf(L.store, L.v), tr = timeOf(R.store, decode(got.value));
           const serverWins = fresh ? true : tl != null && tr != null && tr > tl;
-          if (serverWins) { asides.push({ store: L.store, id: L.id, value: L.json, note: '서버 판이 더 새로워 브라우저 판을 남겨 둠' }); pulls.push(R); }
-          else pushes.push({ op: 'put', store: L.store, id: L.id, value: L.json, keep: true });   // 서버 판은 서버가 _conflicts 로 옮긴다
+          if (serverWins) { asides.push({ store: L.store, id: L.id, value: L.json as Json, note: '서버 판이 더 새로워 브라우저 판을 남겨 둠' }); pulls.push(R); }
+          else pushes.push({ op: 'put', store: L.store, id: L.id, value: L.json as Json, keep: true });   // 서버 판은 서버가 _conflicts 로 옮긴다
         }
       }
       for (const a of asides) await post('conflict', { ...a, dev });
@@ -284,6 +306,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
       await mtx(qdb, 'q', 'readwrite', o => { for (const e of queued) { const g = o.get(e.k); g.onsuccess = () => { const cur = g.result as QEntry | undefined; if (cur && cur.t === e.t) o.delete(e.k); }; } });
       for (const e of queued) live.delete(e.k);
       st.pulled += pulls.length; st.pushed += pushes.length; st.lastSync = Date.now(); lsSet('dl-datafolder-last', String(st.lastSync)); st.error = '';
+      if (!quick) lsSet('dl-datafolder-full', String(Date.now()));
       if (pulls.length || asides.length) {
         // 새로 연 뒤에도 또 받아 오면 무언가 맞지 않는 것: 2분 안에 세 번이면 멈추고 알린다 (무한히 새로 열지 않게)
         const hist = (sessionStorage.getItem('dl-mirror-reload') || '').split(',').map(Number).filter(t => t > Date.now() - 120000);
@@ -343,7 +366,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
     state: () => snap,
     subscribe(fn) { subs.add(fn); return () => { subs.delete(fn); }; },
     setEnabled(on) { st.enabled = on; lsSet('dl-datafolder', on ? 'on' : 'off'); emit(); if (on) void reconcile(); },
-    flush, sync: reconcile, restore,
+    flush, sync: () => reconcile(true), restore,
     backupNow: () => post('backup', { reason: 'manual' }),
     ready,
   };

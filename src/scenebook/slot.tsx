@@ -15,11 +15,11 @@ import { t } from '../i18n';
 
 // ════════ 크게 보기 · 생성 기록 · 버전 비교 ════════
 export interface ViewAction { label: string; ic?: string; hint?: string; danger?: boolean; run?: () => unknown; onclick?: () => unknown }
-export function viewer({ title, src, sub = '', actions = [], more = [] }: { title?: string; src: string; sub?: string; actions?: ViewAction[]; more?: ViewAction[] }) {
+export function viewer({ title, src, sub = '', actions = [], more = [], original }: { title?: string; src: string; sub?: string; actions?: ViewAction[]; more?: ViewAction[]; original?: () => Promise<string> }) {
   const run = (box: Box, a: ViewAction) => async () => { box.close(); try { await (a.run || a.onclick)?.(); } catch (e) { toast(errText(e), 'err'); } };
   return openModal({ title: title || t('scenebook.illust'), wide: true, cls: 'sb-viewer' }, box => <>
     <div className="sb-viewer-frame"><img src={src} alt={title || t('scenebook.illust')} /></div>{sub ? <p className="hint">{sub}</p> : null}
-    <div className="sb-viewer-foot">{actions.map((a, i) => <Btn key={i} label={a.label} ic={a.ic} cls="ghost" onClick={run(box, a)} />)}<Btn label={t('common.save')} ic="import" cls="ghost" onClick={guard(() => saveImage(src, title || 'illust'))} />
+    <div className="sb-viewer-foot">{actions.map((a, i) => <Btn key={i} label={a.label} ic={a.ic} cls="ghost" onClick={run(box, a)} />)}<Btn label={t('common.save')} ic="import" cls="ghost" onClick={guard(async () => saveImage((original && await original()) || src, title || 'illust'))} />
       {more.length ? <IBtn ic="more" title={t('scenebook.more')} onClick={e => menu(e.currentTarget, more.map(a => ({ label: a.label, ic: a.ic, hint: a.hint, danger: a.danger, onclick: run(box, a) })))} /> : null}</div>
   </>);
 }
@@ -30,7 +30,7 @@ export function inspect(v: { scene?: Scene; config?: GenConfig | null; seed?: nu
 }
 function ComparePane({ label, vs, start }: { label: string; vs: Version[]; start: number }) {
   const [i, setI] = useState(start), v = vs[i];
-  return <section><Fld label={label}><Sel opts={vs.map((x, n) => [n, `${n + 1}${x.seed != null ? ` · Seed ${x.seed}` : ''}`])} value={start} onChange={n => setI(+n)} /></Fld><img src={Illust.data(v.id)} alt={v.scene?.title || ''} /><p className="hint">{configLine(v.config)}</p></section>;
+  return <section><Fld label={label}><Sel opts={vs.map((x, n) => [n, `${n + 1}${x.seed != null ? ` · Seed ${x.seed}` : ''}`])} value={start} onChange={n => setI(+n)} /></Fld><img src={Illust.url(v.id) || Illust.data(v.id)} alt={v.scene?.title || ''} /><p className="hint">{configLine(v.config)}</p></section>;
 }
 export function compare(it: Slot) {
   openModal({ title: t('scenebook.slot.compare'), wide: true, cls: 'sb-compare' }, () => <><ComparePane label={t('scenebook.slot.before')} vs={it.versions} start={it.sel === 0 ? 1 : it.sel - 1} /><ComparePane label={t('scenebook.slot.current')} vs={it.versions} start={it.sel} /></>);
@@ -66,7 +66,7 @@ export function slotMenu(m: Msg, sw: Swipe, it: Slot): MenuItem[] {
     { label: t('scenebook.record'), ic: 'note', onclick: () => inspect(v) },
     { label: t('scenebook.review.run'), ic: 'search', onclick: guard(() => review(v as Version, true)) }, v.review && { label: t('scenebook.review.last'), ic: 'eye', onclick: () => showReview(v.review as Review) },
     seed != null && { label: t('scenebook.slot.saveSeed'), ic: 'dice', hint: String(seed), onclick: () => { Illust.saveCfg({ seed }); toast(t('scenebook.slot.seedSaved', { seed })); } },
-    { label: t('scenebook.slot.saveImage'), ic: 'import', onclick: guard(() => saveImage(Illust.data(it.id), it.title || 'illust')) },
+    { label: t('scenebook.slot.saveImage'), ic: 'import', onclick: guard(async () => saveImage(await Illust.dataOf(it.id), it.title || 'illust')) },
     { label: t('scenebook.slot.hide'), ic: 'eyeoff', onclick: async () => { it.hidden = true; await chatApi.save(); chatApi.redraw(); } },
     '-',
     { label: t('scenebook.slot.delete'), ic: 'trash', danger: true, onclick: guard(() => deleteSlot(sw, it)) },
@@ -74,7 +74,7 @@ export function slotMenu(m: Msg, sw: Swipe, it: Slot): MenuItem[] {
 }
 export function slotViewer(m: Msg, sw: Swipe, it: Slot) {
   const v: Partial<Version> = it.versions[it.sel] || {};
-  viewer({ title: it.title || t('scenebook.illust'), src: Illust.data(it.id), sub: [configLine(v.config), v.seed != null ? `Seed ${v.seed}` : ''].filter(Boolean).join(' · '),
+  viewer({ title: it.title || t('scenebook.illust'), src: Illust.url(it.id) || Illust.data(it.id), original: () => Illust.dataOf(it.id), sub: [configLine(v.config), v.seed != null ? `Seed ${v.seed}` : ''].filter(Boolean).join(' · '),
     actions: [{ label: t('scenebook.slot.edit'), ic: 'edit', run: () => quickEdit(m, it) }, { label: t('scenebook.regen'), ic: 'refresh', run: () => regen(m, it, -1) }],
     more: slotMenu(m, sw, it).filter((a): a is Item => !!a && a !== '-' && a.label !== t('scenebook.slot.saveImage')) });   // 삭제는 더 보기 안에 둔다
 }

@@ -370,7 +370,7 @@ def('caption', { run: async a => {
   const mid = A(a, 'mesId'), idx = Math.max(0, +A(a, 'index', '0') || 0);
   if (mid !== '') {
     const m = msgs[+mid < 0 ? msgs.length + +mid : +mid]; if (!m) throw new Error(tx('noMsg', { id: mid }));
-    const sw = m.swipes[m.sw], illus = (sw?.illust || []).map(x => Illust.data(x.id)).filter(Boolean);
+    const sw = m.swipes[m.sw], illus = (await Promise.all((sw?.illust || []).map(x => Illust.dataOf(x.id)))).filter(Boolean);
     img = [...(m.images || []), ...illus][idx] || '';
     if (!img) throw new Error(tx('noImage'));
   } else {

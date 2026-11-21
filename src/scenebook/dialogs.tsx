@@ -120,8 +120,9 @@ export function showPlans() {
         {p.raw ? <pre className="regex-out sb-code">{p.raw}</pre> : null}<div className="row"><Btn label={t('scenebook.compose')} ic="edit" cls="ghost" onClick={guard(async () => { box.close(); await compose(m); })} /><Btn label={t('scenebook.planLog.goto')} cls="ghost" onClick={() => { box.close(); chatApi.scrollTo(m.id); }} /></div></details>; })}
   </>);
 }
-export function exportChat() {
+export async function exportChat() {
   const { chat, msgs } = cur(); if (!chat || !msgs) return toast(t('scenebook.openChat'));
+  await Illust.load(chat.id);   // 화면에 그린 것만 읽혀 있을 수 있으니 이 방의 그림을 다 읽어 둔다
   const S = C.S, esc = C.esc, user = S.persona(chat)?.name || t('scenebook.exp.me'), name = chat.name || chat.charIds.map(id => S.get('chars', id)?.name).filter(Boolean).join(', ') || t('scenebook.exp.chat');
   const body = msgs.filter((m: Msg) => m.role !== 'system' && !m.hidden).map(m => { const sw: Swipe = m.swipes[m.sw] || {};
     const inline = Illust.cfg().placement === 'inline', fig = (it: Slot) => `<figure><img src="${Illust.data(it.id)}" alt="${esc(it.title || t('scenebook.illust'))}">${shownTitle(it.title) ? `<figcaption>${esc(it.title)}</figcaption>` : ''}</figure>`;

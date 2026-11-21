@@ -13,6 +13,7 @@ import { confirmBox, menu } from '../ui';
 import { chatApi } from '../chat/actions';
 import { cur, flat, guard, shownTitle } from './util';
 import { Illust } from './illust';
+import { IllustPic } from '../chat/IllustPic';
 import { t, tn } from '../i18n';
 
 /** 삽화 한 장: 액자 + 그림 + 그림 위 도구 + 아래 제목 줄. 대화 화면의 figure.illust 안에 들어간다 */
@@ -24,7 +25,7 @@ export function Figure({ fig, m, sw, it }: { fig: HTMLElement; m: Msg; sw: Swipe
   const step = (d: number) => { Illust.select(it, it.sel + d); bump(); void chatApi.save(); };
   return <>
     <div className="sb-frame" style={lay.wrapStyle}>
-      <div className="sb-pic" style={lay.picStyle}><img ref={img} src={Illust.data(it.id)} alt={it.title || t('scenebook.illust')} loading="lazy" onClick={e => { e.stopPropagation(); e.preventDefault(); slotViewer(m, sw, it); }} /></div>
+      <div className="sb-pic" style={lay.picStyle}><IllustPic imgRef={img} id={it.id} w={v?.config?.width || 832} h={v?.config?.height || 1216} alt={it.title || t('scenebook.illust')} onClick={e => { e.stopPropagation(); e.preventDefault(); slotViewer(m, sw, it); }} /></div>
       <FrameArt lay={lay} />
       <div className="sb-fig-actions" aria-label={t('scenebook.fig.tools')}><IBtn ic="edit" title={t('scenebook.fig.editRegen')} cls="tiny" onClick={guard(() => quickEdit(m, it))} /><IBtn ic="refresh" title={t('scenebook.fig.newSeed')} cls="tiny" onClick={guard(() => regen(m, it, -1))} /></div>
     </div>
