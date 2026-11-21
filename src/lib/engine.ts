@@ -1396,7 +1396,10 @@ async function streamChatRaw(conn: Conn | null | undefined, Pin: Params, message
     if (num(P.topK)) gen.topK = +P.topK;
     if (num(P.seed)) gen.seed = +P.seed;
     if (P.stop?.length) gen.stopSequences = P.stop.slice(0, 5);
-    if (thinks) gen.thinkingConfig = { includeThoughts: true, ...(P.lowThink ? (/gemini-2\.5/.test(model) ? { thinkingBudget: 512 } : { thinkingLevel: 'low' }) : {}) };
+    // 생각 정도: 보조 호출은 낮게, 본 대화는 프리셋의 "추론 강도"를 따른다 (비워 두면 모델 기본값). 2.5 는 토큰 수, 3 이후는 단계(low · high — 모든 모델이 받는 두 단계만 쓴다)
+    const eff = P.lowThink ? 'low' : String(P.effort || '');
+    const thinkSet = !eff ? {} : /gemini-2\.5/.test(model) ? { thinkingBudget: P.lowThink ? 512 : eff === 'low' ? 1024 : eff === 'medium' ? 8192 : 24576 } : { thinkingLevel: eff === 'low' ? 'low' : 'high' };
+    if (thinks) gen.thinkingConfig = { includeThoughts: true, ...thinkSet };
     const body: Obj = {
       contents: rest.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [...(m.images || []).map(b64).filter(nn).map(i => ({ inlineData: { mimeType: i.mime, data: i.data } })), { text: m.content }] })), generationConfig: gen,
       safetySettings: ['HARM_CATEGORY_HARASSMENT', 'HARM_CATEGORY_HATE_SPEECH', 'HARM_CATEGORY_SEXUALLY_EXPLICIT', 'HARM_CATEGORY_DANGEROUS_CONTENT'].map(c => ({ category: c, threshold: 'BLOCK_NONE' })),
