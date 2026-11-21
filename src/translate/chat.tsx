@@ -13,7 +13,7 @@ import { chatApi } from '../chat/actions';
 import { t } from '../i18n';
 
 export const GLOBE = 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM3 12h18M12 3c2.6 2.7 3.9 5.7 3.9 9s-1.3 6.3-3.9 9c-2.6-2.7-3.9-5.7-3.9-9s1.3-6.3 3.9-9z';
-export const SPIRAL = 'M20 11a8 8 0 1 0-2.3 6.3M20 4v7h-7';   // 다시 번역: 새로 고침 모양
+export const SPIRAL = 'M4 8h13M14 4.5l3.5 3.5L14 11.5M20 16H7M10 12.5 6.5 16l3.5 3.5';   // 다시 번역: 오가는 두 화살표 (답변 다시 생성의 둥근 화살표와 헷갈리지 않게)
 export const SHEET = 'M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7';
 
 /** 남의 DOM 사이에 끼우는 자리. 단추가 옛 것처럼 형제로 보이게 display: contents */

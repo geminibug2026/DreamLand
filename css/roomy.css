@@ -36,3 +36,18 @@
   .msg:not(.sys) .msg-main > .msg-tools .swipe span { margin-left: auto; font-size: 12px; color: var(--dim); }
   .msg:not(.sys) .msg-main > .msg-tools .swipe .ibtn { width: 34px; height: 30px; }
 }
+
+/* ── 모델 고르기 창: 좁은 화면 ──
+   목록이 옆으로 밀리지 않게 하고(안쪽 여백을 음수로 빼던 것이 가로 스크롤을 만들었다), 안쪽 스크롤 대신 창 전체가 한 번에 스크롤된다 */
+.rc-pick, .rc-pick-list, .rc-sec, .rc-group { min-width: 0; grid-template-columns: minmax(0, 1fr); }
+.rc-pick-list { overflow-x: hidden; margin: 0; padding: 2px 0; }
+.rc-row { min-width: 0; } .rc-row-main em { white-space: nowrap; }
+@media (max-width: 820px) {
+  .rc-pick { gap: 12px; }
+  .rc-pick-list { max-height: none; overflow: visible; gap: 18px; }
+  .rc-pick-head { gap: 12px; padding-bottom: 12px; } .rc-dial { width: 64px; height: 64px; } .rc-pick-now b { font-size: 17px; }
+  .rc-row-main { padding-left: 4px; gap: 8px; } .rc-row-main .rc-mid { font-size: 13px; }
+  .rc-tog { width: 40px; height: 44px; }
+  .rc-all-bar { flex-wrap: wrap; } .rc-all-bar .inp { flex: 1 1 100%; }
+  .rc-pick-foot > * { flex: 1 1 auto; justify-content: center; } .rc-mixsw { white-space: nowrap; }
+}
