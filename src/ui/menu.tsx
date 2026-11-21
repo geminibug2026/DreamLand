@@ -22,7 +22,7 @@ export function menu(anchor: Element, items: MenuItem[]) {
     el.remove(); setTimeout(() => root.unmount());
   };
   flushSync(() => root.render(<>{items.filter(it => !!it).map((it, i) => it === '-' ? <hr key={i} /> :
-    <button key={i} className={'menu-item' + (it.danger ? ' danger' : '')} onClick={() => { close(); it.onclick(); }}>{it.ic && <Icon name={it.ic} size={16} />}<span>{it.label}</span>{it.hint && <small>{it.hint}</small>}</button>)}</>));
+    <button key={i} className={'menu-item' + (it.danger ? ' danger' : '')} onClick={() => { close(); it.onclick(); }}>{it.ic && <Icon name={it.ic} size={16} />}<span className="mi-t"><span>{it.label}</span>{it.hint && <small>{it.hint}</small>}</span></button>)}</>));
   const r = anchor.getBoundingClientRect(), w = el.offsetWidth, hh = el.offsetHeight;
   el.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.left)) + 'px';
   el.style.top = (r.bottom + hh + 8 > innerHeight ? Math.max(8, r.top - hh - 6) : r.bottom + 6) + 'px';
