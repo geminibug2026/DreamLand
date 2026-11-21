@@ -51,6 +51,7 @@ export const drawDrawer = () => bump('drawer');
 export const drawGauge = () => bump('gauge');
 export function setStatus(t: string) { cur.status = t; bump('status'); }
 // 429 자동 재시도 중이면 상태 줄에 알린다 (연결 설정에서 켠 경우만)
+on('conn:hop', d => { const x = d as { conn: string; n: number; of: number }; if (cur.busy) setStatus(t('chat.status.hop429', x)); });
 on('conn:retry', d => { const x = d as { conn: string; n: number; of: number; sec: number }; if (cur.busy) setStatus(t('chat.status.retry429', x)); });
 export function setBusy(b: boolean) { cur.busy = b; bump('busy'); }
 function setPrep(b: boolean) { cur.prep = b; bump('busy'); }

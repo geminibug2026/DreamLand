@@ -924,7 +924,7 @@ for (const [id, f, k] of [['vertexai', 'name', 'vertexai.name'], ['azure', 'ph',
   ['horde', 'note', 'horde.note'], ['novelai', 'name', 'novelai.name'], ['novelai', 'note', 'novelai.note'], ['koboldclassic', 'name', 'koboldclassic.name'], ['textcomp', 'name', 'textcomp.name'], ['textcomp', 'note', 'textcomp.note'], ['custom', 'name', 'custom.name'], ['mock', 'name', 'mock.name']] as const)
   Object.defineProperty(PROVIDERS[id], f, { get: () => tr('engine.provider.' + k), enumerable: true, configurable: true });
 const defOf = (c: Conn) => PROVIDERS[c.provider] || PROVIDERS.custom;
-const baseOf = (c: Conn) => (c.baseUrl || defOf(c).base || '').trim().replace(/\/+$/, '');
+const baseOf = (c: Conn) => ((defOf(c).kind === 'vertex' ? String(c.baseUrl || '').split(/[\s,]+/).find(Boolean) : c.baseUrl) || defOf(c).base || '').trim().replace(/\/+$/, '');
 const claudeAdaptive = (m?: string) => /fable|mythos|opus-(4-[6-9]|[5-9])|sonnet-(4-[6-9]|[5-9])|haiku-[5-9]/.test(m || '');
 export const prefillOk = (conn: Conn) => !(defOf(conn).kind === 'anthropic' && claudeAdaptive(conn.model));
 const num = (v: unknown): v is Num => v !== null && v !== '' && v !== undefined && !isNaN(+(v as number));
@@ -975,17 +975,24 @@ async function vertexToken(conn: Conn): Promise<string> {
   tokenCache.set(sa.client_email, { token: token as string, exp: Date.now() + ttl * 1000 });
   return token as string;
 }
+// ── 중계 주소 여러 개 (Vertex): 주소 칸에 빈칸 · 쉼표로 나눠 여럿 적으면, 429 가 날 때 다음 주소(다른 지역)로 바로 넘어간다 ──
+// 한 지역에서만 계속 나가면 그 지역도 결국 429 가 나기 때문. 통한 주소는 기억해 두고 다음에도 거기부터 쓴다
+const relayAt = new Map<string, number>();
+export const relayList = (conn: Conn): string[] => String(conn.baseUrl || '').split(/[\s,]+/).map(x => x.trim().replace(/\/+$/, '')).filter(Boolean);
+const relayIdx = (conn: Conn, n: number) => { let i = relayAt.get(conn.id); if (i == null) { try { i = +(localStorage.getItem('dreamland.relayAt.' + conn.id) || 0) || 0; } catch { i = 0; } relayAt.set(conn.id, i); } return n ? i % n : 0; };
+const relayBase = (conn: Conn) => { const l = relayList(conn); return l.length ? l[relayIdx(conn, l.length)] : ''; };
+const relayNext = (conn: Conn, n: number) => { const i = (relayIdx(conn, n) + 1) % n; relayAt.set(conn.id, i); try { localStorage.setItem('dreamland.relayAt.' + conn.id, String(i)); } catch { /* 저장 못 해도 이번 창에서는 기억한다 */ } return i; };
 /** Vertex 요청 주소와 인증 헤더 */
 async function vertexTarget(conn: Conn, publisher: string, model: string, method: string): Promise<{ url: string; headers: Record<string, string> }> {
   if (!conn.serviceAccount?.trim()) {
     const key = (conn.apiKey || '').trim(), bearer = key.startsWith('ya29.') || /^[\w-]+\.[\w-]+\.[\w-]+$/.test(key);
     const region = ((conn.region as string) || 'global').trim(), project = ((conn.project as string) || '').trim();
-    const host = conn.baseUrl?.trim().replace(/\/+$/, '') || (project && region !== 'global' ? `https://${region}-aiplatform.googleapis.com` : 'https://aiplatform.googleapis.com');
+    const host = relayBase(conn) || (project && region !== 'global' ? `https://${region}-aiplatform.googleapis.com` : 'https://aiplatform.googleapis.com');
     return { url: `${host}/v1/${project ? `projects/${project}/locations/${region}/` : ''}publishers/${publisher}/models/${model}:${method}`, headers: bearer ? { Authorization: 'Bearer ' + key } : { 'x-goog-api-key': key } };
   }
   const sa = Secrets.is(conn.serviceAccount) ? { project_id: conn.saProject || '' } : parseServiceAccount(conn.serviceAccount), region = ((conn.region as string) || 'global').trim(), project = ((conn.project as string) || sa.project_id || '').trim();
   if (!project) throw new Error(tr('engine.err.noProject'));
-  const host = conn.baseUrl?.trim().replace(/\/+$/, '') || (region === 'global' ? 'https://aiplatform.googleapis.com' : `https://${region}-aiplatform.googleapis.com`);
+  const host = relayBase(conn) || (region === 'global' ? 'https://aiplatform.googleapis.com' : `https://${region}-aiplatform.googleapis.com`);
   return { url: `${host}/v1/projects/${project}/locations/${region}/publishers/${publisher}/models/${model}:${method}`, headers: { Authorization: 'Bearer ' + await vertexToken(conn) } };
 }
 
@@ -996,13 +1003,19 @@ interface CallOpts { method?: string; headers?: Record<string, string>; body?: u
  *  서버가 Retry-After 를 주면 그만큼, 아니면 retryWait 초부터 두 배씩 (조금씩 흔들어 여러 창이 한꺼번에 몰리지 않게) */
 async function call(conn: Conn, url: string, opts: CallOpts): Promise<Response> {
   const n = Math.max(0, Math.min(5, Math.round(+(conn.retry429 || 0)) || 0)), wait = Math.max(0.5, Math.min(30, +(conn.retryWait || 0) || 2));
-  for (let i = 0; ; i++) {
+  const relays = defOf(conn).kind === 'vertex' ? relayList(conn) : []; let hops = 0;
+  for (let i = 0; ; ) {
     try { return await callOnce(conn, url, opts); }
     catch (e) {
       const st = (e as { status?: number }).status, after = (e as { retryAfter?: number }).retryAfter;
+      if (st === 429 && !opts.signal?.aborted && relays.length > 1 && hops < relays.length - 1) {   // 다음 중계(다른 지역)로: 기다리지 않고 바로
+        const from = relays[relayIdx(conn, relays.length)], to = relays[relayNext(conn, relays.length)]; hops++;
+        if (url.startsWith(from)) { url = to + url.slice(from.length); core.emit('conn:hop', { conn: conn.name, n: hops, of: relays.length - 1 }); continue; }
+      }
       if (i >= n || st !== 429 || opts.signal?.aborted) throw e;
-      const ms = Math.min(60000, after ? after * 1000 : wait * 1000 * 2 ** i * (0.85 + Math.random() * 0.3));
-      core.emit('conn:retry', { conn: conn.name, n: i + 1, of: n, sec: Math.round(ms / 100) / 10 });
+      i++; hops = 0;
+      const ms = Math.min(60000, after ? after * 1000 : wait * 1000 * 2 ** (i - 1) * (0.85 + Math.random() * 0.3));
+      core.emit('conn:retry', { conn: conn.name, n: i, of: n, sec: Math.round(ms / 100) / 10 });
       await new Promise<void>((res, rej) => { const tm = setTimeout(res, ms); opts.signal?.addEventListener('abort', () => { clearTimeout(tm); rej(Object.assign(new Error('aborted'), { name: 'AbortError' })); }, { once: true }); });
     }
   }

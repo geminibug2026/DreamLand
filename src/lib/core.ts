@@ -295,7 +295,7 @@ export const Secrets = {
   async reveal(id: string, field: string) { return (await this.post('reveal', { id, field })).value; },
   /** 연결의 키를 보낼 수 있는 주소 */
   hostsFor(conn: Partial<Conn> | null | undefined, fallback = '') {
-    const out: string[] = []; for (const u of [conn?.baseUrl, fallback]) { try { if (u) out.push(new URL(u).hostname); } catch { } }
+    const out: string[] = []; for (const u of [...String(conn?.baseUrl || '').split(/[\s,]+/), fallback]) { try { if (u) out.push(new URL(u).hostname); } catch { } }   // 주소가 여럿(중계 여러 개)이면 모두
     if (conn?.provider === 'vertexai' || /aiplatform\.googleapis\.com/.test(fallback)) out.push('googleapis.com');
     return [...new Set(out)];
   },

@@ -9558,11 +9558,15 @@
   "conns.adv.retryRec": "기본은 꺼짐. 켠다면 추천값: 2회 · 2초.",
   "conns.cf.kind.cf": "Cloudflare",
   "conns.cf.kind.vc": "Vercel",
-  "conns.cf.kindHint.cf": "무료 · 카드 없음. 지역을 직접 고를 수 있어, 안 되면 지역만 바꿔 볼 수 있습니다. 코드를 복사해 붙여넣는 방식.",
-  "conns.cf.kindHint.vc": "무료 · 카드 없음 · GitHub 계정 필요. 배포 단추 한 번이면 미국 동부에 올라갑니다. 지역을 고를 필요가 없습니다.",
+  "conns.cf.kindHint.cf": "무료 · 카드 없음. 코드를 복사해 붙여넣는 방식. 워커 하나는 한 지역에서만 돌므로, 지역 자동 전환을 원하면 워커를 여러 개 만들어야 합니다.",
+  "conns.cf.kindHint.vc": "무료 · 카드 없음 · GitHub 계정 필요. 배포 단추 한 번이면 여러 지역(미국 4 · 유럽 2)이 한꺼번에 열리고, 429 가 나면 앱이 알아서 지역을 바꿉니다.",
   "conns.cf.v1": "아래 \"중계 암호\"를 복사해 둔 뒤 \"Vercel 에 배포\"를 누르고, GitHub 계정으로 Vercel 에 가입 · 로그인합니다.",
   "conns.cf.v2": "저장소 이름은 그대로 두고 만들기를 누릅니다. RELAY_KEY 를 묻는 칸에 복사해 둔 암호를 붙여넣고 Deploy 를 누릅니다.",
   "conns.cf.v3": "배포가 끝나면 나오는 주소(https://….vercel.app)를 아래에 붙여넣고 \"확인\" → \"이 연결에 쓰기\"를 누릅니다.",
   "conns.cf.copyKeyFirst": "암호 먼저 복사",
-  "conns.cf.deployVercel": "Vercel 에 배포"
+  "conns.cf.deployVercel": "Vercel 에 배포",
+  "chat.status.hop429": "{conn}: 429 — 다른 지역의 중계로 다시 보내요 ({n}/{of})",
+  "conns.cf.appliedMany": "이 연결은 이제 중계 {n}곳을 돌려 써요. 429 가 나면 다음 지역으로 넘어갑니다",
+  "conns.cf.addrHint.cf": "한 지역만 쓰면 그 지역도 결국 429 가 납니다. 워커를 지역만 달리해 여러 개 만들고(같은 코드 · 같은 암호) 주소를 빈칸으로 띄워 모두 적으면, 429 가 날 때 다음 워커로 자동으로 넘어갑니다.",
+  "conns.cf.addrHint.vc": "한 번 배포하면 미국 4곳 · 유럽 2곳이 함께 열립니다. \"이 연결에 쓰기\"를 누르면 여섯 곳을 모두 등록해, 429 가 날 때 다음 지역으로 자동으로 넘어갑니다."
 }
