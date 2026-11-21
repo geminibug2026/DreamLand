@@ -165,7 +165,6 @@
 .mode-rp .msg-body { font-size: calc(var(--fs) + 1px); line-height: calc(var(--lh) + .1); } .mode-rp .msg-body p.nar { margin: 1em 0; }
 .mode-rp .msg.user .msg-body { max-width: none; padding: 0; border: 0; color: color-mix(in srgb, var(--nar) 80%, var(--bg)); } .mode-rp .msg.user .msg-head b { padding: 1px 7px; border: 1px solid var(--ink-line); color: var(--text); } .mode-rp .msg.user .nar { text-align: left; }
 .q { color: var(--text); font-weight: 600; } .t { color: var(--think); font-style: italic; }
-.mode-rp .msg.ai + .msg.ai .msg-head { display: none; }
 /* 대화: 메신저처럼 짧게 주고받는다 */
 .mode-talk .msgs { max-width: 700px; margin: 0 auto; gap: 14px; }
 .mode-talk .msg .avatar { border-radius: 50%; width: 38px; height: 38px; }
@@ -280,8 +279,7 @@
 .is-group .msg.grouped .msg-head b { color: var(--text); } .is-group .msg.grouped .msg-head b::before { content: none; }
 .is-group.mode-rp .msg.grouped { gap: 18px; } .is-group.mode-rp .msg.grouped > .avatar { display: grid; flex: none; width: 54px; height: 68px; border-radius: 0; border: 1px solid var(--ink); position: sticky; top: 10px; align-self: flex-start; font-size: 1.2em; box-shadow: 4px 4px 0 var(--surface3); }
 .is-group.mode-rp .msg.grouped + .msg.grouped .msg-head { display: flex; } .is-group.mode-rp .msg.grouped .msg-head b { font-size: .84em; letter-spacing: .08em; }
-.is-group.mode-rp .msg.grouped.cont { margin-top: -20px; } .is-group .msg.grouped.cont > .avatar { visibility: hidden; height: 0; box-shadow: none; border-width: 0; } .is-group .msg.grouped.cont .msg-head { display: none !important; }
-.is-group.mode-talk .msg.grouped.cont { margin-top: -8px; }
+.is-group .msg.grouped.cont > .avatar { visibility: hidden; height: 0; box-shadow: none; border-width: 0; }   /* 같은 인물이 이어 말해도 머리줄(구분선 · 도구)은 남긴다 — 숨기면 앞 답변에 붙어 보이고 수정 · 번역 버튼도 사라진다 */
 .speaker.last { border-color: var(--ink); box-shadow: inset 0 -3px 0 var(--accent); } .speaker small { font: 600 9px var(--display); letter-spacing: .1em; color: var(--faint); } .speaker:hover small { color: inherit; }
 @media (max-width: 820px) { .is-group.mode-rp .msg.grouped { gap: 12px; } .is-group.mode-rp .msg.grouped > .avatar { width: 40px; height: 50px; box-shadow: 3px 3px 0 var(--surface3); } }
 .speakers { gap: 8px; padding: 2px 0 4px; align-items: stretch; } .speakers-label { align-self: center; font: 500 .74em var(--display); letter-spacing: .08em; color: var(--dim); margin-right: 2px; }
