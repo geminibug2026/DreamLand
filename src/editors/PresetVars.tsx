@@ -29,13 +29,13 @@ export function Control({ d, value, set }: { d: PVar; value: unknown; set: (v: c
   if (d.type === 'select' && d.multi) {   // 여러 개: 누를 때마다 켜고 끈다
     const opts = d.options || [], on = Array.isArray(v) ? v : [];
     const flip = (label: string) => put(opts.filter(o => (o.label === label) !== on.includes(o.label)).map(o => o.label));
-    return <div className="pv-multi" role="group">{opts.map((o, i) => <button type="button" key={i} aria-pressed={on.includes(o.label)} className={on.includes(o.label) ? 'on' : undefined} onClick={() => flip(o.label)}><i aria-hidden="true" />{o.label}</button>)}</div>;
+    return <div className="su-opts" role="group">{opts.map((o, i) => <button type="button" key={i} role="checkbox" aria-checked={on.includes(o.label)} className={'su-opt' + (on.includes(o.label) ? ' on' : '')} onClick={() => flip(o.label)}>{o.label}</button>)}</div>;
   }
   if (d.type === 'toggle') return <label className="pv-toggle"><span className="switch"><input type="checkbox" defaultChecked={!!v} onChange={e => put(e.target.checked)} /><i /></span><span>{v ? t('presets.vars.on') : t('presets.vars.off')}</span></label>;
   if (d.type === 'slider') return <div className="range"><input type="range" min={d.min ?? 0} max={d.max ?? 100} step={d.step || 1} defaultValue={String(v)} onChange={e => put(+e.target.value)} /><output>{String(v)}</output></div>;
   if (d.type === 'select') {
     const opts = d.options || [];
-    if (opts.length <= 5 && opts.reduce((n, o) => n + o.label.length, 0) <= 26) return <div className="pv-seg">{opts.map((o, i) => <button type="button" key={i} className={o.label === v ? 'on' : undefined} onClick={() => put(o.label)}>{o.label}</button>)}</div>;
+    if (opts.length <= 12) return <div className="su-opts" role="radiogroup">{opts.map((o, i) => <button type="button" key={i} role="radio" aria-checked={o.label === v} className={'su-opt' + (o.label === v ? ' on' : '')} onClick={() => put(o.label)}>{o.label}</button>)}</div>;
     return <select className="inp" defaultValue={String(v)} onChange={e => put(e.target.value)}>{opts.map((o, i) => <option key={i} value={o.label}>{o.label}</option>)}</select>;
   }
   return <input className="inp" defaultValue={String(v)} placeholder={d.hint || ''} spellCheck={false} onChange={e => put(e.target.value)} />;

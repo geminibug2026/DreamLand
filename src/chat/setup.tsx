@@ -18,10 +18,9 @@ export const setupWanted = (p: Preset | null | undefined) => !!p && !p.noSetup &
 function Choices({ d, value, set }: { d: PvDef; value: PvRaw; set: (v: PvRaw) => void }) {
   const opts = d.options || [], on = d.multi ? (Array.isArray(value) ? value : []) : [String(value)];
   const tap = (label: string) => set(d.multi ? opts.filter(o => (o.label === label) !== on.includes(o.label)).map(o => o.label) : label);
-  const long = opts.some(o => o.label.length > 12);
-  return <div className={'su-opts' + (long ? ' long' : '')} role={d.multi ? 'group' : 'radiogroup'}>
+    return <div className="su-opts" role={d.multi ? 'group' : 'radiogroup'}>
     {opts.map((o, i) => { const sel = on.includes(o.label); return <button type="button" key={i} role={d.multi ? 'checkbox' : 'radio'} aria-checked={sel} className={'su-opt' + (sel ? ' on' : '') + (d.multi ? ' multi' : '')} onClick={() => tap(o.label)}>
-      <i className="su-mark" aria-hidden="true" /><span>{o.label}</span></button>; })}
+      {o.label}</button>; })}
   </div>;
 }
 
