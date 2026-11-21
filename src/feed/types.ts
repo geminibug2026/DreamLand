@@ -11,7 +11,7 @@ export interface Note {
   id: string; by: string; text: string; ts: number;
   /** 답글이면: 매달린 글 · 바로 위 답글(없으면 글에 바로) */ root?: string; re?: string;
   poll?: Poll;
-  /** 모델이 적어 준 그림 설명 (그리기 전) · 그린/붙인 그림의 에셋 id */ imagePrompt?: string; image?: string;
+  /** 모델이 적어 준 그림 설명 (그리기 전) · 그린/붙인 그림의 에셋 id */ imagePrompt?: string; image?: string; /** 내가 여러 장 붙였을 때 둘째부터 (에셋 id) */ images?: string[];
   likes: string[]; echoes: string[];
   /** 어느 새로 고침에서 왔나 (되돌리기용) */ batch?: string;
   /** 대화 중 [post:] 로 올라온 글: 그 답장의 자리. 스와이프를 넘기면 off 로 거둔다 */ src?: { chatId: string; msgId: string; sw: number }; off?: boolean;
