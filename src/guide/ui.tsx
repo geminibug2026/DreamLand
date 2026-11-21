@@ -156,6 +156,22 @@ function MsgBar({ it, idx, canRegen }: { it: Item; idx: number; canRegen?: boole
     {it.k === 'user' && it.text ? B('copy', t('guide.act.copyShort'), t('guide.act.copy'), () => void copy(it.text)) : null}
   </div>;
 }
+/** 한 번의 답 묶음(내 말 다음부터 다음 내 말 전까지) 끝의 단추 줄: 묶음 안의 말을 한꺼번에 복사 · 다시 생성 · 여기서 분기 */
+/** i 에서 끝나는 답 묶음의 말들 (도구 줄 · 카드는 빼고, 답 글만 이어서) */
+function turnOf(items: Item[], i: number): { text: string; hasAi: boolean } {
+  let j = i; while (j > 0 && items[j - 1].k !== 'user') j--;
+  const ai = items.slice(j, i + 1).filter((x): x is Extract<Item, { k: 'ai' }> => x.k === 'ai' && !!x.text);
+  return { text: ai.map(x => x.text.trim()).join('\n\n'), hasAi: ai.length > 0 };
+}
+function TurnBar({ idx, text, canRegen }: { idx: number; text: string; canRegen?: boolean }) {
+  if (G.busy) return null;
+  const B = (ic: string, label: string, title: string, fn: () => void) => <button type="button" className="gd-act" title={title} aria-label={title} onClick={fn}><Icon name={ic} size={14} /><span>{label}</span></button>;
+  return <div className="gd-acts gd-turnbar">
+    {text ? B('copy', t('guide.act.copyShort'), t('guide.act.copy'), () => void copy(text)) : null}
+    {canRegen ? B('refresh', t('guide.act.regen'), t('guide.act.regen'), () => void regen()) : null}
+    {B('branch', t('guide.act.branchShort'), t('guide.act.branchHint'), () => void branchAt(idx).then(() => toast(t('guide.act.branched'), 'ok')))}
+  </div>;
+}
 /** 내 말 고치기: 고친 말부터 다시 (그 뒤의 답은 지운다) */
 function EditBox({ it, idx }: { it: Extract<Item, { k: 'user' }>; idx: number }) {
   const [text, setText] = useState(it.text), ta = useRef<HTMLTextAreaElement>(null);
@@ -169,12 +185,12 @@ function EditBox({ it, idx }: { it: Extract<Item, { k: 'user' }>; idx: number })
     <div className="gd-edit-b"><button type="button" className="btn ghost" onClick={() => { G.editing = -1; poke(); }}>{t('common.cancel')}</button><button type="button" className="btn primary" disabled={!text.trim() && !it.files?.length} onClick={go}><Icon name="send" size={15} />{t('guide.act.editSend')}</button></div>
   </div>;
 }
-function ItemView({ it, idx, last, canRegen }: { it: Item; idx: number; last?: boolean; canRegen?: boolean }) {
+function ItemView({ it, idx, last }: { it: Item; idx: number; last?: boolean }) {
   if (it.k === 'user') {
     if (G.editing === idx && !G.busy) return <div className="gd-u editing"><span className="fx-lbl kr">{t('guide.you')}</span><EditBox it={it} idx={idx} />{it.files?.length ? <FileChips files={it.files} /> : null}</div>;
     return <div className="gd-u"><div className="gd-uh"><span className="fx-lbl kr">{t('guide.you')}</span></div>{it.refs?.length ? <div className="gd-refs">{it.refs.map(r => <span key={r.kind + r.id} className="fx-pill">@{r.name}</span>)}</div> : null}{it.text ? <p>{it.text}</p> : null}{it.files?.length ? <FileChips files={it.files} /> : null}<MsgBar it={it} idx={idx} /></div>;
   }
-  if (it.k === 'ai') return it.text ? <div className="gd-a"><Md text={it.text} /><MsgBar it={it} idx={idx} canRegen={canRegen} /></div> : null;
+  if (it.k === 'ai') return it.text ? <div className="gd-a"><Md text={it.text} /></div> : null;   // 단추 줄은 한 번의 답(중간 말 · 도구 · 마지막 답) 끝에 하나만 — TurnBar
   if (it.k === 'tool') { const sum = toolBrief(it.name, it.ok, it.out); return <details className={'gd-tool' + (it.ok ? '' : ' bad')}>
     <summary><svg className="fx-art" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">{it.ok ? <path d="M1.5 5.2l2.4 2.4L8.5 2.6" /> : <path d="M2 2l6 6M8 2l-6 6" />}</svg><code>{it.name}</code><span>{argBrief(it.args)}</span><em>{!it.ok ? t('guide.tool.bad') : /^(create|update|add|revise|delete)_/.test(it.name) ? t('guide.tool.proposed') : t('guide.tool.ok')}</em>{sum ? <small className="gd-tsum">{sum}</small> : null}</summary>
     <pre>{it.out || t('guide.tool.sum.none')}</pre>
@@ -385,7 +401,8 @@ function Panel() {
     <div className="gd-scroll" ref={scroll} onScroll={e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60; }}>
       {G.talk?.plan && (n || G.busy) ? <PlanView plan={G.talk.plan} /> : null}
       {!n && !G.busy ? <Empty /> : <div className="gd-items">
-        {items.map((it, i) => <ItemView key={i + ':' + it.at} it={it} idx={i} last={i === n - 1} canRegen={!G.busy && i === lastAi && it.k === 'ai' && i > lastU} />)}
+        {items.map((it, i) => { const end = it.k !== 'user' && (i === n - 1 || items[i + 1].k === 'user'), turn = end ? turnOf(items, i) : null;
+          return <Fragment key={i + ':' + it.at}><ItemView it={it} idx={i} last={i === n - 1} />{turn ? <TurnBar idx={i} text={turn.text} canRegen={!G.busy && turn.hasAi && lastAi > lastU && i >= lastAi} /> : null}</Fragment>; })}
         {G.busy ? <div className="gd-a live">{G.wait ? <p className="gd-waitmsg" role="status">{t('guide.wait429', { n: G.wait.n, of: G.wait.of })}</p> : null}{G.stream ? <Md text={G.stream} /> : null}<span className="gd-wait" aria-label={t('guide.status.working')}><i /><i /><i /></span></div> : null}
       </div>}
     </div>

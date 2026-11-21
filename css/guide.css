@@ -180,3 +180,4 @@
   .gd-box .gd-slash, .gd-box .gd-clip, .gd-box .gd-send { width: 40px; height: 40px; }
   .gd-meta { font-size: 12px; }
 }
+.gd-turnbar { margin: 0 0 8px -6px; }
