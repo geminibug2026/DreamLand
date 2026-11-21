@@ -12,14 +12,20 @@ const RELAY_HOST = /\.(workers\.dev|vercel\.app)$/i;
 /** Vercel 배포 단추: 이 저장소의 relay/vercel 폴더를 내 GitHub 에 복사해 미국 동부에 올린다. RELAY_KEY 를 물어본다 */
 const VERCEL = 'https://vercel.com/new/clone?repository-url=' + encodeURIComponent('https://github.com/geminibug2026/DreamLand/tree/main/relay/vercel') + '&project-name=dreamland-relay&repository-name=dreamland-relay&env=RELAY_KEY&envDescription=' + encodeURIComponent('DreamLand relay password');
 const newKey = () => Array.from(crypto.getRandomValues(new Uint8Array(18)), b => 'abcdefghijkmnpqrstuvwxyz23456789'[b % 32]).join('');
-/** 지금 주소가 중계 주소면 [워커 주소, 암호] */
-const parse = (u?: string) => { const m = String(u || '').trim().match(/^(https:\/\/[^/]+\.(?:workers\.dev|vercel\.app))\/([^/]+)\/?$/i); return m ? [m[1], m[2]] : ['', '']; };
+/** Vercel 판이 여는 지역 (relay/vercel/api/<지역>.js). 429 가 나면 앱이 이 순서로 넘어간다 */
+const VC_REGIONS = ['iad1', 'pdx1', 'cle1', 'sfo1', 'fra1', 'lhr1'];
+/** 지금 주소(여럿일 수 있다)에서 [중계 주소들, 암호] */
+const parse = (u?: string): [string, string] => {
+  const hosts: string[] = []; let key = '';
+  for (const x of String(u || '').split(/[\s,]+/).filter(Boolean)) { const m = x.match(/^(https:\/\/[^/]+\.(?:workers\.dev|vercel\.app))(?:\/[a-z]{3}\d)?\/([^/]+)\/?$/i); if (m) { if (!hosts.includes(m[1])) hosts.push(m[1]); key ||= m[2]; } }
+  return [hosts.join(' '), key];
+};
 
 function Guide({ c, onSave, close }: { c: Conn; onSave: () => void; close: () => void }) {
   const [a0, k0] = parse(c.baseUrl);
   const [kind, setKind] = useState<'cf' | 'vc'>(/vercel\.app/i.test(a0) ? 'vc' : 'cf');
   const [addr, setAddr] = useState(a0), [key, setKey] = useState(k0 || newKey()), [out, setOut] = useState<{ ok: boolean; text: string } | null>(null);
-  const base = addr.trim().replace(/\/+$/, '');
+  const bases = addr.split(/[\s,]+/).map(x => x.trim().replace(/\/+$/, '')).filter(Boolean), base = bases[0] || '';
   const copy = async (s: string, msg: string) => { try { await navigator.clipboard.writeText(s); toast(msg, 'ok'); } catch { toast(t('conns.cf.copyFail'), 'err'); } };
   const test = async () => {
     if (!/^https:\/\//i.test(base)) return setOut({ ok: false, text: t('conns.cf.addrBad') });
@@ -34,15 +40,17 @@ function Guide({ c, onSave, close }: { c: Conn; onSave: () => void; close: () =>
   const rehost = async (add: string | null) => {
     for (const f of ['apiKey', 'serviceAccount'] as const) {
       const v = c[f] as string | undefined; if (!v || !Secrets.is(v)) continue;
-      const old = Secrets.items[c.id]?.[f]?.hosts || [], hosts = [...new Set([...old.filter(h => !RELAY_HOST.test(h)), ...(add ? [add] : [])])];
+      const old = Secrets.items[c.id]?.[f]?.hosts || [], hosts = [...new Set([...(add ? old : old.filter(h => !RELAY_HOST.test(h))), ...(add ? [add] : [])])];
       if (hosts.join() === old.join()) continue;
       const value = await Secrets.reveal(c.id, f); (c as unknown as Record<string, string>)[f] = await Secrets.put(c.id, f, value, hosts, c.name);
     }
   };
   const apply = async () => {
-    if (!/^https:\/\//i.test(base) || !key.trim()) return setOut({ ok: false, text: t('conns.cf.addrBad') });
-    try { await rehost(new URL(base).hostname); } catch { return setOut({ ok: false, text: t('conns.cf.rekey') }); }
-    c.baseUrl = base + '/' + key.trim(); onSave(); toast(t('conns.cf.applied'), 'ok'); close();
+    if (!bases.length || bases.some(x => !/^https:\/\//i.test(x)) || !key.trim()) return setOut({ ok: false, text: t('conns.cf.addrBad') });
+    try { for (const x of bases) await rehost(new URL(x).hostname); } catch { return setOut({ ok: false, text: t('conns.cf.rekey') }); }
+    // Vercel 은 한 번 배포로 여러 지역이 열린다: 지역마다의 주소를 모두 적어 두면 429 가 날 때 앱이 다음 지역으로 넘어간다
+    const k = key.trim(), list = bases.flatMap(x => /\.vercel\.app$/i.test(x) ? VC_REGIONS.map(r => `${x}/${r}/${k}`) : [`${x}/${k}`]);
+    c.baseUrl = list.join(' '); onSave(); toast(t(list.length > 1 ? 'conns.cf.appliedMany' : 'conns.cf.applied', { n: list.length }), 'ok'); close();
   };
   const remove = async () => { try { await rehost(null); } catch { /* 남겨 둬도 워커 주소로만 더 갈 수 있을 뿐 */ } c.baseUrl = ''; onSave(); toast(t('conns.cf.removed'), 'ok'); close(); };
   return <div className="col cf-guide">
@@ -57,7 +65,8 @@ function Guide({ c, onSave, close }: { c: Conn; onSave: () => void; close: () =>
       <div className="row"><input className="inp" value={key} spellCheck={false} onChange={e => setKey(e.target.value.replace(/[^\w-]/g, ''))} /><Btn label={t('conns.cf.copy')} ic="copy" cls="ghost" onClick={() => void copy(key, t('conns.cf.keyCopied'))} /><Btn label={t('conns.cf.keyMake')} ic="refresh" cls="ghost" onClick={() => setKey(newKey())} /></div>
       <small className="hint">{t('conns.cf.keyHint')}</small></label>
     <label className="field"><span className="field-label">{t('conns.cf.addr')}</span>
-      <div className="row"><input className="inp" value={addr} placeholder={kind === 'cf' ? 'https://dreamland-relay.myname.workers.dev' : 'https://dreamland-relay.vercel.app'} spellCheck={false} onChange={e => setAddr(e.target.value.trim())} /><Btn label={t('conns.cf.test')} ic="play" cls="ghost" onClick={() => void test()} /></div></label>
+      <div className="row"><input className="inp" value={addr} placeholder={kind === 'cf' ? 'https://dreamland-relay.myname.workers.dev' : 'https://dreamland-relay.vercel.app'} spellCheck={false} onChange={e => setAddr(e.target.value)} /><Btn label={t('conns.cf.test')} ic="play" cls="ghost" onClick={() => void test()} /></div></label>
+    <small className="hint">{t('conns.cf.addrHint.' + kind)}</small>
     {out ? <p className={'hint ' + (out.ok ? 'ok' : 'bad')} role="status">{out.text}</p> : null}
     <p className="hint">{t('conns.cf.note')}</p>
     <div className="row"><Btn label={t('conns.cf.apply')} ic="check" cls="primary" onClick={() => void apply()} />{a0 ? <Btn label={t('conns.cf.remove')} ic="x" cls="ghost" onClick={() => void remove()} /> : null}</div>

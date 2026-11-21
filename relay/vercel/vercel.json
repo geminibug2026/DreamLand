@@ -1,3 +1,6 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/relay?path=$1" }]
+  "rewrites": [
+    { "source": "/:region(iad1|cle1|pdx1|sfo1|fra1|lhr1)/:path*", "destination": "/api/:region?path=:path*" },
+    { "source": "/:path*", "destination": "/api/iad1?path=:path*" }
+  ]
 }

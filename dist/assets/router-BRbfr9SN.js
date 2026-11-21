@@ -1,1 +1,0 @@
-export{t as go}from"./router-CNe3KZDk.js";
