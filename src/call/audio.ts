@@ -43,26 +43,34 @@ function loadBuf(kind: SoundKind): Promise<AudioBuffer | null> {
   }
   return p;
 }
+/** 배경 소리 손잡이: 부르면 멈추고, duck(true) 면 소리를 줄인다 (캐릭터가 말하는 동안) */
+export type AmbHandle = (() => void) & { duck(on: boolean): void };
+const DUCK = 0.35;
 /** 파일 소리를 되풀이해 튼다. 파일이 없으면 fallback 을 쓴다. 돌려받은 함수로 멈춘다 */
-function playFile(kind: SoundKind, vol: number, fallback: () => () => void): () => void {
-  let stop: (() => void) | null = null, dead = false;
+function playFile(kind: SoundKind, vol: number, fallback: () => AmbHandle | (() => void)): AmbHandle {
+  let stop: (() => void) | null = null, dead = false, ducked = false, g: GainNode | null = null, inner: AmbHandle | null = null;
   void loadBuf(kind).then(buf => {
     if (dead) return;
     const c = ac();
-    if (!buf || !c) { stop = fallback(); return; }
+    if (!buf || !c) { const f = fallback(); stop = f; if ('duck' in f) { inner = f; f.duck(ducked); } return; }
     const src = c.createBufferSource(); src.buffer = buf; src.loop = true;
-    const g = c.createGain(); g.gain.setValueAtTime(0, c.currentTime); g.gain.linearRampToValueAtTime(vol, c.currentTime + 0.6);
+    g = c.createGain(); g.gain.setValueAtTime(0, c.currentTime); g.gain.linearRampToValueAtTime(vol * (ducked ? DUCK : 1), c.currentTime + 0.6);
     src.connect(g); g.connect(c.destination);
     // 녹음 앞부분이 늘 같지 않게 아무 데서나 시작
     src.start(0, kind === 'ring' ? 0 : Math.random() * buf.duration);
-    stop = () => { try { src.stop(); } catch { } g.disconnect(); };
+    const gn = g; stop = () => { try { src.stop(); } catch { } gn.disconnect(); };
   });
-  return () => { dead = true; stop?.(); };
+  const h = (() => { dead = true; stop?.(); }) as AmbHandle;
+  h.duck = on => {
+    if (on === ducked) return; ducked = on; inner?.duck(on);
+    const c = ctx; if (g && c) { g.gain.cancelScheduledValues(c.currentTime); g.gain.setTargetAtTime(vol * (on ? DUCK : 1), c.currentTime, 0.25); }
+  };
+  return h;
 }
 
 const synthRing = () => loop(() => { [0, 0.25, 0.5, 0.75].forEach((t, i) => beep([i % 2 ? 1320 : 1046, i % 2 ? 1568 : 1318], t, 0.2, 0.06)); }, 2400);
 /** 걸려 올 때 울리는 벨 (넣은 파일이 있으면 그것) */
-export const ringtone = () => playFile('ring', 0.5, synthRing);
+export const ringtone = (): () => void => playFile('ring', 0.5, synthRing);
 /** 내가 걸었을 때 들리는 연결음 */
 export const ringback = () => loop(() => beep([440, 480], 0, 2, 0.05), 4000);
 /** 통화 종료음 */
@@ -84,9 +92,9 @@ export function ambientFor(activity: string): Ambient | '' {
   return '';
 }
 /** 배경 소리를 깐다 (녹음 파일, 못 읽으면 만든 소리). 돌려받은 함수로 멈춘다 */
-export const ambient = (kind: Ambient): (() => void) => playFile(kind, 0.35, () => synthAmbient(kind));
-function synthAmbient(kind: Ambient): () => void {
-  const c = ac(); if (!c) return () => { };
+export const ambient = (kind: Ambient): AmbHandle => playFile(kind, 0.35, () => synthAmbient(kind));
+function synthAmbient(kind: Ambient): AmbHandle {
+  const c = ac(); if (!c) return Object.assign(() => { }, { duck() { } });
   const len = c.sampleRate * 2, buf = c.createBuffer(1, len, c.sampleRate), d = buf.getChannelData(0);
   let last = 0; for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = kind === 'rain' ? w : (last + 0.02 * w) / 1.02; d[i] = kind === 'rain' ? w : last * 3.5; }
   const src = c.createBufferSource(); src.buffer = buf; src.loop = true;
@@ -95,5 +103,6 @@ function synthAmbient(kind: Ambient): () => void {
   src.connect(f); f.connect(g); g.connect(c.destination); src.start();
   // 카페: 가끔 잔 부딪히는 소리 · 거리: 가끔 멀리 지나가는 소리
   const tick = kind === 'rain' ? 0 : window.setInterval(() => { if (Math.random() < 0.35) beep(kind === 'cafe' ? [2400 + Math.random() * 800] : [120 + Math.random() * 60], 0, kind === 'cafe' ? 0.05 : 0.9, kind === 'cafe' ? 0.012 : 0.02); }, 1500);
-  return () => { try { src.stop(); } catch { } g.disconnect(); clearInterval(tick); };
+  const base = g.gain.value;
+  return Object.assign(() => { try { src.stop(); } catch { } g.disconnect(); clearInterval(tick); }, { duck(on: boolean) { g.gain.setTargetAtTime(base * (on ? DUCK : 1), c.currentTime, 0.25); } });
 }

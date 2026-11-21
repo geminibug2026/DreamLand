@@ -37,12 +37,24 @@ const changed = () => { ver++; subs.forEach(f => f()); };
 export const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f); }; };
 export const version = () => ver;
 export const session = () => S0;
+/** 화면만 다시 그린다 (보기 설정을 바꿨을 때) */
+export const touch = () => changed();
 
 let gen: { abort: AbortController; speech: SpeechStream | null; acc: string; line: Line } | null = null;
-let stopSound: (() => void) | null = null, stopAmb: (() => void) | null = null, ambKind: A.Ambient | '' = '', ringTimer = 0, recorder: MediaRecorder | null = null, chunks: Blob[] = [];
+let stopSound: (() => void) | null = null, stopAmb: A.AmbHandle | null = null, unduck: (() => void) | null = null, ambKind: A.Ambient | '' = '', ringTimer = 0, recorder: MediaRecorder | null = null, chunks: Blob[] = [];
 const sound = (f: (() => () => void) | null) => { stopSound?.(); stopSound = f && cfg().tones ? f() : null; };
 
 const charOf = (chat: Chat) => S.get('chars', chat.charIds[0]);
+/** 통화 대사 한 줄을 읽을 때 붙이는 이름 (화면이 그 줄의 따라 읽기를 알아본다) */
+export const lineKey = (l: Line) => `call:${l.at}:${l.by || l.who}`;
+/** 통화 목소리에 줄 소리 효과 (설정: 전화기 너머 목소리처럼) */
+const voiceFx = (): 'phone' | undefined => cfg().lineFx ? 'phone' : undefined;
+/** 캐릭터가 말하는 동안 배경 소리를 줄인다 */
+function duckAmbience() {
+  unduck?.();
+  const f = () => { const r = TTS.reading(); stopAmb?.duck(!!r && !r.paused && cfg().duck !== false); };
+  unduck = TTS.watch(f); f();
+}
 /** 한 통화에 함께할 수 있는 캐릭터 수 */
 export const MAX_PARTY = 4;
 /** 이 방의 캐릭터들 */
@@ -128,7 +140,7 @@ async function connect() {
   clearTimeout(ringTimer); sound(null); if (cfg().tones) A.connectTone();
   s.phase = 'connected'; s.startedAt = now(); (s.chat as CallChat).callMissed = 0; changed();
   const amb = cfg().ambient, kind = amb === 'auto' ? A.ambientFor(s.activity) : amb === 'off' ? '' : amb;
-  ambKind = kind; if (kind) stopAmb = A.ambient(kind);
+  ambKind = kind; if (kind) { stopAmb = A.ambient(kind); duckAmbience(); }
   if (s.rec) startRec();
   await runRound(s, [...s.chars], 'open');   // 받은 사람마다 한마디씩
 }
@@ -228,7 +240,7 @@ async function say(kind: 'open' | 'reply' | 'voicemail' | 'join', who?: Char): P
   finally { active = null; if (keep === undefined) delete chat.presence; else chat.presence = keep; }
   const line: Line = { who: 'c', text: '', at: now(), by: ch.id };
   if (kind !== 'voicemail') s.lines.push(line);
-  const speech = kind !== 'voicemail' && s.speaker && TTS.enabled() ? TTS.stream({ charId: ch.id }) : null;
+  const speech = kind !== 'voicemail' && s.speaker && TTS.enabled() ? TTS.stream({ charId: ch.id, key: lineKey(line), fx: voiceFx() }) : null;
   lastSpeech = speech;
   const g = gen = { abort: new AbortController(), speech, acc: '', line };
   s.talking = true; s.calls++; changed();
@@ -323,11 +335,14 @@ export function editLine(i: number, text: string) {
   const s = S0, l = s?.lines[i], t = text.trim(); if (!s || !l || l.note || !t || gen?.line === l) return;
   l.text = t; delete l.cut; if (l.alts && l.alt != null) l.alts[l.alt] = t; changed();
 }
-/** 그 대사를 다시 들려준다 (캐릭터 대사 · 읽어 주기가 켜져 있을 때) */
-export function replay(i: number) {
-  const s = S0, l = s?.lines[i]; if (!s || !l || l.who !== 'c' || l.note || !l.text || !TTS.enabled()) return;
-  TTS.stopAll(); void TTS.speak(l.text, { charId: lineChar(s, l).id }).catch(() => { });
+/** 그 대사를 다시 들려준다 (캐릭터 대사 · 읽어 주기가 켜져 있을 때). from: 그 줄의 이 위치(문장 첫머리)부터 */
+export function replay(i: number, from = 0) {
+  const s = S0, l = s?.lines[i]; if (!s || !l || l.who !== 'c' || l.note || !l.text || !TTS.enabled() || gen?.line === l) return;
+  const at = Math.max(0, Math.min(from, l.text.length - 1));
+  TTS.stopAll(); void TTS.speak(l.text.slice(at), { charId: lineChar(s, l).id, key: lineKey(l), at, fx: voiceFx() }).catch(() => { });
 }
+/** 지금 이 줄을 받는 중인가 (흘러오는 동안은 중간부터 다시 읽을 수 없다) */
+export const streaming = (l: Line) => gen?.line === l;
 /** 대필: 내가 할 말을 대신 써 준다. hint 가 있으면 그 뜻대로 (초안이면 다듬는다). 입력창에 넣을 글을 돌려준다 */
 export async function ghost(hint = ''): Promise<string> {
   const s = S0; if (!s || s.phase !== 'connected') return '';
@@ -387,7 +402,7 @@ export function toggle(k: 'rec' | 'muted' | 'speaker' | 'hold' | 'keypad') {
   const s = S0; if (!s) return;
   s[k] = !s[k];
   if (k === 'speaker') { if (s.speaker && !TTS.enabled()) toast(tt('call.err.ttsOff')); if (!s.speaker) { gen?.speech?.stop(); if (gen) gen.speech = null; TTS.stopAll(); } }
-  if (k === 'hold') { if (s.hold) { gen?.speech?.stop(); if (gen) gen.speech = null; TTS.stopAll(); stopAmb?.(); stopAmb = null; sound(A.holdTone); } else { sound(null); if (ambKind) stopAmb = A.ambient(ambKind); } }
+  if (k === 'hold') { if (s.hold) { gen?.speech?.stop(); if (gen) gen.speech = null; TTS.stopAll(); stopAmb?.(); stopAmb = null; sound(A.holdTone); } else { sound(null); if (ambKind) { stopAmb = A.ambient(ambKind); duckAmbience(); } } }
   if (k === 'rec') { if (s.rec) startRec(); else stopRec(); }
   changed();
 }
@@ -417,7 +432,7 @@ async function finish(result: Result, by: 'user' | 'char' = 'user', gaveUp = fal
   const s = S0; if (!s || s.phase === 'ended') return;
   clearTimeout(ringTimer);
   const wasTalking = !!gen; stopTalking(by === 'user');
-  sound(null); stopAmb?.(); stopAmb = null; TTS.stopAll();
+  sound(null); stopAmb?.(); stopAmb = null; unduck?.(); unduck = null; TTS.stopAll();
   if (cfg().tones && (result === 'answered' || result === 'unanswered')) A.endTone();
   s.phase = 'ended'; s.endedAt = now(); s.result = result; changed();
   const chat = s.chat, ch = s.char, u = userName(chat);
