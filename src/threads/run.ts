@@ -3,7 +3,7 @@ import { S, msgText } from '../lib/core';
 import type { Char, Chat, Msg } from '../lib/types';
 import type { PromptInfo, PromptPiece } from '../lib/hooks';
 import type { HistoryLens } from '../lib/engine';
-import { chatApi, charsOf, redraw } from '../chat/actions';
+import { chatApi, charsOf } from '../chat/actions';
 import { bump } from '../chat/store';
 import { hideTags, splitArg, takeTags, unquote } from './tags';
 import { NOTES_GUIDE, cleanNote, liveNotes, notesBlock } from './notes';
@@ -68,7 +68,7 @@ export function pieces({ chat, char, chars, persona, msgs, type, ctx }: PromptIn
   // 숨은 꼬리표 안내: 켜 둔 것만, 쓸 수 있는 때만 싣는다 (안 쓸 안내로 프롬프트를 채우지 않는다)
   const tail = (again ? shown.slice(0, -1) : shown).pop(), g: string[] = [];
   if (t.notes) g.push(NOTES_GUIDE);
-  if (t.cut && type === 'normal' && tail?.role === 'user' && msgText(tail).length >= 140) g.push(CUT_GUIDE);
+  if (t.cut && type !== 'continue' && tail?.role === 'user' && msgText(tail).length >= 140) g.push(CUT_GUIDE);
   if (group && t.whisper !== false) g.push(WHISPER_GUIDE);
   if (group && t.autoAway) g.push(AWAY_GUIDE);
   if (talk) {
@@ -111,7 +111,7 @@ export function onReceived({ msg, chat }: { msg: Msg; chat: Chat }) {
   sw.text = r.text || '…';   // 꼬리표만 온 답장이 빈 말풍선으로 남지 않게
   if (moves.length) { thOf(chat).away = applyMoves(away0, moves); void S.save('chats', chat, true); }
   dirty();
-  if (open) setTimeout(() => { redraw(msg, true); if (touched) redraw(touched, true); bump('composer'); }, 0);
+  if (open) setTimeout(() => bump('m:' + msg.id, ...(touched ? ['m:' + touched.id] : []), 'composer'), 0);   // 한 줄씩 보여 주는 중인 그림은 건드리지 않고 표시만 다시 그린다
 }
 
 // ── 내가 보낼 때: 귓속말 대상과, 그때 자리에 없던 사람을 메시지에 찍는다 ──

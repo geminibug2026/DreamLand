@@ -73,7 +73,7 @@ export async function clearChoice(chat: RChat) { chat.model = ''; chat.modelConn
 export async function makeDefault(chat: RChat): Promise<{ connId: string; model: string } | null> {
   const now = S.connFor(chat), real = realConn(now); if (!now || !real) return null;
   const prev = { connId: (S.settings.activeConn as string) || '', model: S.conn()?.model || '' };
-  if (real.model && real.model !== now.model) remember(real, real.model);   // 밀려나는 모델도 저장 목록에 남긴다
+  if (real.model && real.model !== now.model) real.saved = [...new Set([...(real.saved || []), real.model])].filter(m => m !== now.model).slice(-40);   // 밀려나는 모델은 저장 목록에 남긴다
   real.model = now.model; await S.save('conns', real, true);
   S.set({ activeConn: real.id }); await clearChoice(chat);
   return prev;

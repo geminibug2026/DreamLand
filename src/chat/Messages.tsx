@@ -1,5 +1,6 @@
 // 메시지 목록: 필요한 만큼만 그리고, 바뀐 메시지 하나만 다시 그린다
 import { GameCard } from '../game/ui';
+import { ThreadCard, ThreadMarks } from '../threads/ui';
 import { TurnCards } from '../game/More';
 import { memo, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
@@ -94,6 +95,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
   if (m.role === 'system' && m.call) return art(<><CallCard m={m} /><div className="msg-tools">{del}</div></>);
   if (m.role === 'system' && (m as { gm?: unknown }).gm) return art(<><GameCard m={m} /><div className="msg-tools">{del}</div></>);
   if (m.role === 'system' && m.dice) return art(<><DiceCard m={m} /><div className="msg-tools">{del}</div></>);
+  if (m.role === 'system' && (m as { thCard?: unknown }).thCard) return art(<><ThreadCard m={m} /><div className="msg-tools">{del}</div></>);   // 방 사이 카드 (src/threads)
 
   const streaming = cur.paint.has(m.id);
   const body = editing ? <EditBox m={m} close={() => redraw(m)} /> : <div className="msg-body" dangerouslySetInnerHTML={{ __html: cur.paint.get(m.id) ?? bodyHtml(m) }} />;
@@ -128,6 +130,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
       {streaming ? null : <TurnCards m={m} />}
       {body}
       {m.memo ? <p className="msg-memo" title={t('chat.msgMenu.memoHint')}><Icon name="note" size={13} />{m.memo}</p> : null}
+      {streaming ? null : <ThreadMarks m={m} />}
       <Reacts m={m} />
       <Illusts m={m} s={s} />
       <div className="msg-tools">

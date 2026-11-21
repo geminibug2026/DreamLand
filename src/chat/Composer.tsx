@@ -9,6 +9,7 @@ import type { CmdItem } from './types';
 import { enterSends } from '../features/usersettings';
 import { S, pickFiles, readDataURL, shrinkImage } from '../lib/core';
 import { X } from '../lib/hooks';
+import { ThreadsBar } from '../threads/ui';
 import { t } from '../i18n';
 import { QrBar } from '../stscript/QrBar';
 import { listen, sttSupported } from '../lib/stt';
@@ -139,6 +140,7 @@ export function Composer() {
     <GameBar />
     <Choices />
     <Attach />
+    <ThreadsBar />
     <div className="composer-box">
       <IconBtn ic="plus" title={t('chat.composer.more')} onClick={plus} />
       <IconBtn ic="image" title={t('chat.composer.attach')} onClick={async () => addImages(await pickFiles({ accept: 'image/*', multiple: true }))} />

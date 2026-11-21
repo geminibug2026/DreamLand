@@ -15,6 +15,7 @@ import { STATUS } from '../lib/f-schedule';
 import { startMenu } from './start';
 import { Memory } from '../lib/memory';
 import { Live } from '../lib/live';
+import { AboutLine } from '../threads/ui';
 import { t } from '../i18n';
 
 function Status() { useCh('status'); return <span className={'status' + (cur.status ? ' on' : '')}>{cur.status}</span>; }
@@ -81,7 +82,7 @@ export const Dossier = memo(function Dossier() {
     <div className="sheet-window"><i className="orbit" />
       <button className="arch lg" title={t('chat.top.portrait')} style={artStyle(ch)} onClick={() => { if (ch.avatar) openModal({ title: ch.name, wide: true, body: <img className="full-img" src={ch.avatar} /> }); }}>{!ch.avatar && <Emblem o={ch} />}</button>
       <span className="leaf-mark"><b>{String(turns)}</b><span>{t('chat.top.turn')}</span></span></div>
-    <div className="leaf-head"><b className="dream-card-name"><InkName name={titleOf(c)} /></b>{ch.tags.length ? <small>{ch.tags.slice(0, 3).map(t => '#' + t).join(' ')}</small> : null}</div>
+    <div className="leaf-head"><b className="dream-card-name"><InkName name={titleOf(c)} /></b>{ch.tags.length ? <small>{ch.tags.slice(0, 3).map(t => '#' + t).join(' ')}</small> : null}<AboutLine ch={ch} /></div>
     {rows.length ? <div className="dream-rows">{rows.map(([k, v], i) => <div key={i}><span>{k}</span><b>{v}</b></div>)}</div> : null}
     <div className="leaf-foot"><span><Moon size={13} date={born} />{`${born.getFullYear()}.${p2(born.getMonth() + 1)}.${p2(born.getDate())}`}</span><span>{t('chat.top.dayN', { count: daysOf(c) })}</span></div>
   </div>;

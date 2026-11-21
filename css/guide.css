@@ -13,7 +13,7 @@
 .gd-status.is-review { background: var(--fx-ink); color: var(--fx-paper); border-color: var(--fx-ink); }
 .gd-rule { margin: 0 16px; opacity: .8; }
 .gd-scroll { overflow-y: auto; overscroll-behavior: contain; padding: 16px 16px 18px; min-height: 0; -webkit-mask: linear-gradient(transparent, #000 12px); mask: linear-gradient(transparent, #000 12px); }
-.gd-items { display: grid; gap: 14px; align-content: start; }
+.gd-items { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; }
 
 /* 기록: 내 말은 왼쪽에 가는 세로줄, 조수의 답은 줄글 */
 .gd-u { display: grid; gap: 5px; padding-left: 11px; border-left: 1px solid var(--line-1); } .gd-u p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.6; }
@@ -33,17 +33,20 @@
 .gd-e { display: grid; gap: 6px; justify-items: start; padding: 10px 12px; border: 1px solid var(--line-1); border-radius: 2px; } .gd-e p { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 
 /* ── 변경 카드 ── 이중 괘선 틀. 상태의 강약은 잉크 농도로 */
-.gd-card { display: grid; gap: 0; padding: 4px; min-width: 0; } .gd-card.strong { border-color: var(--line-1); }
+.gd-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; padding: 4px; min-width: 0; } .gd-card.strong { border-color: var(--line-1); }
 .gd-card.is-pending { border-color: var(--line-1); } .gd-card.is-dropped, .gd-card.is-undone { opacity: .55; } .gd-card.is-dropped .gd-fs, .gd-card.is-undone .gd-fs { display: none; }
 .gd-ch { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 11px 12px 10px; border-bottom: 1px solid var(--line-2); }
 .gd-ch > .fx-lbl { grid-column: 1 / -1; } .gd-ch b { font: 500 15.5px/1.3 var(--fx-serif); letter-spacing: .02em; min-width: 0; overflow-wrap: anywhere; }
 .gd-st { height: 20px; font-size: 10.5px; padding: 0 8px; color: var(--dim); } .gd-st.st-pending { color: var(--fx-ink); border-color: var(--line-1); } .gd-st.st-applied { background: var(--fx-ink); color: var(--fx-paper); border-color: var(--fx-ink); } .gd-st.st-failed { border-style: dashed; color: var(--fx-ink); }
 .gd-pal { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; height: 18px; margin: 10px 12px 0; border: 1px solid var(--line-2); } .gd-pal i + i { border-left: 1px solid var(--line-4); }
-.gd-fs { padding: 0 12px; } .gd-f { display: grid; gap: 6px; padding: 10px 0; min-width: 0; }
+.gd-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; padding: 8px 12px 4px; } .gd-cols span { display: flex; align-items: center; gap: 8px; min-height: 26px; min-width: 0; border-bottom: 1px dotted var(--line-3); }
+.gd-cols i { width: 11px; height: 11px; border: 1px solid var(--line-2); flex: none; } .gd-cols b { flex: 1; min-width: 0; font: 500 11.5px var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .gd-cols code { font: 400 10.5px var(--fx-mono); color: var(--dim); }
+.gd-fs { padding: 0 12px; } .gd-fs:empty { display: none; } .gd-f { display: grid; gap: 6px; padding: 10px 0; min-width: 0; }
 .gd-fh { display: flex; align-items: baseline; gap: 10px; min-width: 0; } .gd-fh .fx-lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gd-cnt { display: inline-flex; gap: 6px; font-size: 10.5px; color: var(--dim); } .gd-cnt b { font-weight: 400; color: var(--fx-ink); } .gd-cnt s { text-decoration: none; }
 .gd-more { font: 500 11px var(--font); color: var(--dim); text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-2); min-height: 24px; } .gd-more:hover { color: var(--fx-ink); }
-.gd-diff { font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 190px; overflow: hidden; -webkit-mask: linear-gradient(#000 calc(100% - 26px), transparent); mask: linear-gradient(#000 calc(100% - 26px), transparent); }
+.gd-diff { font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.gd-diff.long { max-height: 190px; overflow: hidden; -webkit-mask: linear-gradient(#000 calc(100% - 26px), transparent); mask: linear-gradient(#000 calc(100% - 26px), transparent); }
 .gd-diff.open { max-height: 46vh; overflow: auto; -webkit-mask: none; mask: none; } .gd-diff.new { color: var(--fx-ink); }
 /* 더한 글은 포인트 색 밑줄, 지운 글은 옅은 취소선 — 색만으로 가르지 않는다 */
 .gd-diff ins, .gd-short ins { text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 1.5px; text-underline-offset: 3px; background: color-mix(in srgb, var(--accent) 9%, transparent); }

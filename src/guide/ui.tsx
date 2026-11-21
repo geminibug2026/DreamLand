@@ -51,8 +51,8 @@ function FieldView({ f }: { f: FieldChange }) {
   let body: ReactNode;
   if (isHex(f.after)) body = <span className="gd-sw"><i style={{ background: f.after }} /><code>{f.after}</code></span>;
   else if (short) body = <span className="gd-short">{f.before ? <><del>{f.before}</del><svg className="fx-art gd-arrow" viewBox="0 0 16 8" width="16" height="8" aria-hidden="true"><path d="M1 4h13M11 1l3 3-3 3" /></svg></> : null}<ins>{f.after || '∅'}</ins></span>;
-  else if (segs) body = <div className={'gd-diff' + (open ? ' open' : '')}>{(open ? segs : fold(segs)).map((s, i) => s.t === '=' ? <span key={i}>{s.s}</span> : s.t === '+' ? <ins key={i}>{s.s}</ins> : <del key={i}>{s.s}</del>)}</div>;
-  else body = <div className={'gd-diff new' + (open ? ' open' : '')}>{open || !long ? f.after : f.after.slice(0, 380) + ' ⋯'}</div>;
+  else if (segs) body = <div className={'gd-diff' + (open ? ' open' : long ? ' long' : '')}>{(open ? segs : fold(segs)).map((s, i) => s.t === '=' ? <span key={i}>{s.s}</span> : s.t === '+' ? <ins key={i}>{s.s}</ins> : <del key={i}>{s.s}</del>)}</div>;
+  else body = <div className={'gd-diff new' + (open ? ' open' : long ? ' long' : '')}>{open || !long ? f.after : f.after.slice(0, 380) + ' ⋯'}</div>;
   return <div className="gd-f">
     <div className="gd-fh"><span className="fx-lbl kr ink">{fieldName(f.name)}</span>
       {isHex(f.after) ? null : <span className="fx-num gd-cnt" title={t('guide.card.count')}>{n.add ? <b>+{n.add}</b> : null}{n.del ? <s>−{n.del}</s> : null}</span>}
@@ -74,7 +74,8 @@ function ChangeCard({ ch }: { ch: Change }) {
       <span className={'fx-pill gd-st st-' + ch.state}><i className="fx-dot" />{t(STATE_KEY[ch.state] || 'guide.card.pending')}</span>
     </header>
     {colors.length ? <div className="gd-pal" aria-hidden="true">{colors.map(f => <i key={f.name} style={{ background: f.after }} title={fieldName(f.name)} />)}</div> : null}
-    <div className="gd-fs fx-rows">{ch.fields.map((f, i) => <FieldView key={i} f={f} />)}</div>
+    {colors.length ? <div className="gd-cols">{colors.map(f => <span key={f.name}><i style={{ background: f.after }} /><b>{fieldName(f.name)}</b><code>{f.after}</code></span>)}</div> : null}
+    <div className="gd-fs fx-rows">{ch.fields.filter(f => !colors.includes(f)).map((f, i) => <FieldView key={i} f={f} />)}</div>
     {ch.err && ch.state === 'failed' ? <p className="gd-err">{ch.err === 'gone' ? t('guide.card.gone') : ch.err === 'locked' ? t('guide.card.locked') : ch.err}</p> : null}
     <footer className="gd-cf">
       {ch.state === 'pending' || ch.state === 'failed' ? <><button type="button" className="btn ghost" disabled={busy} onClick={run(() => discard(ch))}>{t('guide.card.discard')}</button>

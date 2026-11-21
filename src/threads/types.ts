@@ -13,6 +13,7 @@ export interface ThCfg {
   /** 끊고 들어오기 */ cut?: boolean;
   /** 캐릭터의 귓속말 (그룹 · 기본 켜짐) */ whisper?: boolean; /** 캐릭터끼리의 귓속말은 나에게도 가린다 ("엿듣기"로 연다) */ veilMe?: boolean;
   /** 자리에 없는 캐릭터 id */ away?: string[]; /** 답장의 [leave:] [enter:] 로 스스로 드나든다 */ autoAway?: boolean;
+  /** 톡에서 캐릭터가 먼저 "장면으로 가자"고 권할 수 있다 */ stage?: boolean;
   /** 장면 건네기로 열린 방: 돌아갈 톡 방과 장면 이름 */ origin?: { id: string; title: string; place?: string; at: number };
 }
 export type ThChat = Chat & { th?: ThCfg };

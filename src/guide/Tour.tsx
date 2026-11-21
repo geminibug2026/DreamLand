@@ -13,17 +13,17 @@ import type { TourStep } from './types';
 /** 열두 걸음과 맺음. 글은 guide.tour.<id>.t / .b */
 export const STEPS: TourStep[] = [
   { id: 'hello', page: 'home', art: 'mark' },
-  { id: 'conns', page: 'conns', sel: ['#rail [data-page="conns"]', '.pagebox h1'] },
+  { id: 'conns', page: 'conns', sel: ['#rail [data-page="conns"]', '.lib-head', '.phead'] },
   { id: 'chars', page: 'home', sel: ['.hm-acts', '.hm-grid-head', '#rail [data-page="home"]'] },
-  { id: 'personas', page: 'personas', sel: ['#rail [data-page="personas"]', '.pagebox h1'] },
+  { id: 'personas', page: 'personas', sel: ['#rail [data-page="personas"]', '.lib-head', '.phead'] },
   { id: 'modes', sel: ['.chat-top .mode-switch'], art: 'modes' },
   { id: 'panel', sel: ['.chat-top .ibtn[title]:last-child'], art: 'panel' },
-  { id: 'lore', page: 'lore', sel: ['#rail [data-page="lore"]', '.pagebox h1'] },
-  { id: 'presets', page: 'presets', sel: ['#rail [data-page="presets"]', '.pagebox h1'] },
+  { id: 'lore', page: 'lore', sel: ['#rail [data-page="lore"]', '.lib-head', '.phead'] },
+  { id: 'presets', page: 'presets', sel: ['#rail [data-page="presets"]', '.lib-head', '.phead'] },
   { id: 'studio', page: 'studio', sel: ['.pagebox > .tabs', '#rail [data-page="studio"]'] },
   { id: 'memory', page: 'studio', click: '.tabs [data-tab="장기기억"]', sel: ['.tabs [data-tab="장기기억"]', '.pagebox > .tabs'] },
-  { id: 'backup', page: 'settings', sel: ['[data-gd="data"]', '.pagebox h1'] },
-  { id: 'migrate', page: 'import', sel: ['#rail [data-page="import"]', '.pagebox h1'] },
+  { id: 'backup', page: 'settings', sel: ['[data-gd="data"]', '.lib-head', '.phead'] },
+  { id: 'migrate', page: 'import', sel: ['#rail [data-page="import"]', '.lib-head', '.phead'] },
   { id: 'end', page: 'home', art: 'end' },
 ];
 
@@ -104,7 +104,8 @@ function Tour({ close, from = 0 }: { close: (done: boolean) => void; from?: numb
     const c = card.current; if (!c || !box) return setPos(null);
     const W = innerWidth, H = innerHeight, cw = c.offsetWidth, ch = c.offsetHeight, g = 18, m = 12;
     const fitX = (x: number) => Math.max(m, Math.min(W - cw - m, x)), fitY = (y: number) => Math.max(m, Math.min(H - ch - m, y));
-    if (W <= 820) return setPos({ left: fitX((W - cw) / 2), top: box.y + box.h / 2 > H / 2 ? m + 8 : H - ch - m - 70 });
+    // 좁은 화면: 요소 위아래 가운데 빈 데가 넓은 쪽에 (아래 탭 줄 70px 은 비워 둔다)
+    if (W <= 820) return setPos({ left: fitX((W - cw) / 2), top: box.y > H - 70 - (box.y + box.h) ? Math.max(m, Math.min(box.y - ch - 14, H - ch - m - 70)) : Math.max(box.y + box.h + 14, m) > H - ch - m - 70 ? H - ch - m - 70 : box.y + box.h + 14 });
     const cx = box.x + box.w / 2 - cw / 2, cy = box.y + box.h / 2 - ch / 2;
     if (box.x + box.w + g + cw + m <= W) setPos({ left: box.x + box.w + g, top: fitY(Math.max(cy, box.y - 8)) });
     else if (box.y + box.h + g + ch + m <= H) setPos({ left: fitX(cx), top: box.y + box.h + g });
