@@ -44,7 +44,7 @@ function ConDetail({ con, W, onBack }: { con: ConDef; W: Tally; onBack: () => vo
   const [hot, setHot] = useState<string | null>(null), lit = con.stars.filter(s => tierNow(s.id) > 0).length, done = conDone(con.id);
   return <section className="at-detail fx-in" key={con.id} aria-label={conName(con)}>
     <button className="at-back fx-tap" onClick={onBack}><Icon name="left" size={15} />{t('atlas.back')}</button>
-    <div className="at-plate fx-night fx-frame fx-grain"><ConArt con={con} tiers={tierNow} nums hot={hot} onStar={setHot} starName={starName} /><span className="fx-lbl at-plno">{con.no}</span></div>
+    <div className="at-plate fx-night fx-frame fx-grain"><ConArt con={con} tiers={tierNow} size="plate" hot={hot} onStar={setHot} starName={starName} /><span className="fx-lbl at-plno">tab. {con.no}</span></div>
     <div className="at-dbody">
       <header><span className="fx-lbl">{t('atlas.conLabel')} {con.no}</span><h2 className="fx-title">{conName(con)}</h2><p className="fx-body dim">{conLine(con)}</p></header>
       <div className="fx-kv"><span className="fx-lbl kr">{done ? t('atlas.conDone') : t('atlas.conProgress')}</span><i /><b>{p2(lit)}/{p2(con.stars.length)}</b></div>
@@ -60,7 +60,7 @@ export function PersonView({ ch, onBack }: { ch: Char; onBack?: () => void }) {
   const T = useMemo(() => charTally(ch.id), [ch.id, A.rec]), lit = mileLit(ch.id), n = lit.filter(Boolean).length, [hot, setHot] = useState<number | null>(null);
   return <section className="at-detail fx-in" aria-label={t('atlas.person.title', { name: ch.name })}>
     {onBack && <button className="at-back fx-tap" onClick={onBack}><Icon name="left" size={15} />{t('atlas.back')}</button>}
-    <div className="at-plate fx-night fx-frame fx-grain"><PersonArt name={ch.name} lit={lit} nums hot={hot} /><span className="fx-lbl at-plno">{ch.name.slice(0, 14)}</span></div>
+    <div className="at-plate fx-night fx-frame fx-grain"><PersonArt name={ch.name} lit={lit} size="plate" hot={hot} onStar={setHot} labels={MILES.map(mileName)} /><span className="fx-lbl at-plno">{ch.name.slice(0, 14)}</span></div>
     <div className="at-dbody">
       <header><span className="fx-lbl kr">{t('atlas.person.label')}</span><h2 className="fx-title">{t('atlas.person.title', { name: ch.name })}</h2><p className="fx-body dim">{t('atlas.person.line')}</p></header>
       <div className="fx-kv"><span className="fx-lbl kr">{t('atlas.conProgress')}</span><i /><b>{p2(n)}/{p2(MILES.length)}</b></div>
@@ -80,7 +80,7 @@ function People({ pick, setPick }: { pick: string | null; setPick: (id: string |
   if (!list.length) return <div className="fx-empty"><EmptyArt /><p>{t('atlas.person.empty')}</p></div>;
   return <div className={'at-split' + (cur ? ' has' : '')}>
     <ul className="at-people fx-rows">{list.map(({ c, n }) => <li key={c.id}><button className={'at-pbtn fx-tap' + (c.id === cur?.id ? ' on' : '')} aria-pressed={c.id === cur?.id} onClick={() => setPick(c.id)}>
-      <Avatar o={c} cls="sm" /><span className="at-pname">{c.name}</span><span className="at-thumb fx-night"><PersonArt name={c.name} lit={mileLit(c.id)} draw={false} k={1.7} /></span><span className="fx-num">{p2(n)}/{p2(MILES.length)}</span></button></li>)}</ul>
+      <Avatar o={c} cls="sm" /><span className="at-pname">{c.name}</span><span className="at-thumb fx-night"><PersonArt name={c.name} lit={mileLit(c.id)} draw={false} /></span><span className="fx-num">{p2(n)}/{p2(MILES.length)}</span></button></li>)}</ul>
     {cur ? <PersonView key={cur.id} ch={cur} onBack={() => setPick(null)} /> : <div className="fx-empty at-pick-hint"><EmptyArt /><p>{t('atlas.person.pick')}</p></div>}
   </div>;
 }
@@ -104,11 +104,11 @@ export function AtlasPage({ arg }: { arg?: unknown }) {
       <div className="tabs" role="tablist">{(['sky', 'people'] as const).map(k => <button key={k} role="tab" aria-selected={tab === k} className={'tab' + (tab === k ? ' on' : '')} onClick={() => setTab(k)}>{k === 'sky' ? t('atlas.tab.sky') : t('atlas.tab.people')}</button>)}</div></header>
     <p className="hint at-intro">{t('atlas.intro')}</p>
     {tab === 'people' ? <People pick={who} setPick={setWho} /> : <>
-      <div className="at-sky fx-night fx-frame fx-grain"><Sky tiers={tierNow} sel={shown?.id || null} onPick={pick} name={conName} starName={starName} /></div>
+      <div className="at-sky fx-night fx-frame fx-grain"><Sky tiers={tierNow} sel={shown?.id || null} onPick={pick} name={conName} starName={starName} title={t('atlas.title')} /></div>
       {/* 좁은 화면에서는 성도 대신 별자리 카드 목록 */}
       <ul className="at-cards">{CONS.map((c, i) => { const n = c.stars.filter(s => tierNow(s.id) > 0).length; return <li key={c.id} className="fx-in" style={{ ['--d' as string]: `${i * .03}s` }}><button className={'at-ccard fx-tap' + (shown?.id === c.id ? ' on' : '')} aria-pressed={shown?.id === c.id} onClick={() => pick(c.id)}>
-        <span className="at-thumb fx-night"><ConArt con={c} tiers={tierNow} draw={false} k={1.6} /></span>
-        <span className="at-ctx"><span className="fx-lbl">{c.no}</span><b>{conName(c)}</b><Meter p={n / c.stars.length} label={conName(c)} /></span><span className="fx-num">{p2(n)}/{p2(c.stars.length)}</span></button></li>; })}</ul>
+        <span className="at-cplate fx-night"><ConArt con={c} tiers={tierNow} size="mid" draw={false} /></span>
+        <span className="at-ctx"><span className="fx-lbl">{c.no} · {p2(n)}/{p2(c.stars.length)}</span><b>{conName(c)}</b><small>{conLine(c)}</small><Meter p={n / c.stars.length} label={conName(c)} /></span></button></li>; })}</ul>
       <div className="at-lower" ref={detailRef}>
         {shown ? <ConDetail con={shown} W={W} onBack={() => setCon(null)} /> : <div className="fx-empty at-pick-hint"><EmptyArt /><p>{t('atlas.pickCon')}</p></div>}
         <aside className="at-side">
@@ -140,7 +140,7 @@ export function PersonPanel({ chat }: { chat: Chat }) {
   return <div className="at-panel">{chars.map(ch => {
     const lit = mileLit(ch.id), n = lit.filter(Boolean).length, T = charTally(ch.id), next = MILES.find((_, i) => !lit[i]);
     return <button key={ch.id} className="at-pcard fx-tap" onClick={() => go('atlas', { charId: ch.id })} title={t('atlas.open')}>
-      <span className="at-pplate fx-night"><PersonArt name={ch.name} lit={lit} draw={false} k={1.3} /></span>
+      <span className="at-pplate fx-night"><PersonArt name={ch.name} lit={lit} size="mid" draw={false} k={1.5} /></span>
       <span className="at-ptx"><b>{chars.length > 1 ? ch.name : t('atlas.person.title', { name: ch.name })}</b>
         <span className="fx-kv"><span className="fx-lbl kr">{t('atlas.sum.lit')}</span><i /><b>{p2(n)}/{p2(MILES.length)}</b></span>
         <Meter p={n / MILES.length} label={ch.name} />
@@ -153,8 +153,10 @@ export function AtlasMini(): JSX.Element {
   useEvents('atlas:changed');
   const lit = litCount(), total = STARS.length, rec = recent(3);
   return <div className="at-mini fx-night fx-frame fx-grain">
-    <button className="at-mhead fx-tap" onClick={() => go('atlas')} aria-label={t('atlas.open')}><span className="fx-lbl kr">{t('atlas.title')}</span><span className="fx-num">{p2(lit)}/{p2(total)}</span></button>
-    <Meter p={lit / total} label={t('atlas.sum.lit')} />
+    <button className="at-mhead fx-tap" onClick={() => go('atlas')} aria-label={t('atlas.open')}>
+      <span className="at-mart"><ConArt con={conOf(rec[0]?.s.con || '') || CONS[0]} tiers={tierNow} size="mid" draw={false} k={1.5} /></span>
+      <span className="at-mtx"><span className="fx-lbl kr">{t('atlas.title')}</span><span className="at-mbig"><b className="fx-num">{p2(lit)}</b><span className="fx-num dim">/ {p2(total)}</span></span><Meter p={lit / total} label={t('atlas.sum.lit')} /></span>
+    </button>
     {rec.length ? <ul className="at-recent fx-rows dash">{rec.map(({ s, at, tier }) => <li key={s.id}><button className="fx-tap" onClick={() => go('atlas', { con: s.con })}><One grade={gradeOf(tier, s.at.length)} /><span>{starName(s)}</span><span className="fx-num dim">{day(at)}</span></button></li>)}</ul>
       : <div className="at-mempty"><EmptyArt /><p>{t('atlas.sum.none')}</p></div>}
     <div className="fx-kv at-mfoot"><span>{t('atlas.sum.cons')}</span><i /><b>{p2(doneCount())}/{p2(CONS.length)}</b></div>
@@ -181,12 +183,12 @@ function CardView({ lit, onClose }: { lit: Lit; onClose: () => void }) {
   let art: ReactNode, label: string, title: string, line: string, to: unknown;
   if (lit.kind === 'star') {
     const s = starOf(lit.id)!, c = conOf(s.con)!;
-    art = <ConArt con={c} tiers={tierNow} hot={s.id} k={1.3} />; label = lit.done ? t('atlas.card.done', { con: conName(c) }) : lit.tier > 1 ? t('atlas.card.brighter', { tier: ROMAN[lit.tier] }) : t('atlas.card.lit');
+    art = <ConArt con={c} tiers={tierNow} size="mid" hot={s.id} k={1.5} />; label = lit.done ? t('atlas.card.done', { con: conName(c) }) : lit.tier > 1 ? t('atlas.card.brighter', { tier: ROMAN[lit.tier] }) : t('atlas.card.lit');
     title = starName(s); line = starCond(s, lit.tier, true); to = { con: c.id };
   } else if (lit.kind === 'mile') {
     const m = MILES.find(x => x.id === lit.id)!, ch = S.get('chars', lit.charId || ''), name = ch?.name || '';
-    art = <PersonArt name={name} lit={mileLit(lit.charId || '')} hot={MILES.indexOf(m)} k={1.3} />; label = t('atlas.card.person', { name }); title = mileName(m); line = mileCond(m); to = { charId: lit.charId };
-  } else { art = <ConArt con={CONS[0]} tiers={tierNow} k={1.3} />; label = t('atlas.title'); title = lit.done ? t('atlas.card.more', { n: lit.n || 0 }) : t('atlas.card.many', { n: lit.n || 0 }); line = lit.done ? t('atlas.card.moreHint') : t('atlas.card.manyHint'); to = undefined; }
+    art = <PersonArt name={name} lit={mileLit(lit.charId || '')} size="mid" hot={MILES.indexOf(m)} k={1.5} />; label = t('atlas.card.person', { name }); title = mileName(m); line = mileCond(m); to = { charId: lit.charId };
+  } else { art = <ConArt con={CONS[0]} tiers={tierNow} size="mid" k={1.5} />; label = t('atlas.title'); title = lit.done ? t('atlas.card.more', { n: lit.n || 0 }) : t('atlas.card.many', { n: lit.n || 0 }); line = lit.done ? t('atlas.card.moreHint') : t('atlas.card.manyHint'); to = undefined; }
   return <div className="at-card fx-night fx-frame fx-grain">
     <button className="at-cmain" onClick={() => { onClose(); go('atlas', to); }}><span className="at-cart">{art}</span><span className="at-cbody"><span className="fx-lbl kr">{label}</span><b>{title}</b><small>{line}</small></span></button>
     <button className="at-cx" aria-label={t('common.close')} onClick={onClose}><Icon name="x" size={13} /></button>

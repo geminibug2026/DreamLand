@@ -1,55 +1,55 @@
-// 밤의 게시판: 작은 부품 — 선 아이콘 · 압정과 빈 게시판 그림 · 시간 표시 · 투표 계기 · 홈 화면용 작은 게시판 · 대화 서랍의 스위치
-import { useMemo, type ReactNode } from 'react';
+// 밤의 게시판: 함께 쓰는 부품 — 아이콘 · 화면 이동(view) · 글 한 줄(Row) · 그림 격자 · 투표 막대 · 홈 위젯(FeedMini) · 대화 서랍 패널
+// 모양은 흔한 타임라인 앱의 관습을 따른다: 둥근 얼굴, 굵은 이름 · @손잡이 · 시간 한 줄, 본문, 아래에 답글 · 재게시 · 마음.
+import type { MouseEvent, ReactNode } from 'react';
 import { Avatar, useEvents } from '../kit';
-import { S } from '../lib/core';
+import { S, emit } from '../lib/core';
 import { I } from '../lib/icons';
-import { go } from '../lib/router';
-import { Check } from '../addons/parts';
+import { go, route } from '../lib/router';
+import { Check, openModal } from '../addons/parts';
+import { confirmBox, menu, toast } from '../ui';
 import type { Chat } from '../lib/types';
 import { fmtDate, t } from '../i18n';
 import { ME, type ChatFeed, type Note, type Poll } from './types';
-import { rng, seedOf, visible } from './logic';
-import { F, account, cfg, vote } from './store';
+import { visible } from './logic';
+import { F, account, answerNow, canDraw, cfg, draw, echo, hide, imgOf, like, remove, run, talkAbout, vote } from './store';
 import { chatFeed } from './prompt';
 
 // 24 격자 한 줄 선 아이콘. fdboard 는 옆 내비에도 쓰인다
 Object.assign(I, {
-  fdboard: I.fdboard || 'M5 6h14v13H5zM12 3v5M9 12h6M9 15h4',
-  fdstar: 'M12 4l1.7 6.3L20 12l-6.3 1.7L12 20l-1.7-6.3L4 12l6.3-1.7z',
-  fdecho: 'M8 8h11v11H8zM5 16V5h11',
-  fdreply: 'M5 5v6a4 4 0 0 0 4 4h10M15 11l4 4-4 4',
-  fdpoll: 'M5 7h9M5 12h14M5 17h6',
-  fdbell: 'M6 17v-6a6 6 0 0 1 12 0v6l1.5 2h-15zM10 21h4',
-  fdbrush: 'M4 20c3 0 4-1 4-3a2 2 0 0 0-4 0c0 1-.5 2-1 3zM9 15L19 4l1.5 1.5-10 11',
-  fdtalk: 'M4 5h16v11H10l-5 4v-4H4zM8 9h8M8 12h5',
-  fdundo: 'M9 7L4 12l5 5M4 12h11a5 5 0 0 1 0 10h-3',
+  fdboard: 'M5 4h14v13H9l-4 3z M9 9h6M9 12.500h4',
+  fdreply: 'M4 5h16v11h-7l-5 4v-4H4z',
+  fdecho: 'M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3',
+  fdheart: 'M12 20.500s-8-4.800-8-11a4.500 4.500 0 0 1 8-2.800 4.500 4.500 0 0 1 8 2.800c0 6.200-8 11-8 11z',
+  fdpoll: 'M6 20V10M12 20V4M18 20v-7',
+  fdbell: 'M6 17v-6a6 6 0 0 1 12 0v6l1.500 2h-15zM10 21h4',
+  fdbrush: 'M4 20c3 0 4-1 4-3a2 2 0 0 0-4 0c0 1-.500 2-1 3zM9 15L19 4l1.500 1.500-10 11',
+  fdtalk: 'M21 3L10 14M21 3l-7 18-4-7-7-4z',
+  fdback: 'M20 12H5M11 5l-7 7 7 7',
+  fdpen: 'M4 20l1-4L16.500 4.500a2.100 2.100 0 0 1 3 3L8 19zM14 7l3 3',
+  fdfollow: 'M15 20a6 6 0 0 0-12 0M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M16 11h6',
+  fdspark: 'M12 3l1.900 6.100L20 11l-6.100 1.900L12 19l-1.900-6.100L4 11l6.100-1.900z',
 });
-/** 가는 선 아이콘 (공용 Icon 보다 선이 가늘다 — 게시판의 숫자 옆에 놓는 것) */
-export const Ln = ({ name, size = 16, fill = false }: { name: string; size?: number; fill?: boolean }) =>
-  <svg viewBox="0 0 24 24" width={size} height={size} className="fd-ln" aria-hidden="true"><path d={I[name] || I.sparkle} fill={fill ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={1.25} strokeLinecap="round" strokeLinejoin="round" /></svg>;
+export const Ic = ({ name, size = 19, fill = false }: { name: string; size?: number; fill?: boolean }) =>
+  <svg viewBox="0 0 24 24" width={size} height={size} className="fd-ic" aria-hidden="true"><path d={I[name] || I.sparkle} fill={fill ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" /></svg>;
 
-/** 압정 하나. 글마다 씨앗(글 id)으로 살짝 다르게 기운다 */
-export function Pin({ seed, size = 18 }: { seed: string; size?: number }) {
-  const a = useMemo(() => Math.round((rng(seedOf(seed))() - 0.5) * 34), [seed]);
-  return <svg viewBox="0 0 24 24" width={size} height={size} className="fx-art fd-pin" aria-hidden="true" style={{ transform: `rotate(${a}deg)` }}>
-    <path d="M12 13.5V21" className="t" /><path d="M8.2 4h7.6l-1 5.2 2.7 2.6v1.7h-11v-1.7l2.7-2.6z" /><path d="M9.6 9.2h4.8" className="h" />
-  </svg>;
+// ── 화면 이동 ── 게시판 안의 화면(타임라인 · 게시물 · 프로필 · 알림)은 쌓아 두고 ← 로 돌아간다. 다른 화면에서 부르면 게시판으로 먼저 간다
+export type Screen = { k: 'note'; id: string } | { k: 'profile'; id: string } | { k: 'notices' };
+export const view = { tab: 'all' as 'all' | 'following', shown: 30, stack: [] as Screen[], ptab: 'notes' as 'notes' | 'replies' | 'media', top: [] as number[], compose: false };
+/** 화면이 굴러가는 상자 (#page) */
+export const scroller = () => document.getElementById('page');
+export function show(s: Screen) {
+  if (route.page !== 'feed') { view.stack = [s]; go('feed'); return; }
+  const last = view.stack[view.stack.length - 1]; if (last && JSON.stringify(last) === JSON.stringify(s)) return;
+  view.top[view.stack.length] = scroller()?.scrollTop || 0; view.stack.push(s); if (s.k === 'profile') view.ptab = 'notes';
+  emit('feed:view'); requestAnimationFrame(() => { const el = scroller(); if (el) el.scrollTop = 0; });
 }
-/** 빈 게시판: 이중 괘선 판, 쪽지가 붙을 자리의 점선, 그리고 압정 하나에 매달린 빈 쪽지 */
-export function EmptyBoard({ seed = 'board' }: { seed?: string }) {
-  const ghosts = useMemo(() => { const r = rng(seedOf(seed)); return [[14, 16], [78, 14], [22, 56], [82, 52]].map(([x, y]) => ({ x: x + r() * 6, y: y + r() * 5, w: 24 + r() * 10, h: 16 + r() * 8, a: (r() - 0.5) * 8 })); }, [seed]);
-  return <svg viewBox="0 0 140 96" className="fx-art fd-empty-art" role="img" aria-label="">
-    <rect x="2" y="2" width="136" height="92" rx="1.5" className="t" /><rect x="5.5" y="5.5" width="129" height="85" rx="1" className="h" />
-    {ghosts.map((g, i) => <rect key={i} x={g.x} y={g.y} width={g.w} height={g.h} className="d" transform={`rotate(${g.a} ${g.x + g.w / 2} ${g.y + g.h / 2})`} />)}
-    <g transform="rotate(-4 70 40)"><path d="M54 30h32v26l-6 6H54z" className="p fx-draw" pathLength={1} /><path d="M86 56h-6v6" className="t" /><path d="M59 40h20M59 46h14" className="h" /></g>
-    <g transform="translate(64 22)"><path d="M6 8v5" className="t" /><path d="M3 0h6l-.8 4 2.2 2v1.4H1.600V6l2.2-2z" className="a" /><circle cx="6" cy="2.4" r=".9" className="af" /></g>
-  </svg>;
-}
+export function back() { view.stack.pop(); const y = view.top[view.stack.length] || 0; emit('feed:view'); requestAnimationFrame(() => { const el = scroller(); if (el) el.scrollTop = y; }); }
 
-/** 시간 표시: 방금 · N분 · N시간 · N일 · 날짜 (모노 작은 글자로 쓴다) */
+// ── 표시 도우미 ──
+/** 시간 표시: 방금 · N분 · N시간 · N일 · 날짜 */
 export function agoLabel(ts: number, now = Date.now()): string {
   const m = Math.max(0, Math.floor((now - ts) / 60e3));
-  return m < 1 ? t('feed.ago.now') : m < 60 ? t('feed.ago.m', { n: m }) : m < 1440 ? t('feed.ago.h', { n: Math.floor(m / 60) }) : m < 7 * 1440 ? t('feed.ago.d', { n: Math.floor(m / 1440) }) : fmtDate(ts, { month: 'numeric', day: 'numeric' });
+  return m < 1 ? t('feed.ago.now') : m < 60 ? t('feed.ago.m', { n: m }) : m < 1440 ? t('feed.ago.h', { n: Math.floor(m / 60) }) : m < 7 * 1440 ? t('feed.ago.d', { n: Math.floor(m / 1440) }) : fmtDate(ts, { month: 'short', day: 'numeric' });
 }
 /** 계정의 얼굴 · 이름 · 손잡이 (지워진 캐릭터는 이름 없이) */
 export function faceOf(id: string): { o: { avatar?: string; name?: string; tags?: string[] } | null; name: string; handle: string; gone: boolean } {
@@ -57,33 +57,106 @@ export function faceOf(id: string): { o: { avatar?: string; name?: string; tags?
   if (id === ME) { const p = S.persona(null); return { o: p || null, name: p?.name || t('feed.me'), handle: a?.handle || 'me', gone: false }; }
   const c = S.get('chars', id); return { o: c || null, name: c?.name || t('feed.gone'), handle: a?.handle || '—', gone: !c };
 }
-export const pad2 = (n: number) => String(Math.min(999, n)).padStart(2, '0');
+/** 둥근 얼굴 (누르면 프로필) */
+export function Face({ id, size = 40, link = true }: { id: string; size?: number; link?: boolean }) {
+  const f = faceOf(id), av = <Avatar o={f.o} cls="fd-av" />;
+  return link ? <button type="button" className="fd-face" style={{ ['--s' as string]: size + 'px' }} aria-label={f.name} onClick={e => { e.stopPropagation(); show({ k: 'profile', id }); }}>{av}</button> : <span className="fd-face" style={{ ['--s' as string]: size + 'px' }}>{av}</span>;
+}
+export const count = (n: number) => n > 0 ? String(n) : '';
+/** 줄 전체를 누르면 열리게 하되, 그 안의 단추 · 입력 · 글 고르기는 막지 않는다 */
+const rowClick = (fn: () => void) => (e: MouseEvent) => { if ((e.target as HTMLElement).closest('button, a, input, textarea, label') || String(getSelection() || '')) return; fn(); };
 
-/** 투표: 칸마다 가는 계기. 내가 고르면 그 칸이 강조되고, 고르기 전에는 수치를 흐리게 둔다 */
-export function PollView({ note, poll, readOnly }: { note: Note; poll: Poll; readOnly?: boolean }) {
-  const total = Object.keys(poll.votes).length, mine = poll.votes[ME];
+// ── 그림 ──
+export const picsOf = (n: Note) => [n.image, ...(n.images || [])].map(id => imgOf(id)).filter(Boolean);
+const zoom = (src: string, alt: string) => openModal({ title: '', wide: true }, () => <img className="fd-zoom" src={src} alt={alt} />);
+/** 그림: 한 장은 그대로, 여러 장은 격자 (둘은 반반, 셋은 왼쪽 크게, 넷은 2×2) */
+export function Media({ n }: { n: Note }) {
+  const pics = picsOf(n);
+  if (pics.length) return <div className={'fd-media n' + Math.min(4, pics.length)}>{pics.slice(0, 4).map((src, i) => <button type="button" key={i} aria-label={t('feed.picture')} onClick={e => { e.stopPropagation(); zoom(src, n.imagePrompt || ''); }}><img src={src} alt={n.imagePrompt || ''} loading="lazy" /></button>)}</div>;
+  // 그림 설명만 있고 삽화가 연결되지 않았으면 아무것도 보이지 않는다
+  if (!n.imagePrompt || !canDraw()) return null;
+  const busy = run.drawing.has(n.id);
+  return <button type="button" className="fd-chip" disabled={busy} title={n.imagePrompt} onClick={e => { e.stopPropagation(); void draw(n.id); }}><Ic name="fdbrush" size={16} />{busy ? t('feed.draw.busy') : t('feed.draw.go')}<small>{t('feed.cost.image')}</small></button>;
+}
+
+// ── 투표 ── 고르기 전에는 알약 단추, 고른 뒤에는 퍼센트가 차는 둥근 막대
+export function PollView({ note, poll }: { note: Note; poll: Poll }) {
+  const total = Object.keys(poll.votes).length, mine = poll.votes[ME], voted = mine != null || note.by === ME;
   return <div className="fd-poll" role="group" aria-label={poll.q || t('feed.poll.label')}>
     {poll.q ? <p className="fd-poll-q">{poll.q}</p> : null}
-    {poll.opts.map((o, i) => { const n = Object.values(poll.votes).filter(v => v === i).length, p = total ? n / total : 0, on = mine === i;
-      return <button key={i} type="button" className={'fd-opt' + (on ? ' on' : '')} disabled={readOnly} aria-pressed={on} onClick={() => vote(note.id, i)}>
-        <span className="fd-opt-t">{on ? <i className="fx-dot" aria-hidden="true" /> : null}{o}</span><span className="fx-num fd-opt-n">{pad2(n)}</span>
-        <span className={'fx-meter' + (on ? ' acc' : n ? '' : ' low')} style={{ ['--p' as string]: p }} />
-      </button>; })}
-    <span className="fx-lbl kr">{t('feed.poll.total', { n: total })}</span>
+    {poll.opts.map((o, i) => { const n = Object.values(poll.votes).filter(v => v === i).length, pct = total ? Math.round(n / total * 100) : 0, on = mine === i;
+      return voted ? <button type="button" key={i} className={'fd-bar' + (on ? ' on' : '')} aria-pressed={on} disabled={note.by === ME} onClick={e => { e.stopPropagation(); vote(note.id, i); }}><i style={{ width: pct + '%' }} /><span className="fd-bar-t">{o}{on ? <Ic name="check" size={15} /> : null}</span><b>{pct}%</b></button>
+        : <button type="button" key={i} className="fd-pick" onClick={e => { e.stopPropagation(); vote(note.id, i); }}>{o}</button>; })}
+    <span className="fd-meta">{t('feed.poll.total', { n: total })}</span>
   </div>;
 }
 
-/** 홈 화면에 놓는 작은 게시판: 최근 글 셋 (폭 280~360px). 누르면 게시판으로 */
+// ── 행동 줄 ──
+export function noteMenu(e: MouseEvent, n: Note) {
+  e.stopPropagation();
+  menu(e.currentTarget, [
+    n.by !== ME && !faceOf(n.by).gone && { label: t('feed.act.talk'), ic: 'fdtalk', hint: t('feed.act.talkHint'), onclick: () => void talkAbout(n.id) },
+    n.by === ME && { label: t('feed.act.answer'), ic: 'fdspark', hint: t('feed.act.answerHint'), onclick: () => void answerNow(n.id) },
+    n.imagePrompt && !n.image && canDraw() && { label: t('feed.draw.go'), ic: 'fdbrush', hint: t('feed.cost.image'), onclick: () => void draw(n.id) },
+    { label: t('feed.act.profile'), ic: 'user', onclick: () => show({ k: 'profile', id: n.by }) },
+    { label: t('feed.act.copy'), ic: 'copy', onclick: () => { void navigator.clipboard?.writeText(n.text).then(() => toast(t('feed.copied'), 'ok')).catch(() => { }); } },
+    n.hidden ? { label: t('feed.act.unhide'), ic: 'eye', onclick: () => hide(n.id, false) } : { label: t('feed.act.hide'), ic: 'eyeoff', hint: t('feed.act.hideHint'), onclick: () => hide(n.id) },
+    '-', { label: t('common.delete'), ic: 'trash', danger: true, onclick: async () => { if (await confirmBox(t('feed.act.deleteAsk'), t('common.delete'), true)) { if (view.stack.some(s => s.k === 'note' && s.id === n.id)) back(); void remove(n.id); } } },
+  ]);
+}
+/** 답글 · 재게시 · 마음 · (대화 시작 / 지금 답 받기). 누른 것은 색이 찬다 */
+export function Acts({ n, replies, onReply }: { n: Note; replies: number; onReply: () => void }) {
+  const liked = n.likes.includes(ME), echoed = n.echoes.includes(ME), mine = n.by === ME, waiting = run.answering === n.id;
+  const stop = (fn: () => void) => (e: MouseEvent) => { e.stopPropagation(); fn(); };
+  return <div className="fd-acts">
+    <button type="button" className="fd-act reply" aria-label={t('feed.act.reply')} title={t('feed.act.reply')} onClick={stop(onReply)}><span className="fd-act-i"><Ic name="fdreply" /></span><span className="fd-act-n">{count(replies)}</span></button>
+    <button type="button" className={'fd-act echo' + (echoed ? ' on' : '')} aria-pressed={echoed} aria-label={t('feed.act.echo')} title={t('feed.act.echo')} onClick={stop(() => echo(n.id))}><span className="fd-act-i"><Ic name="fdecho" /></span><span className="fd-act-n">{count(n.echoes.length)}</span></button>
+    <button type="button" className={'fd-act heart' + (liked ? ' on' : '')} aria-pressed={liked} aria-label={t('feed.act.like')} title={t('feed.act.like')} onClick={stop(() => like(n.id))}><span className="fd-act-i"><Ic name="fdheart" fill={liked} /></span><span className="fd-act-n">{count(n.likes.length)}</span></button>
+    {mine ? <button type="button" className={'fd-act share' + (waiting ? ' busy' : '')} disabled={run.busy || !!run.answering} aria-label={t('feed.act.answer')} title={t('feed.act.answer') + ' · ' + t('feed.cost.one')} onClick={stop(() => void answerNow(n.id))}><span className="fd-act-i"><Ic name="fdspark" /></span></button>
+      : faceOf(n.by).gone ? <span className="fd-act" /> : <button type="button" className="fd-act share" aria-label={t('feed.act.talk')} title={t('feed.act.talk')} onClick={stop(() => void talkAbout(n.id))}><span className="fd-act-i"><Ic name="fdtalk" /></span></button>}
+  </div>;
+}
+
+/** 이름 · @손잡이 · 시간 한 줄 (넘치면 이름부터 줄인다) */
+export function Who({ n, menuBtn = true }: { n: Note; menuBtn?: boolean }) {
+  const f = faceOf(n.by);
+  return <div className="fd-who">
+    <button type="button" className="fd-name" onClick={e => { e.stopPropagation(); show({ k: 'profile', id: n.by }); }}>{f.name}</button><span className="fd-handle">@{f.handle}</span><span className="fd-sep" aria-hidden="true">·</span>
+    <time className="fd-time" dateTime={new Date(n.ts).toISOString()} title={fmtDate(n.ts, { dateStyle: 'medium', timeStyle: 'short' })}>{agoLabel(n.ts)}</time>
+    {menuBtn ? <button type="button" className="fd-more" aria-label={t('feed.act.more')} onClick={e => noteMenu(e, n)}><Ic name="more" size={18} /></button> : null}
+  </div>;
+}
+/** 글 위의 작은 줄: 누가 재게시했는지 · 대화 중에 올라온 글인지 · 숨긴 글인지 */
+function Context({ n }: { n: Note }) {
+  const names = n.echoes.map(id => faceOf(id).name), bits: ReactNode[] = [];
+  if (names.length) bits.push(<span key="e" className="fd-ctx"><Ic name="fdecho" size={15} />{t('feed.echoedBy', { names: names[0] + (names.length > 1 ? t('feed.andMore', { n: names.length - 1 }) : '') })}</span>);
+  if (n.src) bits.push(<span key="s" className="fd-ctx"><Ic name="chat" size={15} />{t('feed.tag.fromChat')}</span>);
+  if (n.hidden) bits.push(<span key="h" className="fd-ctx"><Ic name="eyeoff" size={15} />{t('feed.tag.hidden')}</span>);
+  return bits.length ? <>{bits}</> : null;
+}
+/** 글 한 줄. line: 아래 답글로 이어지는 세로선 · lite: 행동 줄 없이(위젯) · replyTo: "○○ 님에게 보내는 답글" 줄 */
+export function Row({ n, line, lite, replyTo, onReply, fresh }: { n: Note; line?: boolean; lite?: boolean; replyTo?: string; onReply?: () => void; fresh?: boolean }) {
+  const open = () => show({ k: 'note', id: n.root || n.id }), replies = F.notes.filter(x => x.root === n.id && visible(x)).length;
+  return <article className={'fd-row' + (n.hidden ? ' hid' : '') + (fresh ? ' fresh' : '') + (lite ? ' lite' : '')} id={'fd-' + n.id} onClick={rowClick(open)}>
+    <Context n={n} />
+    <div className="fd-left"><Face id={n.by} size={lite ? 32 : 40} />{line ? <i className="fd-line" aria-hidden="true" /> : null}</div>
+    <div className="fd-body">
+      <Who n={n} menuBtn={!lite} />
+      {replyTo ? <p className="fd-meta fd-replyto">{t('feed.replyingTo', { name: '@' + faceOf(replyTo).handle })}</p> : null}
+      {n.text ? <p className="fd-text">{n.text}</p> : null}
+      {lite ? (picsOf(n).length ? <p className="fd-meta"><Ic name="image" size={15} /> {t('feed.picture')}</p> : null) : <><Media n={n} />{n.poll ? <PollView note={n} poll={n.poll} /> : null}</>}
+      {lite ? null : <Acts n={n} replies={replies} onReply={onReply || open} />}
+    </div>
+  </article>;
+}
+
+/** 홈 화면에 놓는 작은 게시판: 최근 글 셋 (폭 280~360px). 누르면 그 게시물로 */
 export function FeedMini(): ReactNode {
   useEvents('feed:changed', 'chars', 'personas');
   const notes = F.notes.filter(n => !n.root && visible(n)).slice(-3).reverse();
   return <section className="fd-mini" aria-label={t('feed.title')}>
-    <button type="button" className="fd-mini-head fx-head" onClick={() => go('feed')}><span className="fx-lbl kr ink">{t('feed.title')}</span></button>
-    {notes.length ? <div className="fx-rows fd-mini-rows">{notes.map((n, i) => { const f = faceOf(n.by);
-      return <button type="button" key={n.id} className="fd-mini-row fx-in" style={{ ['--d' as string]: `${i * 60}ms` }} onClick={() => go('feed', n.id)}>
-        <Avatar o={f.o} cls="xs" /><span className="fd-mini-txt"><b className="fx-serif">{f.name}</b><span className="fx-lbl fd-mini-time">{agoLabel(n.ts)}</span><span className="fd-mini-body">{n.text || (n.image ? t('feed.picture') : '')}</span></span>
-      </button>; })}</div>
-      : <button type="button" className="fd-mini-empty" onClick={() => go('feed')}><Pin seed="mini" /><span>{t('feed.mini.empty')}</span></button>}
+    <button type="button" className="fd-mini-head" onClick={() => { view.stack = []; go('feed'); }}><b>{t('feed.title')}</b><Ic name="right" size={16} /></button>
+    {notes.length ? notes.map(n => <Row key={n.id} n={n} lite />) : <button type="button" className="fd-mini-empty" onClick={() => go('feed')}>{t('feed.mini.empty')}</button>}
   </section>;
 }
 
@@ -92,12 +165,12 @@ export function ChatPanel({ chat }: { chat: Chat }) {
   const redraw = useEvents('feed:changed');
   const f = chatFeed(chat), set = (patch: ChatFeed) => { (chat as Chat & { feed?: ChatFeed }).feed = { ...f, ...patch }; void S.save('chats', chat, true); redraw(); };
   const ids = new Set(chat.charIds.filter(id => account(id)?.on)), carry = f.carry ?? (chat.mode === 'talk' && cfg().carry);
-  const recent = F.notes.filter(n => ids.has(n.by) && visible(n)).slice(-2).reverse();
+  const recent = F.notes.filter(n => ids.has(n.by) && !n.root && visible(n)).slice(-2).reverse();
   if (!ids.size) return <div className="col fd-panel"><p className="hint">{t('feed.panel.notMember')}</p><button type="button" className="btn ghost" onClick={() => go('feed')}>{t('feed.panel.open')}</button></div>;
   return <div className="col fd-panel">
     <Check label={t('feed.panel.carry')} on={carry} onChange={v => set({ carry: v })} hint={t('feed.panel.carryHint')} />
     <Check label={t('feed.panel.mention')} on={f.mention === true} onChange={v => set({ mention: v })} hint={t('feed.panel.mentionHint')} />
-    {recent.length ? <div className="fx-rows fd-mini-rows">{recent.map(n => <button type="button" key={n.id} className="fd-mini-row" onClick={() => go('feed', n.id)}><span className="fd-mini-txt"><b className="fx-serif">{faceOf(n.by).name}</b><span className="fx-lbl fd-mini-time">{agoLabel(n.ts)}</span><span className="fd-mini-body">{n.text}</span></span></button>)}</div> : null}
-    <button type="button" className="btn ghost" onClick={() => go('feed')}>{t('feed.panel.open')}</button>
+    {recent.length ? <div className="fd-mini">{recent.map(n => <Row key={n.id} n={n} lite />)}</div> : null}
+    <button type="button" className="btn ghost" onClick={() => { view.stack = []; go('feed'); }}>{t('feed.panel.open')}</button>
   </div>;
 }
