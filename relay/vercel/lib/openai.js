@@ -11,7 +11,7 @@
 //
 // 429 가 나면: ① 다른 키(다른 프로젝트)로 → ② 다 막히면 이 배포의 다른 지역 함수에 넘긴다 (지역 여섯 곳을 한 바퀴)
 export const REGIONS = ['iad1', 'pdx1', 'cle1', 'sfo1', 'fra1', 'lhr1'];
-const DEFAULT_MODELS = ['gemini-4-argon', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash'];
+const DEFAULT_MODELS = ['gemini-4-hydrogen', 'gemini-4-neon', 'gemini-4-carbon', 'gemini-4-argon', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash'];
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Max-Age': '86400' };
 const enc = new TextEncoder();
 const fail = (status, message, code) => new Response(JSON.stringify({ error: { message, type: code || 'relay_error', code: code || status } }), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
