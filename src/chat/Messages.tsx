@@ -121,11 +121,20 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
   const clock = msgClock(m, s);
   const U = ux(), meta = [U.metaTime && clock, ...(S.settings.showMeta ? [U.metaModel && s.model, U.metaTimer && s.ms ? t('chat.meta.sec', { n: (s.ms / 1000).toFixed(1) }) : '', U.metaTokens && s.text ? t('chat.meta.tokens', { n: tokens(s.text) }) : ''] : []), s.fb ? t('reach.fb.tag') : ''].filter(Boolean).join(' · ');   // s.fb: 대체 연결로 받은 답장
   const why = m.why && mo('showWhy') !== false ? motiveLabel(m.why) : '';
+  // 도구 단추 묶음. 넓은 화면에서는 메시지 아래 한 줄(넘기기 옆)에, 좁은 화면에서는 이름 줄 오른쪽에 작게 놓인다 (css/roomy.css)
+  const acts = <>
+        {m.role === 'assistant' && last && <><IconBtn ic="refresh" cls="t1" title={t('chat.msg.regen')} onClick={() => void generate('regen')} /><IconBtn ic="play" title={t('chat.msg.continue')} onClick={() => void generate('continue')} /></>}
+        {m.role === 'assistant' && <IconBtn ic="heart" title={t('extras.react.title')} onClick={e => emit('xt:react', { m, anchor: e.currentTarget })} />}
+        <IconBtn ic="edit" cls="t1" title={t('chat.msg.edit')} onClick={() => setEditing(true)} />
+        <IconBtn ic="copy" title={t('common.copy')} onClick={copy} />
+        <IconBtn ic="more" cls="t1 t-more" title={t('chat.msg.more')} onClick={more} />
+  </>;
   return art(<>
     <Avatar o={who} cls={S.settings.avatarShape === 'tall' ? 'tall' : ''} />
     <div className="msg-main">
       <header className="msg-head">{castNo ? <span className="cast-no">{String(castNo).padStart(2, '0')}</span> : null}<b>{who?.name || m.name || ''}</b><span className="msg-no">{String(idx + 1).padStart(3, '0')}</span><time>{meta}</time>
-        {why ? <em className="why" title={t('chat.msg.whyTitle')}>{why}</em> : null}{m.hidden && <em className="badge">{t('chat.msg.hiddenBadge')}</em>}{m.pin && <em className="badge pin" title={t('chat.msgMenu.pinHint')}>{t('chat.msg.pinBadge')}</em>}</header>
+        {why ? <em className="why" title={t('chat.msg.whyTitle')}>{why}</em> : null}{m.hidden && <em className="badge">{t('chat.msg.hiddenBadge')}</em>}{m.pin && <em className="badge pin" title={t('chat.msgMenu.pinHint')}>{t('chat.msg.pinBadge')}</em>}
+        {editing || streaming ? null : <span className="msg-tools mt-top">{acts}</span>}</header>
       {m.images?.length ? <div className="msg-images">{m.images.map((u, i) => <img key={i} src={u} alt={t('chat.msg.attachAlt')} onClick={() => bigImage(u)} />)}</div> : null}
       {s.reasoning && S.settings.format?.reasoning?.show !== false ? <details className="reason" open={!streaming && !!S.settings.format?.reasoning?.autoExpand}><summary><Icon name="sparkle" size={14} />{t('chat.msg.reasoning')}</summary><div>{s.reasoning}</div></details> : null}
       {streaming ? null : <TurnCards m={m} />}
@@ -136,11 +145,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
       <Illusts m={m} s={s} />
       <div className="msg-tools">
         {canSwipe && <div className="swipe"><IconBtn ic="left" title={t('chat.msg.prevSwipe')} onClick={() => void swipe(m, -1)} /><span>{`${m.sw + 1} / ${m.swipes.length}`}</span><IconBtn ic="right" title={last && m.sw === m.swipes.length - 1 ? t('chat.msg.newSwipe') : t('chat.msg.nextSwipe')} onClick={() => void swipe(m, 1)} /></div>}
-        {m.role === 'assistant' && last && <><IconBtn ic="refresh" cls="t1" title={t('chat.msg.regen')} onClick={() => void generate('regen')} /><IconBtn ic="play" title={t('chat.msg.continue')} onClick={() => void generate('continue')} /></>}
-        {m.role === 'assistant' && <IconBtn ic="heart" title={t('extras.react.title')} onClick={e => emit('xt:react', { m, anchor: e.currentTarget })} />}
-        <IconBtn ic="edit" cls="t1" title={t('chat.msg.edit')} onClick={() => setEditing(true)} />
-        <IconBtn ic="copy" title={t('common.copy')} onClick={copy} />
-        <IconBtn ic="more" cls="t1 t-more" title={t('chat.msg.more')} onClick={more} />
+        {acts}
       </div>
     </div>
   </>);
