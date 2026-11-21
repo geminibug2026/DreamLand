@@ -124,6 +124,8 @@ export function TtsStudio() {
         <Check label={t('tts.on')} on={c.on} hint={t('tts.onHint')} onChange={v => { c.on = v; if (!v) TTS.stopAll(); save(); }} />
         <Check label={t('tts.autoRead')} on={c.autoRead} hint={t('tts.autoReadHint')} onChange={v => { c.autoRead = v; save(); }} />
         <Check label={t('tts.follow.set')} on={c.follow !== false} hint={t('tts.follow.setHint')} onChange={v => { c.follow = v; save(); }} />
+        {c.follow !== false ? <Field label={t('tts.follow.at')} cls="half"><Select value={c.stripAt} opts={[['top', t('tts.follow.at.top')], ['bottom', t('tts.follow.at.bottom')]]} onChange={v => { c.stripAt = v === 'bottom' ? 'bottom' : 'top'; save(); }} /></Field> : null}
+        <Check label={t('tts.follow.inMsg')} on={c.inMsg === true} hint={t('tts.follow.inMsgHint')} onChange={v => { c.inMsg = v; save(); }} />
         <Field label={t('tts.actions')} cls="half"><Select value={c.actions} opts={[['read', t('tts.actions.read')], ['skip', t('tts.actions.skip')]]} onChange={v => { c.actions = v as 'read' | 'skip'; save(); }} /></Field>
         <Field label={`${t('tts.rate')} · ${(+c.rate).toFixed(2)}`} cls="half"><input type="range" min={0.5} max={2} step={0.05} value={c.rate} onChange={e => { c.rate = +e.target.value; save(); }} /></Field>
         <Field label={`${t('tts.volume')} · ${Math.round(c.volume * 100)}%`} cls="half"><input type="range" min={0} max={1} step={0.05} value={c.volume} onChange={e => { c.volume = +e.target.value; save(); }} /></Field>

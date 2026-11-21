@@ -1,0 +1,1 @@
+export{r as similar}from"./lint-Eba4_C2I.js";
