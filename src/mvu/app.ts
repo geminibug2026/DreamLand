@@ -1,11 +1,13 @@
-// 변수 갱신 틀(MVU)을 대화에 잇는다: 답변 · 내 메시지마다 갱신 명령을 읽어 메시지 변수(msg.thData)에 적고,
+// 변수 갱신 틀(MVU)을 대화에 잇는다: 답변 · 내 메시지마다 갱신 명령을 읽어 메시지 변수(답변 후보마다 swipe.thData)에 적고,
 // 카드 스크립트(zod 스키마 · 이벤트 듣는 스크립트)와 상태창 화면이 실리태번에서처럼 같은 이벤트를 같은 차례로 받게 한다.
 // 흐름은 MagVarUpdate(MIT, © 2025 MagicalAstrogy & StageDog)의 initCheck · handleVariablesInMessage · onMessageReceived 를 따른다.
 // 이 틀을 쓰지 않는 대화(초기 변수 · 변수 자료 · 이 틀을 부르는 카드 스크립트가 없는 대화)에서는 아무 일도 하지 않는다.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { Chat, Char, Lore, Msg } from '../lib/types';
 import { S, emit, msgText } from '../lib/core';
-import { activeBooks, applyRegex, macro, makeCtx, quickCall, scanLore } from '../lib/engine';
+import { activeBooks, applyRegex, buildPrompt, macro, makeCtx, scanLore, streamChat, type PromptList, type PromptMsg, type Structured } from '../lib/engine';
+import { newMsg } from '../lib/core';
+import { setVarsOf, varsOf } from '../chat/msgVars';
 import { cur } from '../chat/store';
 import { chatApi } from '../chat/actions';
 import { invokeFrames } from '../chat/frameEvents';
@@ -17,7 +19,6 @@ import { isMvu, runtime, type Obj } from './engine';
 import type { Host } from './update';
 import type { MvuData } from './types';
 
-type MsgD = Msg & { thData?: Obj };
 type R = Awaited<ReturnType<typeof runtime>>;
 export const HOLDER = '<StatusPlaceHolderImpl/>';
 const EV = { INIT: 'mag_variable_initialized', BEFORE: 'mag_before_message_update' };
@@ -27,9 +28,15 @@ const KEYS = ['initialized_lorebooks', 'stat_data', 'schema', 'display_data', 'd
 export interface MvuCfg {
   /** inline: 답변에 적힌 갱신을 읽는다 · extra: 답이 오면 따로 한 번 더 물어 갱신을 받는다 */
   mode: 'inline' | 'extra'; auto: boolean; minLen: number; trigger: string; history: number; tries: number; maxTokens: number;
+  /** 한 번 더 물을 때: 어떻게 부를지 (차례로 다시 · 여러 번 함께 · 한 번 뒤 여러 번 함께) · 프롬프트 꼴 · 답의 꼴 */
+  strategy: 'seq' | 'parallel' | 'oneThenParallel'; prompt: 'builtin' | 'preset' | 'other'; otherPreset: string; format: 'chat' | 'tool' | 'json' | 'json_v4';
   white: string; black: string; toChat: boolean; sendas: boolean; notifyErr: boolean; notifyInit: boolean;
+  /** 오래된 메시지의 변수 정리 (원래 틀의 자동 정리): 켜기 · 남겨 둘 간격 · 최근 몇 개는 남기기 · 최근 몇 개에 변수가 없으면 되살리기 */
+  cleanup: boolean; snapEvery: number; keepRecent: number; restoreRecent: number;
+  /** 옛 기능 단추(기준점 · 다시 계산 · 정리)를 보이기 */
+  legacy: boolean;
 }
-export const DEFAULTS: MvuCfg = { mode: 'inline', auto: true, minLen: 0, trigger: '', history: 2, tries: 3, maxTokens: 4096, white: '', black: '', toChat: false, sendas: false, notifyErr: false, notifyInit: false };
+export const DEFAULTS: MvuCfg = { mode: 'inline', auto: true, minLen: 0, trigger: '', history: 2, tries: 3, maxTokens: 4096, strategy: 'seq', prompt: 'builtin', otherPreset: '', format: 'chat', white: '', black: '', toChat: false, sendas: false, notifyErr: false, notifyInit: true, cleanup: true, snapEvery: 50, keepRecent: 20, restoreRecent: 10, legacy: false };
 export const cfg = (): MvuCfg => ({ ...DEFAULTS, ...(((S.settings as unknown as { mvu?: Partial<MvuCfg> }).mvu) || {}) });
 export function setCfg(p: Partial<MvuCfg>) { (S.settings as unknown as { mvu?: Partial<MvuCfg> }).mvu = { ...cfg(), ...p }; S.saveSettings(); emit('mvu:changed'); }
 
@@ -77,25 +84,37 @@ const hasInitEntry = (chat: Chat) => initBooks(chat).some(b => (b.entries || [])
 const scriptSignal = (chat: Chat) => charsOf(chat).some(ch => TH.charScripts(ch).some(s => s.enabled && SIGNAL.test(s.content))) || (TH.scripts.some(s => s.enabled && SIGNAL.test(s.content)) && initBooks(chat).length > 0);
 export function usesMvu(chat: Chat | null | undefined, msgs?: Msg[]): boolean {
   if (!chat) return false;
-  const list = (msgs || (cur.chat === chat ? cur.msgs : [])) as MsgD[];
-  return list.some(m => isMvu(m.thData)) || hasInitEntry(chat) || scriptSignal(chat);
+  const list = msgs || (cur.chat === chat ? cur.msgs : []);
+  return list.some(m => isMvu(varsOf(m))) || hasInitEntry(chat) || scriptSignal(chat);
 }
 
-// ── 메시지 변수 ──
-const dataOf = (m: MsgD | undefined): MvuData | null => m && isMvu(m.thData) ? m.thData as unknown as MvuData : null;
-export function lastValidIndex(msgs: MsgD[], end = msgs.length): number { for (let i = Math.min(end, msgs.length) - 1; i >= 0; i--) if (dataOf(msgs[i])) return i; return -1; }
-/** 최신 변수 (매크로 · 화면이 읽는 것) */
+// ── 메시지 변수 (답변 후보마다) ──
+/** 원래 틀의 isMvuData: stat_data 와 schema 가 둘 다 있어야 변수가 있는 메시지로 본다 */
+const isMvuData = (v: unknown): v is MvuData => !!v && typeof v === 'object' && (v as Obj).stat_data !== undefined && (v as Obj).schema !== undefined;
+const dataOf = (m: Msg | undefined, sw?: number): MvuData | null => { const v = varsOf(m, sw); return isMvuData(v) ? v : null; };
+/** [0, end) 안에서 변수가 있는 마지막 메시지 (원래 틀의 getLastValidMessageId) */
+export function lastValidIndex(msgs: Msg[], end = msgs.length): number { for (let i = Math.min(end, msgs.length) - 1; i >= 0; i--) if (dataOf(msgs[i])) return i; return -1; }
+export function lastValidData(msgs: Msg[], end: number): MvuData | undefined { const i = lastValidIndex(msgs, end); return i < 0 ? undefined : clone(dataOf(msgs[i])!); }
+const clone = <T,>(v: T): T => v === undefined ? v : JSON.parse(JSON.stringify(v)) as T;
+/** 최신 변수 (상태창 패널 · 매크로가 읽는 것) */
 export function latestData(chat?: Chat | null): Obj | null {
   if (!chat || cur.chat !== chat) return null;
-  const ms = cur.msgs as MsgD[], i = lastValidIndex(ms); return i >= 0 ? ms[i].thData as Obj : null;
+  const ms = cur.msgs, i = lastValidIndex(ms); return i >= 0 ? varsOf(ms[i]) as Obj : null;
 }
-function writeData(m: MsgD, d: MvuData, whole = false) {
-  const o: Obj = { ...(m.thData || {}) };
-  if (whole) for (const [k, v] of Object.entries(d)) if (!KEYS.includes(k as typeof KEYS[number])) o[k] = v;
-  for (const k of KEYS) { if (d[k] !== undefined) o[k] = d[k]; else delete o[k]; }
-  m.thData = o;
+/** 실리태번 도우미의 매크로 문맥: 지금 후보의 변수가 객체인 마지막 메시지 (변수 갱신 틀이 아닌 것도) */
+export function latestVars(chat?: Chat | null): Obj | null {
+  if (!chat || cur.chat !== chat) return null;
+  const ms = cur.msgs; for (let i = ms.length - 1; i >= 0; i--) { const v = varsOf(ms[i]); if (v && typeof v === 'object') return v; } return null;
 }
-const clearData = (m: MsgD) => { if (!m.thData) return; const o = { ...m.thData }; for (const k of KEYS) delete o[k]; m.thData = o; };
+const KEYSET = new Set<string>(KEYS);
+/** 원래 틀의 updater: 다섯 칸만 바꾸고 다른 칸은 둔다 */
+function writeKeys(target: Obj, d: MvuData) {
+  target.initialized_lorebooks = d.initialized_lorebooks; target.stat_data = d.stat_data;
+  for (const k of ['schema', 'display_data', 'delta_data'] as const) { if (d[k] !== undefined) target[k] = d[k]; else delete target[k]; }
+  return target;
+}
+const writeMsg = (m: Msg, d: MvuData, sw?: number) => setVarsOf(m, writeKeys({ ...(varsOf(m, sw) || {}) }, d), sw);
+function writeChat(chat: Chat, d: MvuData) { chat.vars ||= {}; writeKeys(chat.vars as unknown as Obj, d); }
 
 // ── 갱신에 넘기는 바깥 ──
 const ctxOf = (chat: Chat) => { const chars = charsOf(chat); return makeCtx({ chat, char: chars[0], chars, persona: S.persona(chat), msgs: cur.chat === chat ? cur.msgs : [] }); };
@@ -110,59 +129,17 @@ export function hostFor(chat: Chat): Host {
   };
 }
 export const mxOf = (chat: Chat) => (s: string) => macro(s, ctxOf(chat));
+const onInitError = (book: string, entry: string, err: Error) => toast(t('mvu.toast.initBad', { book, entry, err: String(err.message || err).split('\n')[0] }), 'err');
 
-/** 이 대화의 초기 자료 (로어북의 [InitVar] 항목들) */
+/** 이 대화의 초기 자료 (로어북의 [InitVar] 항목들) — 점검 도구용 */
 export async function initOf(chat: Chat): Promise<{ data: MvuData; updated: boolean }> {
   const R = await runtime(), data = R.createEmptyGameData();
-  const updated = R.loadInitVarData(data, initBooks(chat), mxOf(chat), (book, entry, err) => toast(t('mvu.toast.initBad', { book, entry, err: String(err.message || err).split('\n')[0] }), 'err'));
+  const updated = R.loadInitVarData(data, initBooks(chat), mxOf(chat), onInitError);
   R.finishInit(data, updated);
   return { data, updated };
 }
 
-// ── 한 메시지 계산 ──
-const isSendas = (chat: Chat, m: Msg) => m.role === 'assistant' && !!m.charId && !(chat.charIds || []).includes(m.charId);
-/** fresh: 막 받은 · 보낸 메시지 (BEFORE_MESSAGE_UPDATE 를 부르고 답변 글을 고칠 수 있다). carry: 명령을 읽지 않고 앞 상태만 잇는다 */
-async function computeAt(R: R, chat: Chat, msgs: MsgD[], i: number, { fresh = false, carry = false } = {}): Promise<void> {
-  const m = msgs[i], sw = m?.swipes[m.sw]; if (!sw) return;
-  const text = sw.text || '', host = hostFor(chat), E = eff(chat);
-  if (i === 0 && lastValidIndex(msgs, 0) < 0) {
-    // 대화의 시작: 초기 변수 → 첫 인사의 <initvar> → VARIABLE_INITIALIZED → 첫 메시지의 명령
-    const { data: base } = await initOf(chat);
-    const data = R.lo.correctlyMerge(Object.fromEntries(Object.entries(m.thData || {}).filter(([k]) => !KEYS.includes(k as typeof KEYS[number]))), R.lo.clone(base)) as MvuData;
-    const greet = m.role !== 'user' ? R.greetingInitVar(text, mxOf(chat)) : null;
-    if (greet) {
-      // 첫 인사의 <initvar> 를 바탕으로 삼고, 캐릭터 로어북 밖의 로어북(전역 등)만 다시 읽어 합친다
-      data.stat_data = greet; data.initialized_lorebooks = { [primaryBook(chat)?.name || 'unknown']: [] };
-      data.schema = { type: 'object', properties: {} };
-      R.loadInitVarData(data, initBooks(chat), mxOf(chat)); R.finishInit(data, true);
-    }
-    await host.emit(EV.INIT, data, m.sw);
-    if (!carry) await R.updateVariables(text, data, undefined, host);
-    writeData(m, data, true);
-    if (E.notifyInit && fresh) toast(t('mvu.toast.init', { books: Object.keys(data.initialized_lorebooks || {}).join(', ') || '-' }));
-    return;
-  }
-  const pi = lastValidIndex(msgs, i);
-  let data: MvuData = pi >= 0 ? R.lo.clone(dataOf(msgs[pi])!) : (await initOf(chat)).data;
-  const skip = carry || m.role === 'system' || (m.role === 'assistant' && text.length < 5) || (!E.sendas && isSendas(chat, m));
-  if (skip) { delete data.display_data; delete data.delta_data; writeData(m, data); return; }
-  await R.updateVariables(text, data, undefined, host);
-  if (m.role !== 'user') {
-    let nt = text;
-    if (fresh) {
-      const ctx = { variables: data, message_content: text };
-      await host.emit(EV.BEFORE, ctx);
-      if (ctx.variables && typeof ctx.variables === 'object') data = ctx.variables;
-      if (typeof ctx.message_content === 'string') nt = ctx.message_content;
-    }
-    if (!nt.includes(HOLDER)) nt = nt + '\n\n' + HOLDER;
-    if (nt.includes('<status_current_variable>')) nt = nt.replace(/<(status_current_variable)>(?:(?!<\1>).)*<\/\1?>/gis, '');
-    if (nt !== sw.text) { sw.text = nt; delete sw.tr; }
-  }
-  writeData(m, data);
-}
-
-// ── 차례로 돌리기 ──
+// ── 차례로 돌리기 (한 대화의 일은 하나씩) ──
 const queues = new Map<string, Promise<unknown>>();
 function enqueue<T>(chat: Chat, fn: () => Promise<T>): Promise<T> {
   const prev = queues.get(chat.id) || Promise.resolve();
@@ -184,49 +161,158 @@ export async function pending(chat?: Chat | null): Promise<void> {
 }
 const live = (chat: Chat, msgs: Msg[]) => cur.chat === chat && cur.msgs === msgs;
 /** 화면들에 바뀐 메시지 변수를 알린다 */
-function pushFrames() { framePost({ dlState: { mvuExtra: extraNow } }); emit('mvu:updated'); }
+export function pushFrames() { framePost({ dlState: { mvuExtra: extraNow } }); emit('mvu:updated'); }
+async function commit(chat: Chat, msgs: Msg[]) { if (live(chat, msgs)) { await chatApi.save(); chatApi.redraw?.(); } pushFrames(); }
 
-/** from 번째부터 끝까지 다시 계산한다. fresh 번째 메시지에는 BEFORE_MESSAGE_UPDATE 를 부른다 */
-async function run(chat: Chat, msgs: MsgD[], from: number, { fresh = -1, carryAt = -1 }: { fresh?: number; carryAt?: number } = {}) {
-  const R = await runtime();
-  let start = Math.max(0, from);
-  if (lastValidIndex(msgs, start) < 0) start = 0;
-  for (let i = start; i < msgs.length; i++) {
-    if (!live(chat, msgs)) return;   // 그사이 대화를 옮겼거나 목록이 바뀌었다
-    await computeAt(R, chat, msgs, i, { fresh: i === fresh, carry: i === carryAt });
-  }
-  if (eff(chat).toChat) { const d = dataOf(msgs[lastValidIndex(msgs)]); if (d) { chat.vars ||= {}; const v = chat.vars as unknown as Obj; for (const k of KEYS) { if (d[k] !== undefined) v[k] = R.lo.clone(d[k]); else delete v[k]; } } }
-}
-/** 열려 있는 대화를 from 부터 다시 계산하고 저장 · 다시 그린다 */
-export function sync(chat: Chat | null | undefined, from: number, o: { fresh?: number; carryAt?: number; save?: boolean; draw?: boolean } = {}) {
-  if (!chat || cur.chat !== chat || !usesMvu(chat)) return Promise.resolve();
-  const msgs = cur.msgs as MsgD[];
-  return enqueue(chat, async () => {
-    try { await run(chat, msgs, from, o); } catch (e) { console.error('[변수 갱신]', e); toast(t('mvu.toast.fail', { err: String((e as Error)?.message || e) }), 'err'); }
-    if (!live(chat, msgs)) return;
-    if (o.save !== false) await chatApi.save();
-    if (o.draw !== false) chatApi.redraw?.();
-    pushFrames();
-  });
-}
-
-/** 대화를 열 때 · 생성 전: 변수가 없는 메시지를 채우고, 나중에 붙은 로어북의 초기 변수를 합친다 (원래 틀의 initCheck) */
-export function check(chat: Chat | null | undefined): Promise<void> {
-  if (!chat || cur.chat !== chat || !usesMvu(chat)) return Promise.resolve();
-  const msgs = cur.msgs as MsgD[]; if (!msgs.length) return Promise.resolve();
-  return enqueue(chat, async () => {
-    await TH.scriptsReady();   // 카드 스크립트(zod 스키마 등)가 다 실린 뒤에 계산한다
-    if (!live(chat, msgs)) return;
-    const R = await runtime();
-    let changed = false;
-    const li = lastValidIndex(msgs);
-    if (li < msgs.length - 1) { await run(chat, msgs, li + 1); changed = true; }
-    else {
-      const d = R.lo.clone(dataOf(msgs[li])!);
-      if (R.loadInitVarData(d, initBooks(chat), mxOf(chat))) { R.finishInit(d, true); writeData(msgs[li], d); changed = true; }
+// ── 원래 틀의 initCheck: 새 대화의 변수 채우기 · 나중에 붙은 로어북의 초기 변수 합치기 ──
+async function initCheck(R: R, chat: Chat, msgs: Msg[]): Promise<boolean> {
+  if (!msgs.length) { toast(t('mvu.toast.needGreeting'), 'err'); return false; }
+  const variables: MvuData = lastValidData(msgs, msgs.length) ?? R.createEmptyGameData();
+  if (!variables.initialized_lorebooks) variables.initialized_lorebooks = {};
+  if (Array.isArray(variables.initialized_lorebooks)) variables.initialized_lorebooks = Object.fromEntries((variables.initialized_lorebooks as string[]).map(n => [n, []]));
+  if (!variables.stat_data) variables.stat_data = {};
+  if (!variables.schema) variables.schema = { extensible: false, properties: {}, type: 'object' };
+  const books = initBooks(chat), updated = R.loadInitVarData(variables, books, mxOf(chat), onInitError);
+  R.finishInit(variables, updated);
+  if (!updated) return false;
+  const E = eff(chat), host = hostFor(chat);
+  if (E.toChat) Object.assign((chat.vars ||= {}) as unknown as Obj, clone(variables));
+  if (msgs.length - 1 === 0) {
+    // 첫 메시지만 있는 새 대화: 첫 인사의 후보마다 따로 채운다 (후보의 <initvar> 블록이 있으면 그것이 바탕)
+    const m = msgs[0];
+    for (let idx = 0; idx < m.swipes.length; idx++) {
+      const text = m.swipes[idx].text || '';
+      const cur0 = R.lo.correctlyMerge(clone(varsOf(m, idx) || {}), clone(variables)) as MvuData;
+      const greet = R.greetingInitVar(text, mxOf(chat));
+      if (greet) {
+        cur0.stat_data = greet;
+        cur0.initialized_lorebooks = { [primaryBook(chat)?.name || 'unknown']: [] };
+        R.loadInitVarData(cur0, books, mxOf(chat), onInitError);
+      }
+      await host.emit(EV.INIT, cur0, idx);
+      await R.updateVariables(text, cur0, undefined, host);
+      setVarsOf(m, cur0, idx);
     }
-    if (changed && live(chat, msgs)) { await chatApi.save(); chatApi.redraw?.(); pushFrames(); }
+  } else setVarsOf(msgs[msgs.length - 1], variables);   // 이어지던 대화: 마지막 메시지에 얹는다
+  if (E.notifyInit) toast(t('mvu.toast.init', { books: Object.keys(variables.initialized_lorebooks || {}).join(', ') || '-' }));
+  return true;
+}
+
+// ── 원래 틀의 handleVariablesInMessage: 한 메시지를 앞 상태에서 계산한다 ──
+async function handle(R: R, chat: Chat, msgs: Msg[], i: number): Promise<void> {
+  const m = msgs[i], sw = m?.swipes[m.sw]; if (!m || !sw) return;
+  const text = sw.text || '';
+  if (m.role === 'assistant' && text.length < 5) return;
+  const variables = lastValidData(msgs, i === 0 ? 1 : i);
+  if (!variables || variables.stat_data === undefined) return;
+  const host = hostFor(chat);
+  await R.updateVariables(text, variables, undefined, host);
+  if (m.role !== 'user') {
+    const now0 = sw.text || '';
+    const ctx = { variables, message_content: now0 };
+    await host.emit(EV.BEFORE, ctx);
+    const data = ctx.variables && typeof ctx.variables === 'object' ? ctx.variables : variables;
+    Object.assign(variables, data);
+    let nt = ctx.message_content !== now0 && typeof ctx.message_content === 'string' ? ctx.message_content : (sw.text || '');
+    if (!nt.includes(HOLDER)) nt += '\n\n' + HOLDER;
+    if (nt.includes('<status_current_variable>')) nt = nt.replace(/<(status_current_variable)>(?:(?!<\1>).)*<\/\1?>/gis, '');
+    if (nt !== sw.text) { sw.text = nt; delete sw.tr; }
+  }
+  if (eff(chat).toChat) writeChat(chat, variables);
+  writeMsg(m, variables);
+}
+
+// ── 대화를 열 때 · 생성 전 · 보낸 뒤 ──
+/** 대화를 열 때: 대화 변수 정리 · 옛 대화 정리 묻기 · 변수 채우기 (카드 스크립트가 다 실린 뒤) */
+export function opened(chat: Chat | null | undefined): Promise<void> {
+  if (!chat || cur.chat !== chat || !usesMvu(chat)) return Promise.resolve();
+  const msgs = cur.msgs;
+  return enqueue(chat, async () => {
+    await TH.scriptsReady();
+    if (!live(chat, msgs)) return;
+    const R = await runtime(), E = eff(chat);
+    let changed = false;
+    if (!E.toChat && chat.vars) { const v = chat.vars as unknown as Obj; for (const k of KEYS) if (k in v) { delete v[k]; changed = true; } }
+    if (await legacyCleanup(chat, msgs)) changed = true;
+    if (await initCheck(R, chat, msgs)) changed = true;
+    if (await restore(R, chat, msgs)) changed = true;   // 드림랜드 덧붙임: 정리된 옛 메시지에서 이어 가는 대화(가지치기 등)도 최근 변수를 되살린다
+    if (changed) await commit(chat, msgs);
   });
+}
+/** 생성 전 (원래 틀은 GENERATION_STARTED 에서 initCheck) */
+export function beforeGenerate(chat: Chat | null | undefined): Promise<void> {
+  if (!chat || cur.chat !== chat || !usesMvu(chat)) return Promise.resolve();
+  const msgs = cur.msgs;
+  return enqueue(chat, async () => { const R = await runtime(); if (live(chat, msgs) && await initCheck(R, chat, msgs)) await commit(chat, msgs); });
+}
+/** 내가 보낸 메시지 (원래 틀은 MESSAGE_SENT 에서 initCheck 다음 handleVariablesInMessage) */
+export function sent(chat: Chat | null | undefined, msg: Msg | undefined): Promise<void> {
+  if (!chat || cur.chat !== chat || !msg || !usesMvu(chat)) return Promise.resolve();
+  const msgs = cur.msgs;
+  return enqueue(chat, async () => {
+    const R = await runtime(); if (!live(chat, msgs)) return;
+    await initCheck(R, chat, msgs);
+    const i = msgs.indexOf(msg); if (i >= 0) await handle(R, chat, msgs, i);
+    await commit(chat, msgs);
+  });
+}
+
+// ── 오래된 메시지의 변수 정리 (원래 틀의 자동 정리) ──
+/** [start, end] 안에서 snapEvery 의 배수 자리는 기준점으로 남기고 나머지의 변수 칸을 지운다. 지운 메시지 수 */
+export function cleanupRange(msgs: Msg[], start: number, end: number, every: number, keepLorebooks = false): number {
+  let n = 0;
+  msgs.slice(Math.max(0, start), end + 1).forEach((m, k) => {
+    if (!m.swipes.some((_s, i) => varsOf(m, i) !== undefined)) return;
+    let counted = false;
+    m.swipes.forEach((_s, i) => {
+      const v = varsOf(m, i);
+      if (v === undefined) { setVarsOf(m, {}, i); return; }
+      if (v.snapshot === true) return;
+      if ((start + k) % every === 0) { v.snapshot = true; return; }
+      if (!counted) { counted = true; n++; }
+      const o = { ...v }; for (const key of KEYS) if (!(keepLorebooks && key === 'initialized_lorebooks')) delete o[key]; setVarsOf(m, o, i);
+    });
+  });
+  return n;
+}
+async function cleanupAfter(chat: Chat, msgs: Msg[], i: number) {
+  const E = eff(chat); if (!E.cleanup || msgs.length % 5 !== 0) return;
+  const old = i - E.keepRecent;
+  if (old > 0) cleanupRange(msgs, Math.max(1, old - 2 - E.keepRecent * 2), old, Math.max(1, E.snapEvery));
+}
+/** 메시지를 지운 뒤: 최근 메시지에 변수가 없으면 기준점부터 다시 계산해 되살린다 (원래 틀의 restoreVariables) */
+async function restore(R: R, chat: Chat, msgs: Msg[]): Promise<boolean> {
+  const E = eff(chat), last = msgs.length - 1; if (last < 1) return false;
+  const lastN = Math.max(1, last - E.restoreRecent);
+  let missing = -1; for (let i = last; i >= 0; i--) { const v = varsOf(msgs[i]); if (!v || v.stat_data === undefined || v.schema === undefined) { missing = i; break; } }
+  if (lastN > missing) return false;
+  const keepFrom = Math.max(1, last - E.keepRecent), snap = lastValidIndex(msgs, keepFrom);
+  if (snap === -1) { toast(t('mvu.toast.restoreNone', { n: keepFrom })); return false; }
+  let variables = clone(dataOf(msgs[snap])!), changed = false;
+  for (let i = snap + 1; i <= missing; i++) {
+    await R.updateVariables(msgText(msgs[i]), variables, undefined, hostFor(chat));
+    if (i >= keepFrom && !dataOf(msgs[i])) { writeMsg(msgs[i], variables); variables = clone(variables); changed = true; }
+  }
+  return changed;
+}
+let restoreTimer = 0;
+/** 지운 뒤 2초 기다렸다가 (원래 틀처럼) 되살리기 */
+export function deleted(chat: Chat | null | undefined) {
+  if (!chat || cur.chat !== chat || !usesMvu(chat)) return;
+  clearTimeout(restoreTimer);
+  restoreTimer = window.setTimeout(() => { const msgs = cur.msgs; if (cur.chat !== chat) return; void enqueue(chat, async () => { const R = await runtime(); if (live(chat, msgs) && await restore(R, chat, msgs)) await commit(chat, msgs); }); }, 2000);
+}
+/** 옛 대화(오래 이어진 대화)를 처음 열 때 한 번: 정리할지 묻는다 */
+async function legacyCleanup(chat: Chat, msgs: Msg[]): Promise<boolean> {
+  const E = eff(chat), v1 = varsOf(msgs[1], 0);
+  if (!E.cleanup || msgs.length <= E.keepRecent + 5 || !v1 || v1.stat_data === undefined || v1.ignore_cleanup !== undefined) return false;
+  const { askLegacyCleanup } = await import('./Ui');
+  const pick = await askLegacyCleanup();
+  if (pick !== 'clean' && pick !== 'backup') { v1.ignore_cleanup = true; return true; }
+  if (pick === 'backup') { const { chatToStJsonl } = await import('../lib/cards'); const { download } = await import('../lib/core'); download(`${chat.name || chat.id}.jsonl`, chatToStJsonl(chat, msgs, S.persona(chat)?.name || 'User', charsOf(chat)[0]?.name || 'Character'), 'application/jsonl'); }
+  const n = cleanupRange(msgs, 1, msgs.length - 1 - E.keepRecent, Math.max(1, E.snapEvery));
+  if (n > 0) toast(t('mvu.toast.cleaned', { n }));
+  return true;
 }
 
 // ── 추가 호출 (따로 한 번 더 물어 변수 갱신 받기) ──
@@ -242,6 +328,7 @@ Variable update task:
     </UpdateVariable>
 </must>`;
 const HEAD = 'You keep the tracked variables of an interactive story up to date. You never write story text. Read the story information and the latest part of the story, then output only the variable update block that the rules ask for.';
+const USER_INPUT = '遵循<must>指令';
 const compileRx = (v: string): RegExp | undefined => { const s = String(v || '').trim(); if (!s) return; try { if (s.startsWith('/')) { const end = s.lastIndexOf('/'); if (end > 0) return new RegExp(s.slice(1, end), s.slice(end + 1)); } return new RegExp(s); } catch { toast(t('mvu.toast.badRegex', { rx: s }), 'err'); return; } };
 const UPD = /\[mvu_update\]/i, PLOT = /\[mvu_plot\]/i;
 /** [mvu_update] · [mvu_plot] 표식과 이름 규칙으로 로어북 항목을 거른다 (원래 틀의 filterEntries). extra: 추가 호출의 프롬프트인가 */
@@ -266,126 +353,213 @@ export function filterBooks(books: Lore[], chat: Chat, extra: boolean): Lore[] {
   return out;
 }
 
-/** 추가 호출 한 번: 최근 메시지 몇 개와 카드 · 로어북을 보내고 갱신 블록을 받는다. 못 받으면 null */
-export async function askExtra(chat: Chat, msgs: MsgD[], i: number, o: { task?: string; tail?: string; validate?: (block: string) => Promise<string | null> } = {}): Promise<string | null> {
-  const R = await runtime(), E = eff(chat), conn = S.helperConn('mvu', chat);
-  if (!conn) { toast(t('mvu.toast.noConn'), 'err'); return null; }
-  const chars = charsOf(chat), char = chars[0], persona = S.persona(chat), ctx = makeCtx({ chat, char, chars, persona, msgs: msgs.slice(0, i + 1) });
-  const strip = (s: string) => s.replaceAll('\n' + HOLDER, '').replaceAll(HOLDER, '');
-  const from = Math.max(0, i + 1 - Math.max(1, E.history));
-  const hist = msgs.slice(from, i + 1).filter(m => !m.hidden).map((m, k, a) => ({ role: m.role, name: m.role === 'user' ? (persona?.name || 'User') : (m.name || char?.name || ''), content: strip(applyRegex(msgText(m), { who: m.role === 'user' ? 'user' : 'ai', target: 'prompt', depth: a.length - 1 - k, charId: m.charId, ctx })) }));
-  const books = filterBooks(activeBooks(chat, chars, persona), chat, true);
+
+/** 실리태번처럼 깊이로 끼워 넣는다: 0 = 대화 맨 뒤, 1 = 마지막 메시지 앞 … */
+function injectAtDepth(list: PromptList, items: { depth: number; msg: PromptMsg }[]): PromptList {
+  const out = [...list] as PromptList; const hist = out.map((m, k) => m.src === 'history' ? k : -1).filter(k => k >= 0);
+  for (const it of [...items].sort((a, b) => a.depth - b.depth)) {
+    const at = hist.length ? (it.depth === 0 ? hist[hist.length - 1] + 1 : hist[Math.max(0, hist.length - it.depth)]) : out.length;
+    out.splice(at, 0, it.msg); for (let k = 0; k < hist.length; k++) if (hist[k] >= at) hist[k]++;
+  }
+  out.tc = list.tc; return out;
+}
+const strip = (s: string) => s.replaceAll('\n' + HOLDER, '').replaceAll(HOLDER, '');
+/** 이번 추가 호출에 보낼 글 (프롬프트 꼴에 따라) */
+function extraPrompt(chat: Chat, msgs: Msg[], i: number, task: string, E: ReturnType<typeof eff>): PromptList {
+  const chars = charsOf(chat), char = chars[0], persona = S.persona(chat);
+  const recent = msgs.slice(Math.max(0, i + 1 - Math.max(1, E.history)), i + 1);
+  if (E.prompt === 'preset' || E.prompt === 'other') {
+    // 지금(또는 고른) 프리셋의 꼴 그대로: 최근 메시지 몇 개 + "<must> 따르기" 사용자 말, 깊이 2 · 1 에 <past_observe> 표시, 맨 끝에 할 일
+    const preset = (E.prompt === 'other' && S.get('presets', E.otherPreset)) || S.presetFor(chat);
+    const built = buildPrompt({ chat, char, chars, persona, preset, msgs: [...recent, newMsg('user', USER_INPUT)], type: 'normal', commit: false });
+    const list = injectAtDepth(built.messages, [{ depth: 0, msg: { role: 'system', content: task } }, { depth: 2, msg: { role: 'system', content: '<past_observe>' } }, { depth: 1, msg: { role: 'system', content: '</past_observe>' } }]);
+    for (const m of list) if (typeof m.content === 'string') m.content = strip(m.content);
+    return list;
+  }
+  const ctx = makeCtx({ chat, char, chars, persona, msgs: msgs.slice(0, i + 1) });
+  const hist = recent.filter(m => !m.hidden).map((m, k, a) => ({ role: m.role === 'system' ? 'system' : m.role, content: strip(applyRegex(msgText(m), { who: m.role === 'user' ? 'user' : 'ai', target: 'prompt', depth: a.length - 1 - k, charId: m.charId, ctx })), src: 'history' }) as PromptMsg);
   let lore: string[] = [];
-  try { lore = scanLore(books, hist, ctx, { commit: false, char, persona }).map(e => strip(e.text)); } catch (e) { console.warn('[변수 갱신] 로어북', e); }
-  const card = (c: Char) => macro(c.description, { ...ctx, char: c.name });
-  const system = [HEAD, '<additional_information>', persona?.description ? macro(persona.description, ctx) : '', ...chars.map(card), ...lore, '</additional_information>', '<past_observe>', ...hist.map(h => `${h.name}: ${h.content}`), '</past_observe>'].filter(Boolean).join('\n\n');
-  const task = (o.task || TASK) + (o.tail ? '\n' + o.tail : '');
+  try { lore = scanLore(filterBooks(activeBooks(chat, chars, persona), chat, true), hist, ctx, { commit: false, char, persona }).map(e => strip(e.text)); } catch (e) { console.warn('[변수 갱신] 로어북', e); }
+  const sys = (content: string): PromptMsg => ({ role: 'system', content });
+  const list: PromptMsg[] = [sys(HEAD), sys('<additional_information>'), ...(persona?.description ? [sys(macro(persona.description, ctx))] : []), ...(char ? [sys(macro(char.description, ctx))] : []), ...lore.map(sys), sys('</additional_information>'), sys('<past_observe>'), ...hist, sys('</past_observe>'), sys(task), { role: 'user', content: USER_INPUT }];
+  return list.filter(m => String(m.content || '').trim()) as PromptList;
+}
+const FORMAT_JSON = '\n You are in formatted-output mode. Do not output <UpdateVariable> tags, markdown, or prose. Return only a JSON object matching the provided json_schema: {"analysis":"...","json_patch":[...]}. Put MVU JsonPatch dialect operations in `json_patch`.';
+/** 추가 호출 한 번: 받은 답을 갱신 블록으로. 못 받으면 던진다 */
+async function askOnce(R: R, chat: Chat, list: PromptList, E: ReturnType<typeof eff>, signal: AbortSignal, validate?: (b: string) => Promise<string | null>): Promise<string> {
+  const conn = S.helperConn('mvu', chat); if (!conn) throw new Error(t('mvu.toast.noConn'));
+  const structured: Structured | undefined = E.format === 'tool' ? { tool: R.MVU_TOOL } : E.format === 'json' ? { json: { name: R.MVU_JSON_PATCH_RESPONSE_SCHEMA.name, schema: R.MVU_JSON_PATCH_RESPONSE_SCHEMA.value as Obj } } : E.format === 'json_v4' ? { jsonObject: true } : undefined;
+  const P = { ...S.presetFor(chat).params, stream: false, maxTokens: E.maxTokens, prefill: '', stop: [], lowThink: true, ...(structured ? { structured } : {}) };
+  const r = await streamChat(conn, P, list, { signal, label: 'mvu' });
+  let out = r.text;
+  if (E.format === 'tool') out = R.extractFromToolArgs(r.tool) ?? r.text;
+  else if (E.format === 'json' || E.format === 'json_v4') out = R.extractFromFormattedOutput(r.text) ?? r.text;
+  if (validate) {
+    let block = out;
+    if (!R.extractCommands(block).length) { try { block = R.parseAndValidateExtraModelResult(out) ?? out; } catch { /* 그대로 검사 */ } }
+    const bad = await validate(block); if (bad) throw new Error(bad); return block;
+  }
+  const block = R.parseAndValidateExtraModelResult(out);
+  if (!block) throw new Error(t('mvu.toast.noBlock'));
+  return block;
+}
+/** 추가 호출 (설정한 부르는 법대로 다시 해 보거나 여러 번 함께). 못 받으면 null */
+export async function askExtra(chat: Chat, msgs: Msg[], i: number, o: { task?: string; tail?: string; validate?: (block: string) => Promise<string | null> } = {}): Promise<string | null> {
+  const R = await runtime(), E = eff(chat);
+  if (!S.helperConn('mvu', chat)) { toast(t('mvu.toast.noConn'), 'err'); return null; }
+  let task = (o.task || TASK) + (o.tail ? '\n' + o.tail : '');
+  if (E.format === 'tool') task += `\n use \`${R.MVU_TOOL_NAME}\` tool to update variables.`;
+  else if (E.format === 'json') task += FORMAT_JSON;
+  else if (E.format === 'json_v4') task += '\n You are in formatted-output mode. Do not output <UpdateVariable> tags, markdown, or prose. Return only a JSON object: {"analysis":"...","json_patch":[...]}. Put MVU JsonPatch dialect operations in `json_patch`. Return exactly one JSON object that conforms to this schema:' + JSON.stringify(R.MVU_JSON_PATCH_RESPONSE_SCHEMA.value);
+  extraNow = true; setExtraFlag(chat, true); pushFrames();
   let last: unknown = null;
-  extraNow = true; pushFrames();
   try {
-    for (let n = 0; n < Math.max(1, E.tries); n++) {
-      try {
-        const out = await quickCall(system, task + '\n\nFollow the <must> instruction.', { maxTokens: E.maxTokens, conn, lowThink: true });
-        if (o.validate) {
-          let block = out;
-          if (!R.extractCommands(block).length) { try { block = R.parseAndValidateExtraModelResult(out) ?? out; } catch { /* 그대로 검사 */ } }
-          const bad = await o.validate(block); if (!bad) return block; last = new Error(bad); continue;
-        }
-        const block = R.parseAndValidateExtraModelResult(out);
-        if (block) return block;
-        last = new Error(t('mvu.toast.noBlock'));
-      } catch (e) { last = e; }
-    }
-  } finally { extraNow = false; pushFrames(); }
+    const list = extraPrompt(chat, msgs, i, task, E), n = Math.max(1, E.tries);
+    const one = (ac: AbortController) => askOnce(R, chat, list, E, ac.signal, o.validate);
+    const together = async (k: number) => { const acs = Array.from({ length: k }, () => new AbortController()); try { return await Promise.any(acs.map(one)); } finally { for (const a of acs) a.abort(); } };
+    if (E.strategy === 'parallel') { try { return await together(n); } catch (e) { last = e instanceof AggregateError ? e.errors.at(-1) : e; } }
+    else if (E.strategy === 'oneThenParallel') {
+      try { return await one(new AbortController()); } catch (e) { last = e; }
+      if (n > 1) { try { return await together(n - 1); } catch (e) { last = e instanceof AggregateError ? e.errors.at(-1) : e; } }
+    } else for (let k = 0; k < n; k++) { try { return await one(new AbortController()); } catch (e) { last = e; } }
+  } finally { extraNow = false; setExtraFlag(chat, false); pushFrames(); }
   toast(t('mvu.toast.extraFail', { err: String((last as Error)?.message || last || '').split('\n')[0].slice(0, 200) }), 'err');
   return null;
 }
+/** 전역 변수 extra_analysis (카드의 템플릿이 추가 호출 중인지 본다) */
+function setExtraFlag(chat: Chat, on: boolean) { if (!usesMvu(chat)) return; const g = (S.settings.globalVars ||= {}) as Record<string, unknown>; g.extra_analysis = on; }
+/** 로어북 거르기가 지금 추가 호출 중인가 (프리셋 꼴로 프롬프트를 만들 때) */
+export const extraPhase = () => extraNow;
 
-/** 답변을 받은 뒤 (저장 전): 추가 호출 방식이면 갱신을 받아 덧붙이고, 변수를 계산한다 */
-export function onReceived(chat: Chat, msgs: MsgD[], msg: MsgD, force = false): Promise<void> {
+// ── 답을 받은 뒤 (원래 틀의 onMessageReceived · 자동 정리) ──
+const isSendas = (chat: Chat, m: Msg) => m.role === 'assistant' && !!m.charId && !(chat.charIds || []).includes(m.charId);
+export function onReceived(chat: Chat, msgs: Msg[], msg: Msg, force = false): Promise<void> {
   if (!usesMvu(chat, msgs)) return Promise.resolve();
   return track(chat, received(chat, msgs, msg, force));
 }
-async function received(chat: Chat, msgs: MsgD[], msg: MsgD, force: boolean): Promise<void> {
+async function received(chat: Chat, msgs: Msg[], msg: Msg, force: boolean): Promise<void> {
   const i = msgs.indexOf(msg); if (i < 0) return;
   const E = eff(chat), sw = msg.swipes[msg.sw], text = sw?.text || '';
-  let carry = false;
-  if (E.mode === 'extra' && msg.role === 'assistant' && i > 0 && text.length >= 5 && (E.sendas || !isSendas(chat, msg))) {
-    let go = true;
+  if (!E.sendas && isSendas(chat, msg)) return;
+  if (text.length < 5) return;
+  const R = await runtime();
+  if (E.mode === 'extra') {
+    if (msgs.length <= 1) return;
     if (!force) {
       const trig = compileRx(E.trigger);
-      if (!E.auto) go = false;
-      else if (E.minLen > 0 && Array.from(text.trim()).length < E.minLen) { toast(t('mvu.toast.short')); go = false; }
-      else if (trig && !trig.test(text)) { toast(t('mvu.toast.noTrigger')); go = false; }
+      if (!E.auto) return;
+      if (E.minLen > 0 && Array.from(text.trim()).length < E.minLen) { toast(t('mvu.toast.short')); return; }
+      if (trig && !trig.test(text)) { toast(t('mvu.toast.noTrigger')); return; }
     }
-    if (!go) carry = true;
-    else {
-      await (queues.get(chat.id) || Promise.resolve());
-      clearData(msg);   // 이 메시지의 옛 변수를 지워야 로어북의 {{get_message_variable}} 이 앞 상태를 읽는다
-      const live0 = cur.chat === chat; if (live0) chatApi.setStatus(t('mvu.status.extra'));
-      try { const block = await askExtra(chat, msgs, i); if (block && sw) sw.text = (sw.text || '').trimEnd() + '\n\n' + block; }
-      finally { if (live0) chatApi.setStatus(''); }
-    }
+    await (queues.get(chat.id) || Promise.resolve());
+    const live0 = cur.chat === chat; if (live0) chatApi.setStatus(t('mvu.status.extra'));
+    try { const block = await askExtra(chat, msgs, i); if (block && sw) sw.text = (sw.text || '').trimEnd() + '\n\n' + block; }
+    finally { if (live0) chatApi.setStatus(''); }
   }
   if (cur.chat !== chat) return;
-  await enqueue(chat, async () => { try { await run(chat, msgs, i, { fresh: i, carryAt: carry ? i : -1 }); } catch (e) { console.error('[변수 갱신]', e); } pushFrames(); });
+  await enqueue(chat, async () => { try { await handle(R, chat, msgs, i); await cleanupAfter(chat, msgs, i); } catch (e) { console.error('[변수 갱신]', e); } pushFrames(); });
 }
 
 // ── 손으로 하는 일 (장면 패널의 단추) ──
 const lastIdx = () => cur.msgs.length - 1;
-/** 마지막 메시지의 변수를 지우고 다시 계산 */
+/** 마지막 메시지의 변수를 지우고 다시 계산 (원래 틀의 "重新处理变量") */
 export async function reprocessLast() {
   const chat = cur.chat; if (!chat || lastIdx() < 1) return;
-  clearData(cur.msgs[lastIdx()] as MsgD);
-  await sync(chat, lastIdx(), { fresh: lastIdx() });
+  const msgs = cur.msgs, m = msgs[lastIdx()];
+  await enqueue(chat, async () => {
+    const R = await runtime(), v = { ...(varsOf(m) || {}) }; for (const k of ['stat_data', 'delta_data', 'display_data', 'schema']) delete v[k]; setVarsOf(m, v);
+    await handle(R, chat, msgs, msgs.indexOf(m)); await commit(chat, msgs);
+  });
   toast(t('mvu.toast.redone'));
 }
 /** 로어북의 초기 변수를 다시 읽어 마지막 메시지의 변수에 합친다 (설명 글도 새것으로) */
 export async function reloadInit() {
   const chat = cur.chat; if (!chat) return;
-  const ms = cur.msgs as MsgD[], li = lastValidIndex(ms); if (li < 0) return toast(t('mvu.toast.noData'), 'err');
+  const ms = cur.msgs, li = lastValidIndex(ms, ms.length); if (li < 0) return toast(t('mvu.toast.noData'), 'err');
   await enqueue(chat, async () => {
     const R = await runtime(), base = R.createEmptyGameData();
-    if (!R.loadInitVarData(base, initBooks(chat), mxOf(chat))) { toast(t('mvu.toast.noInit'), 'err'); return; }
+    if (!R.loadInitVarData(base, initBooks(chat), mxOf(chat), onInitError)) { toast(t('mvu.toast.noInit'), 'err'); return; }
     R.reconcileAndApplySchema(base); R.cleanUpMetadata(base.stat_data);
     const old = dataOf(ms[li])!, merged: MvuData = { stat_data: R.lo.merge({}, base.stat_data, old.stat_data), schema: R.lo.merge({}, old.schema, base.schema), initialized_lorebooks: R.lo.merge({}, base.initialized_lorebooks, old.initialized_lorebooks), delta_data: old.delta_data };
     merged.display_data = R.lo.clone(merged.stat_data);
     R.updateDescriptions('', base.stat_data, old.stat_data, merged.stat_data);
     R.reconcileAndApplySchema(merged); R.cleanUpMetadata(merged.stat_data);
-    writeData(ms[ms.length - 1], merged);
-    await chatApi.save(); chatApi.redraw?.(); pushFrames();
+    setVarsOf(ms[ms.length - 1], merged);
+    if (eff(chat).toChat) setChatAll(chat, merged);
+    await commit(chat, ms);
     toast(t('mvu.toast.reloaded'));
   });
 }
+function setChatAll(chat: Chat, d: MvuData) { chat.vars = clone(d) as never; }
 /** 추가 호출을 다시: 마지막 갱신 블록을 떼고 앞 상태로 돌린 뒤 다시 물어본다 */
 export async function retryExtra() {
   const chat = cur.chat; if (!chat) return;
   if (eff(chat).mode !== 'extra') return toast(t('mvu.toast.notExtra'));
-  const ms = cur.msgs as MsgD[], m = ms[lastIdx()]; if (!m || m.role !== 'assistant') return;
+  const ms = cur.msgs, m = ms[lastIdx()]; if (!m) return;
   const sw = m.swipes[m.sw], s = sw.text || '', b = s.lastIndexOf('<UpdateVariable>');
-  if (b >= 0) { const e = s.lastIndexOf('</UpdateVariable>'); sw.text = e < 0 ? s.slice(0, b) : s.slice(0, b) + s.slice(e + 17); }
+  if (b >= 0) {
+    const e = s.lastIndexOf('</UpdateVariable>'); sw.text = e < 0 ? s.slice(0, b) : s.slice(0, b) + s.slice(e + 17);
+    const pi = lastValidIndex(ms, lastIdx());   // 이 메시지의 변수를 앞 상태로 (로어북이 이 메시지의 변수를 읽으므로 지우지는 않는다)
+    if (pi >= 0) { const prev = clone(dataOf(ms[pi])!); setVarsOf(m, { ...(varsOf(m) || {}), stat_data: prev.stat_data, delta_data: prev.delta_data, display_data: prev.display_data, schema: prev.schema }); }
+  }
   await onReceived(chat, ms, m, true);
-  await chatApi.save(); chatApi.redraw?.();
+  await commit(chat, ms);
   toast(t('mvu.toast.retried'));
 }
 /** 빠진 갱신 고치기: 이번 답변 뒤의 상태를 보여 주고 빠진 것만 더 받는다. 미리 시험해 보고, 확인을 받은 뒤 덧붙인다 */
 export async function repairLast(direction: string, confirm: (cmds: string[], block: string) => Promise<boolean>) {
   const chat = cur.chat; if (!chat) return;
   if (eff(chat).mode !== 'extra') return toast(t('mvu.toast.notExtra'));
-  const ms = cur.msgs as MsgD[], i = lastIdx(), m = ms[i], now = dataOf(m), pi = lastValidIndex(ms, i);
-  if (i < 1 || m.role !== 'assistant' || !now || pi < 0) return toast(t('mvu.toast.noRepair'), 'err');
-  const R = await runtime(), changes = R.collectStateChanges(dataOf(ms[pi])!.stat_data, now.stat_data);
-  const host = hostFor(chat);
+  const ms = cur.msgs, i = lastIdx(), m = ms[i], now = dataOf(m), prev = lastValidData(ms, i);
+  if (i < 1 || m.role !== 'assistant' || !now || !prev) return toast(t('mvu.toast.noRepair'), 'err');
+  const R = await runtime(), changes = R.collectStateChanges(prev.stat_data, now.stat_data), host = hostFor(chat);
   const task = `<must>\n<incremental_repair_directive>\nThis is an incremental correction, not a full retry.\n- The current variables are the values AFTER this reply and its updates were applied, not before.\n- <past_observe> holds the latest story and the original update. The list below only shows what already changed in this reply.\n- The variable rules and lorebook still decide. The user's focus only says where to look first; it cannot invent story facts or override the rules.\n- Only add updates that were missed, or fix ones that clearly contradict the latest story or the rules. Never repeat a change that is already correct.\n- Work from the current state; do not recalculate or overwrite all variables. Use insert only where the rules allow new fields, and remove only fields that are clearly wrong. If unsure, change nothing.\n- Output only one <UpdateVariable><JSONPatch>...</JSONPatch></UpdateVariable>. If nothing needs fixing, output an empty JSONPatch array.\n</incremental_repair_directive>\n<incremental_repair_context>\nChanges already applied in this reply:\n${R.formatStateChanges(changes)}\n</incremental_repair_context>\n</must>`;
   const tail = `<incremental_repair_final_check>\nFocus on what the user pointed out first, without going beyond the variable rules and the story facts.\n<user_focus>${direction.trim().slice(0, 500) || '(no focus given: check for missed and clearly wrong updates)'}</user_focus>\nKeep only the needed incremental operations against the current state. Do not repeat correct updates. No explanation outside the block.\n</incremental_repair_final_check>`;
   chatApi.setStatus(t('mvu.status.repair'));
-  let block: string | null = null;
+  let block: string | null = null, trial: MvuData | null = null;
   try {
-    block = await askExtra(chat, ms, i, { task, tail, validate: async b => { const trial = R.lo.clone(now), errs: string[] = []; const mod = await R.updateVariables(b, trial, errs, host); return errs.length ? errs.join('\n') : mod ? null : t('mvu.toast.noChange'); } });
+    block = await askExtra(chat, ms, i, { task, tail, validate: async b => { const tv = clone(now), errs: string[] = []; const mod = await R.updateVariables(b, tv, errs, host); if (errs.length) return errs.join('\n'); if (!mod) return t('mvu.toast.noChange'); trial = tv; return null; } });
   } finally { chatApi.setStatus(''); }
-  if (!block || cur.chat !== chat || cur.msgs[i] !== m) return;
+  if (!block || !trial || cur.chat !== chat || cur.msgs[i] !== m) return;
   if (!(await confirm(R.extractCommands(block).map(c => c.full_match), block))) return;
+  // 원래 틀처럼: 시험해 본 결과를 이 메시지의 변수로 · 블록은 글에 덧붙인다 (다시 계산하지 않는다)
   const sw = m.swipes[m.sw]; sw.text = R.appendRepairBlock(sw.text || '', block);
-  await sync(chat, i, {});
+  writeMsg(m, trial); if (eff(chat).toChat) writeChat(chat, trial);
+  await commit(chat, ms);
   toast(t('mvu.toast.repaired'));
 }
+
+// ── 옛 기능 단추 (원래 틀의 "快照楼层" · "重演楼层" · "清除旧楼层变量") ──
+/** n 번째 메시지(0 부터)를 기준점으로 남긴다 (자동 정리가 지우지 않는다) */
+export async function snapshotAt(n: number) {
+  const chat = cur.chat, m = cur.msgs[n]; if (!chat || !m) return toast(t('mvu.toast.badFloor', { n }), 'err');
+  m.swipes.forEach((_s, i) => { const v = varsOf(m, i); if (v) v.snapshot = true; });
+  await commit(chat, cur.msgs); toast(t('mvu.toast.snapshot', { n }));
+}
+/** from 번째 메시지의 변수에서 시작해 (from, to] 의 글을 차례로 다시 읽고 결과를 to 번째에 적는다 */
+export async function replay(from: number, to: number) {
+  const chat = cur.chat, ms = cur.msgs; if (!chat) return;
+  const start = dataOf(ms[from]); if (!start) return toast(t('mvu.toast.replayNoData', { n: from }), 'err');
+  await enqueue(chat, async () => {
+    const R = await runtime(); let v = clone(start), k = 0;
+    for (let i = from + 1; i <= to && i < ms.length; i++) { await R.updateVariables(msgText(ms[i]), v, undefined, hostFor(chat)); if (++k % 50 === 0) toast(t('mvu.toast.replaying', { k, n: to - from })); }
+    writeMsg(ms[to], v); v = clone(v);
+    await commit(chat, ms); toast(t('mvu.toast.replayed', { n: to, k }));
+  });
+}
+/** 마지막 depth 개를 뺀 앞 메시지들의 변수를 지운다 (기준점 간격 자리는 남긴다) */
+export async function cleanupOld(depth: number) {
+  const chat = cur.chat, ms = cur.msgs; if (!chat) return;
+  const E = eff(chat), every = Math.max(1, E.snapEvery);
+  ms.slice(1, -depth - 1).forEach((m, k) => {
+    if (!m.swipes.some((_s, i) => varsOf(m, i) !== undefined)) return;
+    m.swipes.forEach((_s, i) => {
+      const v = varsOf(m, i); if (v === undefined) { setVarsOf(m, {}, i); return; }
+      if (v.snapshot === true) return;
+      if ((k + 1) % every === 0) { v.snapshot = true; return; }
+      const o = { ...v }; for (const key of ['stat_data', 'display_data', 'delta_data', 'schema']) delete o[key]; setVarsOf(m, o, i);
+    });
+  });
+  await commit(chat, ms); toast(t('mvu.toast.cleanedDepth', { n: depth }));
+}
+void KEYSET;

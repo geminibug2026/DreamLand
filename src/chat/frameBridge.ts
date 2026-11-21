@@ -8,10 +8,10 @@ import { cur } from './store';
 import { chatApi } from './actions';
 import { appHost, runQrScript } from '../stscript/host';
 import { appCalls, onFrameMessage, relayEmit } from './frameEvents';
+import { setVarsOf, swipesVars, varsOf } from './msgVars';
 import { isDuringExtra, pending as mvuPending } from '../mvu/app';
 
 type Obj = Record<string, unknown>;
-type MsgD = Msg & { thData?: Obj };
 const hostGen = (p: string, o: { raw?: boolean }) => (appHost() as unknown as { gen: (p: string, o: { raw?: boolean }) => Promise<string> }).gen(p, o);
 
 // 화면 안의 localStorage 를 대신 보관한다 (모든 화면이 함께 쓴다)
@@ -21,9 +21,9 @@ let lsTimer = 0;
 const lsSave = () => { clearTimeout(lsTimer); lsTimer = window.setTimeout(() => void DB.put('kv', { id: 'frame-ls', data: ls }), 300); };
 
 const roleOf = (m: Msg) => m.role === 'user' ? 'user' : m.role === 'system' ? 'system' : 'assistant';
-const view = (m: MsgD, i: number) => ({ message_id: i, name: m.name || (m.role === 'user' ? S.persona(cur.chat!)?.name : '') || '', role: roleOf(m), is_hidden: !!m.hidden, message: msgText(m), data: m.thData || {}, swipe_id: m.sw, swipes: m.swipes.map(s => s.text) });
+const view = (m: Msg, i: number) => ({ message_id: i, name: m.name || (m.role === 'user' ? S.persona(cur.chat!)?.name : '') || '', role: roleOf(m), is_hidden: !!m.hidden, message: msgText(m), data: varsOf(m) || {}, swipe_id: m.sw, swipes: m.swipes.map(s => s.text), swipes_data: swipesVars(m) });
 const LIMIT = 300;
-const snapshot = () => { const ms = cur.msgs as MsgD[], from = Math.max(0, ms.length - LIMIT); return ms.slice(from).map((m, j) => view(m, from + j)); };
+const snapshot = () => { const ms = cur.msgs, from = Math.max(0, ms.length - LIMIT); return ms.slice(from).map((m, j) => view(m, from + j)); };
 const vars = () => ({ chat: cur.chat?.vars || {}, global: S.settings.globalVars || {}, character: {}, message: {} });
 
 function msgIndexOf(f: HTMLIFrameElement) {
@@ -38,7 +38,7 @@ const mvuText = () => ({ path: t('mvu.zod.path'), input: t('mvu.zod.input'), cmd
 frameHooks.init = async f => {
   await lsReady;
   const chat = cur.chat, ch = chat ? S.get('chars', chat.charIds[0]) : undefined;
-  return { ls, msgId: msgIndexOf(f), lastId: cur.msgs.length - 1, messages: snapshot(), vars: vars(), user: chat ? S.persona(chat)?.name : '', char: ch?.name || '', charId: ch?.id || '', charAvatar: ch?.avatar || '', mvuExtra: isDuringExtra(), mvuNotify: !!(S.settings as { mvu?: { notifyErr?: boolean } }).mvu?.notifyErr, mvuText: mvuText() };
+  return { ls, msgId: msgIndexOf(f), lastId: cur.msgs.length - 1, messages: snapshot(), vars: vars(), user: chat ? S.persona(chat)?.name : '', char: ch?.name || '', charId: ch?.id || '', charAvatar: ch?.avatar || '', userAvatar: chat ? S.persona(chat)?.avatar || '' : '', viewH: innerHeight, mvuExtra: isDuringExtra(), mvuNotify: !!(S.settings as { mvu?: { notifyErr?: boolean } }).mvu?.notifyErr, mvuText: mvuText() };
 };
 
 async function commit() { await chatApi.save(); chatApi.redraw?.(); }
@@ -55,7 +55,7 @@ frameHooks.call = async (f, fn, args) => {
     case 'emit': return await relayEmit(f, String(args[0] ?? ''), Array.isArray(args[1]) ? args[1] as unknown[] : []);   // 다른 화면 · 앱에도 알리고, 고쳐진 인자를 돌려준다
   }
   if (!chat) throw new Error('no chat open');
-  const ms = cur.msgs as MsgD[];
+  const ms = cur.msgs;
   switch (fn) {
     case 'setMsgs': {
       for (const p of (args[0] as Obj[]) || []) {
@@ -63,13 +63,16 @@ frameHooks.call = async (f, fn, args) => {
         if (typeof p.message === 'string') { const s = m.swipes[m.sw]; if (s) { s.text = p.message; delete s.tr; } }
         if (typeof p.name === 'string') m.name = p.name;
         if (typeof p.is_hidden === 'boolean') m.hidden = p.is_hidden;
-        if (p.data && typeof p.data === 'object') m.thData = p.data as Obj;
+        if (Array.isArray(p.swipes) && p.swipes.length) { const texts = p.swipes.map(x => String(x ?? '')); m.swipes = texts.map((tx, k) => m.swipes[k] ? { ...m.swipes[k], text: tx } : { text: tx, ts: Date.now() }); m.sw = Math.min(m.sw, m.swipes.length - 1); }
+        if (typeof p.swipe_id === 'number' && m.swipes[p.swipe_id]) m.sw = p.swipe_id;
+        if (Array.isArray(p.swipes_data)) p.swipes_data.forEach((v, k) => { if (m.swipes[k] && v && typeof v === 'object') setVarsOf(m, v as Obj, k); });
+        if (p.data && typeof p.data === 'object') setVarsOf(m, p.data as Obj);
       }
       await commit(); return null;
     }
     case 'createMsgs': {
       const list = (args[0] as Obj[]) || [], at = (args[1] as Obj)?.insert_at;
-      const made = list.map(p => { const role = p.role === 'user' ? 'user' : p.role === 'system' ? 'system' : 'assistant'; const m = newMsg(role, String(p.message ?? ''), { name: String(p.name || '') }) as MsgD; if (role === 'assistant') m.charId = chat.charIds[0] || ''; if (p.is_hidden) m.hidden = true; if (p.data) m.thData = p.data as Obj; return m; });
+      const made = list.map(p => { const role = p.role === 'user' ? 'user' : p.role === 'system' ? 'system' : 'assistant'; const m = newMsg(role, String(p.message ?? ''), { name: String(p.name || '') }); if (role === 'assistant') m.charId = chat.charIds[0] || ''; if (p.is_hidden) m.hidden = true; if (p.data && typeof p.data === 'object') setVarsOf(m, p.data as Obj); return m; });
       const pos = typeof at === 'number' ? (at < 0 ? ms.length + 1 + at : at) : ms.length;
       ms.splice(Math.max(0, Math.min(ms.length, pos)), 0, ...made);
       await commit(); return null;
@@ -81,7 +84,7 @@ frameHooks.call = async (f, fn, args) => {
     }
     case 'setVars': {
       const [t, id, v] = args as [string, number | null, Obj];
-      if (t === 'message') { const m = ms[Number(id)]; if (m) m.thData = v || {}; await chatApi.save(); }
+      if (t === 'message') { const m = ms[Number(id)]; if (m) setVarsOf(m, v || {}); await chatApi.save(); }
       else if (t === 'global') { S.settings.globalVars = v as Record<string, string>; S.saveSettings(); }
       else { chat.vars = v as Record<string, string>; await S.save('chats', chat, true); }
       return null;
@@ -108,3 +111,6 @@ on('message:swiped', d => { const i = idx(d); after('message_swiped', d, () => i
 on('message:deleted', () => send('message_deleted', cur.msgs.length));
 on('generate:start', () => send('generation_started'));
 on('generate:end', () => send('generation_ended', cur.msgs.length - 1));
+// 앱 창 높이가 바뀌면 화면들의 --TH-viewport-height 를 맞춘다
+let vhTimer = 0;
+addEventListener('resize', () => { clearTimeout(vhTimer); vhTimer = window.setTimeout(() => framePost({ dlState: { viewH: innerHeight } }), 150); });

@@ -1,17 +1,41 @@
 <!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;background:transparent}</style>
 <script>
-// 메시지 속 HTML 화면의 빈 틀. 앱이 내용(dlHtml)과 시작 자료(init)를 보내면 그 앞에 jQuery · lodash · 실리태번 도우미를 깔고 문서를 쓴다
+// 메시지 속 HTML 화면 · 카드 스크립트의 빈 틀. 앱이 내용(dlHtml)과 시작 자료(init)를 보내면 그 앞에 실리태번 Tavern Helper 가 까는 것과 같은 라이브러리 · 도우미를 깔고 문서를 쓴다
 // 다른 곳(브라우저 확장 등)에서 온 메시지는 무시하고, 앱이 보낸 내용을 받은 뒤에만 귀를 닫는다
 var dlDone = false;
 addEventListener("message", function on(e) {
   if (dlDone || e.source !== parent || !e.data || typeof e.data.dlHtml !== "string") return;
   dlDone = true; removeEventListener("message", on);
-  var v = /\/frame$/.test(location.pathname) ? "vendor/" : "", h = e.data.dlHtml, init = JSON.stringify(e.data.init || {}).replace(/</g, "\\u003c");
-  // 스크립트 화면 · zod / YAML 을 쓰는 화면에는 실리태번 도우미처럼 z 와 YAML 도 깐다 (앱에 들어 있는 것)
-  var lib = function (f) { return '<script src="' + v + f + '"><\/script>'; }, all = !!(e.data.init && e.data.init.script);
-  var extra = (all || /\bz\s*\.\s*[A-Za-z]|zod|registerMvuSchema/.test(h) ? lib("zod.min.js") : "") + (all || /\bYAML\b|mvu_zod|variable_zod/.test(h) ? lib("yaml.min.js") : "");
-  var pre = '<script>window.__dlInit=' + init + '<\/script>' + lib("jquery.min.js") + lib("lodash.min.js") + extra + lib("th-shim.js");
-  var post = '<script src="' + v + 'th-size.js"><\/script>';
+  var I = e.data.init || {}, v = /\/frame$/.test(location.pathname) ? "vendor/" : "", h = e.data.dlHtml, script = !!I.script;
+  var js = function (f) { return '<script src="' + v + f + '"><\/script>'; }, css = function (f) { return '<link rel="stylesheet" href="' + v + f + '">'; };
+  var has = function (re) { return re.test(h); };
+  var lib = '';
+  if (script) {
+    // 스크립트 화면: 앱의 jQuery(3.x) · lodash · z · YAML, 그리고 Vue · VueRouter (쓰는 스크립트만)
+    lib = js("jquery.min.js") + js("lodash.min.js") + js("zod.min.js") + js("yaml.min.js")
+      + (has(/\bVue\b|VueRouter/) ? js("th/vue.runtime.global.prod.js") + js("th/vue-router.global.prod.js") : "");
+  } else {
+    // 메시지 화면: Tavern Helper 의 메시지 화면과 같은 차례 — Font Awesome · Tailwind · jQuery(최신) · jQuery UI · Vue · VueRouter
+    var esc = function (s) { return String(s || "").replace(/['\\]/g, "\\$&"); };
+    lib = '<style>*,*::before,*::after{box-sizing:border-box;}html,body{margin:0!important;padding:0;overflow:hidden!important;max-width:100%!important;}'
+      + ".user_avatar,.user-avatar{background-image:url('" + esc(I.userAvatar) + "')}.char_avatar,.char-avatar{background-image:url('" + esc(I.charAvatar) + "')}</style>"
+      + (has(/\bfa[srlbdk]?-|\bfa\b|font-?awesome/i) ? css("th/fontawesome/css/all.min.css") : "")
+      + js("th/tailwindcss.min.js") + js("th/jquery.min.js")
+      + (has(/\.(?:draggable|droppable|resizable|selectable|sortable|accordion|autocomplete|button|checkboxradio|controlgroup|datepicker|dialog|menu|progressbar|selectmenu|slider|spinner|tabs|tooltip|effect)\s*\(|\bui-[a-z]|jquery-?ui|\$\.ui\b/i) ? js("th/jquery-ui.min.js") + css("th/jquery-ui/theme.min.css") + js("th/jquery.ui.touch-punch.min.js") : "")
+      + (has(/\bVue\b|VueRouter/) ? js("th/vue.runtime.global.prod.js") + js("th/vue-router.global.prod.js") : "")
+      + js("lodash.min.js")
+      + (has(/\bz\s*\.\s*[A-Za-z]|zod|registerMvuSchema/) ? js("zod.min.js") : "") + (has(/\bYAML\b|mvu_zod|variable_zod/) ? js("yaml.min.js") : "");
+    // 화면 높이 단위(vh)로 적은 최소 높이는 앱 창 높이로 (iframe 안의 vh 는 iframe 자신의 높이라 끝없이 늘어난다)
+    if (/min-height|minHeight/.test(h) && /\d(?:\.\d+)?vh\b/i.test(h)) {
+      var toVar = function (val) { return val.replace(/(\d+(?:\.\d+)?)vh\b/gi, function (m, n) { var x = parseFloat(n); if (!isFinite(x)) return m; return x === 100 ? "var(--TH-viewport-height)" : "calc(var(--TH-viewport-height) * " + (x / 100) + ")"; }); };
+      h = h.replace(/(min-height\s*:\s*)([^;{}"']*?\d+(?:\.\d+)?vh)(?=\s*[;}"'])/gi, function (m, a, b) { return a + toVar(b); })
+        .replace(/(\.style\.minHeight\s*=\s*(["']))([^"']*?)(\2)/gi, function (m, a, q, b, c) { return /\d(?:\.\d+)?vh\b/i.test(b) ? a + toVar(b) + c : m; })
+        .replace(/(setProperty\s*\(\s*(["'])min-height\2\s*,\s*(["']))([^"']*?)(\3\s*\))/gi, function (m, a, q1, q2, b, c) { return /\d(?:\.\d+)?vh\b/i.test(b) ? a + toVar(b) + c : m; });
+    }
+  }
+  var init = JSON.stringify(I).replace(/</g, "\\u003c");
+  var pre = '<script>window.__dlInit=' + init + '<\/script>' + lib + js("th-shim.js");
+  var post = js("th-size.js");
   var m = h.match(/<head[^>]*>/i) || h.match(/<html[^>]*>/i) || h.match(/<!doctype[^>]*>/i);
   h = m ? h.replace(m[0], function () { return m[0] + pre; }) : pre + h;
   var i = h.toLowerCase().lastIndexOf("</body>");
