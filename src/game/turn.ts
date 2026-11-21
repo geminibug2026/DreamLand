@@ -9,19 +9,20 @@ import { encPrompt, missPrompt, missingItems, rng, rollEncounter, rollSights, se
 import { moodEdge, moodTier } from './mood';
 import { marksPrompt } from './bonds';
 import { sagaPrompt } from './saga';
-import { STAT_ALIAS, checkHelp, d, gameOf, modOf, readTags, rollCheck, ruleOf, sceneOf, sheetOf, weatherOf, type Fx, type GameCfg, type GameMsg, type GameSwipe, type Sheet, type TurnOmen } from './state';
+import { recalcReply } from './sync';
+import { STAT_ALIAS, checkHelp, d, gameOf, modOf, readTags, rollCheck, ruleOf, sceneOf, sheetOf, statCfg, weatherOf, type Fx, type GameCfg, type GameMsg, type GameSwipe, type Sheet, type TurnOmen } from './state';
 
 type Sw = Msg['swipes'][number] & GameSwipe;
 const INDOOR = ['hall', 'tavern', 'room', 'castle', 'station'];
 export const indoorAt = (s: Sheet) => INDOOR.includes(sceneOf(s));
 
-/** 판정 하나를 굴린다: 사기의 보정을 얹고, 대실패는 운명 점 하나, 기세가 오른 날의 성공은 넷에 한 번 운명 점을 돌려준다 */
+/** 판정 하나를 굴린다 (상태 변수와 이어 둔 능력치가 있으면 그 값으로): 사기의 보정을 얹고, 대실패는 운명 점 하나, 기세가 오른 날의 성공은 넷에 한 번 운명 점을 돌려준다 */
 export function rollWithMood(g: GameCfg, ask: CheckAsk, sh: Sheet) {
-  const edge = moodEdge(sh.morale), r = rollCheck(g, ask, sh.level, edge), fx: Fx[] = [];
+  const edge = moodEdge(sh.morale), r = rollCheck(statCfg(g, sh), ask, sh.level, edge), fx: Fx[] = [];
   if (r.grade === 'fumble') fx.push({ k: 'fate', n: 1 }); else if (r.ok && moodTier(sh.morale) === 4 && sh.fate < 5 && d(4) === 4) fx.push({ k: 'fate', n: 1 });
   return { ...r, ...(fx.length ? { fx } : {}) };
 }
-const slotCtx = (g: GameCfg, sh: Sheet): SlotCtx => ({ d, mod: w => { const k = w.toLowerCase(), st = STAT_ALIAS[k]; return st ? modOf(g, st) : /^(level|lv|lvl|레벨|等级)$/.test(k) ? sh.level : /^(prof|proficiency|숙련)$/.test(k) ? 2 + Math.floor((sh.level - 1) / 4) : null; } });
+const slotCtx = (g: GameCfg, sh: Sheet): SlotCtx => ({ d, mod: w => { const k = w.toLowerCase(), st = STAT_ALIAS[k]; return st ? modOf(statCfg(g, sh), st) : /^(level|lv|lvl|레벨|等级)$/.test(k) ? sh.level : /^(prof|proficiency|숙련)$/.test(k) ? 2 + Math.floor((sh.level - 1) / 4) : null; } });
 
 /** 답장의 표시를 읽어 그 답장(스와이프)에 붙이고 글에서는 지운다. 바뀐 것이 있으면 true */
 export function settle(sw: Sw): ReturnType<typeof readTags> & { changed: boolean } {
@@ -60,7 +61,7 @@ export async function flipFate(chat: Chat, msg: Msg, at: number): Promise<boolea
   const out = resolveReply(sw.graw, () => { throw new Error('unexpected roll'); }, slotCtx(g, sh), { rolls: sw.grolls!.map((x, i) => i === at ? next : x), slots: sw.gdice });
   sw.text = out.text; sw.grolls = out.rolls; if (out.slots.length) sw.gdice = out.slots; else delete sw.gdice;
   delete sw.gfx; delete sw.gask; delete sw.gchoices; delete sw.gcine; delete sw.tr; settle(sw);
-  await chatApi.save(); chatApi.redraw();
+  await chatApi.save(); chatApi.redraw(); recalcReply(chat, msg);
   return true;
 }
 
@@ -74,7 +75,7 @@ export function castOmens(chat: Chat, msg: Msg, msgs: Msg[]) {
     const enc = rollEncounter({ seed, key: msg.id, text, place: sh.place, scene: sceneOf(sh), diff: g.diff, party: 1 + sh.party.length, level: sh.level, recent, hp: sh.hp, hpMax: sh.hpMax }); if (enc) gt.enc = enc;
   }
   if (g.keen !== false && !waiting && !gt.enc) {
-    const seen = rollSights({ seed, key: msg.id, place: sh.place, scene: sceneOf(sh), time: sh.time, weather: weatherOf(sh), indoor: indoorAt(sh), passive: 10 + modOf(g, 'wis') + moodEdge(sh.morale), text }); if (seen.length) gt.seen = seen;
+    const seen = rollSights({ seed, key: msg.id, place: sh.place, scene: sceneOf(sh), time: sh.time, weather: weatherOf(sh), indoor: indoorAt(sh), passive: 10 + modOf(statCfg(g, sh), 'wis') + moodEdge(sh.morale), text }); if (seen.length) gt.seen = seen;
   }
   const miss = missingItems(text, sh.items); if (miss.length) gt.miss = miss;
   if (moodTier(sh.morale) === 0 && sh.party.length && rng(seed, 'waver:' + msg.id)() < .25) gt.waver = sh.party[Math.floor(rng(seed, 'who:' + msg.id)() * sh.party.length)];

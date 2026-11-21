@@ -12,6 +12,7 @@ import { Sprites, charIdOf, currentOf } from '../expressions/store';
 import { fmt, pagesOf } from '../vn/Screen';
 import { Ambience, Music, setSfx, sfx } from './sfx';
 import { Weather, airOf } from './Weather';
+import { latestStat, pinsOf } from './vars';
 import { elapsedOf, gameOf, pendingAsk, pendingFate, sceneOf, sheetOf, trackOf, type GameMsg, type GameRec } from './state';
 import { GameCard, askLabel, interject, openSheet, resolveAsk, rewindTo, settleFate } from './ui';
 import { MoodFlag, Recap, TurnCards, stageParts } from './More';
@@ -38,6 +39,11 @@ function build(chat: Chat, msgs: Msg[]): Page[] {
   }
   return out;
 }
+/** 가장 최근 메시지 변수의 자리와 크기 (상태 변수와 이어 둔 게임에서, 변수가 바뀌면 시트를 다시 계산하려고) */
+const varsSig = (msgs: Msg[]) => { for (let i = msgs.length - 1; i >= 0; i--) { const v = (msgs[i].swipes[msgs[i].sw] as { thData?: { stat_data?: object } } | undefined)?.thData; if (v?.stat_data) return `${i}:${idOf(v.stat_data)}`; } return ''; };
+/** 변수는 바뀔 때마다 새 객체로 적히므로, 객체마다 번호를 붙여 견준다 (글로 바꾸지 않는다) */
+const ids = new WeakMap<object, number>(); let nextId = 0;
+const idOf = (o: object) => { let n = ids.get(o); if (n === undefined) ids.set(o, n = ++nextId); return n; };
 const tail = (msgs: Msg[]) => { const m = msgs[msgs.length - 1]; return m ? `${m.id}:${m.sw}:${(m.swipes[m.sw]?.text || '').length}` : ''; };
 
 // 화면을 다시 그릴 때마다 새로 만들어지지 않게 바깥에 둔다 (안에 두면 누르는 도중에 단추가 바뀌어 눌리지 않고 깜빡인다)
@@ -54,7 +60,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
     let sig = '', n = 0;
     const tm = window.setInterval(() => {
       if (cur.chat?.id !== chatId || !gameOf(cur.chat)) return closeStage();
-      const ms = cur.msgs, now = `${ms.length}|${tail(ms)}|${running() ? 1 : 0}|${JSON.stringify(gameOf(cur.chat))}`;
+      const ms = cur.msgs, now = `${ms.length}|${tail(ms)}|${running() ? 1 : 0}|${JSON.stringify(gameOf(cur.chat))}|${gameOf(cur.chat)?.vars?.links.length ? varsSig(ms) : ''}`;
       if (now !== sig || ++n >= 12) { sig = now; n = 0; bump(x => x + 1); }
     }, 160);
     return () => clearInterval(tm);
@@ -63,7 +69,9 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
   useEffect(() => { if (chat) void Sprites.load(chat.charIds).then(() => bump(n => n + 1)).catch(() => { }); }, [chat]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const pages = useMemo(() => chat ? build(chat, msgs) : [], [chat, msgs, msgs.length, tail(msgs)]);
-  const sheet = useMemo(() => g ? sheetOf(g, msgs) : null, [g, msgs, msgs.length, tail(msgs), g?.adj?.length]);
+  const vsig = g?.vars?.links.length ? varsSig(msgs) : '';
+  const sheet = useMemo(() => g ? sheetOf(g, msgs) : null, [g, msgs, msgs.length, tail(msgs), g?.adj?.length, vsig]);
+  const pins = g?.vars?.show?.length ? pinsOf(latestStat(msgs), g.vars) : [];
 
   // 새로 온 이야기는 아직 읽지 않은 첫 문단부터 보여 준다 (판정 결과 → 이어지는 답변 순서로)
   const keys = pages.map(p => p.msgId).join('|');
@@ -177,7 +185,9 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
         <span className="gs-eyebrow">HP</span><b className={hpLow ? 'is-low' : ''}>{sheet.hp}<i>/{sheet.hpMax}</i></b>
         <span className="gs-meter"><i style={{ width: `${sheet.hp / sheet.hpMax * 100}%` }} className={hpLow ? 'is-low' : ''} /></span>
       </button>
-      <div className="gs-stats"><span title={t('game.fate.hint')}><small>{t('game.fate')}</small>{sheet.fate}</span><span><small>LV</small>{sheet.level}</span><span><small>{t('game.gold')}</small>{sheet.gold}</span></div>
+      <div className="gs-stats"><span title={t('game.fate.hint')}><small>{t('game.fate')}</small>{sheet.fate}</span><span><small>LV</small>{sheet.vlevel || sheet.level}</span><span><small>{t('game.gold')}</small>{sheet.gold}</span></div>
+      {sheet.vmp ? <div className="gs-clock gs-mbar"><small>{sheet.vmp.name}</small>{sheet.vmp.max ? <span className="gs-meter"><i style={{ width: `${Math.min(100, sheet.vmp.v / sheet.vmp.max * 100)}%` }} /></span> : null}<em>{sheet.vmp.v}{sheet.vmp.max !== undefined ? '/' + sheet.vmp.max : ''}</em></div> : null}
+      {pins.map(p => <div key={p.path} className="gs-clock gs-mbar g2-gs-pin" title={p.path}><small>{p.name}</small>{p.max && p.v !== undefined ? <span className="gs-meter"><i style={{ width: `${Math.min(100, p.v / p.max * 100)}%` }} /></span> : null}<em>{p.max ? `${p.text}/${p.max}` : p.text}</em></div>)}
       {moodTier(sheet.morale) !== 2 ? <button type="button" className="g2 g2-gs-mood" title={t('game.mood.hint')} onClick={() => openSheet(chat)}><MoodFlag v={sheet.morale} size={26} /><small>{t('game.mood.title')}</small><b>{t('game.mood.' + moodTier(sheet.morale))}</b></button> : null}
       {sheet.meters.map(m => <div key={m.name} className="gs-clock gs-mbar"><small>{m.name}</small><span className="gs-meter"><i style={{ width: `${m.v / m.max * 100}%` }} /></span><em>{m.v}/{m.max}</em></div>)}
       {sheet.clocks.map(c => <div key={c.name} className={`gs-clock${c.v >= c.max ? ' is-full' : ''}`}><ClockDial v={c.v} max={c.max} /><small>{c.name}</small><em>{c.v}/{c.max}</em></div>)}

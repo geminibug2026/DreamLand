@@ -106,3 +106,16 @@
 
 @container (max-width: 340px) { .g2-enc { grid-template-columns: auto minmax(0, 1fr); } .g2-enc-roll { grid-column: 1 / -1; grid-auto-flow: column; justify-content: start; align-items: baseline; gap: 8px; padding: 6px 0 0; border-left: 0; border-top: 1px dashed var(--line-2); } }
 @media (max-width: 820px) { .g2-person-head { grid-template-columns: minmax(0, 1fr) auto 3.2ch; } .g2-person-tier { display: none; } .g2-twist > div { grid-template-columns: 1fr; gap: 1px; } }
+
+/* ── 상태 변수 잇기 (game/Link.tsx) ── 폰 폭에서도 옆으로 밀리지 않게: 고르는 칸은 늘 한 줄을 다 쓰고 줄어들 수 있다 */
+.g2-vlink { display: grid; gap: 10px; min-width: 0; }
+.g2-vlink-rows { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 8px 14px; min-width: 0; }
+.g2-vlink-row { min-width: 0; margin: 0; } .g2-vlink-row select { width: 100%; min-width: 0; max-width: 100%; text-overflow: ellipsis; }
+.g2-vlink-row .field-label { display: flex; align-items: center; gap: 6px; } .g2-vlink-tag { font: 600 9.5px/1 var(--display); letter-spacing: .08em; padding: 2px 5px; border: 1px solid var(--line-2); color: var(--dim); font-style: normal; }
+.g2-vlink-show summary { cursor: pointer; font-size: .92em; } .g2-vlink-pins { display: grid; gap: 4px; max-height: 220px; overflow: auto; padding: 4px 0; } .g2-vlink-pins .gm-check span { min-width: 0; overflow-wrap: anywhere; }
+.g2-vlink-rule { border-left: 2px solid var(--line-1); padding-left: 10px; }
+.g2-vlink-offer { flex: 1 1 100%; display: grid; gap: 2px; padding: 6px 12px; border: 1px dashed var(--ink-line, var(--line-1)); background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; min-width: 0; } .g2-vlink-offer small { color: var(--dim); font-size: .82em; overflow-wrap: anywhere; }
+.g2-vlink-setup { display: grid; gap: 2px; } .g2-vlink-setup small { overflow-wrap: anywhere; }
+.gm-statline .is-var b { text-decoration: underline dotted; text-underline-offset: 3px; }
+.g2-vpin b { max-width: 9em; }
+.g2-vlink-more summary { cursor: pointer; font-size: .92em; margin-bottom: 6px; }

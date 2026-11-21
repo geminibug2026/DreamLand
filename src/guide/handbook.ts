@@ -36,6 +36,7 @@ export const TOPICS: Topic[] = [
   T('group', 'chat', 'chat', '그룹 여러 캐릭터 group 순서 초대 群聊 多角色'),
   T('talk', 'chat', 'chat', '톡 대화 모드 먼저 연락 선톡 proactive 상태 일정 presence schedule 主动 消息 在线'),
   T('game', 'chat', 'chat', '게임 trpg gm 주사위 전투 가방 지도 dice combat bag map 游戏 骰子 战斗'),
+  T('gamevars', 'chat', 'chat', '게임 mvu 상태창 변수 잇기 연동 시트 체력 은량 행낭 소지품 판정 능력치 game link sync variables stat_data sheet 游戏 变量 联动 状态栏 体力 银两'),
   T('commands', 'chat', 'chat', '명령 슬래시 slash command roll sys 주사위 stscript 命令'),
   T('lalib', 'chat', 'qr', 'lalib 확장 명령 /ife /elseif /whilee /foreach /map /reduce /getat /setat /try /catch /switch /swipes /message /wi 식 expression stscript 扩展 命令'),
   T('lore', 'world', 'lore', '로어북 월드 인포 world info lorebook 키워드 항목 entry keyword 世界书 条目'),

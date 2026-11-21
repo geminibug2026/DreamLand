@@ -6,6 +6,7 @@ import { MOOD_WORDS, moodApply, moodDrift, moodPrompt, moodStart, type MoodEv } 
 import { REP_VERBS, verbOf, VERB_HELP, type Person } from './bonds';
 import type { RollRec, SlotRec } from './oneshot';
 import type { Enc, Seen } from './omens';
+import { latestStat, overlay, readLinks, type VarCfg } from './vars';
 
 export type StatKey = 'str' | 'dex' | 'con' | 'int' | 'wis' | 'cha';
 /** 규칙서: 판정을 어떻게 굴리고 읽는지 */
@@ -44,6 +45,8 @@ export interface GameCfg {
   bossScript?: boolean;
   /** 지난 이야기를 아직 듣지 않았다 (세션을 마무리하면 켜진다) */
   recap?: boolean;
+  /** 카드의 상태 변수(MVU)와 이어 둔 칸 (vars.ts). 있으면 한 번 정한 것이다 */
+  vars?: VarCfg;
 }
 /** 끝낸 세션 하나: 요약과, 다음 회로 이어 줄 것들 */
 export interface SessionNote { text: string; at: number; /** 작은 디테일 · 인물의 순간 · 다음 회에서 이어질 곳 · 동료의 변화 */ details?: string[]; moments?: string[]; hooks?: string[]; party?: string[]; /** 내가 다음 회에 바라는 것 */ wish?: string }
@@ -81,10 +84,12 @@ export type GameRec =
   | { kind: 'start' }
   | { kind: 'session'; n: number; text: string }
   | { kind: 'qte'; choice: string; took: number; secs: number; speed: 'fast' | 'ok' | 'late' | 'timeout' }
-  | { kind: 'check'; stat: StatKey; dc: number; die: number; mod: number; total: number; ok: boolean; crit?: 'hit' | 'miss'; why?: string; fx?: Fx[]; rule?: RuleId; dice?: number[]; grade?: Grade; note?: string; /** 사기가 준 보정 */ edge?: number; /** 진행자의 서술을 끊고 끼어든 판정 */ cut?: boolean; /** 실패했고 운명 점이 남아 있다: 받아들일지 다시 굴릴지 고르는 중 */ open?: boolean; rerolled?: boolean }
+  | { kind: 'check'; stat: StatKey; dc: number; die: number; mod: number; total: number; ok: boolean; crit?: 'hit' | 'miss'; why?: string; fx?: Fx[]; rule?: RuleId; dice?: number[]; grade?: Grade; note?: string; /** 사기가 준 보정 */ edge?: number; /** 진행자의 서술을 끊고 끼어든 판정 */ cut?: boolean; /** 상태 변수에서 가져온 능력치 (이름과 값) */ vs?: string; /** 실패했고 운명 점이 남아 있다: 받아들일지 다시 굴릴지 고르는 중 */ open?: boolean; rerolled?: boolean }
   | { kind: 'fight'; name: string; outcome: 'win' | 'lose' | 'fled'; rounds: number; took: number; hp: number; hpMax: number; fx?: Fx[]; loot?: string; fallen?: string[]; /** 달아난 적 · 항복한 적 · 항복한 적을 베었다 · 우두머리가 있었다 · 원소 반응 횟수 */ ran?: string[]; yielded?: string[]; merciless?: boolean; boss?: boolean; reacts?: number; /** 졌을 때 이야기로 이어 가기로 했다 */ carried?: boolean }
   | { kind: 'play'; game: MiniId; outcome: Outcome; score: string; stake?: string; fx?: Fx[] };
-export interface Sheet { hp: number; hpMax: number; gold: number; items: { name: string; n: number; hid?: string; known?: boolean }[]; quests: { title: string; done: boolean }[]; place: string; places: { name: string; seen: boolean }[]; paths: [string, string][]; xp: number; level: number; people: Person[]; /** 사기 0~100 */ morale: number; party: string[]; time: string; weather: string; scene: string; fate: number; /** 진행자가 날씨를 쓴 때(흐른 분) · 앱이 정한 날씨 */ weatherAt: number; wx: Wx | ''; meters: { name: string; v: number; max: number }[]; docs: { title: string; text: string }[]; mins: number; music: string; clocks: { name: string; v: number; max: number }[] }
+export interface Sheet { hp: number; hpMax: number; gold: number; items: { name: string; n: number; hid?: string; known?: boolean }[]; quests: { title: string; done: boolean }[]; place: string; places: { name: string; seen: boolean }[]; paths: [string, string][]; xp: number; level: number; people: Person[]; /** 사기 0~100 */ morale: number; party: string[]; time: string; weather: string; scene: string; fate: number; /** 진행자가 날씨를 쓴 때(흐른 분) · 앱이 정한 날씨 */ weatherAt: number; wx: Wx | ''; meters: { name: string; v: number; max: number }[]; docs: { title: string; text: string }[]; mins: number; music: string; clocks: { name: string; v: number; max: number }[];
+  /** 상태 변수와 이어 둔 것 (vars.ts 가 채운다): 이 규칙서의 눈금으로 옮긴 능력치 · 그 변수 이름과 값 · 글로 된 레벨(경지) · 기력 */
+  vstat?: Partial<Record<StatKey, number>>; vlab?: Partial<Record<StatKey, string>>; vlevel?: string; vmp?: { name: string; v: number; max?: number } }
 
 export type GameChat = Chat & { game?: GameCfg };
 export type GameSwipe = { /** 연출: 흔들림 · 섬광 · 어두워짐 · 위아래 띠 */ gcine?: string[]; gfx?: Fx[]; gask?: Ask; /** 진행자가 내놓은 선택지 */ gchoices?: string[];
@@ -187,8 +192,16 @@ export function sheetOf(g: GameCfg, msgs: Msg[]): Sheet {
   for (const fx of g.adj || []) apply(s, fx);
   // 날씨 자동: 진행자가 쓴 날씨는 여섯 시간 동안 그대로 두고, 그 뒤로는(또는 쓴 적이 없으면) 여섯 시간마다 계절과 장소에 맞게 굴린다
   if (g.autoWeather !== false && (s.weatherAt < 0 || s.mins - s.weatherAt >= 360)) { s.weather = ''; s.wx = rollWeather(g.seed || 1, Math.floor(s.mins / 360), s); }
+  // 상태 변수와 이어 둔 칸은 가장 최근 메시지 변수의 값이 진짜다 (게임 일은 변수 갱신 명령으로 그 변수에 적힌다 — vars.ts)
+  if (g.vars?.links.length) { const st = latestStat(msgs); if (st) overlay(s, readLinks(st, g.vars), ruleOf(g), g.vars, moveTo); }
   return s;
 }
+/** 변수가 정한 곳으로 옮긴다: 지도에 두고, 있던 곳과 잇는다 */
+const moveTo = (s: Sheet, from: string, to: string) => { const p = spot(s, to); p.seen = true; s.place = p.name; if (from && !same(from, p.name)) link(s, from, p.name); };
+/** 시트에 변화들을 더한 새 시트 (앞 시트는 그대로) — 게임 일을 변수 명령으로 바꿀 때 앞뒤를 견준다 */
+export function afterFx(s: Sheet, fxs: Fx[]): Sheet { const n = structuredClone(s); for (const fx of fxs) apply(n, fx); return n; }
+/** 판정 · 전투에 쓰는 능력치: 상태 변수와 이어 둔 능력치가 있으면 그 값으로 */
+export const statCfg = (g: GameCfg, s: Sheet | null | undefined): GameCfg => s?.vstat ? { ...g, stats: { ...g.stats, ...s.vstat } } : g;
 /** 마지막 답변이 맡긴 일 (그 뒤에 무엇이든 이어졌으면 끝난 것) */
 /** 실패한 판정을 받아들일지 고르는 중인 기록 */
 export function pendingFate(msgs: Msg[]): GameMsg | null { const m = msgs[msgs.length - 1] as GameMsg | undefined; return m?.gm?.kind === 'check' && m.gm.open ? m : null; }
@@ -377,7 +390,7 @@ ${o.extra ? o.extra + '\n' : ''}The result comes back as a bracketed line; narra
 const sessionCarry = (x: SessionNote) => `${x.hooks?.length ? `\nThreads left open for this session: ${x.hooks.join(' | ')}` : ''}${x.party?.length ? `\nHow the companions changed: ${x.party.join(' | ')}` : ''}${x.details?.length ? `\nSmall details worth calling back to: ${x.details.join(' | ')}` : ''}${x.wish?.trim() ? `\n{{user}} asked for this in the session now being played — plan for it and deliver it without announcing it: ${x.wish.trim().slice(0, 600)}` : ''}`;
 export function sheetPrompt(g: GameCfg, s: Sheet, bag = ''): string {
   const items = s.items.map(i => (i.n > 1 ? `${i.name} x${i.n}` : i.name) + (i.hid ? i.known ? ` (revealed to be: ${i.hid})` : ` (GM-only truth: ${i.hid} — {{user}} has not found out)` : '')).join(', ') || 'nothing', open = s.quests.filter(q => !q.done).map(q => q.title), done = s.quests.filter(q => q.done).map(q => q.title);
-  return `[{{user}}'s sheet — HP ${s.hp}/${s.hpMax}${s.hp <= 0 ? ' (down: cannot act until helped or healed)' : ''} · Gold ${s.gold} · Fate ${s.fate} · Level ${s.level} (${s.xp} XP) · ${statsOf(g).map(k => `${STAT_EN[k]} ${ruleOf(g) === 'd20' || ruleOf(g) === '2d6' ? sign(statVal(g, k)) : statVal(g, k)}`).join(' ')} · Carrying: ${items}${bag}${open.length ? ` · Quests: ${open.join('; ')}` : ''}${done.length ? ` · Finished: ${done.join('; ')}` : ''}${s.place ? ` · Place: ${s.place}` : ''}${ways(s)}${s.time ? ` · Time: ${s.time}` : ''}${weatherOf(s) ? ` · Weather: ${weatherOf(s)}${s.weather ? '' : ' (set by the app for now — narrate it; write [weather …] to change it)'}` : ''}${s.party.length ? ` · Companions: ${s.party.join(', ')}` : ''}${s.people.length ? ` · Standing: ${s.people.map(p => `${p.name} ${sign(p.v)} (${REP_EN[repTier(p.v)]})`).join(', ')}` : ''}${moodPrompt(s.morale)}${s.meters.length ? ` · Meters: ${s.meters.map(m => `${m.name} ${m.v}/${m.max}`).join(', ')}` : ''}${s.mins ? ` · Elapsed: ${elapsedText(s.mins)}` : ''}${s.clocks.length ? ` · Clocks: ${s.clocks.map(c => `${c.name} ${c.v}/${c.max}${c.v >= c.max ? ' (FULL — it happens now)' : ''}`).join(', ')}` : ''}]`;
+  return `[{{user}}'s sheet — HP ${s.hp}/${s.hpMax}${s.hp <= 0 ? ' (down: cannot act until helped or healed)' : ''} · Gold ${s.gold} · Fate ${s.fate} · Level ${s.vlevel || s.level} (${s.xp} XP)${s.vmp ? ` · ${s.vmp.name} ${s.vmp.v}${s.vmp.max !== undefined ? '/' + s.vmp.max : ''}` : ''} · ${statsOf(g).map(k => `${STAT_EN[k]} ${ruleOf(g) === 'd20' || ruleOf(g) === '2d6' ? sign(statVal(g, k)) : statVal(g, k)}`).join(' ')} · Carrying: ${items}${bag}${open.length ? ` · Quests: ${open.join('; ')}` : ''}${done.length ? ` · Finished: ${done.join('; ')}` : ''}${s.place ? ` · Place: ${s.place}` : ''}${ways(s)}${s.time ? ` · Time: ${s.time}` : ''}${weatherOf(s) ? ` · Weather: ${weatherOf(s)}${s.weather ? '' : ' (set by the app for now — narrate it; write [weather …] to change it)'}` : ''}${s.party.length ? ` · Companions: ${s.party.join(', ')}` : ''}${s.people.length ? ` · Standing: ${s.people.map(p => `${p.name} ${sign(p.v)} (${REP_EN[repTier(p.v)]})`).join(', ')}` : ''}${moodPrompt(s.morale)}${s.meters.length ? ` · Meters: ${s.meters.map(m => `${m.name} ${m.v}/${m.max}`).join(', ')}` : ''}${s.mins ? ` · Elapsed: ${elapsedText(s.mins)}` : ''}${s.clocks.length ? ` · Clocks: ${s.clocks.map(c => `${c.name} ${c.v}/${c.max}${c.v >= c.max ? ' (FULL — it happens now)' : ''}`).join(', ')}` : ''}]`;
 }
 /** 흐른 시간을 "Day N, HH:MM" 으로 (첫날 아침 8시에서 시작) */
 export const elapsedOf = (mins: number) => { const t = 480 + mins; return { day: 1 + Math.floor(t / 1440), h: Math.floor(t % 1440 / 60), m: t % 60 }; };

@@ -12,7 +12,9 @@ import { t } from '../i18n';
 import { def, str } from '../stscript/run';
 import { bagPrompt, packBag, type BagCfg } from '../game/bag';
 import { inCall } from '../call/logic';
-import { MINIS, gameOf, hideTags, rulesPrompt, sheetOf, sheetPrompt, type GameSwipe, type MiniId } from '../game/state';
+import { MINIS, gameOf, hideTags, ruleOf, rulesPrompt, sheetOf, sheetPrompt, statCfg, type GameSwipe, type MiniId } from '../game/state';
+import { latestStat, varsPrompt } from '../game/vars';
+import { hook as linkVars } from '../game/sync';
 import { Sheet, drawFor, openGame, openMiniPicker, playMini, redrawGame } from '../game/ui';
 import { closeStage, openStage, stageOpenFor } from '../game/Stage';
 import type { GameChat } from '../game/state';
@@ -61,11 +63,17 @@ function setup() {
   // 내가 말을 보내면 그 차례의 만남 · 눈에 띄는 것을 미리 굴려 메시지에 적어 둔다 (다시 받아도 같은 일이 벌어지게)
   on('message:sent', data => { const { msg, chat } = data as { msg: Msg; chat: Chat }; if (gameOf(chat) && here()?.id === chat.id) castOmens(chat, msg, chatApi.current().msgs); });
   for (const ev of ['generate:end', 'message:deleted', 'message:swiped', 'message:edited', 'message:sent', 'chat:open']) on(ev, redrawGame);
+  // 상태 변수(MVU)와 잇기: 진행자의 답변을 계산할 때 게임 표시를 이어 둔 변수의 명령으로 바꾸고 (game/sync), 변수가 바뀌면 시트를 다시 그린다 (시트가 변수를 읽는다)
+  linkVars();
+  on('mvu:updated', () => { if (gameOf(here())?.vars) redrawGame(); });
 
   X.prompt = X.prompt.filter(p => p.owner !== OWNER);
   X.prompt.push({ owner: OWNER, fn: info => {
     const g = gameOf(info.chat); if (!g || info.type === 'impersonate' || inCall(info.chat)) return [];
-    return [{ where: 'before', content: rulesPrompt(g, moreRules(g)), src: '게임 규칙' }, ...turnPieces(g, info.msgs, info.type), { where: 'end', content: (() => { const sh = sheetOf(g, info.msgs); return sheetPrompt(g, sh, bagPrompt(packBag(g.bag as BagCfg | undefined, sh.items, sh.level))); })(), src: '게임 시트' }];
+    const sh = sheetOf(g, info.msgs), st = g.vars?.links.length ? latestStat(info.msgs) : null, linked = st ? varsPrompt(g.vars!, st, ruleOf(g)) : '';
+    return [{ where: 'before', content: rulesPrompt(g, moreRules(g)), src: '게임 규칙' }, ...turnPieces(g, info.msgs, info.type), { where: 'end', content: sheetPrompt(statCfg(g, sh), sh, bagPrompt(packBag(g.bag as BagCfg | undefined, sh.items, sh.level))), src: '게임 시트' },
+      // 이어 둔 상태 변수: 어느 칸이 어느 변수인지와 지금 값만 짧게 (트리 전체가 아니다), 그리고 겹침 규칙
+      ...(linked ? [{ where: 'end' as const, content: linked, src: '게임 변수' }] : [])];
   } });
   // 화면에서는 표시를 가린다 (받는 중인 글에도)
   X.filters = X.filters.filter(f => f.owner !== OWNER);
