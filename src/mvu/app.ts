@@ -198,15 +198,25 @@ async function initCheck(R: R, chat: Chat, msgs: Msg[]): Promise<boolean> {
   return true;
 }
 
+// ── 게임 모드와 잇기 (game/vars.ts · features/game 이 채운다. 비어 있으면 아무 일도 없다) ──
+/** reply: 진행자의 답변 하나를 계산할 때, 그 답변의 게임 표시를 이어 둔 변수의 갱신 명령으로 바꿔 준다.
+ *  touched 는 답변 자신의 갱신 명령이 건드린 경로들 — 겹침 규칙(같은 값을 둘 다 바꾸면 변수 명령만 쓴다)은 게임 쪽이 이것으로 지킨다.
+ *  has: 이 답변에 게임 쪽 일이 있는가 (글이 짧아도 계산하게) */
+export const gameLink: { reply?: (chat: Chat, msgs: Msg[], i: number, stat: Obj, touched: () => string[][]) => string; has?: (chat: Chat, msg: Msg) => boolean } = {};
+const GAME_OPEN = '\n\n<UpdateVariable>\n', GAME_CLOSE = '\n</UpdateVariable>';
+
 // ── 원래 틀의 handleVariablesInMessage: 한 메시지를 앞 상태에서 계산한다 ──
 async function handle(R: R, chat: Chat, msgs: Msg[], i: number): Promise<void> {
   const m = msgs[i], sw = m?.swipes[m.sw]; if (!m || !sw) return;
   const text = sw.text || '';
-  if (m.role === 'assistant' && text.length < 5) return;
+  if (m.role === 'assistant' && text.length < 5 && !gameLink.has?.(chat, m)) return;
   const variables = lastValidData(msgs, i === 0 ? 1 : i);
   if (!variables || variables.stat_data === undefined) return;
   const host = hostFor(chat);
-  await R.updateVariables(text, variables, undefined, host);
+  // 게임 모드: 답변의 게임 표시에서 나온 명령을 답변의 명령 뒤에 붙여 한 번에 계산한다 (이벤트 · 규칙 스크립트가 한 번만 돈다). 글에는 남기지 않는다
+  let extra = '';
+  if (m.role === 'assistant' && gameLink.reply) { try { extra = gameLink.reply(chat, msgs, i, variables.stat_data as Obj, () => R.extractCommands(host.macros(text)).map(c => R.lo.toPath(c.reason === 'json_patch' ? c.args[0] : R.pathFix(R.trimQuotesAndBackslashes(c.args[0]))))); } catch (e) { console.warn('[변수 갱신] 게임', e); } }
+  await R.updateVariables(extra ? text + GAME_OPEN + extra + GAME_CLOSE : text, variables, undefined, host);
   if (m.role !== 'user') {
     const now0 = sw.text || '';
     const ctx = { variables, message_content: now0 };
@@ -441,7 +451,7 @@ async function received(chat: Chat, msgs: Msg[], msg: Msg, force: boolean): Prom
   const i = msgs.indexOf(msg); if (i < 0) return;
   const E = eff(chat), sw = msg.swipes[msg.sw], text = sw?.text || '';
   if (!E.sendas && isSendas(chat, msg)) return;
-  if (text.length < 5) return;
+  if (text.length < 5 && !gameLink.has?.(chat, msg)) return;
   const R = await runtime();
   if (E.mode === 'extra') {
     if (msgs.length <= 1) return;
@@ -459,6 +469,30 @@ async function received(chat: Chat, msgs: Msg[], msg: Msg, force: boolean): Prom
   if (cur.chat !== chat) return;
   await enqueue(chat, async () => { try { await handle(R, chat, msgs, i); await cleanupAfter(chat, msgs, i); } catch (e) { console.error('[변수 갱신]', e); } pushFrames(); });
 }
+
+// ── 게임 모드가 만든 일 (전투 · 판정 기록, 시트에서 손으로 고친 값) ──
+/** msg 의 변수를 make 가 준 명령으로 계산해 적는다: 앞 상태에서 (onTop 이면 그 메시지의 지금 변수 위에). 명령이 비어도 앞 상태를 그 메시지에 적는다.
+ *  변수 갱신 틀의 같은 길(updateVariables)로 들어가므로 규칙 스크립트 · 이벤트 · 상태창이 그대로 따라온다. 변수가 없으면 false */
+export function applyTo(chat: Chat | null | undefined, msg: Msg, make: (stat: Obj) => string, onTop = false): Promise<boolean> {
+  if (!chat || cur.chat !== chat || !usesMvu(chat)) return Promise.resolve(false);
+  const msgs = cur.msgs;
+  return enqueue(chat, async () => {
+    const i = msgs.indexOf(msg); if (!live(chat, msgs) || i < 0) return false;
+    const own = onTop ? dataOf(msg) : null, base = own ? clone(own) : lastValidData(msgs, i); if (!base || base.stat_data === undefined) return false;
+    const R = await runtime(), text = make(base.stat_data as Obj);
+    if (text) await R.updateVariables(text, base, undefined, hostFor(chat));
+    if (eff(chat).toChat) writeChat(chat, base);
+    writeMsg(msg, base); await commit(chat, msgs); return true;
+  });
+}
+/** 메시지 하나를 앞 상태에서 다시 계산한다 (운명 점으로 판정을 뒤집어 그 답변의 갈래가 바뀌었을 때) */
+export function recalc(chat: Chat | null | undefined, msg: Msg): Promise<void> {
+  if (!chat || cur.chat !== chat || !usesMvu(chat)) return Promise.resolve();
+  const msgs = cur.msgs;
+  return enqueue(chat, async () => { const i = msgs.indexOf(msg); if (!live(chat, msgs) || i < 0) return; const R = await runtime(); await handle(R, chat, msgs, i); await commit(chat, msgs); });
+}
+/** 이 대화(지금 연 대화)에 메시지 변수가 있는가 */
+export const hasData = (chat: Chat | null | undefined) => !!chat && cur.chat === chat && lastValidIndex(cur.msgs) >= 0;
 
 // ── 손으로 하는 일 (장면 패널의 단추) ──
 const lastIdx = () => cur.msgs.length - 1;
