@@ -1,0 +1,1 @@
+export{t as go}from"./router-DO1AY98I.js";

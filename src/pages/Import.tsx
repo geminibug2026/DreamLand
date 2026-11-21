@@ -115,7 +115,7 @@ function ImportPage() {
     <p className="hint">{t('import.intro')}</p>
     {section('st')}{section('marinara')}
     <div className="card import-card"><h3 className="form-sec">{t('import.files')}</h3>
-      <div className={'dropzone' + (over ? ' over' : '')} onClick={async () => handle(await core.pickFiles({ multiple: true, accept: '.png,.json,.jsonl,.webp,.charx' }))}
+      <div className={'dropzone' + (over ? ' over' : '')} onClick={async () => handle(await core.pickFiles({ multiple: true, accept: '.png,.json,.jsonl,.webp,.charx,.zip' }))}
         onDragOver={e => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)} onDrop={e => { e.preventDefault(); setOver(false); void handle([...e.dataTransfer.files]); }}>
         <Icon name="import" size={30} /><b>{t('import.drop')}</b><span>{dropText ?? t('import.dropHint')}</span></div>
       <div className="row"><Btn label={t('import.fromUrl')} ic="link" cls="ghost" onClick={async () => {

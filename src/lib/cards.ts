@@ -1,6 +1,6 @@
 // ── Dreamland cards: 캐릭터 카드(PNG/JSON) · 외부 형식 변환과 가져오기 (옛 js/cards.js 그대로) ──
 import { tplKind, tplImport, KINDS } from './advanced';
-import { stQrToSet, qrAddSet } from './qr-data';
+import { stQrToSet, qrAddSet, type StQrSet } from './qr-data';
 import { S, uid, now, arr, bool, parseMaybe, parseDate, bytesToDataURL, dataURLToBytes, mimeOf, shrinkImage, newChar, newPersona, newLore, newEntry, newRegex, newChat, newMsg, defaultPreset, MARKERS, emit } from './core';
 import type { Chat, Msg, Regex } from './types';
 import { t } from '../i18n';
@@ -302,7 +302,10 @@ const EXT_OWN = ['talkativeness', 'fav', 'world', 'depth_prompt', 'regex_scripts
 const DATA_OWN = ['name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example', 'creator_notes', 'system_prompt', 'post_history_instructions', 'alternate_greetings', 'tags', 'creator', 'character_version', 'extensions', 'character_book'];
 /** v3 = true 면 캐릭터 카드 V3 스펙(chara_card_v3)으로 */
 export function charToCard(ch: DChar, v3 = false) {
-  const book = St.get('lore', (ch.loreIds || [])[0]);
+  return buildCard(ch, St.get('lore', (ch.loreIds || [])[0]) || null, scopedRegex(ch.id).map(regexToSt), v3);
+}
+/** 카드 만들기: 넣을 책 하나 · 정규식(실리태번 꼴) · 확장 필드 덧씌우기(ext 의 값을 바꾸거나 null 로 빼기)를 받는다 (저장소를 읽지 않는다) */
+export function buildCard(ch: DChar, book: LoreBook | null, regexSt: unknown[], v3 = false, extPatch: O = {}) {
   const more: O = { ...(ch.more || {}) };
   if (v3) { more.group_only_greetings = Array.isArray(more.group_only_greetings) ? more.group_only_greetings : []; more.creation_date ??= Math.floor((ch.createdAt || Date.now()) / 1000); more.modification_date = Math.floor((ch.updatedAt || Date.now()) / 1000); }
   return {
@@ -312,7 +315,7 @@ export function charToCard(ch: DChar, v3 = false) {
       name: ch.name, description: ch.description, personality: ch.personality, scenario: ch.scenario, first_mes: ch.firstMes, mes_example: ch.mesExample,
       creator_notes: ch.creatorNotes, system_prompt: ch.systemPrompt, post_history_instructions: ch.postHistory, alternate_greetings: ch.altGreetings, tags: ch.tags,
       creator: ch.creator, character_version: ch.version,
-      extensions: { ...(ch.ext || {}), talkativeness: ch.talk, fav: ch.fav, world: book?.name || '', depth_prompt: ch.depthPrompt, regex_scripts: scopedRegex(ch.id).map(regexToSt) },
+      extensions: Object.fromEntries(Object.entries({ ...(ch.ext || {}), ...extPatch, talkativeness: ch.talk, fav: ch.fav, world: book?.name || '', depth_prompt: ch.depthPrompt, regex_scripts: regexSt }).filter(([k, v]) => !(v === null && extPatch[k] === null))),
       ...(book ? { character_book: loreToCardBook(book) } : {}),
     },
   };
@@ -337,16 +340,22 @@ function askRegexLater(kind: string, id: string) {
 }
 
 export async function exportCharPng(ch: DChar): Promise<Uint8Array> {
+  return writePngCard(await avatarPng(ch), charToCard(ch), charToCard(ch, true));
+}
+/** 캐릭터 그림을 PNG 로 (그림이 없으면 보라색 빈 판) */
+export async function avatarPng(ch: DChar): Promise<Uint8Array> {
   const img = new Image();
   const c = document.createElement('canvas');
   await new Promise(res => { img.onload = res; img.onerror = res; img.src = ch.avatar || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600"><rect width="400" height="600" fill="#8b7fd6"/></svg>'); });
   c.width = img.width || 400; c.height = img.height || 600;
   (c.getContext('2d') as CanvasRenderingContext2D).drawImage(img, 0, 0);
-  return writePngCard(K.dataURLToBytes(c.toDataURL('image/png')), charToCard(ch), charToCard(ch, true));
+  return K.dataURLToBytes(c.toDataURL('image/png'));
 }
 
 const ST_KIND: Record<string, string> = { main: 'main', worldInfoBefore: 'worldInfoBefore', worldInfoAfter: 'worldInfoAfter', personaDescription: 'personaDescription', charDescription: 'charDescription', charPersonality: 'charPersonality', scenario: 'scenario', dialogueExamples: 'dialogueExamples', chatHistory: 'chatHistory', jailbreak: 'jailbreak' };
 const ST_NAME: Record<string, string> = { nsfw: '보조 프롬프트', enhanceDefinitions: '설정 강화' };
+/** 실리태번 프리셋으로 옮겨 가는 블록인가 (presetToSt 와 같은 기준. 아니면 장기기억 자리처럼 드림랜드에만 있는 칸) */
+export const stKeepsBlock = (kind: string) => kind === 'text' || kind === 'main' || kind === 'jailbreak' || !!ST_KIND[kind];
 export interface StPrompt { identifier: string; name?: string; content?: string; role?: string; marker?: boolean; enabled?: boolean; injection_position?: number; injection_depth?: number; [k: string]: unknown }
 export interface StOrder { identifier: string; enabled?: boolean }
 export interface StPreset {
@@ -678,9 +687,9 @@ async function upsert<T extends Upsertable>(coll: Coll, obj: T, src: string): Pr
 const avatarFrom = async (bytes: Uint8Array, name: string) => K.shrinkImage(K.bytesToDataURL(bytes, K.mimeOf(name)), 720);
 const safe = async <R,>(T: Tally, label: unknown, fn: () => Promise<R>): Promise<R | null> => { try { return await fn(); } catch (e) { console.warn(label, e); T.errors.push(`${label}: ${(e as Error).message}`); return null; } };
 
-async function saveCard(card: Card, avatar: string, src: string, T: Tally): Promise<DChar> {
+async function saveCard(card: Card, avatar: string, src: string, T: Tally, noBook = false): Promise<DChar> {
   const { char, lore, regex } = cardToChar(card, avatar);
-  if (lore) { const lb = await upsert('lore', lore, src ? src + '#book' : ''); char.loreIds = [lb.id]; T.lore++; }
+  if (lore && !noBook) { const lb = await upsert('lore', lore, src ? src + '#book' : ''); char.loreIds = [lb.id]; T.lore++; }
   const fresh = !(src && St.chars.some(x => x.src === src));
   const saved = await upsert('chars', char, src);
   let n = 0;
@@ -941,59 +950,104 @@ export async function importFiles(files: File[], progress: Progress = () => { })
   for (const f of files) {
     progress(f.name);
     await safe(T, f.name, async () => {
-      const ext = (f.name.split('.').pop() as string).toLowerCase(); const base = f.name.replace(/\.[^.]+$/, '');
-      if (['png', 'webp', 'jpg', 'jpeg'].includes(ext)) {
-        const bytes = new Uint8Array(await f.arrayBuffer()); const card = readPngCard(bytes);
-        if (!card) throw new Error(t('cards.err.noCard'));
-        await saveCard(card, await avatarFrom(bytes, f.name), '', T); return;
-      }
-      if (ext === 'charx') {   // CharX: ZIP 안의 card.json (V3 카드) + 그림 파일들. 대표 그림(icon)을 아바타로 쓴다
-        const files = await unzip(await f.arrayBuffer()), cj = files.find(x => /(^|\/)card\.json$/i.test(x.name));
-        if (!cj) throw new Error(t('cards.err.noCard'));
-        const card = JSON.parse(new TextDecoder().decode(cj.data)) as Card;
-        const list = ((card as { data?: { assets?: { type?: string; uri?: string; name?: string }[] } }).data?.assets || []).filter(a => a.type === 'icon' && a.uri);
-        const pathOf = (uri: string) => uri.replace(/^embedd?ed:\/\//i, '').replace(/^\/+/, '');
-        const icon = list.find(a => a.name === 'main') || list[0], isImg = (n: string) => /\.(png|webp|jpe?g|gif|avif)$/i.test(n);
-        const pic = (icon && files.find(x => x.name === pathOf(icon.uri!))) || files.find(x => isImg(x.name) && /icon/i.test(x.name)) || files.find(x => isImg(x.name));
-        await saveCard(card, pic ? await avatarFrom(pic.data, pic.name) : '', '', T); return;
-      }
-      const text = await f.text();
-      if (ext === 'jsonl') {
-        const head = JSON.parse(text.split(/\r?\n/).find(l => l.trim()) || '{}');
-        const firstAi = text.split(/\r?\n/).map((l): StRow | null => { try { return JSON.parse(l); } catch { return null; } }).find(r => r && r.mes !== undefined && !r.is_user);
-        const cname = (head.character_name && head.character_name !== 'unused' ? head.character_name : firstAi?.name) || base;
-        let ch = St.chars.find(c => c.name === cname);
-        if (!ch) { ch = await St.save('chars', K.newChar({ name: cname }), true); T.chars++; }
-        const { chat, msgs } = stChatToChat(text, { charIds: [ch.id], name: base });
-        await St.saveMsgs(chat, msgs); T.chats++; T.msgs += msgs.length; return;
-      }
-      const j = JSON.parse(text);
-      const M = j as MeExport;
-      if (M.app === 'dreamland') { await St.importAll(j, false); T.chars += K.arr(M.chars).length; T.chats += K.arr(M.chats).length; return; }
-      if (typeof M.type === 'string' && M.type.startsWith('marinara_') && M.data) {
-        const d = M.data;
-        if (M.type === 'marinara_character') { await saveCard((d.data ? d : { data: d }) as Card, d.avatar ? await K.shrinkImage(d.avatar, 720) : '', '', T); return; }
-        if (M.type === 'marinara_persona') { await St.save('personas', K.newPersona({ name: d.name || '나', description: [d.description, d.personality, d.appearance, d.backstory].filter(Boolean).join('\n\n'), avatar: d.avatar ? await K.shrinkImage(d.avatar, 720) : '' }), true); T.personas++; return; }
-        if (M.type === 'marinara_lorebook') { await St.save('lore', meLoreToLore((d.lorebook || d) as MeBook, K.arr<MeEntry>(d.entries)), true); T.lore++; return; }
-        if (M.type === 'marinara_preset') { await St.save('presets', mePresetToPreset((d.preset || d) as MePreset, K.arr<MeSection>(d.sections), K.arr<MeGroup>(d.groups), K.arr<MeChoice>(d.choiceBlocks)), true); T.presets++; return; }
-        throw new Error(t('cards.err.meUnsupported', { type: M.type }));
-      }
-      if (j.spec || (j.name && (j.first_mes !== undefined || j.description !== undefined)) || j.data?.first_mes !== undefined) { await saveCard(j, '', '', T); return; }
-      if (j.entries && typeof j.entries === 'object') { const b = worldToLore(j, base); if (!j.name) b.name = base; await St.save('lore', b, true); T.lore++; return; }
-      if (Array.isArray(j.prompts) || j.prompt_order || j.openai_max_tokens !== undefined) {
-        const { preset } = stPresetToPreset(j, base); await St.save('presets', preset, true); T.presets++; T.regex += preset.regex.length;
-        if (preset.regex.length) askRegexLater('presets', preset.id);
-        return;
-      }
-      if (isStTcPreset(j)) { await St.save('presets', stTcToPreset(j, base), true); T.presets++; return; }   // 텍스트 완성형 프리셋
-      const rs: unknown[] = Array.isArray(j) ? j : [j];
-      if (rs.length && rs.every(r => r && ((r as StRegex).findRegex !== undefined || (r as { find?: unknown }).find !== undefined))) { let n = St.regex.reduce((m, r) => Math.max(m, +(r.order as number) || 0), 0); for (const r of regexFromJson(rs)) { r.order = ++n; await St.save('regex', r, true); T.regex++; } return; }
-      if (tplKind(j) || Object.keys(KINDS).some(k => tplKind(j[k]) === k)) { T.templates += tplImport(j, base).length; return; }   // 고급 포맷팅 템플릿 (낱개 · 전체 내보내기)
-      if (Array.isArray(j.qrList) || Array.isArray(j.quickReplySlots)) { T.quick += qrAddSet(stQrToSet(j, base)); return; }   // Quick Reply 세트
-      throw new Error(t('cards.err.unknown'));
+      const ext = (f.name.split('.').pop() as string).toLowerCase();
+      if (ext === 'zip') return importZip(new Uint8Array(await f.arrayBuffer()), T, progress);
+      await importOne(f, T);
     });
   }
   K.emit('imported'); return T;
+}
+/** 실리태번용 묶음(.zip)의 메모: 드림랜드로 다시 가져올 때 캐릭터에 묶을 퀵 리플라이 세트 */
+export interface PackNote { app: 'dreamland-st-pack'; v: number; card?: string; charQr?: string[]; books?: string[] }
+/** ZIP: 드림랜드가 만든 실리태번용 묶음이면 캐릭터 · 로어북(따로 든 책들로 되살린다) · 퀵 리플라이(캐릭터 세트는 다시 캐릭터에) · 프리셋 · 정규식을 가져오고,
+ *  그 밖의 ZIP 은 안의 파일을 하나씩 가져온다 */
+async function importZip(bytes: Uint8Array, T: Tally, progress: Progress) {
+  const all = (await unzip(bytes)).filter(z => !/(^|\/)(__MACOSX\/|\.)/.test(z.name) && z.data.length);
+  const noteFile = all.find(z => /(^|\/)dreamland\.json$/i.test(z.name));
+  let note: PackNote | null = null;
+  if (noteFile) { try { const j = JSON.parse(new TextDecoder().decode(noteFile.data)); if (j?.app === 'dreamland-st-pack') note = j; } catch { /* 메모가 깨졌으면 보통 ZIP 처럼 */ } }
+  const fileOf = (z: { name: string; data: Uint8Array }) => new File([z.data as BlobPart], z.name.split('/').pop() as string);
+  const inDir = (z: { name: string }, dir: string) => new RegExp(`(^|/)${dir}/[^/]+$`, 'i').test(z.name);
+  if (!note) { for (const z of all.filter(z => /\.(png|webp|jpe?g|charx|json|jsonl)$/i.test(z.name))) { progress(z.name); await safe(T, z.name, () => importOne(fileOf(z), T)); } return; }
+  const books = all.filter(z => inDir(z, 'lorebooks') && /\.json$/i.test(z.name)), qrs = all.filter(z => inDir(z, 'quick-replies') && /\.json$/i.test(z.name));
+  const cardFile = all.find(z => z.name === note.card) || all.find(z => !z.name.includes('/') && /\.png$/i.test(z.name));
+  let ch: DChar | null = null;
+  if (cardFile) await safe(T, cardFile.name, async () => {
+    progress(cardFile.name);
+    const card = readPngCard(cardFile.data); if (!card) throw new Error(t('cards.err.noCard'));
+    ch = await saveCard(card, await avatarFrom(cardFile.data, cardFile.name), '', T, books.length > 0);   // 책을 따로 담았으면 합친 책 대신 원래 책들로
+  });
+  const linked: string[] = [];
+  for (const z of books) await safe(T, z.name, async () => {
+    progress(z.name);
+    const j = JSON.parse(new TextDecoder().decode(z.data)) as WorldJson, b = worldToLore(j, (z.name.split('/').pop() as string).replace(/\.json$/i, ''));
+    await St.save('lore', b, true); linked.push(b.id); T.lore++;
+  });
+  const who = ch as DChar | null;
+  if (who && linked.length) { who.loreIds = [...new Set([...linked, ...(who.loreIds || [])])]; await St.save('chars', who, true); }
+  for (const z of qrs) await safe(T, z.name, async () => {
+    progress(z.name);
+    const j = JSON.parse(new TextDecoder().decode(z.data)) as StQrSet, set = stQrToSet(j, (z.name.split('/').pop() as string).replace(/\.json$/i, ''));
+    if (who && (note.charQr || []).includes(set.name)) { set.scope = 'char'; set.charIds = [who.id]; }
+    T.quick += qrAddSet(set);
+  });
+  for (const z of all) {
+    if (z === noteFile || z === cardFile || books.includes(z) || qrs.includes(z) || !/\.json$/i.test(z.name)) continue;
+    progress(z.name); await safe(T, z.name, () => importOne(fileOf(z), T));
+  }
+}
+/** 파일 하나 (형식을 알아서 가린다) */
+async function importOne(f: File, T: Tally) {
+  const ext = (f.name.split('.').pop() as string).toLowerCase(); const base = f.name.replace(/\.[^.]+$/, '');
+  if (['png', 'webp', 'jpg', 'jpeg'].includes(ext)) {
+    const bytes = new Uint8Array(await f.arrayBuffer()); const card = readPngCard(bytes);
+    if (!card) throw new Error(t('cards.err.noCard'));
+    await saveCard(card, await avatarFrom(bytes, f.name), '', T); return;
+  }
+  if (ext === 'charx') {   // CharX: ZIP 안의 card.json (V3 카드) + 그림 파일들. 대표 그림(icon)을 아바타로 쓴다
+    const files = await unzip(await f.arrayBuffer()), cj = files.find(x => /(^|\/)card\.json$/i.test(x.name));
+    if (!cj) throw new Error(t('cards.err.noCard'));
+    const card = JSON.parse(new TextDecoder().decode(cj.data)) as Card;
+    const list = ((card as { data?: { assets?: { type?: string; uri?: string; name?: string }[] } }).data?.assets || []).filter(a => a.type === 'icon' && a.uri);
+    const pathOf = (uri: string) => uri.replace(/^embedd?ed:\/\//i, '').replace(/^\/+/, '');
+    const icon = list.find(a => a.name === 'main') || list[0], isImg = (n: string) => /\.(png|webp|jpe?g|gif|avif)$/i.test(n);
+    const pic = (icon && files.find(x => x.name === pathOf(icon.uri!))) || files.find(x => isImg(x.name) && /icon/i.test(x.name)) || files.find(x => isImg(x.name));
+    await saveCard(card, pic ? await avatarFrom(pic.data, pic.name) : '', '', T); return;
+  }
+  const text = await f.text();
+  if (ext === 'jsonl') {
+    const head = JSON.parse(text.split(/\r?\n/).find(l => l.trim()) || '{}');
+    const firstAi = text.split(/\r?\n/).map((l): StRow | null => { try { return JSON.parse(l); } catch { return null; } }).find(r => r && r.mes !== undefined && !r.is_user);
+    const cname = (head.character_name && head.character_name !== 'unused' ? head.character_name : firstAi?.name) || base;
+    let ch = St.chars.find(c => c.name === cname);
+    if (!ch) { ch = await St.save('chars', K.newChar({ name: cname }), true); T.chars++; }
+    const { chat, msgs } = stChatToChat(text, { charIds: [ch.id], name: base });
+    await St.saveMsgs(chat, msgs); T.chats++; T.msgs += msgs.length; return;
+  }
+  const j = JSON.parse(text);
+  const M = j as MeExport;
+  if (M.app === 'dreamland') { await St.importAll(j, false); T.chars += K.arr(M.chars).length; T.chats += K.arr(M.chats).length; return; }
+  if (typeof M.type === 'string' && M.type.startsWith('marinara_') && M.data) {
+    const d = M.data;
+    if (M.type === 'marinara_character') { await saveCard((d.data ? d : { data: d }) as Card, d.avatar ? await K.shrinkImage(d.avatar, 720) : '', '', T); return; }
+    if (M.type === 'marinara_persona') { await St.save('personas', K.newPersona({ name: d.name || '나', description: [d.description, d.personality, d.appearance, d.backstory].filter(Boolean).join('\n\n'), avatar: d.avatar ? await K.shrinkImage(d.avatar, 720) : '' }), true); T.personas++; return; }
+    if (M.type === 'marinara_lorebook') { await St.save('lore', meLoreToLore((d.lorebook || d) as MeBook, K.arr<MeEntry>(d.entries)), true); T.lore++; return; }
+    if (M.type === 'marinara_preset') { await St.save('presets', mePresetToPreset((d.preset || d) as MePreset, K.arr<MeSection>(d.sections), K.arr<MeGroup>(d.groups), K.arr<MeChoice>(d.choiceBlocks)), true); T.presets++; return; }
+    throw new Error(t('cards.err.meUnsupported', { type: M.type }));
+  }
+  if (j.spec || (j.name && (j.first_mes !== undefined || j.description !== undefined)) || j.data?.first_mes !== undefined) { await saveCard(j, '', '', T); return; }
+  if (j.entries && typeof j.entries === 'object') { const b = worldToLore(j, base); if (!j.name) b.name = base; await St.save('lore', b, true); T.lore++; return; }
+  if (Array.isArray(j.prompts) || j.prompt_order || j.openai_max_tokens !== undefined) {
+    const { preset } = stPresetToPreset(j, base); await St.save('presets', preset, true); T.presets++; T.regex += preset.regex.length;
+    if (preset.regex.length) askRegexLater('presets', preset.id);
+    return;
+  }
+  if (isStTcPreset(j)) { await St.save('presets', stTcToPreset(j, base), true); T.presets++; return; }   // 텍스트 완성형 프리셋
+  const rs: unknown[] = Array.isArray(j) ? j : [j];
+  if (rs.length && rs.every(r => r && ((r as StRegex).findRegex !== undefined || (r as { find?: unknown }).find !== undefined))) { let n = St.regex.reduce((m, r) => Math.max(m, +(r.order as number) || 0), 0); for (const r of regexFromJson(rs)) { r.order = ++n; await St.save('regex', r, true); T.regex++; } return; }
+  if (tplKind(j) || Object.keys(KINDS).some(k => tplKind(j[k]) === k)) { T.templates += tplImport(j, base).length; return; }   // 고급 포맷팅 템플릿 (낱개 · 전체 내보내기)
+  if (Array.isArray(j.qrList) || Array.isArray(j.quickReplySlots)) { T.quick += qrAddSet(stQrToSet(j, base)); return; }   // Quick Reply 세트
+  throw new Error(t('cards.err.unknown'));
 }
 
 export const summarize = (T: Tally) => ([['chars', T.chars], ['chats', T.chats], ['msgs', T.msgs], ['lore', T.lore], ['presets', T.presets], ['personas', T.personas], ['regex', T.regex], ['quick', T.quick], ['templates', T.templates]] as [string, number][]).filter(([, n]) => n).map(([k, n]) => t('cards.sum.' + k, { n })).join(' · ') || t('cards.sum.none');
