@@ -1,9 +1,11 @@
 // 메시지 목록: 필요한 만큼만 그리고, 바뀐 메시지 하나만 다시 그린다
 import { GameCard } from '../game/ui';
+import { ThreadCard, ThreadMarks } from '../threads/ui';
+import { TurnCards } from '../game/More';
 import { memo, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { Avatar, Btn, Icon, IconBtn } from '../kit';
-import { menu, openModal, promptBox, toast } from '../ui';
+import { menu, openModal, promptBox, toast, type MenuItem } from '../ui';
 import { cur, ui, useCh } from './store';
 import { DiceCard } from './Dice';
 import { CallCard } from '../call/Card';
@@ -21,6 +23,8 @@ import { IllustPic } from './IllustPic';
 import { Clock } from '../lib/clock';
 import { t, getLang, fmtDate } from '../i18n';
 import { I } from '../lib/icons';
+import { emit } from '../lib/core';
+import { Reacts } from '../extras/reactions';
 
 if (!I.pin) I.pin = 'M12 17v5M8 3h8l-1 6 3 3v2H6v-2l3-3z';
 
@@ -67,6 +71,12 @@ function EditBox({ m, close }: { m: Msg; close: () => void }) {
 }
 
 interface MsgProps { m: Msg; idx: number; last: boolean; cont: boolean; still: boolean; picked: boolean }
+/** ⋯ 메뉴에서 기능 항목이 들어갈 묶음: 항목 id 가 먼저, 없으면 주인(owner). 모르는 것(확장)은 '그 밖' */
+const ACT_GROUP: Record<string, string> = {
+  expr: 'look', scenebook: 'look', illust: 'look',
+  'flow-checkpoint': 'record', almanac: 'record', 'alm-promise': 'record', 'alm-day': 'record', memoria: 'record', 'th-notes': 'record',
+  'flow-regen-why': 'rewrite', 'th-blend': 'rewrite', 'guide-why': 'rewrite',
+};
 const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: MsgProps) {
   useCh('m:' + m.id);
   const [editing, setEditingRaw] = useState(false);
@@ -92,47 +102,69 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
   if (m.role === 'system' && m.call) return art(<><CallCard m={m} /><div className="msg-tools">{del}</div></>);
   if (m.role === 'system' && (m as { gm?: unknown }).gm) return art(<><GameCard m={m} /><div className="msg-tools">{del}</div></>);
   if (m.role === 'system' && m.dice) return art(<><DiceCard m={m} /><div className="msg-tools">{del}</div></>);
+  if (m.role === 'system' && (m as { thCard?: unknown }).thCard) return art(<><ThreadCard m={m} /><div className="msg-tools">{del}</div></>);   // 방 사이 카드 (src/threads)
 
   const streaming = cur.paint.has(m.id);
   const body = editing ? <EditBox m={m} close={() => redraw(m)} /> : <div className="msg-body" dangerouslySetInnerHTML={{ __html: cur.paint.get(m.id) ?? bodyHtml(m) }} />;
   if (m.role === 'system') return art(<div className="sys-line">{body}<div className="msg-tools"><IconBtn ic="edit" title={t('chat.msg.edit')} onClick={() => setEditing(true)} />{del}</div></div>);
 
   const canSwipe = m.role === 'assistant' && (m.swipes.length > 1 || last);
-  const more = (e: MouseEvent<HTMLButtonElement>) => menu(e.currentTarget, [
-    { label: t('chat.msgMenu.branch'), ic: 'branch', hint: t('chat.msgMenu.branchHint'), onclick: () => void branch(cur.msgs.indexOf(m)) },
-    { label: s.showTr ? t('chat.msgMenu.original') : (s.tr ? t('chat.msgMenu.showTr') : t('chat.msgMenu.translate')), ic: 'lang', onclick: () => void translate(m) },
-    s.tr && { label: t('chat.msgMenu.retranslate'), ic: 'refresh', onclick: () => void translate(m, { again: true }) },
-    s.tr && { label: t('chat.translate.edit'), ic: 'edit', onclick: () => void editTranslation(m) },
-    { label: t('chat.illustDlg.title'), ic: 'image', onclick: () => illustDialog(m) },
-    { label: t('chat.msgMenu.speak'), ic: 'volume', onclick: () => speak(s.text, m.charId) },
-    ...X.actions.map(a => ({ label: a.label, ic: a.icon || 'sparkle', onclick: () => { void a.run(m, cur.chat); } })),
-    { label: m.hidden ? t('chat.msgMenu.unhide') : t('chat.msgMenu.hide'), ic: m.hidden ? 'eye' : 'eyeoff', onclick: () => void toggleHidden(m) },
-    { label: m.pin ? t('chat.msgMenu.unpin') : t('chat.msgMenu.pin'), ic: 'pin', hint: t('chat.msgMenu.pinHint'), onclick: () => void togglePin(m) },
-    { label: m.memo ? t('chat.msgMenu.memoEdit') : t('chat.msgMenu.memo'), ic: 'note', hint: t('chat.msgMenu.memoHint'), onclick: async () => { const v = await promptBox(t('chat.msgMenu.memoAsk'), m.memo || '', { area: true }); if (v !== null) void setMemo(m, v); } },
-    '-',
-    { label: t('chat.msgMenu.delete'), ic: 'trash', danger: true, onclick: () => void delMsg(m) },
-    { label: t('chat.msgMenu.deleteFrom'), ic: 'trash', danger: true, onclick: () => void delFrom(m) },
-  ]);
+  const copy = () => { void navigator.clipboard.writeText(s.text); toast(t('chat.msg.copied')); };
+  // ⋯ 메뉴: 늘 쓰는 것만 바로 보이고, 기능이 얹은 항목은 세 묶음(그림 · 기록 · 다시 쓰기) 안으로 들어간다
+  const more = (e: MouseEvent<HTMLButtonElement>) => {
+    const at = e.currentTarget, act = (a: (typeof X.actions)[number]) => ({ label: a.label || '', ic: a.icon || 'sparkle', onclick: () => { void a.run(m, cur.chat); } });
+    const kind = (a: (typeof X.actions)[number]) => ACT_GROUP[a.id || ''] || ACT_GROUP[a.owner] || 'more';
+    const of = (k: string) => X.actions.filter(a => kind(a) === k).map(act);
+    const sub = (label: string, ic: string, items: MenuItem[]): MenuItem => items.length ? { label: label + '  ›', ic, onclick: () => menu(at, [{ label: '‹  ' + t('chat.msgMenu.back'), onclick: () => open() }, '-', ...items]) } : false;
+    const open = () => menu(at, [
+      { label: t('chat.msgMenu.branch'), ic: 'branch', hint: t('chat.msgMenu.branchHint'), onclick: () => void branch(cur.msgs.indexOf(m)) },
+      { label: s.showTr ? t('chat.msgMenu.original') : (s.tr ? t('chat.msgMenu.showTr') : t('chat.msgMenu.translate')), ic: 'lang', onclick: () => void translate(m) },
+      s.tr && { label: t('chat.msgMenu.retranslate'), ic: 'refresh', onclick: () => void translate(m, { again: true }) },
+      s.tr && { label: t('chat.translate.edit'), ic: 'edit', onclick: () => void editTranslation(m) },
+      { label: t('chat.msgMenu.speak'), ic: 'volume', onclick: () => speak(s.text, m.charId) },
+      '-',
+      sub(t('chat.msgMenu.gLook'), 'image', [{ label: t('chat.illustDlg.title'), ic: 'image', onclick: () => illustDialog(m) }, ...of('look')]),
+      sub(t('chat.msgMenu.gRecord'), 'note', of('record')),
+      sub(t('chat.msgMenu.gRewrite'), 'refresh', of('rewrite')),
+      sub(t('chat.msgMenu.gMore'), 'sparkle', of('more')),
+      '-',
+      { label: m.hidden ? t('chat.msgMenu.unhide') : t('chat.msgMenu.hide'), ic: m.hidden ? 'eye' : 'eyeoff', onclick: () => void toggleHidden(m) },
+      { label: m.pin ? t('chat.msgMenu.unpin') : t('chat.msgMenu.pin'), ic: 'pin', hint: t('chat.msgMenu.pinHint'), onclick: () => void togglePin(m) },
+      { label: m.memo ? t('chat.msgMenu.memoEdit') : t('chat.msgMenu.memo'), ic: 'note', hint: t('chat.msgMenu.memoHint'), onclick: async () => { const v = await promptBox(t('chat.msgMenu.memoAsk'), m.memo || '', { area: true }); if (v !== null) void setMemo(m, v); } },
+      '-',
+      { label: t('chat.msgMenu.delete'), ic: 'trash', danger: true, onclick: () => void delMsg(m) },
+      { label: t('chat.msgMenu.deleteFrom'), ic: 'trash', danger: true, onclick: () => void delFrom(m) },
+    ]);
+    open();
+  };
   const clock = msgClock(m, s);
-  const U = ux(), meta = [U.metaTime && clock, ...(S.settings.showMeta ? [U.metaModel && s.model, U.metaTimer && s.ms ? t('chat.meta.sec', { n: (s.ms / 1000).toFixed(1) }) : '', U.metaTokens && s.text ? t('chat.meta.tokens', { n: tokens(s.text) }) : ''] : [])].filter(Boolean).join(' · ');
+  const U = ux(), meta = [U.metaTime && clock, ...(S.settings.showMeta ? [U.metaModel && s.model, U.metaTimer && s.ms ? t('chat.meta.sec', { n: (s.ms / 1000).toFixed(1) }) : '', U.metaTokens && s.text ? t('chat.meta.tokens', { n: tokens(s.text) }) : ''] : []), s.fb ? t('reach.fb.tag') : ''].filter(Boolean).join(' · ');   // s.fb: 대체 연결로 받은 답장
   const why = m.why && mo('showWhy') !== false ? motiveLabel(m.why) : '';
+  // 도구 단추 묶음. 넓은 화면에서는 메시지 아래 한 줄(넘기기 옆)에, 좁은 화면에서는 이름 줄 오른쪽에 작게 놓인다 (css/roomy.css)
+  const acts = <>
+        {m.role === 'assistant' && last && <><IconBtn ic="refresh" cls="t1" title={t('chat.msg.regen')} onClick={() => void generate('regen')} /><IconBtn ic="play" title={t('chat.msg.continue')} onClick={() => void generate('continue')} /></>}
+        {m.role === 'assistant' && <IconBtn ic="heart" title={t('extras.react.title')} onClick={e => emit('xt:react', { m, anchor: e.currentTarget })} />}
+        <IconBtn ic="edit" cls="t1" title={t('chat.msg.edit')} onClick={() => setEditing(true)} />
+        <IconBtn ic="copy" title={t('common.copy')} onClick={copy} />
+        <IconBtn ic="more" cls="t1 t-more" title={t('chat.msg.more')} onClick={more} />
+  </>;
   return art(<>
     <Avatar o={who} cls={S.settings.avatarShape === 'tall' ? 'tall' : ''} />
     <div className="msg-main">
       <header className="msg-head">{castNo ? <span className="cast-no">{String(castNo).padStart(2, '0')}</span> : null}<b>{who?.name || m.name || ''}</b><span className="msg-no">{String(idx + 1).padStart(3, '0')}</span><time>{meta}</time>
-        {why ? <em className="why" title={t('chat.msg.whyTitle')}>{why}</em> : null}{m.hidden && <em className="badge">{t('chat.msg.hiddenBadge')}</em>}{m.pin && <em className="badge pin" title={t('chat.msgMenu.pinHint')}>{t('chat.msg.pinBadge')}</em>}</header>
+        {why ? <em className="why" title={t('chat.msg.whyTitle')}>{why}</em> : null}{m.hidden && <em className="badge">{t('chat.msg.hiddenBadge')}</em>}{m.pin && <em className="badge pin" title={t('chat.msgMenu.pinHint')}>{t('chat.msg.pinBadge')}</em>}
+        {editing || streaming ? null : <span className="msg-tools mt-top">{acts}</span>}</header>
       {m.images?.length ? <div className="msg-images">{m.images.map((u, i) => <img key={i} src={u} alt={t('chat.msg.attachAlt')} onClick={() => bigImage(u)} />)}</div> : null}
       {s.reasoning && S.settings.format?.reasoning?.show !== false ? <details className="reason" open={!streaming && !!S.settings.format?.reasoning?.autoExpand}><summary><Icon name="sparkle" size={14} />{t('chat.msg.reasoning')}</summary><div>{s.reasoning}</div></details> : null}
+      {streaming ? null : <TurnCards m={m} />}
       {body}
       {m.memo ? <p className="msg-memo" title={t('chat.msgMenu.memoHint')}><Icon name="note" size={13} />{m.memo}</p> : null}
-      {m.reactions?.length ? <div className="reacts">{m.reactions.map((r, i) => <span key={i} title={r.by || ''}>{r.emoji}</span>)}</div> : null}
+      {streaming ? null : <ThreadMarks m={m} />}
+      <Reacts m={m} />
       <Illusts m={m} s={s} />
       <div className="msg-tools">
         {canSwipe && <div className="swipe"><IconBtn ic="left" title={t('chat.msg.prevSwipe')} onClick={() => void swipe(m, -1)} /><span>{`${m.sw + 1} / ${m.swipes.length}`}</span><IconBtn ic="right" title={last && m.sw === m.swipes.length - 1 ? t('chat.msg.newSwipe') : t('chat.msg.nextSwipe')} onClick={() => void swipe(m, 1)} /></div>}
-        {m.role === 'assistant' && last && <><IconBtn ic="refresh" title={t('chat.msg.regen')} onClick={() => void generate('regen')} /><IconBtn ic="play" title={t('chat.msg.continue')} onClick={() => void generate('continue')} /></>}
-        <IconBtn ic="edit" title={t('chat.msg.edit')} onClick={() => setEditing(true)} />
-        <IconBtn ic="copy" title={t('common.copy')} onClick={() => { void navigator.clipboard.writeText(s.text); toast(t('chat.msg.copied')); }} />
-        <IconBtn ic="more" title={t('chat.msg.more')} onClick={more} />
+        {acts}
       </div>
     </div>
   </>);

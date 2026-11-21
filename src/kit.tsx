@@ -22,9 +22,15 @@ export function Moon({ size = 22, date }: { size?: number; date?: Date }) {
 }
 
 /** 그림이 없는 캐릭터의 초상 칸에 들어가는 문양 */
-export function Emblem({ o, mini = false }: { o?: Pick<Char, 'tags' | 'name'> | null; mini?: boolean }) {
+export function Emblem({ o, mini = false, center = false }: { o?: Pick<Char, 'tags' | 'name'> | null; mini?: boolean; center?: boolean }) {
   const E = Emblems;
-  return <span style={{ display: 'contents' }} dangerouslySetInnerHTML={{ __html: E.svg(E.pick(Array.isArray(o?.tags) ? o.tags : [], o?.name || ''), mini ? 'mini' : '') }} />;
+  // center: 둥근 자리에 놓을 때. 그림마다 무게 중심이 달라(찻잔의 김, 등불의 고리 …) 격자 한가운데에 두면 치우쳐 보인다.
+  // 실제로 그려진 범위를 재서 그 한가운데가 원의 중심에 오도록 보는 창(viewBox)을 다시 잡는다
+  const fit = (el: HTMLSpanElement | null) => {
+    const svg = center ? el?.querySelector('svg') : null; if (!svg) return;
+    try { const b = (svg as SVGSVGElement).getBBox(); if (!b.width || !b.height) return; const side = Math.max(b.width, b.height) * 1.2; svg.setAttribute('viewBox', `${b.x + b.width / 2 - side / 2} ${b.y + b.height / 2 - side / 2} ${side} ${side}`); } catch { /* 아직 그려지지 않은 그림 */ }
+  };
+  return <span ref={fit} style={{ display: 'contents' }} dangerouslySetInnerHTML={{ __html: E.svg(E.pick(Array.isArray(o?.tags) ? o.tags : [], o?.name || ''), mini ? 'mini' : '') }} />;
 }
 
 const EMO = /(\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic}️?)*)/u;

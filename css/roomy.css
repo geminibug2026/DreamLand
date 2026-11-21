@@ -1,0 +1,77 @@
+/* ── 맨 끝에 읽힌다. 이름표 · 짧은 낱말이 글자 단위로 세로로 꺾이지 않게 한다. 배치는 건드리지 않는다. */
+
+/* 메뉴: 이름은 한 줄로, 설명은 옆(넓은 화면) 또는 아래(좁은 화면) */
+.menu-item .mi-t { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 14px; }
+.menu-item .mi-t > span { white-space: nowrap; }
+.menu-item .mi-t > small { margin-left: auto; padding-left: 0; text-align: right; }
+/* 이름표 · 짧은 낱말이 글자 단위로 꺾이지 않게 */
+.gm-status small, .gm-status span:not(.gm-where) { flex: none; white-space: nowrap; }
+.gm-status .gm-where { flex: 1 1 0; min-width: 0; } .gm-status .gm-where b { min-width: 0; }
+.xt-rb, .rc-chip, .quick .chip, .th-chip, .speaker { white-space: nowrap; }
+.xt-rbar { max-width: calc(100vw - 16px); }
+
+/* 좁은 화면: 메뉴의 설명은 이름 아래 작은 줄로 (이름이 글자 단위로 꺾이지 않게) */
+@media (max-width: 820px) {
+  .menu-item .mi-t { flex-direction: column; align-items: flex-start; gap: 1px; }
+  .menu-item .mi-t > small { margin: 0; text-align: left; white-space: normal; font-size: .78em; line-height: 1.35; }
+}
+
+/* ── 메시지 도구의 자리 ──
+   넓은 화면: 그대로 (메시지 아래 한 줄). 이름 줄의 묶음(.mt-top)은 숨긴다.
+   좁은 화면: 도구는 이름 줄 오른쪽에 작고 옅게, 메시지 아래에는 답변 넘기기만 — 왼쪽 끝에 ◀, 오른쪽 끝에 번호와 ▶. */
+.msg-tools.mt-top { display: none !important; }
+@media (max-width: 820px) {
+  .msg-head { flex-wrap: wrap; row-gap: 0; }
+  .msg:last-child .msg-head .msg-tools.mt-top, .msg.picked .msg-head .msg-tools.mt-top { display: flex !important; }
+  .msg-head .msg-tools.mt-top { order: 20; margin: 0 -4px 0 auto !important; padding: 0; border: 0; background: none; position: static !important; flex: none; flex-wrap: nowrap; gap: 0; opacity: 1; pointer-events: auto; }
+  .msg-head .msg-tools.mt-top .ibtn { width: 27px; height: 27px; opacity: .5; background: none; }
+  .msg-head .msg-tools.mt-top .ibtn:active { opacity: 1; }
+  .msg-head .msg-tools.mt-top .ibtn .ic { width: 13px; height: 13px; }
+  .msg.user .msg-head .msg-tools.mt-top { margin: 0 auto 0 -4px !important; }
+  .mode-rp .msg.user .msg-head .msg-tools.mt-top { margin: 0 -4px 0 auto !important; }
+  /* 아래 줄에는 넘기기만 */
+  .msg:not(.sys) .msg-main > .msg-tools > :not(.swipe) { display: none !important; }
+  .msg:not(.sys) .msg-main > .msg-tools:not(:has(.swipe)) { display: none !important; }
+  .msg:not(.sys) .msg-main > .msg-tools .swipe { display: flex; align-items: center; width: 100%; background: none; }
+  .msg:not(.sys) .msg-main > .msg-tools .swipe span { margin-left: auto; font-size: 12px; color: var(--dim); }
+  .msg:not(.sys) .msg-main > .msg-tools .swipe .ibtn { width: 34px; height: 30px; }
+}
+
+/* ── 모델 고르기 창: 좁은 화면 ──
+   목록이 옆으로 밀리지 않게 하고(안쪽 여백을 음수로 빼던 것이 가로 스크롤을 만들었다), 안쪽 스크롤 대신 창 전체가 한 번에 스크롤된다 */
+.rc-pick, .rc-pick-list, .rc-sec, .rc-group { min-width: 0; grid-template-columns: minmax(0, 1fr); }
+.rc-pick-list { overflow-x: hidden; margin: 0; padding: 2px 0; }
+.rc-row { min-width: 0; } .rc-row-main em { white-space: nowrap; }
+@media (max-width: 820px) {
+  .rc-pick { gap: 12px; }
+  .rc-pick-list { max-height: none; overflow: visible; gap: 18px; }
+  .rc-pick-head { gap: 12px; padding-bottom: 12px; } .rc-dial { width: 64px; height: 64px; } .rc-pick-now b { font-size: 17px; }
+  .rc-row-main { padding-left: 4px; gap: 8px; } .rc-row-main .rc-mid { font-size: 13px; }
+  .rc-tog { width: 40px; height: 44px; }
+  .rc-all-bar { flex-wrap: wrap; } .rc-all-bar .inp { flex: 1 1 100%; }
+  .rc-pick-foot > * { flex: 1 1 auto; justify-content: center; } .rc-mixsw { white-space: nowrap; }
+}
+
+/* ── 주사위 · 카드가 뒤따라도 마지막 답변의 단추는 남는다 ──
+   마지막 메시지에만 단추를 보이던 규칙이, 주사위 같은 시스템 카드가 뒤에 붙으면 그 앞 답변의 단추를 모두 감췄다.
+   "뒤에 시스템 카드만 있는 메시지"도 마지막으로 친다. (다시 생성 · 이어 쓰기는 정말 마지막 답변일 때만 있다) */
+@media (max-width: 820px), (hover: none) {
+  .msg:not(.sys):not(:last-child):not(:has(~ .msg:not(.sys))) .msg-main > .msg-tools { display: flex; opacity: 1; }
+  .msg:not(.sys):not(:has(~ .msg:not(.sys))) .msg-head .msg-tools.mt-top { display: flex !important; }
+}
+@media (max-width: 820px) {
+  .msg:not(.sys):not(:last-child):not(:has(~ .msg:not(.sys))) .msg-main > .msg-tools:not(:has(.swipe)) { display: none; }
+}
+
+/* ── 장면 패널의 탭 ── 칸을 네 묶음으로 나눠 보인다 */
+.drawer-tabs { position: sticky; top: -4px; z-index: 3; display: grid; grid-template-columns: repeat(4, 1fr); margin: 0 0 4px; background: var(--bg); border-bottom: 1px solid var(--line-2); }
+.drawer-tabs button { min-height: 40px; padding: 0 4px; font: 500 13px/1 var(--font); color: var(--dim); white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s, border-color .15s; }
+.drawer-tabs button:hover { color: var(--text); }
+.drawer-tabs button.on { color: var(--text); font-weight: 700; border-bottom-color: var(--accent); }
+
+/* ── 메뉴 닫기 ── 좁은 화면: 메뉴는 화면의 절반 남짓까지만 차지하고(나머지는 안에서 스크롤), 맨 위에 닫기 줄이 늘 보인다 */
+.menu-x { display: none; }
+@media (max-width: 820px) {
+  .menu { max-height: 56dvh; padding-top: 0; overscroll-behavior: contain; box-shadow: 0 0 0 100vmax color-mix(in srgb, var(--text) 14%, transparent); }
+  .menu-x { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: flex-end; gap: 6px; width: 100%; min-height: 40px; padding: 0 12px; background: var(--surface); border-bottom: 1px solid var(--line-3); color: var(--dim); font-size: .86em; }
+}

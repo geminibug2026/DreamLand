@@ -12,6 +12,9 @@ import * as core from '../lib/core';
 import * as adv from '../lib/advanced';
 import { t, tn } from '../i18n';
 import { TtsConnBody } from '../tts/ui';
+import { ConnExtras, exportAllConns, importConnFile } from '../reach/jobs';
+import { Mark } from '../reach/models';
+import { useCss } from '../addons/parts';
 
 export const page = { name: 'conns', Component: ConnsPage };
 
@@ -144,15 +147,17 @@ function ConnEditor({ c, api }: { c: Conn; api: EditorApi }) {
       { k: 'extraBody', label: t('conns.adv.extraBody'), type: 'area', rows: 3, ph: '{ "provider": { "order": ["…"] } }', hint: t('conns.adv.extraBodyHint') },
       { k: 'extraHeaders', label: t('conns.adv.extraHeaders'), type: 'area', rows: 2, ph: t('conns.adv.extraHeadersPh') }]} onChange={sv} /></details>}
     <div className="row"><Btn label={t('conns.test.run')} ic="play" onClick={() => void run()} /><div className={'test-out' + test.cls}>{test.text}</div></div>
+    <ConnExtras c={c} onSave={sv} />
     </>}
   </div>;
 }
 
 function ConnsPage({ arg }: { arg?: unknown }) {
-  const { PROVIDERS } = engine;
+  const { PROVIDERS } = engine; useCss('reach.css');
   return <LibraryPage<Conn> arg={arg} title={t('conns.title')} eyebrow="connect" coll="conns" ic="plug" create={() => core.newConn()} label={c => c.name}
     sub={c => `${PROVIDERS[c.provider]?.name || c.provider}${c.model ? ' · ' + c.model : ''}${c.id === S.settings.activeConn ? ' · ' + t('conns.inUse') : ''}`}
     empty={t('conns.empty')}
-    actions={[{ ic: 'folder', title: t('conns.profiles'), onclick: () => go('quick', 'profiles') }]}
+    thumb={c => <span className="rc-lib-mark"><Mark c={c} size={13} /></span>}
+    actions={[{ ic: 'folder', title: t('conns.profiles'), onclick: () => go('flow', 'profiles') }, { ic: 'upload', title: t('reach.conn.export'), onclick: () => exportAllConns() }, { ic: 'import', title: t('reach.conn.import'), onclick: draw => void importConnFile(draw) }]}
     editor={(c, api) => <ConnEditor c={c} api={editorApi(api, 'conns')} />} />;
 }

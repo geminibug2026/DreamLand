@@ -116,7 +116,9 @@ function SettingsPage() {
       <p className="hint">{t('settings.security.htmlHint')}</p></div>
     <div className="card"><h3 className="form-sec">{t('settings.term.section')}</h3>
       <Form obj={st} defs={[{ k: 'termLog', label: t('settings.term.label'), type: 'select', opts: [['off', t('settings.term.off')], ['brief', t('settings.term.brief')], ['full', t('settings.term.full')]], hint: t('settings.term.hint') }]} onChange={apply} /></div>
-    <div className="card"><h3 className="form-sec">{t('settings.data.section')}</h3><p className="hint">{t('settings.data.hint')}</p>
+    <div className="card"><h3 className="form-sec">{t('guide.settings.section')}</h3><p className="hint">{t('guide.settings.hint')}</p>
+      <div className="row wrap"><Btn label={t('guide.tour.again')} ic="play" onClick={() => core.emit('guide:tour')} /><Btn label={t('nav.help')} ic="book" onClick={() => go('help')} /><Btn label={t('guide.help.openGuide')} ic="guide" onClick={() => core.emit('guide:toggle')} /></div></div>
+    <div className="card" data-gd="data"><h3 className="form-sec">{t('settings.data.section')}</h3><p className="hint">{t('settings.data.hint')}</p>
       <div className="row wrap">
         <Btn label={t('settings.data.export')} ic="import" onClick={async () => download(`dreamland-backup-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(await S.exportAll()))} />
         <Btn label={t('settings.data.restore')} ic="upload" onClick={async () => { const [f] = await pickFiles({ accept: '.json' }); if (!f) return; try { await S.importAll(JSON.parse(await f.text()), false); toast(t('settings.data.restored'), 'ok'); setTimeout(() => location.reload(), 700); } catch (e) { toast(errMsg(e), 'err'); } }} />

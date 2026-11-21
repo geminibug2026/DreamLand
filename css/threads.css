@@ -1,0 +1,90 @@
+/* ── 이어진 방 · 속내 쪽지 · 귓속말 · 자리 (th-) ── 선은 fine.css 의 네 단계만, 색은 테마 변수만 쓴다. 이 기능의 그림은 "실": 방과 방을 잇는 실, 끊긴 말의 줄표, 봉한 쪽지 */
+.th-panel { display: flex; flex-direction: column; gap: 10px; container-type: inline-size; }
+.th-art { width: 100%; height: 64px; color: var(--text); }
+.th-none { margin: 0; font-size: 13px; color: var(--dim); text-wrap: balance; text-align: center; }
+.th-rooms, .th-keep, .th-seats, .th-steps { list-style: none; margin: 0; padding: 0; }
+.th-rooms > li { display: flex; align-items: center; gap: 10px; padding: 7px 0; min-width: 0; }
+.th-no { font-size: 11px; color: var(--dim); }
+.th-room-go { flex: 1; min-width: 0; display: grid; gap: 2px; padding: 3px 4px; border: 0; background: none; color: inherit; text-align: left; font: inherit; border-radius: 2px; }
+.th-room-go b { font: 500 14px/1.3 var(--fx-serif); letter-spacing: .01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.th-room-go small { display: flex; align-items: center; gap: 7px; font: 400 11px/1.2 var(--fx-mono); color: var(--dim); font-variant-numeric: tabular-nums; }
+.th-room-go small .fx-lbl { padding: 1px 4px 0; border: 1px solid var(--line-2); letter-spacing: .14em; }
+.th-kv { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .th-kv > .fx-lbl { flex: none; min-width: 5.5em; } .th-kv > select { flex: 1; min-width: 9em; }
+.th-n { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--dim); } .th-n input { width: 4.2em; text-align: right; font-family: var(--fx-mono); }
+.th-return { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; --c: var(--line-1); }
+.th-return > div { display: grid; gap: 3px; min-width: 0; } .th-return b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.th-head { margin-top: 6px; }
+.th-keep > li { padding: 3px 0; font-size: 13px; } .th-keep .fx-pips { align-self: center; }
+.th-link { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; text-decoration-color: var(--line-2); }
+.th-link:hover { text-decoration-color: currentColor; }
+/* 자리: 의자 한 줄씩. 없는 사람은 잉크를 덜어 내고 의자를 점선으로 */
+.th-seats { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 6px; }
+.th-seat { width: 100%; min-height: 44px; display: grid; grid-template-columns: auto auto 1fr; grid-template-rows: auto auto; align-items: center; column-gap: 8px; padding: 6px 10px; border: 1px solid var(--line-2); border-radius: 2px; background: var(--surface); color: inherit; font: inherit; text-align: left; }
+.th-seat .fx-num { grid-row: 1 / 3; font-size: 10px; color: var(--dim); } .th-seat-art { grid-row: 1 / 3; }
+.th-seat b { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .th-seat small { font-size: 11px; color: var(--dim); }
+.th-seat.away { border-style: dashed; } .th-seat.away b { color: var(--dim); font-weight: 400; }
+.th-about-row { display: grid; grid-template-columns: minmax(4em, 30%) 1fr; align-items: center; gap: 8px; font-size: 13px; } .th-about-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
+
+/* 입력창 위 줄 */
+.th-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.th-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 2px; background: none; color: var(--dim); font: 500 12px/1 var(--font); white-space: nowrap; max-width: 100%; }
+.th-chip > span:not(.fx-lbl):not(.fx-num), .th-chip b { overflow: hidden; text-overflow: ellipsis; } .th-chip b { color: var(--text); font-weight: 600; } .th-chip .fx-num { font-size: 11px; }
+.th-chip.on { border-color: var(--line-1); color: var(--text); background: linear-gradient(var(--accent) 0 0) 0 100% / 100% 2px no-repeat; }
+.th-bar-note { font-size: 11.5px; color: var(--dim); }
+/* 화자 칩: 자리에 없는 사람은 점선과 옅은 잉크, 눈치껏 순서에서는 점수를 작게 */
+.speaker[data-th-away] { border-style: dashed; color: var(--dim); } .speaker[data-th-away] .avatar { opacity: .45; }
+.speaker[data-th-score]::after { content: attr(data-th-score); font: 400 10px/1 var(--fx-mono); color: var(--dim); font-variant-numeric: tabular-nums; margin-left: 2px; }
+
+/* 메시지에 붙는 표시 */
+.th-marks { display: grid; gap: 3px; margin-top: 6px; }
+.th-mark { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; margin: 0; font-size: 12px; line-height: 1.5; color: var(--dim); min-width: 0; } .th-mark > .ic { flex: none; align-self: center; }
+.th-mark q { quotes: none; color: var(--text); font-family: var(--fx-serif); font-size: 13px; } .th-mark.whisper q { font-style: italic; }
+.th-mark.whisper { padding-left: 8px; border-left: 1px dashed var(--line-2); } .th-to { font-weight: 500; }
+.th-cut-line { flex: none; align-self: center; width: 26px; height: 1px; background: linear-gradient(90deg, var(--line-1) 0 60%, transparent 60% 72%, var(--line-1) 72% 84%, transparent 84% 92%, var(--line-1) 92%); }
+.msg.user .th-marks { justify-items: end; } .msg.user .th-mark { justify-content: flex-end; }
+.th-seal { display: inline-flex; align-items: center; gap: 6px; min-height: 24px; padding: 0 8px; border: 1px dashed var(--line-2); border-radius: 2px; background: none; color: var(--dim); font: 500 11.5px/1 var(--font); }
+.th-seal:hover { color: var(--text); border-style: solid; }
+/* 속내 보기: 봉투로 덮여 있다가 열린다 */
+.th-notes-dlg { display: grid; gap: 10px; }
+.th-veil { position: relative; padding: 6px; } .th-veil textarea { width: 100%; border: 0; background: none; resize: vertical; font-family: var(--fx-serif); line-height: 1.7; }
+.th-veil:not(.open) textarea { visibility: hidden; }
+.th-veil-cover { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 8px; border: 0; color: var(--text); font: 500 12.5px var(--font); cursor: pointer; border-radius: inherit;
+  background: repeating-linear-gradient(135deg, var(--line-4) 0 1px, transparent 1px 7px), var(--surface); }
+.th-veil-cover:hover svg { transform: translateY(-2px); } .th-veil-cover svg { transition: transform .15s; }
+
+/* 방 사이 카드: 표 한 장 */
+.th-card { --n: 8px; display: grid; grid-template-columns: 1fr auto; width: min(100%, 30rem); text-align: left; color: var(--text); }
+.th-card-main { display: grid; gap: 4px; padding: 13px 16px 13px 22px; min-width: 0; }
+.th-card-main b { font-size: 15px; font-weight: 500; line-height: 1.45; text-wrap: pretty; } .th-card-main small { font: 400 11.5px var(--fx-mono); color: var(--dim); }
+.th-card-main p { margin: 2px 0 0; font-size: 13px; line-height: 1.6; color: var(--dim); } .th-card-main summary { font-size: 12px; color: var(--dim); cursor: pointer; }
+.th-card-stub { display: grid; align-content: center; justify-items: center; gap: 7px; padding: 10px 22px 10px 14px; min-width: 92px; border-left: 1px dashed var(--line-2); }
+.th-card.invite { border-color: var(--line-1); } .th-card.visited { color: var(--dim); } .th-card.visited b { color: var(--text); }
+.msg.sys:has(.th-card) { justify-content: center; } .msg.sys:has(.th-card) > .msg-tools { align-self: center; }
+
+/* 장면 건네기 · 섞기 창 */
+.th-stage, .th-blend { display: grid; gap: 12px; }
+.th-steps { display: flex; gap: 0; border-bottom: 1px solid var(--line-3); } .th-steps li { flex: 1; display: flex; align-items: baseline; gap: 7px; padding: 0 0 8px; font-size: 12.5px; color: var(--dim); min-width: 0; }
+.th-steps li .fx-num { font-size: 10px; } .th-steps li.on { color: var(--text); box-shadow: 0 1px 0 var(--text); } .th-steps li.done { color: var(--dim); text-decoration: line-through; text-decoration-color: var(--line-2); }
+.th-f { display: grid; gap: 5px; min-width: 0; } .th-f textarea { resize: vertical; line-height: 1.65; }
+.th-cost { align-self: center; margin-right: auto; }
+.th-draft { display: grid; gap: 10px; padding: 14px; } .th-draft-top { display: grid; grid-template-columns: 1.2fr 1.4fr 1fr; gap: 10px; }
+.th-draft .th-f:last-child textarea { font-family: var(--fx-serif); }
+.th-blend-grid { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
+.th-blend-col { display: grid; grid-template-rows: auto 1fr; gap: 8px; padding: 12px; min-width: 0; align-self: stretch; }
+.th-blend-head { display: flex; align-items: center; gap: 8px; } .th-blend-head .fx-lbl { font-size: 12px; color: var(--text); } .th-blend-head select { flex: 1; min-width: 0; }
+.th-blend-col p { margin: 0; max-height: 15em; overflow: auto; font-size: 13px; line-height: 1.65; white-space: pre-wrap; color: var(--dim); }
+.th-blend-art { color: var(--text); }
+
+/* 방 목록 · 프로필 카드 */
+.th-room-marks { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 11.5px; color: var(--dim); }
+.th-tied { display: inline-flex; align-items: center; gap: 3px; flex: none; font-family: var(--fx-mono); font-variant-numeric: tabular-nums; }
+.th-room-marks q { quotes: "“" "”"; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--fx-serif); }
+.th-about { display: block; width: 100%; margin-top: 7px; padding: 0; border: 0; background: none; color: var(--dim); font: 400 13px/1.5 var(--fx-serif); text-align: left; text-wrap: pretty; border-radius: 2px; }
+.th-about > span { margin-right: 3px; color: var(--accent); font-size: 1.25em; line-height: 0; } .th-about.none { font-family: var(--font); font-size: 12px; opacity: .7; }
+
+@container (max-width: 300px) { .th-seats { grid-template-columns: 1fr; } }
+@media (max-width: 820px) {
+  .th-chip { min-height: 36px; } .th-seal { min-height: 32px; } .th-link { padding: 6px 0; }
+  .th-draft-top, .th-blend-grid { grid-template-columns: 1fr; } .th-blend-art { justify-self: center; transform: rotate(90deg); height: 28px; }
+  .th-card { grid-template-columns: 1fr; } .th-card-stub { grid-auto-flow: column; justify-content: space-between; border-left: 0; border-top: 1px dashed var(--line-2); padding: 9px 22px; }
+}
