@@ -5,7 +5,10 @@ import { tokens } from '../lib/engine';
 import { allThemes, COLOR_FIELDS } from '../lib/theme';
 import { qrStore, type QrItem, type QrSet } from '../lib/qr-data';
 import { isMvu, runtime as mvuRuntime, type Obj as MvuObj } from '../mvu/engine';
-import { initOf as mvuInitOf } from '../mvu/app';
+import { initBooks as mvuBooks, initOf as mvuInitOf } from '../mvu/app';
+import { activeBooks, regexScripts } from '../lib/engine';
+import { route } from '../lib/router';
+import { t } from '../i18n';
 import { varsOf } from '../chat/msgVars';
 import { safeCss } from '../modules/logic';
 import { cur } from '../chat/store';
@@ -54,8 +57,12 @@ const F: Record<string, Record<string, FType>> = {
   lore: { name: 's', description: 's', scanDepth: 'n', tokenBudget: 'n', recursive: 'b' },
   entry: { name: 's', keys: 'list', keys2: 'list', content: 's', constant: 'b', enabled: 'b', position: ['before', 'after', 'depth'], depth: 'n', order: 'n', probability: 'n', description: 's', group: 's' },
   block: { name: 's', role: ['system', 'user', 'assistant'], content: 's', enabled: 'b', depth: 'n', when: 's' },
-  regex: { name: 's', find: 's', replace: 's', onUser: 'b', onAI: 'b', onSlash: 'b', onLore: 'b', onReason: 'b', mode: ['display', 'prompt', 'both', 'store'], enabled: 'b', scope: 's' },
+  regex: { name: 's', find: 's', replace: 's', onUser: 'b', onAI: 'b', onSlash: 'b', onLore: 'b', onReason: 'b', mode: ['display', 'prompt', 'both', 'store'], enabled: 'b', scope: 's', minDepth: 'n', maxDepth: 'n', trim: 'list', runOnEdit: 'b' },
+  /** 프리셋의 샘플러 · 생성 설정 (params.<이름> 으로 쓴다) */
+  params: { temperature: 'n', topP: 'n', topK: 'n', minP: 'n', topA: 'n', freqPen: 'n', presPen: 'n', repPen: 'n', seed: 'n', maxTokens: 'n', contextSize: 'n', stream: 'b', effort: ['', 'low', 'medium', 'high'], squash: 'b', prefill: 's', stop: 'list' },
 };
+/** 비워(null) 둘 수 있는 숫자 칸 */
+const NULLABLE = new Set(['depth', 'minDepth', 'maxDepth', 'temperature', 'topP', 'topK', 'minP', 'topA', 'freqPen', 'presPen', 'repPen', 'seed']);
 /** 받은 칸을 꼴에 맞춰 고른다. 모르는 칸 · 틀린 값은 까닭과 함께 거절한다 */
 function fields(kind: keyof typeof F, raw: unknown, need: string[] = []): Obj {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) fail('"fields" must be an object of field → new value.');
@@ -63,7 +70,7 @@ function fields(kind: keyof typeof F, raw: unknown, need: string[] = []): Obj {
   for (const [k, v] of Object.entries(raw as Obj)) {
     const t = spec[k]; if (!t) fail(`Field "${k}" cannot be written. Writable: ${Object.keys(spec).join(', ')}.`);
     if (t === 's') { if (typeof v !== 'string') fail(`"${k}" must be a string.`); out[k] = v; }
-    else if (t === 'n') { if (v === null && k === 'depth') out[k] = null; else if (!Number.isFinite(Number(v)) || v === '' || typeof v === 'boolean') fail(`"${k}" must be a number.`); else out[k] = Number(v); }
+    else if (t === 'n') { if (v === null && NULLABLE.has(k)) out[k] = null; else if (!Number.isFinite(Number(v)) || v === '' || typeof v === 'boolean') fail(`"${k}" must be a number.`); else out[k] = Number(v); }
     else if (t === 'b') { if (typeof v !== 'boolean') fail(`"${k}" must be true or false.`); out[k] = v; }
     else if (t === 'list') { if (!Array.isArray(v) || v.some(x => typeof x !== 'string')) fail(`"${k}" must be an array of strings.`); out[k] = v; }
     else { if (!t.includes(str(v))) fail(`"${k}" must be one of: ${t.join(', ')}.`); out[k] = v; }
@@ -76,7 +83,7 @@ const show = (v: unknown): string => Array.isArray(v) ? v.map(str).join(v.some(x
 const diffs = (before: unknown, after: Obj): FieldChange[] => Object.entries(after).map(([name, v]) => ({ name, before: show(getPath(before, name)), after: show(v) })).filter(f => f.before !== f.after);
 
 /** 쓰기 도구가 돌려주는 것: 화면이 이것을 변경 카드로 만든다 */
-export interface Proposal { change: Change; /** 모델에 함께 돌려줄 점검 결과 (카드 글 점검 · 스크립트 점검) */ notes?: unknown }
+export interface Proposal { change: Change; /** 모델에 함께 돌려줄 점검 결과 (카드 글 점검 · 스크립트 점검) */ notes?: unknown; /** 같은 이름이 이미 있을 때의 경고 (고치기 도구를 쓰라고) */ warn?: string }
 export const isProposal = (v: unknown): v is Proposal => !!v && typeof v === 'object' && 'change' in v && !!(v as Proposal).change?.op;
 function propose(verb: Change['verb'], kind: Kind, target: string, op: Op, fs: FieldChange[]): Proposal {
   if (!fs.length) fail('Nothing would change: the new values equal the current ones.');
@@ -85,11 +92,18 @@ function propose(verb: Change['verb'], kind: Kind, target: string, op: Op, fs: F
 /** 만들기 카드: 낱값 칸만 그대로 보이고, 묶음(항목 · 색)은 extra 로 풀어 적는다 */
 const flat = (o: Obj) => Object.fromEntries(Object.entries(o).filter(([, v]) => !(v && typeof v === 'object' && (!Array.isArray(v) || v.some(x => x && typeof x === 'object')))));
 const created = (kind: Kind, name: string, obj: Obj, extra: FieldChange[] = []) => propose('create', kind, name, { type: 'create', coll: kind, obj }, [...diffs({}, flat(obj)), ...extra]);
+/** 만들려는 것과 같은 이름이 이미 있으면 경고 한 줄: 새로 만들지 말고 고치기 도구로 */
+function dupWarn(list: { id: string; name?: string }[], name: string, what: string, tool: string): string | undefined {
+  const same = list.filter(x => str(x.name).trim().toLowerCase() === name.trim().toLowerCase());
+  return same.length ? `A ${what} named "${name}" already exists (id ${same.map(x => x.id).join(', ')}). If the user wants to change that one, do not create a duplicate: tell the user this card would make a second copy (they can discard it), and propose ${tool} on the existing id instead.` : undefined;
+}
+/** 지우기 카드: 지울 것의 칸들을 "전 → 빈칸"으로 보인다 */
+const gone = (o: Obj, keys: string[]): FieldChange[] => keys.map(k => ({ name: k, before: show(getPath(o, k)), after: '' })).filter(f => f.before);
 
 // ── 고치기 전에 읽었는가 ── 코딩 도우미처럼: 읽지 않은 것은 고치지 않는다 (이 대화에서 읽기 도구가 그 대상을 성공적으로 읽었어야 한다)
-const READERS: Record<string, string[]> = { chars: ['get_character'], personas: ['get_persona'], lore: ['get_lorebook', 'get_lore_entry'], presets: ['get_preset', 'get_preset_block'], qr: ['get_qr_set', 'get_qr'], regex: ['get_regex'] };
+const READERS: Record<string, string[]> = { chars: ['get_character'], personas: ['get_persona'], lore: ['get_lorebook', 'get_lore_entry'], presets: ['get_preset', 'get_preset_block'], qr: ['get_qr_set', 'get_qr'], regex: ['get_regex'], theme: ['get_theme'] };
 function mustHaveRead(kind: keyof typeof READERS, id: string, ...refKeys: string[]) {
-  const list = kind === 'chars' ? S.chars : kind === 'personas' ? S.personas : kind === 'lore' ? S.lore : kind === 'presets' ? S.presets : kind === 'regex' ? S.regex : qrStore().sets;
+  const list = kind === 'chars' ? S.chars : kind === 'personas' ? S.personas : kind === 'lore' ? S.lore : kind === 'presets' ? S.presets : kind === 'regex' ? S.regex : kind === 'theme' ? allThemes() : qrStore().sets;
   const ok = CTX.items().some(it => {
     if (it.k !== 'tool' || !it.ok || !READERS[kind].includes(it.name)) return false;
     for (const k of [...refKeys, 'id', 'name', 'book', 'preset', 'set']) { const r = it.args[k]; if (r == null) continue; try { if (find(list as { id: string; name?: string }[], r, 'item').id === id) return true; } catch { /* 다른 것 */ } }
@@ -147,6 +161,29 @@ async function lintButtons(list: { label: string; text: string; kind?: unknown }
 }
 const qrCard = (i: Obj) => `${str(i.label)} · ${str(i.kind || 'insert')}${(i.auto && typeof i.auto === 'object' && Object.keys(i.auto).length) ? ' · auto: ' + Object.keys(i.auto as Obj).join(',') : ''}${i.hidden ? ' · hidden' : ''}`;
 
+/** 테마 칸: name · tone · colors{…} · css → 바꿀 길(c.<색>)과 값 */
+function themeFields(raw: Obj): Obj {
+  const out: Obj = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (k === 'name') { if (!str(v).trim()) fail('"name" cannot be empty.'); out.name = str(v); }
+    else if (k === 'tone') { if (v !== 'light' && v !== 'dark') fail('"tone" must be "light" or "dark".'); out.tone = v; }
+    else if (k === 'css') out.css = safeCss(v).trim();
+    else if (k === 'colors' || k === 'c') { if (!v || typeof v !== 'object') fail('"colors" must be an object.'); for (const [ck, cv] of Object.entries(v as Obj)) { if (!COLORS.includes(ck)) fail(`Unknown colour "${ck}". Colours: ${COLORS.join(', ')}.`); const x = str(cv).trim(); if (!/^#[0-9a-f]{6}$/i.test(x)) fail(`colors.${ck} must be #rrggbb.`); out['c.' + ck] = x.toLowerCase(); } }
+    else fail(`"${k}" cannot be written. Writable: name, tone, colors, css.`);
+  }
+  if (!Object.keys(out).length) fail('No fields given.');
+  return out;
+}
+/** 프리셋 설정 칸 → params.<이름> (name 은 그대로) */
+function presetFields(raw: unknown): Obj {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) fail('"fields" must be an object.');
+  const { name, ...rest } = raw as Obj, out: Obj = {};
+  if (name !== undefined) { if (!str(name).trim()) fail('"name" cannot be empty.'); out.name = str(name); }
+  if (Object.keys(rest).length) for (const [k, v] of Object.entries(fields('params', rest))) out['params.' + k] = v;
+  if (!Object.keys(out).length) fail('No fields given.');
+  return out;
+}
+
 // ── 변수 갱신 틀(MVU) ──
 /** 대화의 지금 변수: 가장 마지막 메시지의 stat_data, 없으면 로어북의 [InitVar] 항목들 */
 async function mvuOf(ref: unknown) {
@@ -157,6 +194,56 @@ async function mvuOf(ref: unknown) {
   return { chat: c, source: init && Object.keys(init.stat_data).length ? 'initial variables ([InitVar] lorebook entries)' : 'none', data: init };
 }
 const initEntries = () => S.lore.flatMap(b => b.entries.filter(e => /\[initvar\]/i.test(e.name || '')).map(e => ({ book: b.name, bookId: b.id, entry: e.id, name: e.name, enabled: e.enabled })));
+const hasInit = (b: { entries?: { name?: string }[] }) => (b.entries || []).some(e => /\[initvar\]/i.test(e.name || ''));
+/** 이 대화가 MVU 를 쓰는지, 처음 값은 어디서 오는지, 없으면 왜 없는지 — 사람 말 한 덩이 (모델이 짐작하지 않게) */
+async function mvuDiagnosis(c: Chat) {
+  const list = cur.chat?.id === c.id ? cur.msgs : await S.msgs(c.id);
+  const withVars = list.map((m, i) => isMvu(varsOf(m)) ? i : -1).filter(i => i >= 0), last = list.length - 1;
+  const linked = mvuBooks(c), linkedInit = linked.filter(hasInit), linkedIds = new Set(linked.map(b => b.id));
+  const unlinkedInit = S.lore.filter(b => hasInit(b) && !linkedIds.has(b.id));
+  const panel = t('mvu.panel.title'), reload = t('mvu.panel.reload');
+  const fix = `Link that lorebook to the character (character card › lorebooks) or to this chat, then in the chat open the side panel "${panel}" and press "${reload}" (or start a new chat).`;
+  let usesMvu: boolean, status: string;
+  if (withVars.length) {
+    usesMvu = true;
+    status = `This chat uses MVU: ${withVars.length} of ${list.length} messages carry variables. The values below are from message ${withVars[withVars.length - 1] + 1}${withVars[withVars.length - 1] === last ? ' (the latest message)' : `; the latest message (${last + 1}) has none of its own yet`}.`;
+    if (!linkedInit.length) status += ' Note: no linked lorebook has an [InitVar] entry now, so a NEW chat would start without variables.';
+  } else if (linkedInit.length) {
+    usesMvu = false;
+    status = `No message in this chat carries MVU variables yet, although the linked lorebook(s) ${linkedInit.map(b => `"${b.name}" (id ${b.id})`).join(', ')} have an [InitVar] entry. The chat probably started before the lorebook was linked or before the entry existed. Every {{get_message_variable::stat_data…}} macro is empty until then, which a status bar shows as null. In the chat open the side panel "${panel}" and press "${reload}", or start a new chat. The values below are what the [InitVar] entries would give.`;
+  } else if (unlinkedInit.length) {
+    usesMvu = false;
+    status = `This chat has NO MVU variables. Lorebook(s) ${unlinkedInit.map(b => `"${b.name}" (id ${b.id})`).join(', ')} contain an [InitVar] entry but are not linked to this chat's character, the chat, the persona, or turned on globally. So every {{get_message_variable::stat_data…}} macro is empty, which a status bar shows as null or as its own default values. ${fix}`;
+  } else {
+    usesMvu = false;
+    status = 'This chat has NO MVU variables and no lorebook anywhere has an [InitVar] entry. Variables start from a lorebook entry whose name contains [InitVar] (JSON or YAML content, kept disabled), in a lorebook linked to the character or chat.';
+  }
+  return { usesMvu, status, messagesWithVars: withVars.length, linkedLorebooks: linked.map(b => ({ id: b.id, name: b.name, hasInitVar: hasInit(b) })), ...(unlinkedInit.length ? { unlinkedInitVarLorebooks: unlinkedInit.map(b => ({ id: b.id, name: b.name, usedBy: S.chars.filter(ch => (ch.loreIds || []).includes(b.id)).map(ch => ch.name) })) } : {}) };
+}
+
+/** 첫 메시지에 붙이는 지금 맥락: 열린 대화 · 캐릭터 · 이어진 로어북(항목 이름) · 프리셋 · 걸린 정규식 · MVU — list 를 따로 부르지 않아도 되게. 짧게 */
+export function contextSnapshot(): string {
+  const c = cur.chat as Chat | null, lines: string[] = [`page=${route.page}`];
+  if (route.page !== 'chat' || !c) {
+    if (route.arg && typeof route.arg === 'string') { const hit = [['chars', S.chars], ['lore', S.lore], ['presets', S.presets], ['personas', S.personas], ['regex', S.regex]].map(([k, l]) => [k, (l as { id: string; name?: string }[]).find(x => x.id === route.arg)] as const).find(x => x[1]); if (hit) lines.push(`open item: ${hit[0]} "${hit[1]!.name}" (id ${hit[1]!.id})`); }
+    lines.push(`library: ${S.chars.length} characters, ${S.lore.length} lorebooks, ${S.presets.length} presets, ${S.regex.length} regex scripts, ${S.personas.length} personas`);
+    return lines.join('\n');
+  }
+  const chars = c.charIds.map(i => S.get('chars', i)).filter(Boolean) as Char[];
+  lines.push(`open chat: "${chatTitle(c)}" (id ${c.id}), mode ${c.mode}, ${cur.msgs.length} messages`);
+  lines.push(`characters: ${chars.map(ch => `"${ch.name}" (id ${ch.id})`).join(', ') || 'none'}`);
+  const pr = S.persona(c); if (pr) lines.push(`persona: "${pr.name}" (id ${pr.id})`);
+  const p = S.presetFor(c); if (p) lines.push(`preset: "${p.name}" (id ${p.id})`);
+  let books: { id: string; name: string; entries: { name?: string; keys?: string[]; enabled?: boolean; constant?: boolean }[] }[] = [];
+  try { books = activeBooks(c, chars, pr) as unknown as typeof books; } catch { books = []; }
+  if (books.length) lines.push('lorebooks in use:\n' + books.slice(0, 6).map(b => `- "${b.name}" (id ${b.id}), ${b.entries.length} entries: ${b.entries.slice(0, 14).map(e => (e.name || (e.keys || []).slice(0, 2).join('/') || '?').slice(0, 40) + (e.enabled === false ? ' [off]' : '')).join('; ')}${b.entries.length > 14 ? '; …' : ''}`).join('\n') + (books.length > 6 ? `\n- … ${books.length - 6} more` : ''));
+  else lines.push('lorebooks in use: none');
+  try { const rx = regexScripts({ chat: c }).filter(x => !x.skip); if (rx.length) lines.push(`regex scripts on this chat: ${rx.slice(0, 15).map(x => `"${x.r.name}" (id ${x.r.id}, ${x.kind}${x.r.enabled === false ? ', off' : ''}, ${x.r.mode})`).join('; ')}${rx.length > 15 ? '; …' : ''}`); } catch { /* 없으면 뺀다 */ }
+  const withVars = cur.msgs.some(m => isMvu(varsOf(m))), initLinked = books.some(hasInit);
+  if (withVars || initLinked) lines.push(`MVU: ${withVars ? 'this chat has variables (get_mvu shows them)' : 'a linked lorebook has [InitVar] but no message carries variables yet'}`);
+  else if (S.lore.some(hasInit)) lines.push('MVU: no variables in this chat; some [InitVar] lorebook exists but is not linked here');
+  return lines.join('\n');
+}
 
 // ── 읽기 ──
 const charBrief = (c: Char) => ({ id: c.id, name: c.name, tags: c.tags, tokens: tokens([c.description, c.personality, c.scenario].join('\n')), greetings: (c.firstMes ? 1 : 0) + (c.altGreetings || []).length, lorebooks: (c.loreIds || []).length });
@@ -224,7 +311,7 @@ const R: ToolDef[] = [
   { name: 'plan', sig: '{steps?: [string], title?, done?: [n], doing?: n, add?: [string], skip?: [n]}', desc: 'Your visible checklist, shown to the user as a small todo list. steps= starts a new plan (3-7 short steps, in the user\'s language). Later: done=[2] ticks step 2, doing=3 marks the current one, add= appends steps, skip= drops them. Cheaper: add "tick": [n] next to any other call, or end your final answer with {"tick": [n]}.',
     run: a => {
       let p = CTX.plan();
-      if (Array.isArray(a.steps)) { const steps = a.steps.map(str).map(x => x.trim()).filter(Boolean).slice(0, 12); if (!steps.length) fail('"steps" must be a list of short strings.'); p = { title: str(a.title).trim() || undefined, steps: steps.map((text, i) => ({ text, state: i ? 'todo' : 'doing' })), at: Date.now() }; }
+      if (Array.isArray(a.steps)) { const steps = a.steps.map(str).map(x => x.trim()).filter(Boolean).slice(0, 12); if (!steps.length) fail('"steps" must be a list of short strings.'); p = { title: str(a.title).trim() || undefined, steps: steps.map((text, i) => ({ text, state: i ? 'todo' : 'doing' })), at: Date.now(), since: Date.now() }; }
       if (!p) fail('There is no plan yet. Start one with steps=["…", "…"].');
       const plan = p!, at = (n: unknown) => { const i = num(n) - 1; if (!plan.steps[i]) fail(`No step ${n}; the plan has ${plan.steps.length}.`); return plan.steps[i]; };
       if (Array.isArray(a.add)) for (const x of a.add.map(str).filter(Boolean)) plan.steps.push({ text: x, state: 'todo' });
@@ -250,9 +337,10 @@ const R: ToolDef[] = [
       if (!src.trim()) fail('Give "script" (the text) or set+item.');
       const sib = Array.isArray(a.siblings) ? a.siblings.map(str) : [];
       const r = checkScript(src, sib); return { ok: r.ok, errors: r.errors, warnings: r.warnings, issues: r.issues.map(i => `${i.level} line ${i.line}:${i.col}${i.cmd ? ' /' + i.cmd : ''} — ${i.msg}`), commands: [...new Set(r.commands)].join(' '), ...(r.ok && !r.warnings ? { note: 'No problems found. This checks structure and names only; it does not run the script.' } : {}) }; } },
-  { name: 'get_mvu', sig: '{chat?}', desc: 'Variable-update (MVU) state of a chat: the current stat_data (from the newest message that has it, else from [InitVar] lorebook entries), its leaf paths, and which lorebook entries hold initial variables. Without chat: the open chat.',
+  { name: 'get_mvu', sig: '{chat?}', desc: 'Variable-update (MVU) state of a chat: whether it uses MVU at all and why not (status, in plain words), where the values come from, the current stat_data of the newest message that has it (else what the [InitVar] entries would give), its leaf paths, the linked lorebooks and any [InitVar] lorebook that is not linked. Call it first when a status bar shows null or default values. Without chat: the open chat.',
     run: async a => { const r = await mvuOf(a.chat), stat = r.data?.stat_data || {}, js = JSON.stringify(stat, null, 1), { leafPaths } = await mvuRuntime();
-      return { chat: chatTitle(r.chat), source: r.source, paths: leafPaths(stat), stat_data: js.length > 6000 ? js.slice(0, 6000) + '… [cut]' : js, initEntries: initEntries().slice(0, 20), ...(r.source === 'none' ? { note: 'This chat has no MVU variables. They start from a lorebook entry whose name contains [InitVar] (content: JSON or YAML), in a lorebook linked to the character or chat.' } : {}) }; } },
+      const d = await mvuDiagnosis(r.chat);
+      return { chat: chatTitle(r.chat), usesMvu: d.usesMvu, status: d.status, source: r.source, stat_data: Object.keys(stat).length ? (js.length > 6000 ? js.slice(0, 6000) + '… [cut]' : js) : 'none', paths: leafPaths(stat), messagesWithVars: d.messagesWithVars, linkedLorebooks: d.linkedLorebooks, ...(d.unlinkedInitVarLorebooks ? { unlinkedInitVarLorebooks: d.unlinkedInitVarLorebooks } : {}), initEntries: initEntries().slice(0, 20) }; } },
   { name: 'mvu_check', sig: '{update?, initvar?, stat_data?}', desc: 'Test MVU text with Dreamland\'s own engine, without saving anything. initvar= checks initial-variables JSON/YAML and lists its paths. update= runs update commands (_.set(\'path\', old, new);//reason, _.add, _.insert, _.remove, <JSONPatch>) against stat_data= (object or JSON), else against initvar=, else the open chat\'s current variables; reports per command: applied / failed (e.g. unknown path) with before → after, plus lines that look like commands but are not read.',
     run: async a => {
       const out: Obj = {}; let base: MvuObj | null = null, schema: unknown;
@@ -296,19 +384,19 @@ function diagnose() {
 const COLORS = COLOR_FIELDS.map(c => c[0]);
 const W: ToolDef[] = [
   { name: 'create_character', write: true, sig: '{name, description, personality?, scenario?, firstMes, mesExample?, systemPrompt?, creatorNotes?, tags?, altGreetings?}', desc: 'Propose a new character card.',
-    run: a => { const o = fields('chars', a.fields ?? a, ['name']); return { ...created('chars', str(o.name), o), notes: cardNotes({}, o) }; } },
+    run: a => { const o = fields('chars', a.fields ?? a, ['name']); return { ...created('chars', str(o.name), o), notes: cardNotes({}, o), warn: dupWarn(S.chars, str(o.name), 'character', 'update_character') }; } },
   { name: 'update_character', write: true, sig: '{id, fields: {<field>: <new value>}}', desc: 'Propose edits to a character. Fields: name, description, personality, scenario, firstMes, mesExample, systemPrompt, postHistory, creatorNotes, tags, altGreetings, talk, depthPrompt.prompt, depthPrompt.depth. Send the complete new text of each field you change.',
     run: a => { const c = find(S.chars, a.id, 'character'), f = fields('chars', a.fields); mustHaveRead('chars', c.id); return { ...propose('update', 'chars', c.name, { type: 'set', coll: 'chars', id: c.id, fields: f }, diffs(c, f)), notes: cardNotes(c as unknown as Obj, f) }; } },
   { name: 'add_greeting', write: true, sig: '{id, text}', desc: 'Propose one more alternate greeting for a character (existing greetings stay).',
     run: a => { const c = find(S.chars, a.id, 'character'), text = str(a.text).trim() || fail('"text" is required.'); const list = [...(c.altGreetings || []), text];
       return { ...propose('update', 'chars', c.name, { type: 'set', coll: 'chars', id: c.id, fields: c.firstMes?.trim() ? { altGreetings: list } : { firstMes: text } }, [{ name: c.firstMes?.trim() ? `altGreetings +${list.length}` : 'firstMes', before: '', after: text }]), notes: cardNotes({}, { firstMes: text }) }; } },
   { name: 'create_persona', write: true, sig: '{name, description}', desc: 'Propose a new persona.',
-    run: a => { const o = fields('personas', a.fields ?? a, ['name']); return { ...created('personas', str(o.name), o), notes: personaNotes({}, o) }; } },
+    run: a => { const o = fields('personas', a.fields ?? a, ['name']); return { ...created('personas', str(o.name), o), notes: personaNotes({}, o), warn: dupWarn(S.personas, str(o.name), 'persona', 'update_persona') }; } },
   { name: 'update_persona', write: true, sig: '{id, fields}', desc: 'Propose edits to a persona (name, description).',
     run: a => { const p = find(S.personas, a.id, 'persona'), f = fields('personas', a.fields); mustHaveRead('personas', p.id); return { ...propose('update', 'personas', p.name, { type: 'set', coll: 'personas', id: p.id, fields: f }, diffs(p, f)), notes: personaNotes(p as unknown as Obj, f) }; } },
   { name: 'create_lorebook', write: true, sig: '{name, description?, entries?: [{name, keys: [..], content, constant?}]}', desc: 'Propose a new lorebook, optionally with entries (at most 12 per call; add more with add_lore_entry).',
     run: a => { const name = str(a.name).trim() || fail('"name" is required.'); const es = (Array.isArray(a.entries) ? a.entries : []).slice(0, 12).map(e => fields('entry', e, ['content']));
-      return created('lore', name, { name, description: str(a.description), entries: es }, es.map((e, i) => ({ name: `entry ${i + 1} · ${str(e.name) || show(e.keys)}`, before: '', after: (e.constant ? '∞\n' : `# ${show(e.keys)}\n`) + str(e.content) }))); } },
+      return { ...created('lore', name, { name, description: str(a.description), entries: es }, es.map((e, i) => ({ name: `entry ${i + 1} · ${str(e.name) || show(e.keys)}`, before: '', after: (e.constant ? '∞\n' : `# ${show(e.keys)}\n`) + str(e.content) }))), warn: dupWarn(S.lore, name, 'lorebook', 'add_lore_entry / update_lore_entry / update_lorebook') }; } },
   { name: 'update_lorebook', write: true, sig: '{id, fields}', desc: 'Propose edits to lorebook settings (name, description, scanDepth, tokenBudget, recursive).',
     run: a => { const b = find(S.lore, a.id, 'lorebook'), f = fields('lore', a.fields); mustHaveRead('lore', b.id, 'book'); return propose('update', 'lore', b.name, { type: 'set', coll: 'lore', id: b.id, fields: f }, diffs(b, f)); } },
   { name: 'add_lore_entry', write: true, sig: '{book, name, keys: [..], content, constant?, position?: "before"|"after"|"depth", depth?, order?}', desc: 'Propose a new entry in an existing lorebook. keys are the words that wake it; constant=true means always on.',
@@ -324,11 +412,13 @@ const W: ToolDef[] = [
     run: a => { const p = find(S.presets, a.preset, 'preset'), b = find(p.blocks, a.block, 'block'), f = fields('block', a.fields); mustHaveRead('presets', p.id, 'preset'); return propose('update', 'presets', `${p.name} › ${b.name || b.kind}`, { type: 'block', presetId: p.id, blockId: b.id, after: '', fields: f }, diffs(b, f)); } },
   { name: 'create_regex', write: true, sig: '{name, find, replace, onAI?, onUser?, mode?: "display"|"prompt"|"both"|"store", scope?: "global"|<character id>}', desc: 'Propose a regex script. find is /pattern/flags (JavaScript). display = only how it looks; prompt = only what is sent; store = rewrites the saved text.',
     run: a => { const f = fields('regex', a.fields ?? a, ['name', 'find']); const m = /^\/([\s\S]+)\/([a-z]*)$/.exec(str(f.find)); try { new RegExp(m ? m[1] : str(f.find), m ? m[2] : 'g'); } catch (e) { fail(`"find" is not a valid regular expression: ${(e as Error).message}`); }
-      if (f.scope && f.scope !== 'global') f.scope = find(S.chars, f.scope, 'character').id; return created('regex', str(f.name), f); } },
+      if (f.scope && f.scope !== 'global') f.scope = find(S.chars, f.scope, 'character').id;
+      const sc = str(f.scope || 'global');
+      return { ...created('regex', str(f.name), f), warn: dupWarn(S.regex.filter(r => (r.scope || 'global') === sc), str(f.name), sc === 'global' ? 'global regex script' : 'regex script for this character', 'update_regex') }; } },
   { name: 'create_theme', write: true, sig: `{name, tone: "light"|"dark", colors: {${COLORS.join(', ')}}, css?}`, desc: 'Propose a custom theme. All 13 colours as #rrggbb. Keep text/surface contrast readable. css is optional extra CSS (no @import, no remote url()).',
     run: a => { const name = str(a.name).trim() || fail('"name" is required.'), tone = a.tone === 'dark' ? 'dark' : a.tone === 'light' ? 'light' : fail('"tone" must be "light" or "dark".'); const cs = (a.colors && typeof a.colors === 'object' ? a.colors : fail('"colors" is required.')) as Obj, c: Record<string, string> = {};
       for (const k of COLORS) { const v = str(cs[k]).trim(); if (!/^#[0-9a-f]{6}$/i.test(v)) fail(`colors.${k} must be #rrggbb (got "${v || 'nothing'}"). All 13 are required: ${COLORS.join(', ')}.`); c[k] = v.toLowerCase(); }
-      const css = safeCss(a.css).trim(); return created('theme', name, { name, tone, c, ...(css ? { css } : {}) }, COLORS.map(k => ({ name: k, before: '', after: c[k] }))); } },
+      const css = safeCss(a.css).trim(); return { ...created('theme', name, { name, tone, c, ...(css ? { css } : {}) }, COLORS.map(k => ({ name: k, before: '', after: c[k] }))), warn: dupWarn(allThemes().filter(t => !t.builtin), name, 'custom theme', 'update_theme') }; } },
   { name: 'create_qr_set', write: true, sig: '{name, scope?: "global"|"char"|"chat", characters?: [character id], buttons: [{label, text, kind?: "insert"|"send"|"script", auto?: ["open"|"newChat"|"user"|"ai"|"gen"|"start"], title?, hidden?}]}', desc: 'Propose a new quick-reply set (buttons above the chat input). kind: insert puts text in the box, send sends it, script runs it as STscript (text starting with "/" defaults to script). auto runs a button by itself: open=when a chat opens, newChat=first open of a new chat, user=after the user sends, ai=after a reply, gen=when generation starts, start=app start. hidden=true keeps a helper button off the bar (still callable with /run or /:label). scope "char" shows it only with the given characters. Scripts are validated first; errors refuse the proposal.',
     run: async a => { const name = str(a.name).trim() || fail('"name" is required.'); const bs = (Array.isArray(a.buttons) ? a.buttons : Array.isArray(a.items) ? a.items : fail('"buttons" must be an array.')) as Obj[]; if (!bs.length || bs.length > 40) fail('Give 1 to 40 buttons.');
       const items = bs.map(b => qrFields(b, true)), labels = items.map(i => str(i.label));
@@ -337,7 +427,7 @@ const W: ToolDef[] = [
       const charIds = scope === 'char' ? (Array.isArray(a.characters) && a.characters.length ? a.characters.map(c => find(S.chars, c, 'character').id) : cur.chat?.charIds?.length ? cur.chat.charIds.slice(0, 1) : fail('scope "char" needs characters=[id].')) : [];
       const chatIds = scope === 'chat' ? (cur.chat ? [cur.chat.id] : fail('scope "chat" needs an open chat.')) : [];
       const notes = await lintButtons(items as { label: string; text: string; kind?: unknown }[], labels);
-      return { ...propose('create', 'qr', name, { type: 'create', coll: 'qr', obj: { name, scope, charIds, chatIds, items } }, [{ name: 'name', before: '', after: name }, ...(scope !== 'global' ? [{ name: 'scope', before: '', after: scope + (charIds.length ? ' · ' + charIds.map(i => S.get('chars', i)?.name).join(', ') : '') }] : []), ...items.map(i => ({ name: qrCard(i), before: '', after: str(i.text) }))]), notes }; } },
+      return { warn: dupWarn(qrStore().sets, name, 'quick-reply set', 'add_qr / update_qr / update_qr_set'), ...propose('create', 'qr', name, { type: 'create', coll: 'qr', obj: { name, scope, charIds, chatIds, items } }, [{ name: 'name', before: '', after: name }, ...(scope !== 'global' ? [{ name: 'scope', before: '', after: scope + (charIds.length ? ' · ' + charIds.map(i => S.get('chars', i)?.name).join(', ') : '') }] : []), ...items.map(i => ({ name: qrCard(i), before: '', after: str(i.text) }))]), notes }; } },
   { name: 'update_qr_set', write: true, sig: '{set, fields: {name?, on?, scope?, nosend?, before?, inject?}}', desc: 'Propose set options: on (shown or not), scope, nosend (put text in the box instead of sending — this also stops scripts from running), before/inject (merge with typed text). Read it with get_qr_set first.',
     run: a => { const q = qrRef(a.set ?? a.id); mustHaveRead('qr', q.id); const raw = (a.fields && typeof a.fields === 'object' ? a.fields : fail('"fields" is required.')) as Obj, f: Obj = {};
       for (const [k, v] of Object.entries(raw)) { if (k === 'name') { if (!str(v).trim()) fail('"name" cannot be empty.'); f.name = str(v); } else if (['on', 'nosend', 'before', 'inject'].includes(k)) { if (typeof v !== 'boolean') fail(`"${k}" must be true or false.`); f[k] = v; } else if (k === 'scope') { if (!['global', 'char', 'chat'].includes(str(v))) fail('"scope" must be global, char or chat.'); f.scope = v; } else fail(`"${k}" cannot be written. Writable: name, on, scope, nosend, before, inject.`); }
@@ -353,6 +443,26 @@ const W: ToolDef[] = [
       const notes = f.text !== undefined ? await lintButtons([{ label: str(f.label ?? it.label), text: str(f.text), kind: f.kind ?? it.kind }], q.items.map(i => i.label)) : undefined;
       const view = (o: Obj) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, k === 'auto' ? autoOn(v as QrItem['auto']).join(', ') || 'none' : v]));
       return { ...propose('update', 'qr', `${q.name} › ${it.label}`, { type: 'qritem', setId: q.id, itemId: it.id, fields: f }, diffs(view(it as unknown as Obj), view(f))), ...(notes ? { notes } : {}) }; } },
+  { name: 'update_regex', write: true, sig: '{id, fields: {name?, find?, replace?, onUser?, onAI?, onSlash?, onLore?, onReason?, mode?: "display"|"prompt"|"both"|"store", enabled?, scope?: "global"|<character id>, minDepth?, maxDepth?, trim?: [string], runOnEdit?}}', desc: 'Propose edits to an existing regex script (read it with get_regex first). Use this instead of creating a second script with the same name.',
+    run: a => { const r = find(S.regex, a.id ?? a.name, 'regex script'), f = fields('regex', a.fields); mustHaveRead('regex', r.id);
+      if (f.find !== undefined) { const m = /^\/([\s\S]+)\/([a-z]*)$/.exec(str(f.find)); try { new RegExp(m ? m[1] : str(f.find), m ? m[2] : 'g'); } catch (e) { fail(`"find" is not a valid regular expression: ${(e as Error).message}`); } }
+      if (f.scope && f.scope !== 'global') f.scope = find(S.chars, f.scope, 'character').id;
+      return propose('update', 'regex', r.name, { type: 'set', coll: 'regex', id: r.id, fields: f }, diffs(r, f)); } },
+  { name: 'update_theme', write: true, sig: `{id, fields: {name?, tone?: "light"|"dark", colors?: {${COLORS.join(', ')}} (any of them), css?}}`, desc: 'Propose edits to one of the user\'s own themes (read it with get_theme first). Built-in themes cannot be changed; make a new one with create_theme.',
+    run: a => { const t = find(allThemes(), a.id ?? a.name, 'theme'); if (t.builtin) fail('Built-in themes cannot be changed. Propose create_theme with a new name instead.'); mustHaveRead('theme', t.id);
+      const raw = (a.fields && typeof a.fields === 'object' ? a.fields : fail('"fields" is required.')) as Obj; return propose('update', 'theme', t.name, { type: 'set', coll: 'theme', id: t.id, fields: themeFields(raw) }, diffs(t, themeFields(raw))); } },
+  { name: 'update_preset', write: true, sig: '{id, fields: {name?, temperature?, topP?, topK?, minP?, topA?, freqPen?, presPen?, repPen?, seed?, maxTokens?, contextSize?, stream?, effort?: ""|"low"|"medium"|"high", squash?, prefill?, stop?: [string]}}', desc: 'Propose preset settings (sampler, reply length, context size, reasoning effort, prefill, stop strings). null clears an optional number. Read it with get_preset first. For prompt text use update_preset_block.',
+    run: a => { const p = find(S.presets, a.id ?? a.name ?? a.preset, 'preset'); mustHaveRead('presets', p.id, 'preset'); const f = presetFields(a.fields);
+      return propose('update', 'presets', p.name, { type: 'set', coll: 'presets', id: p.id, fields: f }, diffs(p, f)); } },
+  { name: 'delete_regex', write: true, sig: '{id}', desc: 'Propose deleting a regex script (read it with get_regex first). The user approves the card, and can undo it.',
+    run: a => { const r = find(S.regex, a.id ?? a.name, 'regex script'); mustHaveRead('regex', r.id); return propose('delete', 'regex', r.name, { type: 'delete', coll: 'regex', id: r.id }, gone(r as unknown as Obj, ['name', 'find', 'replace', 'mode', 'scope'])); } },
+  { name: 'delete_lore_entry', write: true, sig: '{book, entry}', desc: 'Propose deleting one lorebook entry (read the book first). Locked entries cannot be deleted. Undoable.',
+    run: a => { const b = find(S.lore, a.book, 'lorebook'), e = find(b.entries, a.entry ?? a.id, 'entry'); if (e.locked) fail('This entry is locked by the user and cannot be deleted. Tell them; they can unlock it in the lorebook editor.'); mustHaveRead('lore', b.id, 'book');
+      return propose('delete', 'lore', `${b.name} › ${e.name || show(e.keys)}`, { type: 'entrydel', loreId: b.id, entryId: e.id }, gone(e as unknown as Obj, ['name', 'keys', 'content'])); } },
+  { name: 'delete_qr', write: true, sig: '{set, item}', desc: 'Propose deleting one quick-reply button (read the set first). Undoable.',
+    run: a => { const q = qrRef(a.set), it = itemRef(q, a.item ?? a.id ?? a.label); mustHaveRead('qr', q.id); return propose('delete', 'qr', `${q.name} › ${it.label}`, { type: 'qrdel', setId: q.id, itemId: it.id }, gone(it as unknown as Obj, ['label', 'kind', 'text'])); } },
+  { name: 'delete_qr_set', write: true, sig: '{set}', desc: 'Propose deleting a whole quick-reply set with its buttons (read it first). Undoable.',
+    run: a => { const q = qrRef(a.set ?? a.id); mustHaveRead('qr', q.id); return propose('delete', 'qr', q.name, { type: 'delete', coll: 'qr', id: q.id }, [{ name: 'name', before: q.name, after: '' }, ...q.items.map(i => ({ name: qrCard(i as unknown as Obj), before: str(i.text), after: '' }))]); } },
   { name: 'revise_card', write: true, sig: '{card, fields}', desc: 'Change a change card that is still waiting for approval, instead of proposing a second card. Use it to redo one field ("only rewrite the speech style") or to fix something the check flagged. fields: same names as the tool that made the card. The card is updated in place and is still not saved.',
     run: async a => {
       const all = CTX.items().filter((i): i is Extract<Item, { k: 'change' }> => i.k === 'change').map(i => i.change);
@@ -363,10 +473,10 @@ const W: ToolDef[] = [
       if (op.type === 'create' && (op.coll === 'chars' || op.coll === 'personas' || op.coll === 'regex')) {
         const f = fields(op.coll === 'chars' ? 'chars' : op.coll === 'personas' ? 'personas' : 'regex', raw); Object.assign(op.obj, f);
         if (f.name) c.target = str(f.name); c.fields = diffs({}, flat(op.obj)); notes = op.coll === 'chars' ? cardNotes({}, op.obj) : op.coll === 'personas' ? personaNotes({}, op.obj) : undefined;
-      } else if (op.type === 'set' && op.coll !== 'theme') {
+      } else if (op.type === 'set') {
         const target = current(op.coll, op.id) || fail('The item behind this card is gone.');
         if (op.coll === 'qr') fail('For quick-reply set options, discard this card idea and call update_qr_set again with all the options you want.');
-        const f = fields(op.coll === 'chars' ? 'chars' : op.coll === 'personas' ? 'personas' : op.coll === 'lore' ? 'lore' : 'regex', raw);
+        const f = op.coll === 'theme' ? themeFields(raw) : op.coll === 'presets' ? presetFields(raw) : fields(op.coll === 'chars' ? 'chars' : op.coll === 'personas' ? 'personas' : op.coll === 'lore' ? 'lore' : 'regex', raw);
         Object.assign(op.fields, f); c.fields = diffs(target, op.fields);
         notes = op.coll === 'chars' ? cardNotes(target as Obj, op.fields) : op.coll === 'personas' ? personaNotes(target as Obj, op.fields) : undefined;
       } else if (op.type === 'entry' || op.type === 'block') {
@@ -406,7 +516,7 @@ export async function runTool(name: string, args: Args): Promise<{ out: string; 
   catch (e) { if (e instanceof ToolError) throw new Error(`${e.message} Usage: ${def.name} ${def.sig}`); console.warn('[등불지기]', name, e); throw new Error(`The tool failed: ${e instanceof Error ? e.message : String(e)}`); }
   if (isProposal(res)) {
     const c = res.change;
-    return { change: c, out: JSON.stringify({ status: 'PENDING — not saved yet', changeCard: c.id, target: c.target, fields: c.fields.map(f => f.name), ...(res.notes ? { check: res.notes } : {}), next: `A change card is now shown to the user. Nothing is saved until they press Apply. Do not say it is done; say what you proposed and that it waits for their approval.${res.notes ? ' Read "check" first: if it flags something you did not intend, fix it now with revise_card (same card) before you report.' : ''}` }, null, 1) };
+    return { change: c, out: JSON.stringify({ status: 'PENDING — not saved yet', changeCard: c.id, ...(c.verb === 'delete' ? { action: 'delete (undoable after it is applied)' } : {}), target: c.target, fields: c.fields.map(f => f.name), ...(res.warn ? { warning: res.warn } : {}), ...(res.notes ? { check: res.notes } : {}), next: `A change card is now shown to the user. Nothing is saved until they press Apply. Do not say it is done; say what you proposed and that it waits for their approval.${res.notes ? ' Read "check" first: if it flags something you did not intend, fix it now with revise_card (same card) before you report.' : ''}` }, null, 1) };
   }
   let out = JSON.stringify(res, null, 1); if (out.length > 14000) out = out.slice(0, 14000) + '\n… [result cut; narrow it with query/offset/field]';
   return { out };

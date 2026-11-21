@@ -2,17 +2,29 @@
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Icon, useEvents } from '../kit';
-import { S } from '../lib/core';
+import { S, pickFiles } from '../lib/core';
 import { go, route } from '../lib/router';
-import { confirmBox, menu, toast } from '../ui';
+import { confirmBox, menu, openModal, toast } from '../ui';
 import { fmtDate, has, t, useLang } from '../i18n';
 import { cur } from '../chat/store';
-import { G, apply, applyAll, closeGuide, discard, newTalk, openTalk, poke, removeTalk, resume, send, stop, undo } from './agent';
+import { G, apply, applyAll, branchAt, closeGuide, discard, editFrom, newTalk, openTalk, poke, regen, removeTalk, resume, retry, send, stop, undo } from './agent';
+import { ACCEPT, MAX_FILES, sizeText } from './attach';
+import { AttachError, readAttach } from './upload';
 import { targetOf, touchedSince } from './changes';
 import { diffWords, fold, tally } from './diff';
 import { Mark, startTour } from './Tour';
-import type { Change, FieldChange, Item, Plan, Ref } from './types';
+import type { Attach, Change, FieldChange, Item, Plan, Ref } from './types';
 
+/** 글을 복사한다. 클립보드 API 가 없는 곳(주소가 http 인 휴대폰 등)에서는 옛 방법으로 */
+async function copy(text: string) {
+  const old = () => { const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0'; document.body.append(ta); ta.select(); let ok = false; try { ok = document.execCommand('copy'); } catch { ok = false; } ta.remove(); return ok; };
+  let ok = false; try { if (navigator.clipboard && isSecureContext) { await navigator.clipboard.writeText(text); ok = true; } else ok = old(); } catch { ok = old(); }
+  toast(t(ok ? 'guide.act.copied' : 'guide.act.copyFail'), ok ? 'ok' : 'err');
+}
+/** 코드 덩이: 오른쪽 위에 복사 단추 */
+function Code({ text }: { text: string }) {
+  return <div className="gd-code"><pre>{text}</pre><button type="button" className="gd-ccopy" title={t('guide.act.copyCode')} aria-label={t('guide.act.copyCode')} onClick={() => void copy(text)}><Icon name="copy" size={13} /></button></div>;
+}
 // ── 작은 마크다운 ── 조수의 답을 HTML 을 거치지 않고 React 요소로 그린다 (문단 · 목록 · 굵게 · `코드` · 코드 덩이 · 제목)
 function inline(s: string, key: string): ReactNode[] {
   const out: ReactNode[] = [], re = /\*\*([^*\n]+)\*\*|`([^`\n]+)`|\*([^*\n]+)\*/g; let last = 0, m: RegExpExecArray | null, n = 0;
@@ -24,7 +36,7 @@ export function Md({ text }: { text: string }) {
     const out: ReactNode[] = [], lines = text.replace(/\r/g, '').split('\n'); let i = 0, k = 0;
     while (i < lines.length) {
       const ln = lines[i];
-      if (/^```/.test(ln)) { const buf: string[] = []; i++; while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]); i++; out.push(<pre key={k++}>{buf.join('\n')}</pre>); continue; }
+      if (/^```/.test(ln)) { const buf: string[] = []; i++; while (i < lines.length && !/^```/.test(lines[i])) buf.push(lines[i++]); i++; if (buf.join('').trim()) out.push(<Code key={k++} text={buf.join('\n')} />); continue; }   // 빈 코드 덩이(닫히지 않은 울타리 따위)는 그리지 않는다
       if (!ln.trim()) { i++; continue; }
       const hd = /^(#{1,4})\s+(.*)$/.exec(ln); if (hd) { out.push(<h4 key={k++}>{inline(hd[2], 'h')}</h4>); i++; continue; }
       if (/^\s*([-*•]|\d+[.)])\s+/.test(ln)) { const ord = /^\s*\d+[.)]/.test(ln), items: ReactNode[] = []; while (i < lines.length && /^\s*([-*•]|\d+[.)])\s+/.test(lines[i])) { items.push(<li key={i}>{inline(lines[i].replace(/^\s*([-*•]|\d+[.)])\s+/, ''), 'l' + i)}</li>); i++; } out.push(ord ? <ol key={k++}>{items}</ol> : <ul key={k++}>{items}</ul>); continue; }
@@ -70,9 +82,9 @@ function ChangeCard({ ch }: { ch: Change }) {
   const doUndo = run(async () => { if (ch.undoId && await touchedSince(ch.undoId) && !(await confirmBox(t('guide.card.undoTouched'), t('guide.card.undo')))) return; await undo(ch); toast(t('guide.card.undoneToast'), 'ok'); });
   const open = () => { const p = PAGE_OF[ch.kind], id = targetOf(ch); if (ch.kind === 'chars') go('home'); else if (ch.kind === 'qr') go('qr', id ? { set: id } : undefined); else go(p, id || undefined); };
   const colors = ch.kind === 'theme' ? ch.fields.filter(f => isHex(f.after)) : [];
-  return <article className={'gd-card fx-frame is-' + ch.state} aria-label={t('guide.card.aria', { target: ch.target })}>
+  return <article className={'gd-card fx-frame is-' + ch.state + (ch.verb === 'delete' ? ' is-del' : '')} aria-label={t('guide.card.aria', { target: ch.target })}>
     <header className="gd-ch">
-      <span className="fx-lbl acc">{ch.verb === 'create' ? t('guide.card.create') : t('guide.card.update')} · {t(KIND_KEY[ch.kind] || 'guide.kind.chars')}</span>
+      <span className="fx-lbl acc">{ch.verb === 'create' ? t('guide.card.create') : ch.verb === 'delete' ? t('guide.card.delete') : t('guide.card.update')} · {t(KIND_KEY[ch.kind] || 'guide.kind.chars')}</span>
       <b className="fx-serif">{ch.target}</b>
       <span className={'fx-pill gd-st st-' + ch.state}><i className="fx-dot" />{t(STATE_KEY[ch.state] || 'guide.card.pending')}</span>
     </header>
@@ -83,23 +95,94 @@ function ChangeCard({ ch }: { ch: Change }) {
     <footer className="gd-cf">
       {ch.state === 'pending' || ch.state === 'failed' ? <><button type="button" className="btn ghost" disabled={busy} onClick={run(() => discard(ch))}>{t('guide.card.discard')}</button>
         <button type="button" className="btn primary" disabled={busy} onClick={run(async () => { await apply(ch); toast(t('guide.card.appliedToast'), 'ok'); })}><Icon name="check" size={15} />{t('common.apply')}</button></> : null}
-      {ch.state === 'applied' ? <><small className="dim">{t('guide.card.undoHint')}</small><button type="button" className="btn ghost" disabled={busy} onClick={doUndo}>{t('guide.card.undo')}</button><button type="button" className="btn" onClick={open}>{t('guide.card.open')}</button></> : null}
+      {ch.state === 'applied' ? <><small className="dim">{t('guide.card.undoHint')}</small><button type="button" className="btn ghost" disabled={busy} onClick={doUndo}>{t('guide.card.undo')}</button>{ch.op.type === 'delete' ? null : <button type="button" className="btn" onClick={open}>{t('guide.card.open')}</button>}</> : null}
     </footer>
   </article>;
 }
 
 // ── 기록의 한 줄 ──
 const argBrief = (a: Record<string, unknown>) => Object.entries(a).filter(([k]) => k !== 'fields' && k !== 'colors' && k !== 'entries' && k !== 'buttons').map(([k, v]) => `${k}=${String(typeof v === 'object' ? '…' : v).slice(0, 28)}`).join(' ').slice(0, 64);
-function ItemView({ it, last }: { it: Item; last?: boolean }) {
-  if (it.k === 'user') return <div className="gd-u"><span className="fx-lbl kr">{t('guide.you')}</span>{it.refs?.length ? <div className="gd-refs">{it.refs.map(r => <span key={r.kind + r.id} className="fx-pill">@{r.name}</span>)}</div> : null}<p>{it.text}</p></div>;
-  if (it.k === 'ai') return it.text ? <div className="gd-a"><Md text={it.text} /></div> : null;
-  if (it.k === 'tool') return <details className={'gd-tool' + (it.ok ? '' : ' bad')}>
-    <summary><svg className="fx-art" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">{it.ok ? <path d="M1.5 5.2l2.4 2.4L8.5 2.6" /> : <path d="M2 2l6 6M8 2l-6 6" />}</svg><code>{it.name}</code><span>{argBrief(it.args)}</span><em>{!it.ok ? t('guide.tool.bad') : /^(create|update|add|revise)_/.test(it.name) ? t('guide.tool.proposed') : t('guide.tool.ok')}</em></summary>
-    <pre>{it.out.length > 2400 ? it.out.slice(0, 2400) + '\n⋯' : it.out}</pre>
-  </details>;
+type Obj = Record<string, unknown>;
+const nameOf = (o: unknown): string => { if (!o || typeof o !== 'object') return String(o ?? ''); const x = o as Obj; return String(x.name ?? x.title ?? x.label ?? x.command ?? x.character ?? x.id ?? ''); };
+const oneLine = (s: string, n = 110) => { const l = s.replace(/\s+/g, ' ').trim(); return l.length > n ? l.slice(0, n - 1) + '…' : l; };
+/** 줄 목록의 짧은 이름들: 앞의 셋 */
+const names = (rows: unknown[], total = rows.length) => { const ns = rows.map(nameOf).filter(Boolean).slice(0, 3); return t('guide.tool.sum.count', { n: total }) + (ns.length ? ': ' + ns.join(', ') + (total > ns.length ? ' …' : '') : ''); };
+/** 도구 결과를 한 줄로: 몇 개를 찾았는지 · 무엇을 읽었는지 · 오류의 첫 줄 */
+export function toolBrief(name: string, ok: boolean, out: string): string {
+  if (!ok) return oneLine(out.split('\n')[0] || out);
+  let j: unknown; try { j = JSON.parse(out); } catch { return oneLine(out); }
+  if (Array.isArray(j)) return j.length ? names(j) : t('guide.tool.sum.none');
+  if (!j || typeof j !== 'object') return oneLine(String(j));
+  const o = j as Obj;
+  if (typeof o.status === 'string' && /^PENDING/.test(o.status)) return t('guide.tool.sum.card', { target: String(o.target ?? '') });
+  if (o.revised) return t('guide.tool.sum.revised');
+  if (o.none) return t('guide.tool.sum.none');
+  if (Array.isArray(o.rows) && typeof o.total === 'number') return o.total ? names(o.rows, o.total) : t('guide.tool.sum.none');
+  if (typeof o.plan === 'string') return t('guide.tool.sum.steps', { n: o.plan.split('\n').filter(Boolean).length });
+  if (name === 'st_check' || (typeof o.ok === 'boolean' && 'errors' in o)) return o.ok && !o.warnings ? t('guide.tool.sum.clean') : t('guide.tool.sum.issues', { e: Number(o.errors) || 0, w: Number(o.warnings) || 0 });
+  const bits: string[] = [];
+  const head = nameOf(o); if (head) bits.push(head);
+  const ent = o.entries as Obj | undefined; if (ent && typeof ent === 'object' && typeof ent.total === 'number') bits.push(t('guide.tool.sum.entries', { n: ent.total }));
+  if (Array.isArray(o.blocks)) bits.push(t('guide.tool.sum.blocks', { n: o.blocks.length }));
+  if (Array.isArray(o.buttons)) bits.push(t('guide.tool.sum.buttons', { n: o.buttons.length }));
+  if (Array.isArray(o.messages)) bits.push(t('guide.tool.sum.messages', { n: typeof o.total === 'number' ? o.total : o.messages.length }));
+  const txt = o.text && typeof o.text === 'object' ? (o.text as Obj).length : typeof o.content === 'object' && o.content ? (o.content as Obj).length : undefined;
+  if (typeof txt === 'number') bits.push(t('guide.tool.sum.chars', { n: txt }));
+  if (bits.length) return oneLine(bits.join(' · '));
+  const keys = Object.keys(o); return keys.length ? oneLine(keys.slice(0, 6).join(', ')) : t('guide.tool.sum.none');
+}
+const bigImage = (src: string, name: string) => openModal({ title: name, wide: true, body: <img className="full-img" src={src} alt={name} /> });
+/** 붙인 파일 칩: 그림은 작은 미리보기, 글은 이름 · 크기 · 잘림 표시. onRemove 가 있으면 뗄 수 있다 */
+function FileChips({ files, onRemove }: { files: Attach[]; onRemove?: (a: Attach) => void }) {
+  return <div className="gd-files">{files.map((a, i) => <span key={i + a.name} className={'gd-file is-' + a.kind} title={a.name}>
+    {a.image ? <button type="button" className="gd-thumb" aria-label={a.name} onClick={() => bigImage(a.image!, a.name)}><img src={a.image} alt="" /></button> : <i className="gd-fglyph" aria-hidden="true">{a.kind === 'card' ? '◆' : '¶'}</i>}
+    <span className="gd-fname"><b>{a.name}</b><small>{a.kind === 'card' ? t('guide.att.card') : a.kind === 'image' ? t('guide.att.image') : sizeText(a.size)}{a.full ? ' · ' + t('guide.att.cut', { n: (a.text || '').length }) : ''}</small></span>
+    {onRemove ? <button type="button" className="gd-fx" title={t('guide.att.remove')} aria-label={t('guide.att.remove')} onClick={() => onRemove(a)}><svg className="fx-art" viewBox="0 0 8 8" width="8" height="8" aria-hidden="true"><path d="M1 1l6 6M7 1L1 7" /></svg></button> : null}
+  </span>)}</div>;
+}
+
+/** 말 한 줄의 ⋯ 단추: 고치기 · 다시 생성 · 여기서 분기 · 복사 */
+function MoreBtn({ it, idx, canRegen }: { it: Item; idx: number; canRegen?: boolean }) {
+  if (G.busy || (it.k !== 'user' && it.k !== 'ai')) return null;
+  const open = (e: React.MouseEvent<HTMLButtonElement>) => menu(e.currentTarget, [
+    it.k === 'user' ? { label: t('guide.act.edit'), ic: 'edit', onclick: () => { G.editing = idx; poke(); } } : null,
+    canRegen ? { label: t('guide.act.regen'), ic: 'refresh', onclick: () => void regen() } : null,
+    { label: t('guide.act.branch'), hint: t('guide.act.branchHint'), ic: 'branch', onclick: () => void branchAt(idx).then(() => toast(t('guide.act.branched'), 'ok')) },
+    { label: t('guide.act.copy'), ic: 'copy', onclick: () => void copy(it.text) },
+  ]);
+  return <button type="button" className="gd-mbtn" title={t('guide.act.more')} aria-label={t('guide.act.more')} onClick={open}><Icon name="more" size={16} /></button>;
+}
+/** 내 말 고치기: 고친 말부터 다시 (그 뒤의 답은 지운다) */
+function EditBox({ it, idx }: { it: Extract<Item, { k: 'user' }>; idx: number }) {
+  const [text, setText] = useState(it.text), ta = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { const el = ta.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, []);
+  useEffect(() => { const el = ta.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(220, el.scrollHeight) + 'px'; } }, [text]);
+  const go = () => { const s = text.trim(); if (!s && !it.files?.length) return; const ask = expand(s, it.refs || []) ?? (s === it.text ? it.ask : undefined); void editFrom(idx, s, ask); };
+  return <div className="gd-edit">
+    <textarea ref={ta} value={text} rows={2} aria-label={t('guide.act.edit')} spellCheck={false} onChange={e => setText(e.target.value)}
+      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && !matchMedia('(max-width: 820px)').matches) { e.preventDefault(); go(); } else if (e.key === 'Escape') { G.editing = -1; poke(); } }} />
+    <p className="dim">{t('guide.act.editNote')}</p>
+    <div className="gd-edit-b"><button type="button" className="btn ghost" onClick={() => { G.editing = -1; poke(); }}>{t('common.cancel')}</button><button type="button" className="btn primary" disabled={!text.trim() && !it.files?.length} onClick={go}><Icon name="send" size={15} />{t('guide.act.editSend')}</button></div>
+  </div>;
+}
+function ItemView({ it, idx, last, canRegen }: { it: Item; idx: number; last?: boolean; canRegen?: boolean }) {
+  if (it.k === 'user') {
+    if (G.editing === idx && !G.busy) return <div className="gd-u editing"><span className="fx-lbl kr">{t('guide.you')}</span><EditBox it={it} idx={idx} />{it.files?.length ? <FileChips files={it.files} /> : null}</div>;
+    return <div className="gd-u"><div className="gd-uh"><span className="fx-lbl kr">{t('guide.you')}</span><MoreBtn it={it} idx={idx} /></div>{it.refs?.length ? <div className="gd-refs">{it.refs.map(r => <span key={r.kind + r.id} className="fx-pill">@{r.name}</span>)}</div> : null}{it.text ? <p>{it.text}</p> : null}{it.files?.length ? <FileChips files={it.files} /> : null}</div>;
+  }
+  if (it.k === 'ai') return it.text ? <div className="gd-a"><Md text={it.text} /><div className="gd-acts"><button type="button" className="gd-act gd-copy" title={t('guide.act.copy')} onClick={() => void copy(it.text)}><Icon name="copy" size={14} />{t('guide.act.copyShort')}</button>{canRegen ? <button type="button" className="gd-act" onClick={() => void regen()}><Icon name="refresh" size={14} />{t('guide.act.regen')}</button> : null}<MoreBtn it={it} idx={idx} canRegen={canRegen} /></div></div> : null;
+  if (it.k === 'tool') { const sum = toolBrief(it.name, it.ok, it.out); return <details className={'gd-tool' + (it.ok ? '' : ' bad')}>
+    <summary><svg className="fx-art" viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">{it.ok ? <path d="M1.5 5.2l2.4 2.4L8.5 2.6" /> : <path d="M2 2l6 6M8 2l-6 6" />}</svg><code>{it.name}</code><span>{argBrief(it.args)}</span><em>{!it.ok ? t('guide.tool.bad') : /^(create|update|add|revise|delete)_/.test(it.name) ? t('guide.tool.proposed') : t('guide.tool.ok')}</em>{sum ? <small className="gd-tsum">{sum}</small> : null}</summary>
+    <pre>{it.out || t('guide.tool.sum.none')}</pre>
+  </details>; }
   if (it.k === 'change') return <ChangeCard ch={it.change} />;
+  if (it.k === 'note') return <p className="gd-note" role="status">{it.text === 'noimgconn' ? t('guide.note.noImgConn') : it.text}</p>;
   if (it.text === 'limit' || it.text === 'loop') return <div className="gd-e gd-limit" role="status"><p>{t(it.text === 'loop' ? 'guide.err.loop' : 'guide.err.limit')}</p>{last && !G.busy ? <button type="button" className="btn primary" onClick={() => void resume(t('guide.cont.say'))}><Icon name="play" size={15} />{t('guide.cont.btn')}</button> : null}</div>;
-  return <div className="gd-e" role="alert"><span className="fx-lbl">{t('guide.err.label')}</span><p>{it.text === 'noconn' ? t('guide.err.noconn') : it.text === 'empty' ? t('guide.err.empty') : it.text}</p>{it.text === 'noconn' ? <button type="button" className="btn" onClick={() => { closeGuide(); go('conns'); }}>{t('nav.conns')}</button> : null}</div>;
+  const again = last && !G.busy ? <button type="button" className="btn primary gd-retry" onClick={() => void retry()}><Icon name="refresh" size={15} />{t('guide.act.retry')}</button> : null;
+  if (it.text === 'noimg') return <div className="gd-e" role="alert"><span className="fx-lbl">{t('guide.err.label')}</span><p>{t('guide.err.noImage')}</p>{it.detail ? <small className="dim gd-edetail">{it.detail}</small> : null}{last && !G.busy ? <div className="gd-ebtns"><button type="button" className="btn primary gd-retry" onClick={() => void retry({ noImages: true })}><Icon name="refresh" size={15} />{t('guide.act.retryNoImg')}</button><button type="button" className="btn" onClick={() => void retry()}>{t('guide.act.retry')}</button></div> : null}</div>;
+  const rate = /\b429\b|resource[ _-]?exhausted|rate[ _-]?limit|too many requests/i.test(it.text);
+  return <div className="gd-e" role="alert"><span className="fx-lbl">{t('guide.err.label')}</span><p>{it.text === 'noconn' ? t('guide.err.noconn') : it.text === 'empty' ? t('guide.err.empty') : it.text}</p>{rate ? <small className="dim">{t('guide.err.rateHint')}</small> : null}
+    {it.text === 'noconn' || again ? <div className="gd-ebtns">{again}{it.text === 'noconn' ? <button type="button" className="btn" onClick={() => { closeGuide(); go('conns'); }}>{t('nav.conns')}</button> : null}</div> : null}</div>;
 }
 
 // ── 입력: @ 로 맥락 붙이기, / 로 명령 ──
@@ -146,6 +229,24 @@ const CMD = (id: CmdId) => CMDS.find(c => c.id === id)!;
 /** 입력 글 맨 앞의 /명령 (이름 · 별칭 · 지금 언어의 이름) */
 const cmdOf = (word: string) => CMDS.find(x => x.names.includes(word.toLowerCase()) || cmdName(x).toLowerCase() === word.toLowerCase()) || null;
 
+/** /명령으로 시작하면 모델에 보낼 풀어 쓴 글 (고쳐 보낼 때도 같은 길로). 명령이 아니면 undefined */
+function expand(s: string, refs: Ref[], o: Opts = OPT0): string | undefined {
+  const m = /^(\/\S+)\s*([\s\S]*)$/.exec(s), c = m ? cmdOf(m[1]) : null;
+  return c ? c.ask(m![2].trim(), !refs.length && !c.opts ? here() : refs, o) : undefined;
+}
+/** 파일을 읽어 붙인다 (단추 · 붙여 넣기 · 끌어 놓기). 못 읽은 것은 까닭을 알린다 */
+async function readFiles(list: File[], have: number): Promise<Attach[]> {
+  const out: Attach[] = [];
+  for (const f of list) {
+    if (have + out.length >= MAX_FILES) { toast(t('guide.att.max', { n: MAX_FILES })); break; }
+    try { out.push(await readAttach(f)); }
+    catch (e) { const code = e instanceof AttachError ? e.code : 'read'; toast(t(code === 'big' ? 'guide.att.big' : code === 'type' ? 'guide.att.type' : 'guide.att.read', { name: f.name }), 'err'); }
+  }
+  return out;
+}
+/** 옆 창에 끌어 놓은 파일을 입력창으로 (입력창이 이 자리를 채운다) */
+let dropTo: ((fs: File[]) => void) | null = null;
+
 /** /캐릭터 · /페르소나 를 고르면 입력창 위에 뜨는 고르기 줄 */
 function OptRow({ kind, o, set }: { kind: 'char' | 'persona'; o: Opts; set: (o: Opts) => void }) {
   const group = <K extends keyof Opts>(k: K, label: string, vals: Opts[K][]) => <span className="gd-og" role="radiogroup" aria-label={label}>
@@ -173,8 +274,11 @@ function PlanView({ plan }: { plan: Plan }) {
 
 function Composer() {
   const ta = useRef<HTMLTextAreaElement>(null), [text, setText] = useState(G.draft), [refs, setRefs] = useState<Ref[]>(G.refs), [sel, setSel] = useState(0), [caret, setCaret] = useState(0);
+  const [files, setFiles] = useState<Attach[]>([]), [reading, setReading] = useState(0), filesRef = useRef(files); filesRef.current = files;
   useEffect(() => { setText(G.draft); setRefs(G.refs); G.draft = ''; G.refs = []; ta.current?.focus(); }, [G.focus]);   // eslint-disable-line
   useEffect(() => { const el = ta.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(180, el.scrollHeight) + 'px'; } }, [text]);
+  const addFiles = async (list: File[]) => { if (!list.length) return; setReading(n => n + 1); try { const got = await readFiles(list, filesRef.current.length); if (got.length) setFiles(fs => [...fs, ...got].slice(0, MAX_FILES)); } finally { setReading(n => n - 1); } };
+  useEffect(() => { dropTo = fs => void addFiles(fs); return () => { dropTo = null; }; });
   const at = /(^|\s)@([^\s@]{0,24})$/.exec(text.slice(0, caret)), slash = /^\/([^\s]*)$/.exec(text);
   const atList = at ? refsFor(at[2]).filter(r => !refs.some(x => x.id === r.id)) : [], cmdList = slash ? CMDS.filter(c => c.names.some(n => n.startsWith('/' + slash[1].toLowerCase())) || cmdName(c).toLowerCase().startsWith('/' + slash[1].toLowerCase())) : [];
   const [opts, setOpts] = useState<Opts>(OPT0);
@@ -182,15 +286,16 @@ function Composer() {
   const pop = at ? atList.length : cmdList.length, pick = Math.min(sel, Math.max(0, pop - 1));
   const addRef = (r: Ref) => { if (refs.length >= 8) return toast(t('guide.ref.max')); const head = text.slice(0, caret).replace(/@[^\s@]*$/, ''), tail = text.slice(caret); setRefs([...refs, r]); setText(head + tail); requestAnimationFrame(() => { ta.current?.focus(); ta.current?.setSelectionRange(head.length, head.length); setCaret(head.length); }); };
   const useCmd = (c: Cmd) => { setText(cmdName(c) + ' '); requestAnimationFrame(() => { const el = ta.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }); };
+  const can = (!!text.trim() || files.length > 0) && !reading;
   const submit = () => {
-    const s = text.trim(); if (!s || G.busy) return;
+    const s = text.trim(); if (!can || G.busy) return;
     const m = /^(\/\S+)\s*([\s\S]*)$/.exec(s), c = m ? cmdOf(m[1]) : null;
     // 열린 대화의 캐릭터를 저절로 붙인다 — 새로 만드는 /캐릭터 · /페르소나 는 빼고 (붙이면 "그 캐릭터를 고쳐"로 읽힌다)
     const all = c && !refs.length && !c.opts ? here() : refs;
     // 변경 카드의 한 칸을 다시 써 달라고 했으면 그 카드 · 칸을 붙인다
     const redo = G.redo; G.redo = null;
-    const ask = c ? c.ask(m![2].trim(), all, opts) : redo ? `${s}\n<app_note>The user means the field "${redo.field}" of change card ${redo.card}, which is still waiting for approval. Rewrite only that field and update the card with revise_card.</app_note>` : undefined;
-    setText(''); setRefs([]); void send(s, { refs: all, ask });
+    const ask = c ? expand(s, refs, opts) : redo ? `${s}\n<app_note>The user means the field "${redo.field}" of change card ${redo.card}, which is still waiting for approval. Rewrite only that field and update the card with revise_card.</app_note>` : undefined;
+    const fs = files; setText(''); setRefs([]); setFiles([]); void send(s, { refs: all, ask, files: fs });
   };
   return <footer className="gd-comp">
     {pop ? <div className="gd-pop fx-rows" role="listbox">{at
@@ -198,10 +303,13 @@ function Composer() {
       : cmdList.map((c, i) => <button key={c.id} type="button" role="option" aria-selected={i === pick} className={i === pick ? 'on' : undefined} onMouseDown={e => { e.preventDefault(); useCmd(c); }}><b className="fx-num">{cmdName(c)}</b><small>{cmdHint(c)}</small></button>)}</div> : null}
     {typed?.opts ? <OptRow kind={typed.opts} o={opts} set={setOpts} /> : null}
     {refs.length ? <div className="gd-refs">{refs.map(r => <button key={r.kind + r.id} type="button" className="fx-pill" title={t('guide.ref.remove')} onClick={() => setRefs(refs.filter(x => x !== r))}>@{r.name}<svg className="fx-art" viewBox="0 0 8 8" width="8" height="8" aria-hidden="true"><path d="M1 1l6 6M7 1L1 7" /></svg></button>)}</div> : null}
+    {files.length || reading ? <div className="gd-fwrap">{files.length ? <FileChips files={files} onRemove={a => setFiles(files.filter(x => x !== a))} /> : null}{reading ? <small className="dim gd-reading">{t('guide.att.reading')}</small> : null}</div> : null}
     <div className="gd-box">
       <button type="button" className="gd-slash" title={t('guide.cmd.menu')} aria-label={t('guide.cmd.menu')} onClick={e => menu(e.currentTarget, CMDS.map(c => ({ label: cmdHint(c), hint: cmdName(c), ic: c.id === 'char' ? 'sparkle' : c.id === 'persona' ? 'user' : c.id === 'qr' ? 'play' : c.id === 'mvu' ? 'sliders' : c.id === 'check' ? 'check' : c.id === 'why' ? 'search' : 'book', onclick: () => useCmd(c) })))}>/</button>
+      <button type="button" className="gd-clip" title={t('guide.att.add')} aria-label={t('guide.att.add')} onClick={async () => void addFiles(await pickFiles({ accept: ACCEPT, multiple: true }))}><Icon name="clip" size={17} /></button>
       <textarea ref={ta} rows={1} value={text} placeholder={t('guide.ph')} aria-label={t('guide.ph')} spellCheck={false}
         onChange={e => { setText(e.target.value); setCaret(e.target.selectionStart); setSel(0); }} onSelect={e => setCaret((e.target as HTMLTextAreaElement).selectionStart)}
+        onPaste={e => { const fs = [...(e.clipboardData?.files || [])]; if (fs.length) { e.preventDefault(); void addFiles(fs); } }}
         onKeyDown={e => {
           if (pop && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); setSel((pick + (e.key === 'ArrowDown' ? 1 : pop - 1)) % pop); }
           else if (pop && (e.key === 'Enter' || e.key === 'Tab') && !e.nativeEvent.isComposing) { e.preventDefault(); if (at) addRef(atList[pick]); else useCmd(cmdList[pick]); }
@@ -209,7 +317,7 @@ function Composer() {
           else if (e.key === 'Escape' && !pop) closeGuide();
         }} />
       {G.busy ? <button type="button" className="gd-send stop" title={t('guide.stop')} aria-label={t('guide.stop')} onClick={stop}><Icon name="stop" size={17} /></button>
-        : <button type="button" className="gd-send" title={t('guide.send')} aria-label={t('guide.send')} disabled={!text.trim()} onClick={submit}><Icon name="send" size={17} /></button>}
+        : <button type="button" className="gd-send" title={t('guide.send')} aria-label={t('guide.send')} disabled={!can} onClick={submit}><Icon name="send" size={17} /></button>}
     </div>
     <ConnLine />
   </footer>;
@@ -240,7 +348,7 @@ function Empty() {
 const STATUS_KEY = { idle: '', working: 'guide.status.working', review: 'guide.status.review', done: 'guide.status.done' } as const;
 function Panel() {
   useEvents('guide', 'route'); useLang();
-  const scroll = useRef<HTMLDivElement>(null), stick = useRef(true);
+  const scroll = useRef<HTMLDivElement>(null), stick = useRef(true), [drag, setDrag] = useState(false);
   const items = G.talk?.items || [], n = items.length;
   useEffect(() => { const el = scroll.current; if (el && stick.current) el.scrollTop = el.scrollHeight; });
   useEffect(() => { stick.current = true; }, [n, G.talk?.id]);
@@ -252,7 +360,13 @@ function Panel() {
     G.talk && G.heads.some(h => h.id === G.talk?.id) ? '-' : null,
     G.talk && G.heads.some(h => h.id === G.talk?.id) ? { label: t('guide.talk.remove'), ic: 'trash', danger: true, onclick: async () => { if (await confirmBox(t('guide.talk.removeConfirm'), t('common.delete'), true)) void removeTalk(G.talk!.id); } } : null,
   ]);
-  return <aside className="gd-panel" role="complementary" aria-label={t('guide.name')}>
+  // 끌어 놓기: 파일을 옆 창 어디에 놓아도 입력창에 붙는다
+  const hasFiles = (e: React.DragEvent) => [...(e.dataTransfer?.types || [])].includes('Files');
+  const lastU = items.map(i => i.k).lastIndexOf('user'), lastAi = items.length - 1;
+  return <aside className={'gd-panel' + (drag ? ' drag' : '')} role="complementary" aria-label={t('guide.name')}
+    onDragOver={e => { if (!hasFiles(e)) return; e.preventDefault(); if (!drag) setDrag(true); }} onDragLeave={e => { if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) setDrag(false); }}
+    onDrop={e => { if (!hasFiles(e)) return; e.preventDefault(); setDrag(false); const fs = [...e.dataTransfer.files]; if (fs.length) dropTo?.(fs); }}>
+    {drag ? <div className="gd-drop" aria-hidden="true"><span>{t('guide.att.drop')}</span></div> : null}
     <header className="gd-head">
       <Mark size={34} lit={G.busy} />
       <div className="gd-title"><span className="fx-lbl">Lampkeeper</span><h2 className="fx-serif">{t('guide.name')}</h2></div>
@@ -267,8 +381,8 @@ function Panel() {
     <div className="gd-scroll" ref={scroll} onScroll={e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60; }}>
       {G.talk?.plan && (n || G.busy) ? <PlanView plan={G.talk.plan} /> : null}
       {!n && !G.busy ? <Empty /> : <div className="gd-items">
-        {items.map((it, i) => <ItemView key={i + ':' + it.at} it={it} last={i === n - 1} />)}
-        {G.busy ? <div className="gd-a live">{G.stream ? <Md text={G.stream} /> : null}<span className="gd-wait" aria-label={t('guide.status.working')}><i /><i /><i /></span></div> : null}
+        {items.map((it, i) => <ItemView key={i + ':' + it.at} it={it} idx={i} last={i === n - 1} canRegen={!G.busy && i === lastAi && it.k === 'ai' && i > lastU} />)}
+        {G.busy ? <div className="gd-a live">{G.wait ? <p className="gd-waitmsg" role="status">{t('guide.wait429', { n: G.wait.n, of: G.wait.of })}</p> : null}{G.stream ? <Md text={G.stream} /> : null}<span className="gd-wait" aria-label={t('guide.status.working')}><i /><i /><i /></span></div> : null}
       </div>}
     </div>
     {waiting > 1 ? <div className="gd-bulk"><span>{t('guide.card.waiting', { n: waiting })}</span><button type="button" className="btn" onClick={() => void applyAll().then(() => toast(t('guide.card.appliedToast'), 'ok'))}>{t('guide.card.applyAll')}</button></div> : null}
