@@ -10030,6 +10030,7 @@
   "guide.act.regen": "Regenerate",
   "guide.act.retry": "Try again",
   "guide.act.retryNoImg": "Try again without images",
+  "guide.act.branchShort": "Branch",
   "guide.act.branch": "Branch from here",
   "guide.act.branchHint": "Copy up to here into a new conversation",
   "guide.act.branched": "Copied into a new conversation. The original stays in your conversation list.",

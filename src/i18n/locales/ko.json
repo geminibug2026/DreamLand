@@ -9950,6 +9950,7 @@
   "guide.act.regen": "다시 생성",
   "guide.act.retry": "다시 시도",
   "guide.act.retryNoImg": "그림 빼고 다시 시도",
+  "guide.act.branchShort": "분기",
   "guide.act.branch": "여기서 분기",
   "guide.act.branchHint": "여기까지를 새 대화로 복사",
   "guide.act.branched": "새 대화로 나눴어요. 원래 대화는 대화 기록에 그대로 있어요.",
