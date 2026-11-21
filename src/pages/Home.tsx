@@ -12,6 +12,8 @@ import { locale, t, tn } from '../i18n';
 import { chatsOnlyOf, deleteChars, exportChars } from '../lib/bulk';
 import { openModal, toast } from '../ui';
 import { daysTogether, firstMet } from '../lib/together';
+import { Desk } from '../desk/Desk';
+import { ArchEmpty, FolderNone, SearchNone } from '../desk/art';
 
 /** 통계: 캐릭터마다 대화방 · 메시지 수 · 처음 만난 날 · 함께한 날 · 마지막 대화 (저장된 숫자만 쓴다 — 메시지를 다시 읽지 않는다) */
 function showStats() {
@@ -60,10 +62,11 @@ const seeded = (seed: number) => { let z = seed; return () => (z = (z * 16807) %
 /** 성도의 선: 날짜 눈금 · 달 이름 · 달의 여덟 위상 · 별 먼지. 달과 위상만 날마다 바뀐다 */
 function WheelArt({ month, phase }: { month: number; phase: number }) {
   const rnd = seeded(11), f = (n: number) => n.toFixed(1);
-  const ticks = Array.from({ length: 365 }, (_, d) => { const a = d / 365 * 360, len = d % 30 === 0 ? 10 : d % 5 === 0 ? 6 : 3, [x1, y1] = polar(192, a), [x2, y2] = polar(192 - len, a); return `M${f(x1)} ${f(y1)}L${f(x2)} ${f(y2)}`; }).join('');
+  // 눈금은 깊이 세 단계(달 · 닷새 · 하루)로 나눠, 굵기와 옅기를 같이 내린다
+  const ticks = ['', '', '']; for (let d = 0; d < 365; d++) { const a = d / 365 * 360, k = d % 30 === 0 ? 0 : d % 5 === 0 ? 1 : 2, [x1, y1] = polar(192, a), [x2, y2] = polar(192 - [10, 6, 3][k], a); ticks[k] += `M${f(x1)} ${f(y1)}L${f(x2)} ${f(y2)}`; }
   return <svg viewBox="0 0 400 400" aria-hidden="true">
     <circle cx="200" cy="200" r="198" className="w-rim" /><circle cx="200" cy="200" r="192" className="w-hair" /><circle cx="200" cy="200" r="170" className="w-ring" /><circle cx="200" cy="200" r="136" className="w-ring" />
-    <path d={ticks} className="w-tick" />
+    <path d={ticks[2]} className="w-tick t3" /><path d={ticks[1]} className="w-tick t2" /><path d={ticks[0]} className="w-tick" />
     {Array.from({ length: 12 }, (_, i) => { const a = i * 30 - 7, [x, y] = polar(178, a), flip = a > 100 && a < 260; return <text key={i} x={f(x)} y={f(y)} transform={`rotate(${flip ? a + 180 : a} ${f(x)} ${f(y)})`} className={i ? 'w-month' : 'w-month on'}>{MONTHS[(month + i) % 12]}</text>; })}
     {Array.from({ length: 8 }, (_, i) => { const [x, y] = polar(153, i * 45 + 22.5), k = (phase + i) % 8, lit = (1 - Math.cos(k / 8 * 2 * Math.PI)) / 2, r = 7, wax = k < 4;
       return <g key={i} className={i ? 'w-moon' : 'w-moon on'}><circle cx={x} cy={y} r={r} />{lit > .02 && <path d={`M${x} ${y - r}a${r} ${r} 0 0 ${wax ? 1 : 0} 0 ${2 * r}a${f(Math.abs(lit - .5) * 2 * r)} ${r} 0 0 ${(lit > .5) === wax ? 1 : 0} 0 ${-2 * r}z`} />}</g>; })}
@@ -71,6 +74,8 @@ function WheelArt({ month, phase }: { month: number; phase: number }) {
     <circle cx="200" cy="200" r="128" className="w-link" />
   </svg>;
 }
+/** 성도 칸의 먼지 별 두 겹: 타일 크기가 서로소라 무늬가 되풀이되어 보이지 않고, 주기가 달라 따로 반짝인다 */
+const Twinkle = () => <><i className="hm-tw a" aria-hidden="true" /><i className="hm-tw b" aria-hidden="true" /></>;
 const Dust = ({ n, seed }: { n: number; seed: number }) => { const rnd = seeded(seed); return <svg className="hm-dust" aria-hidden="true">{Array.from({ length: n }, (_, i) => <circle key={i} cx={(rnd() * 100).toFixed(1) + '%'} cy={(rnd() * 100).toFixed(1) + '%'} r={(.4 + rnd() * .8).toFixed(2)} opacity={(.15 + rnd() * .45).toFixed(2)} />)}</svg>; };
 
 /** 성도: 가운데에 최근에 만난 캐릭터, 둘레에 그다음 넷. 둘레의 별을 누르면 가운데로 온다 */
@@ -84,13 +89,13 @@ function Stage({ picks, redraw }: { picks: Char[]; redraw: () => void }) {
     {others.map(({ p, i }, n) => { const [x, y] = polar(128, [45, 135, 225, 315][n]); return <button key={p.id} className="hm-sat" style={{ left: x / 4 + '%', top: y / 4 + '%' }} title={p.name} onClick={() => { view.pick = i; redraw(); }}>
       <i style={artStyle(p)}>{!p.avatar && <Emblem o={p} mini />}</i><span>{p.name}</span></button>; })}
     <i className="hm-ptr" /></div>;
-  if (!c) return <div className="hm-hero"><Dust n={90} seed={5} />{wheel}
+  if (!c) return <div className="hm-hero"><Dust n={90} seed={5} /><Twinkle />{wheel}
     <div className="hm-tx">{day}<h1 className="hm-name">{t('home.empty.title')}</h1>
       <div className="hm-acts"><Btn label={t('home.empty.migrate')} ic="folder" cls="hm-p" onClick={() => go('import')} /><Btn label={t('home.empty.importCard')} ic="import" cls="hm-o" onClick={() => void importDialog()} /><Btn label={t('home.empty.conns')} ic="plug" cls="hm-g" onClick={() => go('conns')} /></div></div>
   </div>;
   const last = S.chats.filter(x => x.charIds.includes(c.id)).sort((a, b) => b.updatedAt - a.updatedAt)[0];
   const days = daysTogether(c.id);
-  return <div className="hm-hero"><Dust n={90} seed={5} />{wheel}
+  return <div className="hm-hero"><Dust n={90} seed={5} /><Twinkle />{wheel}
     <div className="hm-tx">{day}
       <div className="hm-lb">{t('home.lastMet')}</div><h1 className="hm-name"><InkName name={c.name} /></h1>
       {c.tags.length ? <div className="hm-tg">{c.tags.slice(0, 4).map(x => <span key={x}>#{x}</span>)}</div> : null}
@@ -168,7 +173,7 @@ function Home() {
 
   return <section className="home hm">
     <Stage picks={picks} redraw={redraw} />
-    {recent.length ? <div><SecHead title={t('home.recent')} sub="recently"><em>{recent.length}</em></SecHead>
+    {recent.length ? <div><SecHead title={t('home.recent')} sub="recently"><em>{recent.length}</em><span className="hm-sp" /></SecHead>
       <div className="hm-tl">{recent.map((c, i) => {
         const chars = c.charIds.map(id => S.get('chars', id)).filter((x): x is Char => !!x), first = chars[0];
         return <button key={c.id} className={'hm-th' + (i ? '' : ' on')} onClick={() => go('chat', c.id)}>
@@ -177,12 +182,14 @@ function Home() {
           <div className="hm-tt"><b>{chars.map(x => x.name).join(', ') || t('home.deletedChar')}</b><span>{c.name}</span><p>{tidy(c.preview) || t('home.newChat')}</p></div>
         </button>;
       })}</div></div> : null}
+    <Desk />
     <div>
       <SecHead title={t('home.chars')} sub="characters"><em>{tn('home.charCount', list.length)}</em><span className="hm-sp" />
         <Btn label={t('common.import')} ic="import" cls="hm-line hm-wide" onClick={() => void importDialog()} />
         <Btn label={t('home.newChar')} ic="plus" cls="hm-fill" onClick={() => void addChar()} />
         <IconBtn ic="more" cls="hm-line" title={t('home.bulk.title')} onClick={e => menu(e.currentTarget, [
           { label: t('common.import'), ic: 'import', onclick: () => void importDialog() },
+          { label: t('reach.shop.menu'), ic: 'book', onclick: () => go('shop') },
           { label: t('home.stats.title'), ic: 'sparkle', onclick: showStats },
           { label: t('home.bulk.export'), ic: 'import', onclick: () => charPicker({ title: t('home.bulk.export'), selected: [], onDone: async ids => { if (!ids.length) return; const n = await exportChars(ids); toast(t('home.bulk.exported', { count: n }), 'ok'); } }) },
           { label: t('home.bulk.delete'), ic: 'trash', danger: true, onclick: () => charPicker({ title: t('home.bulk.delete'), selected: [], onDone: async ids => {
@@ -208,7 +215,9 @@ function Home() {
           <div className="hm-im" style={artStyle(c)}>{!c.avatar && <><Dust n={30} seed={c.name.length * 97 + 13} /><Emblem o={c} /></>}{c.fav && <i className="fav"><Icon name="star" size={12} /></i>}{folderTag(c)}</div>
           <b>{c.name}</b><small>{c.tags.slice(0, 2).join(' · ') || '\u00a0'}</small>
         </button>)}
-        {!list.length && view.folder && view.folder !== '-' ? <p className="dim folder-empty">{t('home.folder.empty')}</p> : null}
+        {list.length ? null : term || view.tag || view.fav ? <div className="fx-empty hm-none"><SearchNone /><p>{t('home.none.search')}</p></div>
+          : view.folder && view.folder !== '-' ? <div className="fx-empty hm-none folder-empty"><FolderNone /><p>{t('home.folder.empty')}</p></div>
+          : !S.chars.length ? <div className="fx-empty hm-none"><ArchEmpty /><p>{t('home.none.chars')}</p></div> : null}
         <button className="hm-c add" onClick={() => void addChar()}><div className="hm-im"><Icon name="plus" size={26} /></div><b>{t('home.newChar')}</b><small>{t('home.newCharSub')}</small></button>
       </div>
       {pg.pager}

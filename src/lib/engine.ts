@@ -3,10 +3,12 @@ import * as core from './core';
 import * as hooks from './hooks';
 import { condBlocks, evalCond, pvResolve, type CondEnv, type PvMap } from './cond';
 import { ejs } from './ejs';
+import { caseFold, weighted, wpick } from './macro-extra';
 import * as clock from './clock';
 import * as advanced from './advanced';
 import { t as tr } from '../i18n';
 import { Server } from './server';
+import { Rpm } from '../reach/rpm';
 
 // ════════ 자료 꼴 (엔진이 읽는 만큼) ════════
 type Obj = Record<string, unknown>;
@@ -53,7 +55,8 @@ interface EngineStore {
 }
 interface PromptPart { where?: string; role?: string; content?: string; depth?: Num; order?: Num; src?: string }
 interface PromptHook { owner: string; fn(info: Obj): PromptPart[] | null | undefined }
-interface Hooks { macros: Map<string, { owner?: string; fn(args: string[], c: Ctx): unknown }>; prompt: PromptHook[]; loreVec?: ((id: string) => unknown) | null; covered?: ((chat: Chat) => number) | null }
+interface Hooks { macros: Map<string, { owner?: string; fn(args: string[], c: Ctx): unknown }>; prompt: PromptHook[]; loreVec?: ((id: string) => unknown) | null; covered?: ((chat: Chat) => number) | null;
+  gate?: { cond(cond: string, c: Ctx): string; lore(e: LoreEntry, c: Ctx): boolean; each(text: string, c: Ctx): string; post(text: string): string } | null }
 interface ClockApi { now(chat?: Chat | null): Date; mode(chat: Chat): string; timeOf(chat: Chat, m: Msg): number; line(chat: Chat): string; command(chat: Chat): string }
 interface FmtChatOpts { name: string; mes: string; isUser: boolean; isNarrator: boolean; force?: number; group?: boolean; user?: string; char?: string; mx?: (t: string) => string }
 interface AdvancedApi {
@@ -119,7 +122,8 @@ export function macro(textIn: string | null | undefined, c: Ctx = {}): string {
   let text = textIn as string;
   if (!text || (text.indexOf('{{') < 0 && text.indexOf('<') < 0)) return text || '';
   const vars = c.vars || {}, g = S.settings.globalVars;
-  if (text.indexOf('{{') >= 0 && /\{\{\s*#(if|unless)/i.test(text)) text = condBlocks(text, cond => evalCond(macro(cond, c), condEnv(c)));   // {{#if 조건}}…{{else}}…{{/if}}
+  if (X.gate && text.indexOf('{{#each') >= 0) text = X.gate.each(text, c);   // {{#each char}}…{{/each}}: 그룹의 캐릭터마다 되풀이
+  if (text.indexOf('{{') >= 0 && /\{\{\s*#(if|unless)/i.test(text)) text = condBlocks(text, cond => evalCond(macro(askCond(cond, c), c), condEnv(c)));   // {{#if 조건}}…{{else}}…{{/if}}
   const d = Clock.now(c.chat);   // 방마다 따로 가는 시계 (기본은 현실 시각)
   const simple: Record<string, unknown> = {
     user: c.user, char: c.char, charifnotgroup: c.char, group: c.group || c.char, groupnotmuted: notMuted(c) || c.group || c.char, persona: c.persona, description: c.description,
@@ -131,7 +135,7 @@ export function macro(textIn: string | null | undefined, c: Ctx = {}): string {
   };
   const pickSeen: Record<string, number> = {};   // 한 글 안에서 같은 {{pick}} 이 여러 번 나오면 차례로 다른 자리
   const one = (body: string): string | null => {
-    const raw = body.trim();
+    const raw = body.trim().replace(/^(ask_pick)\s*:\s*(?=["'“‘])/i, '$1::');   // {{ask_pick:"물음"::가::나}} 도 받는다
     if (raw.startsWith('//')) return '';
     const sep = raw.includes('::') ? '::' : ':';
     const [nameRaw, ...rest] = raw.split(sep);
@@ -141,12 +145,13 @@ export function macro(textIn: string | null | undefined, c: Ctx = {}): string {
     switch (name) {
       case 'random': case 'pick': {
         const o = args.length > 1 ? args : (args[0] || '').split(','); if (!o.length) return '';
-        if (name === 'random') return o[Math.floor(Math.random() * o.length)].trim();
+        const wt = weighted(o);   // 끝에 @숫자 가 붙은 선택지가 있으면 그 비율대로 ({{random::흔함@3::드묾@0.5}})
+        if (name === 'random') return wt ? wpick(wt.items, wt.w, Math.random()) : o[Math.floor(Math.random() * o.length)].trim();
         // {{pick}}: 같은 대화 · 같은 자리에서는 늘 같은 것 (실리태번과 같다). /reroll-pick 이 시드를 바꾼다
         const seen = (pickSeen[raw] = (pickSeen[raw] || 0) + 1);
         const key = `${c.chat?.id || ''}:${(c.chat as { pickSeed?: number } | undefined)?.pickSeed || 0}:${raw}:${seen}`;
         let h = 2166136261; for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 16777619); }
-        return o[(h >>> 0) % o.length].trim();
+        return wt ? wpick(wt.items, wt.w, (h >>> 0) / 4294967296) : o[(h >>> 0) % o.length].trim();
       }
       case 'roll': { const r = roll(/d/i.test(args[0] || '') ? args[0] : 'd' + args[0]); return r ? String(r.total) : ''; }
       case 'getvar': return String(own(vars, args[0]) ?? '');
@@ -176,13 +181,16 @@ export function macro(textIn: string | null | undefined, c: Ctx = {}): string {
   out = out.replace(/\u0001/g, '{{').replace(/\u0002/g, '}}').replace(/<USER>/gi, c.user ?? '').replace(/<BOT>|<CHAR>/gi, c.char ?? '');
   // eslint-disable-next-line no-control-regex
   if (out.includes('\u0000TRIM\u0000')) out = out.replace(/\s*\u0000TRIM\u0000\s*/g, '');
+  if (out.includes('\u0003')) out = X.gate ? X.gate.post(out) : caseFold(out);   // {{uppercase}}…{{/uppercase}} 따위의 표식
   return out;
 }
 
 /** 조건식이 읽을 값들 */
 export const condEnv = (c: Ctx): CondEnv => ({ pv: c.pv, vars: c.vars, gvars: S.settings.globalVars, scope: c.scope, kw: c });
 /** 조건식 하나를 지금 대화 기준으로 판정한다 */
-export const testCond = (expr: unknown, c: Ctx) => evalCond(macro(String(expr || ''), c), condEnv(c));
+export const testCond = (expr: unknown, c: Ctx) => evalCond(macro(askCond(String(expr || ''), c), c), condEnv(c));
+/** 조건식 안의 ask:"…" (모델에게 묻는 판정문)를 판정 결과로 바꾼다. 물음 기능이 없으면 거짓으로 읽힌다 */
+function askCond(cond: string, c: Ctx): string { return cond.indexOf('ask') < 0 || !/(^|[^\w.])ask\s*:/i.test(cond) ? cond : X.gate ? X.gate.cond(cond, c) : cond.replace(/(^|[^\w.])ask\s*:\s*"[^"]*"/gi, '$1(0 > 1)'); }
 
 // ── 정규식 스크립트 ──
 // 범위는 셋: 전역(S.regex 의 scope 'global') · 프리셋(preset.regex — 프리셋에 실려 다닌다) · 캐릭터(S.regex 의 scope = 캐릭터 id).
@@ -337,6 +345,12 @@ export function applyRegex<T>(textIn: T, opts: EnvOpts = {}): T {
 const LORE_MAX_DEPTH = 1000, LORE_MAX_STEPS = 24;
 const LORE_TRIGGER: Record<string, string[]> = { normal: ['normal'], continue: ['continue'], impersonate: ['impersonate'], regen: ['regenerate', 'swipe'], swipe: ['swipe', 'regenerate'], quiet: ['quiet'] };
 let lastLore: LoreHit[] = [];
+/** 스캔 진단 (보기 전용 — 결과에는 영향을 주지 않는다). hit: 항목 → 무엇에 걸려 깨어났나 (constant · sticky · vector · ask · key:글 · chain:글) /
+ *  skip: 항목 → 왜 빠졌나 (filter · delay · cooldown · group · chance · budget · ask) / used: 책 → 쓴 토큰 */
+export interface LoreDiag { hit: Record<string, string>; skip: Record<string, string>; used: Record<string, number>; chatId?: string; commit?: boolean; at?: number }
+let diagLast: LoreDiag | null = null, diagReal: LoreDiag | null = null;
+/** 마지막 스캔의 진단. real 이면 실제 생성 때의 것만 */
+export const loreDiag = (real = false) => real ? diagReal : diagLast;
 /** 마지막 실제 생성에서 발동한 항목들 (자동 실행 연결용) */
 export const loreFired = () => lastLore;
 
@@ -378,14 +392,17 @@ function entryScore(e: LoreEntry, hay: string, hayLower: string, f: KeyFlags): n
 const groupsOf = (e: LoreEntry) => String(e.group || '').split(/,\s*/).map(g => g.trim()).filter(Boolean);
 const untilRec = (e: LoreEntry) => (e.delayUntilRecursion as unknown) === true ? 1 : Math.max(0, +(e.delayUntilRecursion as number) || 0);
 
-export interface ScanOpts { state?: LoreState; count?: number; commit?: boolean; type?: string; char?: Char | null; persona?: Persona | null; names?: string[] | null }
+export interface ScanOpts { state?: LoreState; count?: number; commit?: boolean; type?: string; char?: Char | null; persona?: Persona | null; names?: string[] | null; /** 진단을 여기에 적는다 */ diag?: LoreDiag }
 interface Item { e: LoreEntry; book: LoreBook }
 /**
  * books: 로어북들 · history: [{ content }] (오래된 것부터) · ctx: 매크로 문맥
  * opt: state(유지·쿨다운 기록) · count(대화 길이) · commit(실제 생성인지) · type(생성 종류) · char · persona · names(history 와 나란한 화자 이름)
  */
-export function scanLore(books: LoreBook[], history: { content?: string | null }[], ctx: Ctx, { state = {}, count = history.length, commit = false, type = 'normal', char = null, persona = null, names = null }: ScanOpts = {}): LoreHit[] {
+export function scanLore(books: LoreBook[], history: { content?: string | null }[], ctx: Ctx, { state = {}, count = history.length, commit = false, type = 'normal', char = null, persona = null, names = null, diag }: ScanOpts = {}): LoreHit[] {
   const G: LoreSettings = S.settings.lore || {};
+  const D: LoreDiag = diag || { hit: {}, skip: {}, used: {} }; D.chatId = ctx.chat?.id; D.commit = commit; D.at = Date.now(); diagLast = D; if (commit) diagReal = D;
+  /** 항목에 걸린 물음: 'need' = 깨어난 뒤 물음도 참이어야 · 'wake' = 물음이 참이면 키워드 없이도. 답이 없으면 아니오 */
+  const askOf = (e: LoreEntry) => (e.askMode === 'need' || e.askMode === 'wake') && String(e.ask || '').trim() ? e.askMode : '', askYes = (e: LoreEntry) => !!X.gate?.lore(e, ctx);
   const texts = history.map((m, i) => (G.includeNames && names?.[i] ? names[i] + ': ' : '') + (m.content || ''));
   const mxk = (kIn: unknown) => { const k = String(kIn); return k.includes('{{') ? macro(k, ctx) : k; };
   const trig = LORE_TRIGGER[type] || [type];
@@ -427,7 +444,7 @@ export function scanLore(books: LoreBook[], history: { content?: string | null }
   const filterGroups = (now: Item[]) => {
     const groups = new Map<string, Item[]>();
     for (const it of now) for (const g of groupsOf(it.e)) { if (!groups.has(g)) groups.set(g, []); (groups.get(g) as Item[]).push(it); }
-    const drop = (it: Item) => { const i = now.indexOf(it); if (i >= 0) now.splice(i, 1); };
+    const drop = (it: Item) => { const i = now.indexOf(it); if (i >= 0) { now.splice(i, 1); D.skip[it.e.id] = 'group'; delete D.hit[it.e.id]; } };
     for (const [key, members] of groups) {
       let grp = members.filter(it => now.includes(it));
       const stuck = grp.filter(it => isSticky(it.e));
@@ -453,31 +470,40 @@ export function scanLore(books: LoreBook[], history: { content?: string | null }
     for (const it of all) {
       const e = it.e;
       if (failed.has(e.id) || activated.has(e.id)) continue;
-      if (e.triggers?.length && !e.triggers.some(t => trig.includes(t))) continue;                    // 생성 종류
+      if (e.triggers?.length && !e.triggers.some(t => trig.includes(t))) { D.skip[e.id] = 'filter'; continue; }   // 생성 종류
       const cf = e.charFilter;
-      if (cf?.names?.length) { const inc = cf.names.some(n => String(n).toLowerCase() === charName); if (cf.exclude ? inc : !inc) continue; }
-      if (cf?.tags?.length) { const inc = cf.tags.some(t => charTags.includes(String(t).toLowerCase())); if (cf.exclude ? inc : !inc) continue; }
+      if (cf?.names?.length) { const inc = cf.names.some(n => String(n).toLowerCase() === charName); if (cf.exclude ? inc : !inc) { D.skip[e.id] = 'filter'; continue; } }
+      if (cf?.tags?.length) { const inc = cf.tags.some(t => charTags.includes(String(t).toLowerCase())); if (cf.exclude ? inc : !inc) { D.skip[e.id] = 'filter'; continue; } }
       const sticky = isSticky(e);
-      if (e.delay && count < +e.delay) continue;                                                       // 대화가 N개 쌓이기 전에는 잠듦
-      if (isCool(e) && !sticky) continue;                                                              // 쿨다운 중
+      if (e.delay && count < +e.delay) { D.skip[e.id] = 'delay'; continue; }                           // 대화가 N개 쌓이기 전에는 잠듦
+      if (isCool(e) && !sticky) { D.skip[e.id] = 'cooldown'; continue; }                               // 쿨다운 중
       const dur = untilRec(e);
       if (st !== 'recursion' && dur && !sticky) continue;                                              // 연쇄 단계에서만 깨어나는 항목
       if (st === 'recursion' && dur > level && !sticky) continue;
       if (st === 'recursion' && e.excludeRecursion && !sticky) continue;                               // 연쇄로는 깨어나지 않는 항목
-      if (e.constant || sticky || (st === 'initial' && X.loreVec?.(e.id))) { now.push(it); continue; }   // 벡터 검색이 뜻으로 찾아 깨운 항목
+      const ask = askOf(e), vec = !e.constant && !sticky && st === 'initial' && !!X.loreVec?.(e.id);
+      if (e.constant || sticky || vec) {   // 벡터 검색이 뜻으로 찾아 깨운 항목
+        if (ask === 'need' && !sticky && !askYes(e)) { D.skip[e.id] = 'ask'; continue; }   // 유지 중인 항목은 다시 묻지 않는다
+        D.hit[e.id] = sticky ? 'sticky' : e.constant ? 'constant' : 'vector'; now.push(it); continue;
+      }
+      if (ask === 'wake' && st === 'initial') { if (askYes(e)) { D.hit[e.id] = 'ask'; now.push(it); continue; } D.skip[e.id] = 'ask'; }   // 물음이 참이면 키워드 없이도 깨어난다 (아니면 키워드를 본다)
       if (!e.keys?.length) continue;
       const hay = hayOf(it);
-      if (hay.h && entryHit(e, hay.h, hay.l, flagsOf(it))) now.push(it);
+      if (hay.h && entryHit(e, hay.h, hay.l, flagsOf(it))) {
+        if (ask === 'need' && !askYes(e)) { D.skip[e.id] = 'ask'; continue; }
+        const f = flagsOf(it); D.hit[e.id] = (st === 'recursion' ? 'chain:' : 'key:') + String(e.keys.find(k => keyMatch(f.mx(k), hay.h, hay.l, f)) ?? '');
+        now.push(it);
+      }
     }
     if (now.length > 1) { const idx = new Map(now.map((it, i) => [it, i])); now.sort((a, b) => (+isSticky(b.e) - +isSticky(a.e)) || (idx.get(a) as number) - (idx.get(b) as number)); }
     filterGroups(now);
     const fresh: Item[] = [];
     for (const it of now) {
       const e = it.e, bid = it.book.id;
-      if (+(e.probability ?? 100) < 100 && !isSticky(e) && Math.random() * 100 > +(e.probability as Num)) { failed.add(e.id); continue; }
+      if (+(e.probability ?? 100) < 100 && !isSticky(e) && Math.random() * 100 > +(e.probability as Num)) { failed.add(e.id); D.skip[e.id] = 'chance'; delete D.hit[e.id]; continue; }
       const text = applyRegex(macro(tpl(e.content, ctx), ctx), { who: 'lore', target: 'prompt', depth: e.position === 'depth' ? +(e.depth ?? 4) : undefined, ctx }), t = tokens(text), u = used.get(bid) || 0;
-      if (!e.ignoreBudget) { if (u + t > +(it.book.tokenBudget || 2048) && u > 0) continue; used.set(bid, u + t); }
-      activated.set(e.id, { it, text, tok: t }); fresh.push(it);
+      if (!e.ignoreBudget) { if (u + t > +(it.book.tokenBudget || 2048) && u > 0) { D.skip[e.id] = 'budget'; continue; } used.set(bid, u + t); D.used[bid] = u + t; }
+      activated.set(e.id, { it, text, tok: t }); fresh.push(it); delete D.skip[e.id];
     }
     const rec = fresh.filter(it => !it.e.noRecurse && it.book.recursive);
     let next = rec.length ? 'recursion' : '';
@@ -579,6 +605,11 @@ function noteDue(chat: Chat, msgs: Msg[]): boolean {
 }
 /** 기록이 길어 잘려 나간 앞부분 가운데 고정한 메시지 — 고정한 것은 오래돼도 프롬프트에 남는다 */
 const pinnedBefore = (source: Msg[], history: PromptMsg[], start: number): PromptMsg[] => source.length === history.length ? history.slice(0, start).filter((_h, i) => source[i]?.pin === true) : [];
+/** 기록 가공 훅: 프롬프트에 싣기 전에 기록을 "이번에 말할 캐릭터가 보고 들은 것"으로 바꾼다 (귓속말 · 자리에 없던 동안 · 끊긴 말 — src/threads 가 건다). 메시지를 고치려면 원본이 아니라 복사본을 돌려줘야 한다 */
+export type HistoryLens = (source: Msg[], o: { chat: Chat; char: Char; chars: Char[]; type: string }) => Msg[];
+let historyLens: HistoryLens | null = null;
+export const setHistoryLens = (fn: HistoryLens | null) => { historyLens = fn; };
+const lensed = (source: Msg[], o: Parameters<HistoryLens>[1]): Msg[] => { if (!historyLens) return source; try { return historyLens(source, o) || source; } catch (e) { console.warn('[기록 가공]', e); return source; } };
 function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'normal', commit = false, proactive = false }: BuildInput): Built {
   const P: Params = preset.params || {}, M = S.settings.modes || {};
   const ctx = makeCtx({ chat, char, chars, persona, msgs }); ctx.type = type;
@@ -586,7 +617,7 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
   // 통화 중(src/call 이 기록 끝에 'Phone call started' 를 넣는다)에는 전화 걸기 안내를 주지 않는다
   const inCall = msgs.some(m => m.role === 'system' && msgText(m) === 'Phone call started');
   const isGroup = chars.length > 1, clockMode = Clock.mode(chat), today = Clock.now(chat).toDateString();
-  let source = msgs.filter(m => !m.hidden);
+  let source = lensed(msgs.filter(m => !m.hidden), { chat, char, chars, type });
   if (type === 'regen' || type === 'swipe') source = source.slice(0, -1);
   const live = liveDirect(source, type);   // 연출 지시는 그 지시로 쓰는 답변 한 번에만 지시문으로 실린다
   if ((S.settings.direct || {}).past !== 'note') source = source.filter(m => !m.direct || m === live);
@@ -670,7 +701,7 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
   const conn = S.connFor(chat), R = conn && A.TEXT_PROVIDER_KINDS.includes(defOf(conn).kind) && F.storyMode !== false ? A.resolve(conn) : null;
 
   // 1) 기록
-  let source = msgs.filter(m => !m.hidden);
+  let source = lensed(msgs.filter(m => !m.hidden), { chat, char, chars, type });
   if (type === 'regen' || type === 'swipe') source = source.slice(0, -1);
   const mk = S.settings.memory;   // 장기기억이 맡은 옛 대화는 보내지 않는다 (선택)
   if (mk?.enabled && mk.trim && (X.covered?.(chat) || 0) > 0 && source.length > (mk.keepRecent || 20)) source = source.slice(-(mk.keepRecent || 20));
@@ -977,7 +1008,7 @@ async function call(conn: Conn, url: string, { method = 'POST', headers = {}, bo
   } catch (e) {
     if (errName(e) === 'AbortError') throw e;
     if (!conn.proxy && !(conn.via || '').trim()) { try { res = await Server.proxy({ url, method, headers, body }, signal); } catch (e2) { if (errName(e2) === 'AbortError') throw e2; res = null; } }
-    if (!res) throw new Error(tr(Server.web && !Server.app ? 'engine.err.connectWeb' : 'engine.err.connect', { why: errMsg(e) }));
+    if (!res) throw Object.assign(new Error(tr(Server.web && !Server.app ? 'engine.err.connectWeb' : 'engine.err.connect', { why: errMsg(e) })), { net: true });   // net · status: 대체 연결로 넘길지 가리는 꼬리표 (src/reach/fallback.ts)
   }
   const r = res as Response;
   if (!r.ok) {
@@ -987,7 +1018,7 @@ async function call(conn: Conn, url: string, { method = 'POST', headers = {}, bo
       const j = JSON.parse(t as string), e = Array.isArray(j) ? j[0]?.error : j.error;
       t = e?.message || e?.type || j.message || j.detail || (typeof j.error === 'string' ? j.error : t);
     } catch { /* JSON 이 아니면 글 그대로 */ }
-    throw new Error(tr('engine.err.apiStatus', { status: r.status, body: String(t).slice(0, 400) || r.statusText }));
+    throw Object.assign(new Error(tr('engine.err.apiStatus', { status: r.status, body: String(t).slice(0, 400) || r.statusText })), { status: r.status });
   }
   if (tap && /json/i.test(r.headers.get('content-type') || '')) tap.res(r.status, r.clone().json().catch(() => null));   // 스트리밍(SSE)은 다 받은 뒤 글로 남긴다
   return r;
@@ -1151,6 +1182,7 @@ export async function streamChat(conn: Conn | null | undefined, P: Params, messa
   }
   const after = (f: () => void) => { void Promise.allSettled(pending).then(f); };   // 응답 기록이 먼저 찍히게
   try {
+    if (conn?.rpm) await Rpm.gate(conn.id, +conn.rpm, opts.signal);   // 분당 요청 수 제한: 넘치면 자리가 날 때까지 기다린다
     const r = await streamChatRaw(conn, P, messages, ac ? { ...opts, signal: ac.signal } : opts);
     after(() => termSend('done', `✓ ${who} · ${((Date.now() - t0) / 1000).toFixed(1)}s · ${r.text.length} chars out · finish=${r.finish || '-'}`, () => ({
       done: { id, ms: Date.now() - t0, chars: r.text.length, tok: tokens(r.text), finish: r.finish || '', usage: usageOf(r.usage), thinkTok: tokens(r.think),
