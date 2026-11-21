@@ -10,7 +10,7 @@ const isNum = (v: unknown) => v !== '' && v != null && !isNaN(Number(v));
 // 대화방별 값은 chat.pvars[preset.id][name] 에 둔다. 없으면 정의의 default.
 export type PvOption = PresetVarOption;
 export type PvDef = PresetVar;
-export type PvRaw = string | number | boolean;
+export type PvRaw = string | number | boolean | string[];
 export interface PvValue { type: string; raw: PvRaw; text: string; label: string }
 export type PvMap = Record<string, PvValue>;
 interface PresetLike { id?: string; vars?: unknown; [k: string]: unknown }
@@ -23,6 +23,7 @@ const stepFix = (n: number, d: PvDef) => { const st = Number(d.step) > 0 ? Numbe
 export function pvDefault(d: PvDef): PvRaw {
   if (d.type === 'slider') { const n = Number(d.default); return isNum(d.default) ? n : (isNum(d.min) ? Number(d.min) : 0); }
   if (d.type === 'toggle') return d.default === true || d.default === 'true';
+  if (d.type === 'select' && d.multi) { const o = d.options || [], want = Array.isArray(d.default) ? d.default.map(String) : d.default != null && d.default !== '' ? [String(d.default)] : []; return o.filter(x => want.includes(x.label)).map(x => x.label); }
   if (d.type === 'select') { const o = d.options || []; return o.some(x => x.label === d.default) ? d.default as string : (o[0]?.label ?? ''); }
   return String(d.default ?? '');
 }
@@ -31,6 +32,10 @@ export function pvCoerce(d: PvDef, raw: unknown): PvRaw {
   if (raw === undefined || raw === null) return pvDefault(d);
   if (d.type === 'slider') { if (!isNum(raw)) return pvDefault(d); const min = isNum(d.min) ? Number(d.min) : 0, max = isNum(d.max) ? Number(d.max) : 100; return Math.min(max, Math.max(min, stepFix(Number(raw), d))); }
   if (d.type === 'toggle') return raw === true || raw === 1 || ['true', '1', 'on', 'yes', '켬'].includes(String(raw).trim().toLowerCase());
+  if (d.type === 'select' && d.multi) {   // 여러 개: 배열(또는 쉼표로 이은 글)을 받아 지금 있는 선택지만, 선택지 순서대로
+    const o = d.options || [], want = (Array.isArray(raw) ? raw : String(raw).split(/\s*,\s*/)).map(x => String(x).trim().toLowerCase()).filter(Boolean);
+    return o.filter(x => want.includes(x.label.trim().toLowerCase())).map(x => x.label);
+  }
   if (d.type === 'select') { const o = d.options || [], s = String(raw); const hit = o.find(x => x.label === s) || o.find(x => x.label.toLowerCase() === s.trim().toLowerCase()); return hit ? hit.label : pvDefault(d); }
   return String(raw);
 }
@@ -40,10 +45,12 @@ export function pvResolve(preset: PresetLike | null | undefined, chat: ChatLike 
   for (const d of pvDefs(preset)) {
     const raw = pvCoerce(d, mine[d.name]); let text = '', label: PvRaw = '';
     if (d.type === 'toggle') { text = raw ? (d.onText || 'true') : (d.offText || ''); label = raw ? 'on' : 'off'; }
+    else if (d.type === 'select' && d.multi) { const got = Array.isArray(raw) ? raw : [], o = (d.options || []).filter(x => got.includes(x.label)); text = o.map(x => String(x.value ?? '')).filter(Boolean).join('\n'); label = got.join(', '); out[d.name] = { type: 'select', raw: label, text, label }; continue; }
     else if (d.type === 'select') { const o = (d.options || []).find(x => x.label === raw); text = o ? String(o.value ?? '') : ''; label = raw; }
     else text = String(raw);
     out[d.name] = { type: d.type || 'text', raw, text, label: label as string };
   }
+  for (const [k, v] of Object.entries(mine)) if (!(k in out) && (typeof v === 'string' || typeof v === 'number')) out[k] = { type: 'text', raw: String(v), text: String(v), label: String(v) };   // 정의 없는 빈자리({{이름}})에 시작할 때 적은 값
   return out;
 }
 
@@ -177,6 +184,11 @@ export function condBlocks(srcIn: unknown, test: (cond: string) => unknown): str
   return out;
 }
 /** 글에서 쓰인 프리셋 변수 이름들 ({{var::이름}} · {{#if 이름 …}}) */
+/** 정의 없이 {{이름}} 으로만 쓴 빈자리 후보 (매크로인지는 부르는 쪽이 가린다) */
+export function bareNames(text: unknown): string[] {
+  const out = new Set<string>(); String(text || '').replace(/\{\{\s*([\p{L}_][\p{L}\p{N}_]{0,39})\s*\}\}/gu, (_, n: string) => { out.add(n); return ''; });
+  return [...out];
+}
 export function usedVars(text: unknown): string[] {
   const out = new Set<string>(); const s = String(text || '');
   s.replace(/\{\{\s*(?:var|pvar)\s*::\s*([^:{}]+?)\s*(?:::[^{}]*)?\}\}/gi, (_, n: string) => { out.add(n); return ''; });

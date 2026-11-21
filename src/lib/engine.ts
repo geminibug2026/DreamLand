@@ -1,7 +1,7 @@
 // ── Dreamland engine: 토큰 추정 · 매크로 · 정규식 · 로어북 · 프롬프트 조립 · API ──
 import * as core from './core';
 import * as hooks from './hooks';
-import { condBlocks, evalCond, pvResolve, type CondEnv, type PvMap } from './cond';
+import { bareNames, condBlocks, evalCond, pvResolve, type CondEnv, type PvMap } from './cond';
 import { ejs } from './ejs';
 import { caseFold, weighted, wpick } from './macro-extra';
 import * as clock from './clock';
@@ -185,6 +185,23 @@ export function macro(textIn: string | null | undefined, c: Ctx = {}): string {
   return out;
 }
 
+/** 엔진 · 기능이 프롬프트를 만들 때 스스로 채우는 자리 (빈자리로 묻지 않는다) */
+const ENGINE_SLOTS = new Set(['slot', 'direction', 'clock_command', 'call_command', 'else', 'tools', 'cast', 'names', 'rooms', 'scope', 'place', 'note', 'prompt', 'shape', 'about', 'what', 'next', 'title', 'max', 'match', 'name']);
+/** 프리셋 글에 {{이름}} 으로만 쓰였고 매크로도 · 정의된 변수도 아닌 빈자리 이름들 (새 대화를 열 때 직접 적게 한다) */
+export function looseSlots(preset: Preset | null | undefined): string[] {
+  if (!preset) return [];
+  // 사람이 쓰는 글 블록만 본다 (요약 자리 같은 블록의 {{slot}} 은 엔진이 채운다)
+  const texts = [...(preset.blocks || []).filter(b => b.enabled !== false && ['text', 'main', 'jailbreak'].includes(b.kind)).map(b => b.content), ...['prefill', 'continueNudge', 'impersonatePrompt', 'groupNudge'].map(k => preset.params?.[k])];
+  const defined = new Set((preset.vars || []).map(v => v.name)), out: string[] = [];
+  // 대화 중에 값이 차는 기본 매크로({{user}} · {{char}} …)가 비어 보이지 않게 아무 글이나 넣어 둔 자리로 시험한다
+  const f = 'x', probeCtx = { user: f, char: f, group: f, persona: f, description: f, personality: f, scenario: f, mesExamples: f, model: f, input: f, lastMessage: f, lastUserMessage: f, lastCharMessage: f, original: f, pipe: f } as Ctx;
+  for (const tx of texts) for (const n of bareNames(tx)) {
+    if (defined.has(n) || out.includes(n) || ENGINE_SLOTS.has(n.toLowerCase())) continue;
+    const probe = '{{' + n + '}}'; let r = probe; try { r = macro(probe, probeCtx); } catch { r = ''; }
+    if (r === probe) out.push(n);   // 아무도 풀지 못했다 = 빈자리
+  }
+  return out;
+}
 /** 조건식이 읽을 값들 */
 export const condEnv = (c: Ctx): CondEnv => ({ pv: c.pv, vars: c.vars, gvars: S.settings.globalVars, scope: c.scope, kw: c });
 /** 조건식 하나를 지금 대화 기준으로 판정한다 */

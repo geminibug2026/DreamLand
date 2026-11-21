@@ -155,7 +155,7 @@ export async function tryNow() {
   let mock = false;
   if (!chatConns().length) { const c = await S.save('conns', newConn({ name: t('guide.sample.conn'), provider: 'mock', model: 'echo' })); S.set({ activeConn: c.id }); emit('conns:saved'); mock = true; }
   else if (S.conn()?.provider === 'mock') mock = true;
-  await startChat([ch.id]);
+  await startChat([ch.id], { setup: false });
   toast(mock ? t('guide.sample.toastMock') : t('guide.sample.toast'), 'ok');
 }
 

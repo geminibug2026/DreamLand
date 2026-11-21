@@ -108,7 +108,7 @@ async function applyCharFields(a: Args, c: Ctx, ch: Char): Promise<boolean> {
 async function selectChar(ch: Char) {
   const { go } = await import('../../lib/router');
   const last = S.chats.filter(x => x.charIds.includes(ch.id)).sort((x, y) => y.updatedAt - x.updatedAt)[0];
-  if (last) go('chat', last.id); else { const { startChat } = await import('../../chat/start'); await startChat([ch.id]); }
+  if (last) go('chat', last.id); else { const { startChat } = await import('../../chat/start'); await startChat([ch.id], { setup: false }); }
 }
 
 def('char-create', {

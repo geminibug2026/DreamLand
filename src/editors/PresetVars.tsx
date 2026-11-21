@@ -9,6 +9,7 @@ import { go } from '../lib/router';
 import { S } from '../lib/core';
 import * as core from '../lib/core';
 import * as cond from '../lib/cond';
+import { looseSlots } from '../lib/engine';
 import { t } from '../i18n';
 
 const newVar = (type = 'select', n = 1): PVar => ({ id: core.uid(), name: `변수${n}`, label: '', hint: '', type, default: type === 'toggle' ? false : type === 'slider' ? 3 : type === 'select' ? '보통' : '',
@@ -22,9 +23,14 @@ const TYPE_HINT = (k: string) => KNOWN.includes(k) ? t('presets.vars.typeHint.' 
 const typeLabel = (k: string) => KNOWN.includes(k) ? t('presets.vars.type.' + k) : cond.PV_TYPES[k];
 
 /** 변수 하나의 입력 칸. value 는 처음 값이고, 바뀌면 set(v) 로 알린다 */
-function Control({ d, value, set }: { d: PVar; value: unknown; set: (v: string | number | boolean) => void }) {
+export function Control({ d, value, set }: { d: PVar; value: unknown; set: (v: cond.PvRaw) => void }) {
   const [v, setV] = useState(() => cond.pvCoerce(d, value));
-  const put = (x: string | number | boolean) => { setV(x); set(x); };
+  const put = (x: cond.PvRaw) => { setV(x); set(x); };
+  if (d.type === 'select' && d.multi) {   // 여러 개: 누를 때마다 켜고 끈다
+    const opts = d.options || [], on = Array.isArray(v) ? v : [];
+    const flip = (label: string) => put(opts.filter(o => (o.label === label) !== on.includes(o.label)).map(o => o.label));
+    return <div className="pv-multi" role="group">{opts.map((o, i) => <button type="button" key={i} aria-pressed={on.includes(o.label)} className={on.includes(o.label) ? 'on' : undefined} onClick={() => flip(o.label)}><i aria-hidden="true" />{o.label}</button>)}</div>;
+  }
   if (d.type === 'toggle') return <label className="pv-toggle"><span className="switch"><input type="checkbox" defaultChecked={!!v} onChange={e => put(e.target.checked)} /><i /></span><span>{v ? t('presets.vars.on') : t('presets.vars.off')}</span></label>;
   if (d.type === 'slider') return <div className="range"><input type="range" min={d.min ?? 0} max={d.max ?? 100} step={d.step || 1} defaultValue={String(v)} onChange={e => put(+e.target.value)} /><output>{String(v)}</output></div>;
   if (d.type === 'select') {
@@ -41,13 +47,15 @@ const Row = ({ d, children, extra }: { d: PVar; children: ReactNode; extra?: Rea
 export function ChatPanel({ chat }: { chat: XChat }) {
   const { pvDefs, pvCoerce, pvDefault } = cond, redraw = useBump(), gen = useRef(0);
   const saveChat = useDebounced(() => S.save('chats', chat, true), 250);
-  const preset = S.presetFor(chat), defs = pvDefs(preset);
-  if (!defs.length) return <><p className="dim">{t('presets.vars.panel.empty')}</p><Btn label={t('presets.vars.panel.create')} ic="sliders" cls="ghost" onClick={() => go('presets', preset.id)} /></>;
+  const preset = S.presetFor(chat), defs = pvDefs(preset), slots = looseSlots(preset);
+  if (!defs.length && !slots.length) return <><p className="dim">{t('presets.vars.panel.empty')}</p><Btn label={t('presets.vars.panel.create')} ic="sliders" cls="ghost" onClick={() => go('presets', preset.id)} /></>;
   const mine = ((chat.pvars ||= {})[preset.id] ||= {});
   const n = defs.filter(d => mine[d.name] !== undefined && String(pvCoerce(d, mine[d.name])) !== String(pvDefault(d))).length;
   return <>
     <small className="hint">{t('presets.vars.panel.scope', { name: preset.name }) + (n ? t('presets.vars.panel.changed', { n }) : '')}</small>
     {defs.map(d => <Row d={d} key={`${gen.current}-${d.id || d.name}`}><Control d={d} value={mine[d.name]} set={v => { mine[d.name] = v; saveChat(); redraw(); }} /></Row>)}
+    {slots.map(n => <div className="pv-row" key={`${gen.current}-slot-${n}`}><div className="pv-label"><b>{n}</b><code>{`{{${n}}}`}</code></div><input className="inp" defaultValue={String(mine[n] ?? '')} placeholder={t('chat.setup.slotPh')} spellCheck={false} onChange={e => { mine[n] = e.target.value; saveChat(); }} /></div>)}
+    <label className="pv-toggle pv-ask"><span className="switch"><input type="checkbox" defaultChecked={!preset.noSetup} onChange={e => { preset.noSetup = !e.target.checked; void S.save('presets', preset, true); }} /><i /></span><span>{t('chat.setup.askEach')}</span></label>
     <div className="row wrap"><Btn label={t('presets.vars.panel.reset')} cls="ghost" ic="refresh" onClick={() => { delete chat.pvars?.[preset.id]; void S.save('chats', chat, true); gen.current++; redraw(); }} /><Btn label={t('presets.vars.panel.edit')} cls="ghost" ic="edit" onClick={() => go('presets', preset.id)} /></div>
     {chat.mode === 'talk' ? <small className="hint">{t('presets.vars.panel.talkNote')}</small> : null}
   </>;
@@ -61,10 +69,12 @@ function Options({ v, sv, changed }: { v: PVar; sv: () => void; changed: () => v
   return <div className="pv-opts">
     <div className="pv-opt pv-opt-head"><span>{t('presets.vars.opt.default')}</span><span>{t('presets.vars.opt.name')}</span><span>{t('presets.vars.opt.text')}</span><span /></div>
     {opts.map((o, k) => <div className="pv-opt" key={`${gen.current}-${k}`}>
-      <label className="pv-radio" title={t('presets.vars.opt.makeDefault')}><input type="radio" name={'pvd-' + v.id} checked={pvDefault(v) === o.label} onChange={() => { v.default = o.label; sv(); changed(); }} /><i /></label>
-      <input className="inp" defaultValue={o.label} placeholder={t('common.name')} onChange={e => { const was = o.label; o.label = e.target.value; if (v.default === was) v.default = o.label; sv(); changed(); }} />
+      {v.multi
+        ? <label className="pv-radio pv-check" title={t('presets.vars.opt.makeDefault')}><input type="checkbox" checked={(pvDefault(v) as string[]).includes(o.label)} onChange={e => { const cur = pvDefault(v) as string[]; v.default = e.target.checked ? [...cur, o.label] : cur.filter(x => x !== o.label); sv(); changed(); }} /><i /></label>
+        : <label className="pv-radio" title={t('presets.vars.opt.makeDefault')}><input type="radio" name={'pvd-' + v.id} checked={pvDefault(v) === o.label} onChange={() => { v.default = o.label; sv(); changed(); }} /><i /></label>}
+      <input className="inp" defaultValue={o.label} placeholder={t('common.name')} onChange={e => { const was = o.label; o.label = e.target.value; if (v.default === was) v.default = o.label; else if (Array.isArray(v.default)) v.default = v.default.map(x => x === was ? o.label : x); sv(); changed(); }} />
       <textarea className="inp" defaultValue={o.value ?? ''} rows={2} placeholder={t('presets.vars.opt.textPh', { name: v.name })} spellCheck={false} onChange={e => { o.value = e.target.value; sv(); }} />
-      <IconBtn ic="x" title={t('presets.vars.opt.remove')} cls="tiny" onClick={() => { if (opts.length < 2) return toast(t('presets.vars.opt.needOne')); opts.splice(k, 1); if (!opts.some(x => x.label === v.default)) v.default = opts[0].label; sv(); again(); }} />
+      <IconBtn ic="x" title={t('presets.vars.opt.remove')} cls="tiny" onClick={() => { if (opts.length < 2) return toast(t('presets.vars.opt.needOne')); opts.splice(k, 1); if (Array.isArray(v.default)) v.default = v.default.filter(x => opts.some(o => o.label === x)); else if (!opts.some(x => x.label === v.default)) v.default = opts[0].label; sv(); again(); }} />
     </div>)}
     <Btn label={t('presets.vars.opt.add')} ic="plus" cls="ghost" onClick={() => { opts.push({ label: `선택지 ${opts.length + 1}`, value: '' }); sv(); again(); }} />
   </div>;
@@ -77,7 +87,7 @@ export function PresetVarsEditor({ p, sv }: { p: Preset; sv: () => void }) {
   const vars = p.vars = Array.isArray(p.vars) ? p.vars : [];
   const used = () => { const s = new Set<string>(); for (const b of p.blocks || []) for (const n of usedVars(b.content)) s.add(n); for (const k of ['prefill', 'continueNudge', 'impersonatePrompt', 'groupNudge']) for (const n of usedVars(p.params?.[k])) s.add(n); return s; };
   const uniq = (name: string, self?: PVar) => { let n = name || '변수', i = 2; while (vars.some(v => v !== self && v.name === n)) n = `${name}${i++}`; return n; };
-  const names = new Set(vars.map(v => v.name)), missing = [...used()].filter(n => !names.has(n));
+  const names = new Set(vars.map(v => v.name)), missing = [...new Set([...used(), ...looseSlots(p)])].filter(n => !names.has(n));   // {{var::이름}} · {{이름}} 둘 다
   const add = (v: PVar) => { vars.push(v); open.add(v.id); sv(); redraw(); };
   const swap = (i: number, j: number) => { [vars[i], vars[j]] = [vars[j], vars[i]]; sv(); redraw(); };
 
@@ -88,7 +98,7 @@ export function PresetVarsEditor({ p, sv }: { p: Preset; sv: () => void }) {
       <div className="block-head" onClick={e => { if ((e.target as Element).closest('button')) return; if (isOpen) open.delete(v.id); else open.add(v.id); redraw(); }}>
         <div className="col move"><IconBtn ic="up" title={t('editors.moveUp')} cls="tiny" onClick={() => { if (i > 0) swap(i, i - 1); }} /><IconBtn ic="down" title={t('editors.moveDown')} cls="tiny" onClick={() => { if (i < vars.length - 1) swap(i, i + 1); }} /></div>
         <Icon name="sliders" size={15} /><b>{v.label || v.name}</b><code className="pv-code">{`{{var::${v.name}}}`}</code><em className="badge">{typeLabel(v.type) || t('presets.vars.type.text')}</em>
-        <span className="tokbadge">{v.type === 'select' ? t('presets.vars.sum.select', { n: (v.options || []).length, def: def || '—' }) : v.type === 'toggle' ? (def ? t('presets.vars.sum.on') : t('presets.vars.sum.off')) : t('presets.vars.sum.value', { def: def === '' ? t('presets.vars.sum.empty') : def })}</span>
+        <span className="tokbadge">{v.type === 'select' ? t('presets.vars.sum.select', { n: (v.options || []).length, def: (Array.isArray(def) ? def.join(', ') : def) || '—' }) : v.type === 'toggle' ? (def ? t('presets.vars.sum.on') : t('presets.vars.sum.off')) : t('presets.vars.sum.value', { def: def === '' ? t('presets.vars.sum.empty') : def })}</span>
         <IconBtn ic="trash" title={t('presets.vars.delete')} cls="tiny" onClick={() => { vars.splice(i, 1); sv(); redraw(); }} />
       </div>
       {isOpen && <div className="block-body">
@@ -98,10 +108,11 @@ export function PresetVarsEditor({ p, sv }: { p: Preset; sv: () => void }) {
         onChange={() => {
           const typeChanged = v.type !== (shown.get(v.id) ?? v.type); shown.set(v.id, v.type);
           v.name = uniq(pvName(v.name) || '변수', v);
-          if (typeChanged) v.default = v.type === 'toggle' ? false : v.type === 'slider' ? (Number(v.min) || 0) : v.type === 'select' ? (v.options?.[0]?.label || '') : '';
+          if (typeChanged) { if (v.type !== 'select') delete v.multi; } if (typeChanged) v.default = v.type === 'toggle' ? false : v.type === 'slider' ? (Number(v.min) || 0) : v.type === 'select' ? (v.options?.[0]?.label || '') : '';
           sv(); redraw();
         }} />
-        {v.type === 'select' ? <><Options v={v} sv={sv} changed={redraw} /><small className="hint">{t('presets.vars.ex.select', { name: v.name, opt: v.options?.[0]?.label ?? '' })}</small></>
+        {v.type === 'select' ? <><label className="pv-toggle pv-multi-switch"><span className="switch"><input type="checkbox" checked={!!v.multi} onChange={e => { v.multi = e.target.checked; const d0 = Array.isArray(v.default) ? v.default : v.default ? [String(v.default)] : []; v.default = v.multi ? d0 : (d0[0] ?? v.options?.[0]?.label ?? ''); sv(); redraw(); }} /><i /></span><span><b>{t('presets.vars.f.multi')}</b> <small className="hint">{t('presets.vars.f.multiHint')}</small></span></label>
+          <Options key={'m' + !!v.multi} v={v} sv={sv} changed={redraw} /><small className="hint">{t('presets.vars.ex.select', { name: v.name, opt: v.options?.[0]?.label ?? '' })}</small></>
           : v.type === 'slider' ? <>
             <Form obj={v} defs={[{ k: 'min', label: t('presets.vars.f.min'), type: 'num', third: true }, { k: 'max', label: t('presets.vars.f.max'), type: 'num', third: true }, { k: 'step', label: t('presets.vars.f.step'), type: 'num', third: true }]} onChange={() => { if (Number(v.max) < Number(v.min)) v.max = v.min; v.default = pvCoerce(v, v.default); sv(); gen.current++; redraw(); }} />
             <div className="pv-prev"><Row d={v} extra={<em className="badge">{t('presets.vars.f.default')}</em>}><Control key={gen.current} d={v} value={v.default} set={x => { v.default = x; sv(); redraw(); }} /></Row></div>

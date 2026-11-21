@@ -9568,5 +9568,19 @@
   "chat.status.hop429": "{conn}：429 — 改用其他区域的中转重发（{n}/{of}）",
   "conns.cf.appliedMany": "此连接现在轮流使用 {n} 个中转位置，出现 429 时切换到下一个区域",
   "conns.cf.addrHint.cf": "只用一个区域迟早也会 429。可以多建几个只有区域不同的 Worker（代码和密码相同），把地址用空格隔开全部填上，出现 429 时会自动切换到下一个。",
-  "conns.cf.addrHint.vc": "部署一次会同时开通美国 4 处、欧洲 2 处。点\"用于此连接\"会把六处全部登记，出现 429 时自动切换到下一个区域。"
+  "conns.cf.addrHint.vc": "部署一次会同时开通美国 4 处、欧洲 2 处。点\"用于此连接\"会把六处全部登记，出现 429 时自动切换到下一个区域。",
+  "chat.setup.title": "{name} 设置",
+  "chat.setup.lead": "所选的值会填进预设里对应的位置。开始聊天后也可以在场景面板里修改。",
+  "chat.setup.multi": "可多选",
+  "chat.setup.slots": "空位",
+  "chat.setup.slotsHint": "预设里只写成 {{…}}、没有定义选项的位置。留空则什么都不填。",
+  "chat.setup.slotPh": "自己填写（留空 = 空白）",
+  "chat.setup.quiet": "此预设下次直接开始，不再询问",
+  "chat.setup.reset": "恢复默认",
+  "chat.setup.resetHint": "恢复为预设中设定的初始值",
+  "chat.setup.go": "设置后开始",
+  "chat.setup.goN": "设置后开始 · 已改 {n} 项",
+  "chat.setup.askEach": "每次打开新聊天时先询问这些设置",
+  "presets.vars.f.multi": "可多选",
+  "presets.vars.f.multiHint": "所选各项的文字逐行依次填入。默认值也可以选多个。"
 }

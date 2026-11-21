@@ -5,6 +5,7 @@ import { menu } from '../ui';
 import { go } from '../lib/router';
 import type { Chat } from '../lib/types';
 import { t } from '../i18n';
+import { askSetup } from './setup';
 
 /** 새 대화: 어떤 모드로 시작할지 고르기 */
 export function startMenu(anchor: Element, charIds: string[]) {
@@ -17,10 +18,11 @@ export function startMenu(anchor: Element, charIds: string[]) {
 export async function sweepTemp(keepId = '') {
   for (const c of [...S.chats]) if (c.temp && c.id !== keepId) { try { await S.remove('chats', c.id); } catch (e) { console.warn('[임시 채팅]', e); } }
 }
-export async function startChat(charIds: string[], { open = true, mode, temp = false }: { open?: boolean; mode?: 'rp' | 'talk'; temp?: boolean } = {}): Promise<Chat | null> {
+export async function startChat(charIds: string[], { open = true, mode, temp = false, setup = open }: { open?: boolean; mode?: 'rp' | 'talk'; temp?: boolean; /** 프리셋 변수를 고르는 창을 띄운다 (사람이 연 새 대화만) */ setup?: boolean } = {}): Promise<Chat | null> {
   const chars = charIds.map(id => S.get('chars', id)).filter(c => !!c);
   if (!chars.length) return null;
   const chat = newChat({ charIds: chars.map(c => c.id), mode: mode || S.settings.defaultMode || 'rp', ...(temp ? { temp: true, name: t('chat.start.temp') } : {}) });
+  if (setup && !(await askSetup(chat))) return null;   // 고르는 창을 닫으면 방을 만들지 않는다 (첫 인사말도 고른 값으로 풀리게 먼저 묻는다)
   const msgs = [];
   const persona = S.persona(chat);
   const first = chars[0];

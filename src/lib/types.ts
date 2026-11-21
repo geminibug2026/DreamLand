@@ -158,13 +158,14 @@ export interface PresetVarOption { label: string; value?: string }
 export interface PresetVar {
   id: string; name: string; label?: string; hint?: string; type: 'select' | 'slider' | 'toggle' | 'text' | string;
   default?: unknown; options?: PresetVarOption[]; min?: number; max?: number; step?: number; onText?: string; offText?: string;
+  /** select: 여러 개를 함께 고를 수 있다 (고른 것들의 글을 줄바꿈으로 잇는다) */ multi?: boolean;
 }
 export interface PresetParams {
   temperature: number | null; topP: number | null; topK: number | null; maxTokens: number; contextSize: number; freqPen: number | null; presPen: number | null; minP: number | null; topA: number | null; repPen: number | null; seed: number | null;
   stream: boolean; effort: string; squash: boolean; prefill: string; stop: string[]; cardOverrides: boolean; namesInGroup: boolean;
   [k: string]: unknown;
 }
-export interface Preset { id: string; name: string; createdAt: number; updatedAt?: number; params: PresetParams; blocks: PresetBlock[]; regex?: Regex[]; vars?: PresetVar[]; [k: string]: unknown }
+export interface Preset { id: string; name: string; createdAt: number; updatedAt?: number; params: PresetParams; blocks: PresetBlock[]; regex?: Regex[]; vars?: PresetVar[]; /** 새 대화를 열 때 변수 고르는 창을 띄우지 않는다 */ noSetup?: boolean; [k: string]: unknown }
 
 // ── 연결 ──
 export interface Conn {
