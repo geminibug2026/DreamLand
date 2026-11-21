@@ -68,3 +68,10 @@
 .drawer-tabs button { min-height: 40px; padding: 0 4px; font: 500 13px/1 var(--font); color: var(--dim); white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: color .15s, border-color .15s; }
 .drawer-tabs button:hover { color: var(--text); }
 .drawer-tabs button.on { color: var(--text); font-weight: 700; border-bottom-color: var(--accent); }
+
+/* ── 메뉴 닫기 ── 좁은 화면: 메뉴는 화면의 절반 남짓까지만 차지하고(나머지는 안에서 스크롤), 맨 위에 닫기 줄이 늘 보인다 */
+.menu-x { display: none; }
+@media (max-width: 820px) {
+  .menu { max-height: 56dvh; padding-top: 0; overscroll-behavior: contain; box-shadow: 0 0 0 100vmax color-mix(in srgb, var(--text) 14%, transparent); }
+  .menu-x { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: flex-end; gap: 6px; width: 100%; min-height: 40px; padding: 0 12px; background: var(--surface); border-bottom: 1px solid var(--line-3); color: var(--dim); font-size: .86em; }
+}
