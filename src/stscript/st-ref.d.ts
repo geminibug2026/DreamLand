@@ -3,3 +3,8 @@ declare module 'virtual:st-ref' {
   const ref: Record<string, { named: string[]; open?: true }>;
   export default ref;
 }
+// 명령이 어디서 왔나 (scripts/st-ref.mjs 의 origins): core 실리태번 본체 · lalib LALib 확장. 이름 또는 /정규식/ 틀
+declare module 'virtual:st-origin' {
+  const origin: { core: string[]; lalib: string[] };
+  export default origin;
+}
