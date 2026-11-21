@@ -254,7 +254,13 @@ export function stCard(I: PackInput) {
     if (![...I.regex, ...(I.globalRegex || [])].some(r => MVU_HIDE.test(r.find || ''))) regex.push({ id: newId(), scriptName: t('stx.mvuRegex'), findRegex: '/<UpdateVariable>[\\s\\S]*?<\\/UpdateVariable>/gm', replaceString: '', trimStrings: [], placement: [2], disabled: false, markdownOnly: true, promptOnly: true, runOnEdit: true, substituteRegex: 0, minDepth: null, maxDepth: null });
   }
   const patch: O = { tavern_helper: th.scripts.length || Object.keys(th.variables).length ? { scripts: th.scripts, variables: th.variables } : null, TavernHelper_scripts: null, TavernHelper_characterScriptVariables: null };
-  const make = (v3: boolean) => { const c = buildCard(I.char, null, regex, v3, patch); if (book) { (c.data as O).character_book = cardBook(book); (c.data.extensions as O).world = book.name; } return c; };
+  // 상태창 자리: 드림랜드는 인사말에도 상태창 자리(<StatusPlaceHolderImpl/>)를 알아서 붙이지만, 실리태번의 MVU 는 대화가 시작된 뒤 처리한 답에만 붙인다.
+  // 그래서 상태창 정규식이 있으면 인사말들 끝에 자리를 미리 적어 둔다 (첫 화면부터 상태창이 보이게)
+  const HOLD = '<StatusPlaceHolderImpl/>', wantsBar = regex.some(r => /StatusPlaceHolderImpl/.test(String((r as { findRegex?: string }).findRegex || '')));
+  const hold = (g: unknown) => typeof g === 'string' && g.trim() && !g.includes(HOLD) ? g.trimEnd() + '\n\n' + HOLD : g;
+  const make = (v3: boolean) => { const c = buildCard(I.char, null, regex, v3, patch); if (book) { (c.data as O).character_book = cardBook(book); (c.data.extensions as O).world = book.name; }
+    if (wantsBar) { const d = c.data as O; d.first_mes = hold(d.first_mes); if (Array.isArray(d.alternate_greetings)) d.alternate_greetings = d.alternate_greetings.map(hold); }
+    return c; };
   return { card: make(false), cardV3: make(true), book, scripts: th.scripts, regex };
 }
 /** 묶음 전체. png: 카드를 적어 넣을 그림 (없으면 카드는 JSON 으로만 — 시험용) */
