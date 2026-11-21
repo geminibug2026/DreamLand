@@ -1,18 +1,21 @@
-// ── 읽는 글 띄우기: 대화의 메시지를 읽어 주는 동안, 입력창 위에 그 글을 띄우고 읽는 자리를 따라간다 ──
-// 문장을 누르면 거기부터 다시 읽는다. ‹ › 앞뒤 문장 · 멈춤/이어 듣기 · 닫기(그만 읽기)
-import { useEffect, useRef, useState } from 'react';
+// ── 읽는 곳 띠: 대화의 메시지를 읽어 주는 동안, 화면 위(대화 머리 아래) 또는 입력창 위에 가는 한 줄 띠를 띄운다 ──
+// 자리를 차지하지 않고(떠 있음) 글을 한 줄로 흘려 지금 읽는 낱말이 늘 보이게 옆으로 따라간다.
+// 띠를 누르면 멈춤 · 이어 듣기, ‹ › 앞뒤 문장, × 그만 읽기. 위쪽 가장자리에 읽는 사람 이름표.
+// (설정: 띠 자리 위/아래 · 메시지 안에서도 읽는 곳 옅게 짚기)
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Avatar, Icon } from '../kit';
+import { Icon } from '../kit';
 import { S } from '../lib/core';
 import { t } from '../i18n';
-import { TTS } from './api';
+import { TTS, type Reading } from './api';
 import { cfg } from './config';
 import { cleanForSpeech } from './text';
-import { ReadAlong, useReading } from './ReadAlong';
+import { norm, type Norm } from './follow';
+import { ReadAlong, spot, useReading, type SpotMemo } from './ReadAlong';
 
 /** 이 이름의 읽기만 띄운다 (대화 메시지 · 통화 기록 카드의 음성 메시지) */
 const MINE = /^(msg|vm):/;
-/** 읽기를 시작할 때 받은 글 (문장을 눌러 중간부터 읽어도 처음 글을 그대로 보여 준다) */
+/** 읽기를 시작할 때 받은 글 (중간부터 읽어도 처음 글을 그대로 보여 준다) */
 const shown = new Map<string, { text: string; charId?: string | null }>();
 
 /** 대화 메시지를 읽는다: 읽던 것은 멈추고 새로 (queue 면 읽던 것 뒤에 이어서) */
@@ -23,46 +26,93 @@ export function readMessage(text: string, o: { key: string; charId?: string | nu
   return TTS.speak(text, { charId: o.charId, key: o.key });
 }
 
-function place(el: HTMLElement) {
-  const c = document.querySelector('.composer')?.getBoundingClientRect(), vw = document.documentElement.clientWidth;
-  if (c && c.width > 0 && c.top > 80) {
-    el.style.left = `${Math.max(8, c.left)}px`; el.style.width = `${Math.min(c.width, vw - 16)}px`;
-    el.style.bottom = `${Math.max(8, window.innerHeight - c.top + 10)}px`;
-  } else { el.style.left = '50%'; el.style.width = `min(560px, ${vw - 24}px)`; el.style.bottom = 'calc(16px + var(--safe-b, 0px))'; el.style.transform = 'translateX(-50%)'; }
+const visible = (el: Element | null) => { const r = el?.getBoundingClientRect(); return r && r.width > 0 && r.height > 0 ? r : null; };
+/** 띠 자리: 위 = 대화 머리(.chat-top) 바로 아래, 아래 = 입력창 바로 위. 그 폭의 가운데, 720px 까지 */
+function place(el: HTMLElement, at: 'top' | 'bottom') {
+  const vw = document.documentElement.clientWidth, vh = window.innerHeight;
+  const anchor = at === 'top' ? visible(document.querySelector('.chat-top')) : visible(document.querySelector('.composer'));
+  const left = anchor ? anchor.left : 0, width = anchor ? anchor.width : vw;
+  el.style.left = `${Math.round(left + width / 2)}px`;
+  el.style.width = `${Math.round(Math.max(200, Math.min(720, width - 24, vw - 16)))}px`;
+  if (at === 'top') { el.style.top = anchor ? `${Math.round(anchor.bottom + 12)}px` : 'calc(14px + env(safe-area-inset-top, 0px))'; el.style.bottom = ''; }
+  else { el.style.bottom = anchor && anchor.top > 80 ? `${Math.round(vh - anchor.top + 12)}px` : 'calc(16px + var(--safe-b, 0px))'; el.style.top = ''; }
 }
 
-function Dock() {
-  const r = useReading(), el = useRef<HTMLDivElement>(null);
-  const mine = !!r && MINE.test(r.key) && cfg().follow !== false;
-  // 다 읽은 뒤에도 잠깐 남겨 두었다가 사라진다
+// ── 메시지 안에서도 읽는 곳 짚기 (설정을 켰을 때만) — 글을 건드리지 않고 CSS 강조(::highlight)로 ──
+type Highlights = { set(name: string, h: unknown): void; delete(name: string): boolean };
+const highlights = (): Highlights | null => (globalThis.CSS as unknown as { highlights?: Highlights } | undefined)?.highlights ?? null;
+const HighlightOf = () => (globalThis as unknown as { Highlight?: new (...r: Range[]) => unknown }).Highlight;
+/** root 의 글(textContent) 위치 a~b 를 덮는 범위 */
+function rangeIn(root: Element, a: number, b: number): Range | null {
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT), r = document.createRange(); let pos = 0, started = false;
+  for (let n = w.nextNode() as Text | null; n; n = w.nextNode() as Text | null) {
+    const len = n.data.length;
+    if (!started && a < pos + len) { r.setStart(n, Math.max(0, a - pos)); started = true; }
+    if (started && b <= pos + len) { r.setEnd(n, Math.max(0, b - pos)); return r; }
+    pos += len;
+  }
+  return null;
+}
+function useInMessage(r: Reading | null) {
+  const memo = useRef<SpotMemo | null>(null), seen = useRef<{ el: Element; text: string; n: Norm } | null>(null);
+  const on = !!r && r.key.startsWith('msg:') && cfg().inMsg === true;
+  useEffect(() => {
+    const H = highlights(), Ctor = HighlightOf(); if (!H || !Ctor) return;
+    const clear = () => { H.delete('rd-word'); };
+    if (!on || !r) return clear();
+    const el = document.querySelector(`article[data-id="${CSS.escape(r.key.slice(4))}"] .msg-body`);
+    if (!el) return clear();
+    const text = el.textContent || '';
+    if (!seen.current || seen.current.el !== el || seen.current.text !== text) seen.current = { el, text, n: norm(text) };
+    const { word } = spot(memo, seen.current.n, text, r, 0);
+    const rg = word ? rangeIn(el, word.start, word.end) : null;
+    if (rg) H.set('rd-word', new Ctor(rg)); else clear();
+  }, [on, r]);
+  useEffect(() => () => { highlights()?.delete('rd-word'); }, []);
+}
+
+function Strip() {
+  const r = useReading(), el = useRef<HTMLDivElement>(null), view = useRef<HTMLDivElement>(null), track = useRef<HTMLDivElement>(null);
+  const mine = !!r && MINE.test(r.key) && cfg().follow !== false, at = cfg().stripAt === 'bottom' ? 'bottom' : 'top';
+  useInMessage(r);
+  // 다 읽은 뒤에는 잠깐 남겨 두었다가 스르르 사라진다
   const [last, setLast] = useState<{ key: string; charId?: string | null } | null>(null);
-  useEffect(() => { if (mine) setLast({ key: r!.key, charId: r!.charId }); else if (last) { const id = setTimeout(() => setLast(null), 1400); return () => clearTimeout(id); } }, [mine, r?.key]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (mine) setLast({ key: r!.key, charId: r!.charId }); else if (last) { const id = setTimeout(() => setLast(null), 450); return () => clearTimeout(id); } }, [mine, r?.key]);   // eslint-disable-line react-hooks/exhaustive-deps
   const key = mine ? r!.key : last?.key || '';
   useEffect(() => {
     const d = el.current; if (!d || !key) return;
-    place(d);
-    const f = () => place(d); window.addEventListener('resize', f); window.visualViewport?.addEventListener('resize', f);
+    place(d, at);
+    const f = () => place(d, at); window.addEventListener('resize', f); window.visualViewport?.addEventListener('resize', f);
     return () => { window.removeEventListener('resize', f); window.visualViewport?.removeEventListener('resize', f); };
-  }, [key]);
+  }, [key, at]);
+  // 옆으로 따라가기: 짚은 낱말이 띠의 40% 쯤에 오게 글줄을 민다 (멈춘 동안은 낱말이 그대로라 움직이지 않는다)
+  const word = mine ? `${r!.job}:${r!.segNo}:${r!.char}` : '';
+  useLayoutEffect(() => {
+    const v = view.current, tr = track.current; if (!v || !tr) return;
+    const m = tr.querySelector<HTMLElement>('mark') || tr.querySelector<HTMLElement>('.rd-s.now'); if (!m) return;
+    const W = v.clientWidth, max = Math.max(0, tr.scrollWidth - W);
+    const x = Math.max(0, Math.min(max, m.offsetLeft + m.offsetWidth / 2 - W * 0.4));
+    tr.style.transform = `translate3d(${-Math.round(x)}px, 0, 0)`;
+  }, [word, key]);
   if (!key || document.querySelector('.call-veil')) return null;
   const info = shown.get(key) || (r && r.key === key ? { text: cleanForSpeech(r.src, true), charId: r.charId } : null);
   if (!info) return null;
   const ch = info.charId ? S.get('chars', info.charId) : null, paused = !!(mine && r!.paused);
-  const jump = (at: number) => { TTS.stopAll(); void TTS.speak(info.text.slice(at), { charId: info.charId, key, at }).catch(() => { }); return true; };
-  return <div ref={el} className={`rd-dock${mine ? ' on' : ' off'}${paused ? ' paused' : ''}`} role="region" aria-label={t('tts.follow.title')}>
-    <div className="rd-dock-head">
-      {ch ? <Avatar o={ch} cls="xs" /> : <i className="rd-dock-dot" />}
-      <b>{ch?.name || t('tts.follow.title')}</b>
-      <small>{!mine ? t('tts.follow.done') : paused ? t('tts.follow.paused') : t('tts.follow.reading')}</small>
-      <span className="rd-ctl">
-        <button type="button" title={t('tts.follow.back')} aria-label={t('tts.follow.back')} disabled={!mine} onClick={() => TTS.step(-1)}><Icon name="skipBack" size={16} /></button>
-        <button type="button" className="rd-main" title={paused ? t('tts.follow.resume') : t('tts.follow.pause')} aria-label={paused ? t('tts.follow.resume') : t('tts.follow.pause')} disabled={!mine} onClick={() => paused ? TTS.resume() : TTS.pause()}><Icon name={paused ? 'play' : 'pause'} size={16} /></button>
-        <button type="button" title={t('tts.follow.next')} aria-label={t('tts.follow.next')} disabled={!mine || !r!.canNext} onClick={() => TTS.step(1)}><Icon name="skipFwd" size={16} /></button>
-        <button type="button" title={t('tts.follow.close')} aria-label={t('tts.follow.close')} onClick={() => { TTS.stopAll(); setLast(null); }}><Icon name="x" size={16} /></button>
-      </span>
+  const toggle = () => { if (!mine) return; if (paused) TTS.resume(); else TTS.pause(); };
+  const line = info.text.replace(/[\r\n\t]/g, ' ');   // 한 줄로 (글자 수는 그대로라 읽는 자리가 맞는다)
+  const label = paused ? t('tts.follow.resume') : t('tts.follow.pause');
+  return <div ref={el} className={`rd-strip at-${at}${mine ? ' on' : ' out'}${paused ? ' paused' : ''}`} role="region" aria-label={t('tts.follow.title')}>
+    <span className="rd-strip-tag"><i className="rd-strip-dot" />{ch?.name ? <b>{ch.name}</b> : null}<small>{!mine ? t('tts.follow.done') : paused ? t('tts.follow.paused') : t('tts.follow.reading')}</small></span>
+    <div className="rd-strip-line" role="button" tabIndex={0} aria-pressed={paused} aria-label={label} title={t('tts.follow.tip')} onClick={toggle} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}>
+      <i className="rd-rule" aria-hidden />
+      <div className="rd-strip-view" ref={view}><div className="rd-strip-track" ref={track}><ReadAlong text={line} k={key} follow={false} /></div></div>
+      <i className="rd-rule" aria-hidden />
     </div>
-    <div className="rd-dock-body"><ReadAlong text={info.text} k={key} onJump={jump} /></div>
-    <small className="rd-dock-tip">{t('tts.follow.tip')}</small>
+    <span className="rd-strip-ctl">
+      <button type="button" title={t('tts.follow.back')} aria-label={t('tts.follow.back')} disabled={!mine} onClick={() => TTS.step(-1)}><Icon name="left" size={15} /></button>
+      <button type="button" title={t('tts.follow.next')} aria-label={t('tts.follow.next')} disabled={!mine || !r!.canNext} onClick={() => TTS.step(1)}><Icon name="right" size={15} /></button>
+      <button type="button" className="rd-strip-x" title={t('tts.follow.close')} aria-label={t('tts.follow.close')} onClick={() => { TTS.stopAll(); setLast(null); }}><Icon name="x" size={13} /></button>
+    </span>
   </div>;
 }
 
@@ -70,5 +120,5 @@ let mounted = false;
 export function mountDock() {
   if (mounted) return; mounted = true;
   const el = document.createElement('div'); el.id = 'rd-dock-root'; document.body.append(el);
-  createRoot(el).render(<Dock />);
+  createRoot(el).render(<Strip />);
 }

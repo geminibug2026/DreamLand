@@ -16,8 +16,12 @@ export interface TtsCfg {
   voice: VoicePick;
   /** 캐릭터 id → 목소리 (없으면 기본) */
   chars: Record<string, VoicePick>;
-  /** 메시지를 읽는 동안 입력창 위에 그 글을 띄우고 읽는 자리를 짚는다 */
+  /** 메시지를 읽는 동안 가는 한 줄 띠에 그 글을 띄우고 읽는 자리를 따라간다 */
   follow: boolean;
+  /** 그 띠의 자리: 위(대화 머리 아래) · 아래(입력창 위) */
+  stripAt: 'top' | 'bottom';
+  /** 메시지 안에서도 읽는 낱말을 옅게 짚는다 */
+  inMsg: boolean;
 }
 export const DEFAULT_VOICE: VoicePick = { provider: 'browser', voice: '', rate: 1, pitch: 1 };
 
@@ -25,7 +29,7 @@ export function cfg(): TtsCfg {
   const st = S.settings as unknown as { tts?: Partial<TtsCfg> };
   const c = (st.tts ||= {});
   c.on ??= false; c.autoRead ??= false; c.actions ||= 'read'; c.rate ??= 1; c.volume ??= 1;
-  c.voice ||= { ...DEFAULT_VOICE }; c.chars ||= {}; c.follow ??= true;
+  c.voice ||= { ...DEFAULT_VOICE }; c.chars ||= {}; c.follow ??= true; if (c.stripAt !== 'bottom') c.stripAt = 'top'; c.inMsg ??= false;
   return c as TtsCfg;
 }
 export const saveCfg = () => S.saveSettings();

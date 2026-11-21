@@ -1,0 +1,1 @@
+export{t as go}from"./router-DBCy_n9h.js";

@@ -79,15 +79,24 @@
 .phase-connected .call-used { display: none; }
 
 /* 지금 하는 말: 상대 바로 아래의 차분한 한 장 (말하는 동안만). 말풍선과 같은 글자 크기 */
-.call-now { display: flex; flex-direction: column; gap: 2px; margin: 0 var(--call-gut) 10px; padding: 6px 6px 10px 14px; border-radius: 16px; background: var(--surface2, var(--surface)); min-width: 0; animation: call-now-in .22s var(--ease, ease-out); }
+.call-now { display: flex; flex-direction: column; align-items: stretch; gap: 0; margin: -2px var(--call-gut) 8px; min-width: 0; animation: call-now-in .26s var(--ease, ease-out); }
 @keyframes call-now-in { from { opacity: 0; transform: translateY(-4px); } }
-.call-now-top { display: flex; align-items: center; gap: 8px; min-height: 34px; min-width: 0; }
-.call-now-who { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; }
-.call-now-who .call-ava { width: 22px; height: 22px; }
-.call-now-who b { font-size: .82em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.call-now-who small { color: var(--accent); font-size: .74em; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
-.call-now.paused .call-now-who small { color: var(--dim); }
-.call-now-text { max-height: calc(1.6em * 3 + 4px); overflow-y: auto; overscroll-behavior: contain; padding: 0 8px 0 0; font-size: var(--call-fs); line-height: 1.6; overflow-wrap: anywhere; scroll-padding: 8px; }
+/* 윗줄: ‹ · ─ 말하는 중 ─ · › */
+.call-now-top { display: flex; align-items: center; gap: 4px; min-height: 30px; min-width: 0; }
+.call-now-tag { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--dim); }
+.call-now-rule { flex: 1 1 0; max-width: 56px; min-width: 10px; height: 1px; background: color-mix(in srgb, var(--text) 22%, transparent); }
+.call-now-tag .call-ava { width: 18px; height: 18px; }
+.call-now-tag b { font-size: .76em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.call-now-tag small { color: var(--accent); font-size: .72em; font-weight: 600; letter-spacing: .03em; white-space: nowrap; }
+.call-now.paused .call-now-tag small { color: var(--dim); }
+.call-now-step { display: flex; align-items: center; justify-content: center; flex: none; width: 30px; height: 30px; padding: 0; background: none; border: 0; border-radius: 50%; color: var(--dim); cursor: pointer; }
+.call-now-step:hover:not(:disabled), .call-now-step:focus-visible { color: var(--text); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.call-now-step:disabled { opacity: .3; cursor: default; }
+/* 자막: 가운데 맞춘 한두 줄. 누르면 멈춤 · 이어 듣기 */
+.call-now-text { max-height: calc(1.55em * 2); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; padding: 0 6px; font-size: var(--call-fs); line-height: 1.55; text-align: center; overflow-wrap: anywhere; scroll-padding: 2px; cursor: pointer; border-radius: 10px; -webkit-tap-highlight-color: transparent; }
+.call-now-text::-webkit-scrollbar { display: none; }
+.call-now-text:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.call-now.paused .call-now-text { opacity: .8; }
 .call-now-text em { color: var(--accent); font-style: normal; margin-left: 2px; }
 
 /* 주고받은 말: 모든 줄이 같은 말풍선 · 같은 글자 크기. 상대는 왼쪽 옅은 바탕, 나는 오른쪽 포인트 색 */
@@ -134,13 +143,6 @@
 @keyframes call-wave { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
 
 /* 읽기 단추: 앞 문장 · 멈춤/이어 듣기 · 다음 문장 (지금의 말 오른쪽 위) */
-.call-rd { display: inline-flex; align-items: center; gap: 2px; flex: none; }
-.call-rd button { display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; background: none; border: 0; border-radius: 50%; color: var(--text); cursor: pointer; }
-.call-rd button:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 7%, transparent); }
-.call-rd button:disabled { color: var(--faint, var(--dim)); opacity: .5; cursor: default; }
-.call-rd .call-rd-main { border: 1px solid var(--line); background: var(--surface); }
-.call-rd.live .call-rd-main, .call-rd.live .call-rd-main:hover { background: var(--text); color: var(--surface); border-color: var(--text); }
-.call-rd button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* 키패드 · 사람 추가 */
 .call-extra { display: flex; flex-direction: column; gap: 8px; padding: 4px var(--call-gut) 6px; }
@@ -223,7 +225,6 @@
 .is-group.phase-connected .call-head { gap: 8px; padding-top: 14px; }
 .is-group.phase-connected .call-ava { width: 46px; height: 46px; }
 .is-group.phase-connected .call-member { width: 58px; }
-.is-group .call-now-who .call-ava { width: 22px; height: 22px; }
 
 /* 가로로 눕힌 휴대폰: 낮은 화면이라 두 단 — 왼쪽 상대 · 지금의 말 · 단추, 오른쪽 주고받은 말 · 말하기 */
 @media (orientation: landscape) and (max-height: 560px) {
@@ -237,7 +238,7 @@
   .is-group.phase-connected .call-head { flex-wrap: wrap; justify-content: center; }
   .is-group.phase-connected .call-head .call-ava { width: 36px; height: 36px; } .is-group.phase-connected .call-member { width: 48px; }
   .call-now { align-self: start; margin-bottom: 4px; }
-  .call-now-text { max-height: calc(1.6em * 4 + 4px); }
+  .call-now-text { max-height: calc(1.55em * 3); }
   .call-lines { border-top: 0; border-left: 1px solid var(--line); padding-top: 12px; }
   .call-extra, .call-say { border-left: 1px solid var(--line); }
   .call-say { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
