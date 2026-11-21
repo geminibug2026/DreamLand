@@ -4,3 +4,5 @@ import './people';
 import './prompt';
 import './world';
 import './misc';
+import './lalib';
+import './lalib-app';

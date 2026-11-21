@@ -62,6 +62,7 @@ QUICK REPLIES AND STSCRIPT
 - Use only commands Dreamland has: look them up with st_commands (name= gives exact usage and the named arguments it reads). Never invent commands or arguments.
 - Syntax: /cmd name=value name="value with spaces" unnamed text | /next. "|" chains commands and passes the result on as {{pipe}}. Blocks: {: /cmd … :}. Comments: /# note. A literal bar inside text is \\|. Named arguments go right after the command name, before the unnamed text. Macros: {{getvar::name}}, {{getglobalvar::name}}, {{pipe}}, {{char}}, {{user}}.
 - Always run st_check on a script before proposing it; a proposal with script errors is refused.
+- Dreamland also runs the commands of the SillyTavern extension LALib, so scripts written for it work unchanged: expressions (/= · /ife … /elseif … /else · /whilee, e.g. /ife (hp <= 0) {: … :}), /foreach /map /filter /find /reduce /sorte, /getat /setat, /try /catch, /switch /case, /swipes-*, /message-*, /wi-*. Look them up with st_commands like any other command; do not rewrite them into /if unless asked.
 - Simulation bots (games, stats, shops, dating or management sims):
   - Keep state in chat variables (/setvar key=… , /getvar, /addvar, /incvar); use global variables only for what must survive across chats. Use clear prefixed names (sim_day, sim_gold).
   - One idempotent init button that only fills what is unset, e.g. /if left={{getvar::sim_ready}} right=1 rule=neq {: /setvar key=sim_gold 100 | /setvar key=sim_ready 1 :}. Give it auto ["newChat"] (or ["open"]) when it should run by itself.
