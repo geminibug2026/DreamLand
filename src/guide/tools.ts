@@ -6,6 +6,7 @@ import { allThemes, COLOR_FIELDS } from '../lib/theme';
 import { qrStore } from '../lib/qr-data';
 import { safeCss } from '../modules/logic';
 import { cur } from '../chat/store';
+import { buildNow } from '../chat/Inspector';
 import type { Char, Chat, Msg, Preset } from '../lib/types';
 import { checkChar, checkPreset } from './check';
 import { current, getPath } from './changes';
@@ -146,9 +147,12 @@ const R: ToolDef[] = [
 
 /** 마지막 프롬프트(인스펙터가 가진 것)를 읽어 원인을 짚을 재료로 만든다. 열린 대화에서 한 번이라도 생성했거나 "프롬프트 살펴보기"를 연 뒤에만 있다 */
 function diagnose() {
-  const c = cur.chat as Chat | null, built = cur.lastPrompt;
+  const c = cur.chat as Chat | null;
   if (!c) fail('No chat is open on screen. Ask the user to open the chat first.');
-  if (!built) fail('There is no built prompt yet for this chat. Ask the user to generate a reply (or open the prompt inspector from the scene panel) and then ask again.');
+  // 방을 연 뒤 아직 생성하지 않았으면(새로고침 · 다른 방에서 돌아옴) 지금 상태로 한 번 조립해 본다 — 보내지 않는다
+  let built = cur.lastPrompt, rebuilt = false;
+  if (!built) { try { built = buildNow()?.built ?? null; rebuilt = !!built; } catch (e) { fail('Could not assemble the prompt for this chat: ' + (e instanceof Error ? e.message : String(e))); } }
+  if (!built) fail('Could not assemble the prompt for this chat.');
   const b = built!, p = S.presetFor(c), by: Record<string, { tokens: number; pieces: number }> = {};
   for (const m of b.messages) { const k = str(m.src || m.role), t = tokens(m.content); (by[k] ||= { tokens: 0, pieces: 0 }).tokens += t; by[k].pieces++; }
   const last = [...cur.msgs].reverse().find(m => m.role === 'assistant'), sw = last?.swipes[last.sw];
@@ -158,6 +162,7 @@ function diagnose() {
     loreFired: (b.lore || []).slice(0, 30).map(h => `${h.book ? h.book + ' › ' : ''}${h.name || (h.keys || []).join('/')}`),
     promptTail: b.messages.slice(-4).map(m => ({ role: m.role, src: m.src, text: clip(m.content, 'content', 500) })),
     lastReply: last ? { name: last.name, model: sw?.model, ms: sw?.ms, swipes: last.swipes.length, length: msgText(last).length, text: clip(msgText(last), 'text (get_message)', 900) } : null,
+    ...(rebuilt ? { assembledNow: 'No reply was generated since the chat was opened, so this prompt was assembled just now from the current state. It shows what the NEXT reply would receive; the last reply may have seen slightly different memory/lore.' } : {}),
     note: 'Compare the reply with the last instructions in promptTail (the end of the prompt weighs most), the sampler (high temperature → drift; low maxTokens → cut off), droppedOldMessages (forgotten facts), and loreFired (missing entry → the keyword did not appear recently).' };
 }
 
