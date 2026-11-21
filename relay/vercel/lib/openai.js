@@ -146,6 +146,25 @@ async function callVertex(cred, model, payload) {
 async function errorOf(r) { const t = await r.text().catch(() => ''); try { const j = JSON.parse(t), e = (Array.isArray(j) ? j[0] : j)?.error; return e?.message || t.slice(0, 400); } catch { return t.slice(0, 400) || r.statusText; } }
 
 /** parts: 암호를 뗀 길 (['v1','models'] · ['v1','chat','completions']). authed: 길에 든 암호가 이미 맞았는지 */
+const FAST_MS = 8000, PING_MS = 5000;
+/** 오래 걸리는 답을 25초 제한에 걸리지 않게 감싼다. 빨리 끝나면 원래 상태 코드 그대로, 늦어지면 200 으로 먼저 열고 기다린다 */
+async function keepAlive(run, stream, region) {
+  const job = run().catch(e => fail(500, '중계 안에서 오류가 났어요: ' + String(e && e.message || e)));
+  const early = await Promise.race([job, new Promise(r => setTimeout(() => r(null), FAST_MS))]);
+  if (early) return early;
+  const ts = new TransformStream(), w = ts.writable.getWriter(), tick = () => w.write(enc.encode(stream ? ': keep-alive\n\n' : ' ')).catch(() => { });
+  tick(); const ping = setInterval(tick, PING_MS);
+  (async () => {
+    const r = await job; clearInterval(ping);
+    try {
+      if (stream && r.ok && r.body && /event-stream/.test(r.headers.get('content-type') || '')) { const rd = r.body.getReader(); for (; ;) { const { value, done } = await rd.read(); if (done) break; await w.write(value); } }
+      else if (stream) { const t = await r.text(); let err = null; try { err = JSON.parse(t).error; } catch { /* 글 그대로 */ } await w.write(enc.encode('data: ' + JSON.stringify({ error: err || { message: t.slice(0, 500), code: r.status } }) + '\n\ndata: [DONE]\n\n')); }
+      else await w.write(enc.encode(await r.text()));
+    } catch { /* 받는 쪽이 끊었다 */ } finally { try { await w.close(); } catch { /* 이미 닫힘 */ } }
+  })();
+  return new Response(ts.readable, { status: 200, headers: { ...CORS, 'Cache-Control': 'no-store', 'X-Relay-Region': region, 'Content-Type': stream ? 'text/event-stream' : 'application/json' } });
+}
+
 /** 어디서든 터지면 빈 "Internal Server Error" 대신 까닭을 알린다 */
 export async function openai(request, region, parts, url, authed) {
   try { return await openaiInner(request, region, parts, url, authed); }
@@ -164,36 +183,40 @@ async function openaiInner(request, region, parts, url, authed) {
   let body; try { body = await request.json(); } catch { return fail(400, 'Request body is not JSON.'); }
   const model = String(body.model || '').replace(/^(models\/|google\/)/, ''); if (!model) return fail(400, 'model is required.');
   const list = creds(); if (!list.length) return fail(500, '중계에 구글 열쇠가 없어요 (No Google key). Vercel → Settings → Environment Variables 에 API_1 이름으로 서비스 계정 JSON 을 통째로 넣고, Deployments 에서 Redeploy 하세요.' + (bad.length ? ' 읽지 못한 것: ' + bad.join(' / ') : ''));
-  const tried = (request.headers.get('x-relay-tried') || '').split(',').map(s => s.trim()).filter(Boolean);
-  let payload = toGemini({ ...body, model }), last = '';
-  const start = Math.floor(Math.random() * list.length); let thrown = 0;
-  for (let i = 0; i < list.length; i++) {
-    const cred = list[(start + i) % list.length]; let r;
-    try {
-      r = await callVertex(cred, model, payload);
-      if (r.status === 400 && payload.generationConfig.thinkingConfig) {   // 이 모델이 그 추론 설정을 받지 않으면 빼고 한 번 더
-        const why = await errorOf(r);
-        if (/think/i.test(why)) { payload = { ...payload, generationConfig: { ...payload.generationConfig } }; delete payload.generationConfig.thinkingConfig; r = await callVertex(cred, model, payload); }
-        else return fail(400, why);
+  // Vercel Edge 는 25초 안에 답을 시작해야 끊지 않는다 (FUNCTION_INVOCATION_TIMEOUT). 생각이 긴 모델은 구글이 첫 글자를 25초 넘게 안 보내므로,
+  // 8초 안에 끝나지 않으면 먼저 200 으로 답을 열고 5초마다 '아직 연결돼 있음' 신호를 보내며 기다린다 (스트리밍: SSE 주석 줄, 아니면 공백 — 둘 다 받는 쪽이 무시한다)
+  return keepAlive(async () => {
+    const tried = (request.headers.get('x-relay-tried') || '').split(',').map(s => s.trim()).filter(Boolean);
+    let payload = toGemini({ ...body, model }), last = '';
+    const start = Math.floor(Math.random() * list.length); let thrown = 0;
+    for (let i = 0; i < list.length; i++) {
+      const cred = list[(start + i) % list.length]; let r;
+      try {
+        r = await callVertex(cred, model, payload);
+        if (r.status === 400 && payload.generationConfig.thinkingConfig) {   // 이 모델이 그 추론 설정을 받지 않으면 빼고 한 번 더
+          const why = await errorOf(r);
+          if (/think/i.test(why)) { payload = { ...payload, generationConfig: { ...payload.generationConfig } }; delete payload.generationConfig.thinkingConfig; r = await callVertex(cred, model, payload); }
+          else return fail(400, why);
+        }
+      } catch (e) { last = String(e && e.message || e); thrown++; continue; }
+      if (r.ok) {
+        const head = { ...CORS, 'Cache-Control': 'no-store', 'X-Relay-Region': region, 'X-Relay-Key': cred.name };
+        return body.stream ? new Response(streamOut(r, model), { status: 200, headers: { ...head, 'Content-Type': 'text/event-stream' } }) : new Response(jsonOut(r, model), { status: 200, headers: { ...head, 'Content-Type': 'application/json' } });
       }
-    } catch (e) { last = String(e && e.message || e); thrown++; continue; }
-    if (r.ok) {
-      const head = { ...CORS, 'Cache-Control': 'no-store', 'X-Relay-Region': region, 'X-Relay-Key': cred.name };
-      return body.stream ? new Response(streamOut(r, model), { status: 200, headers: { ...head, 'Content-Type': 'text/event-stream' } }) : new Response(jsonOut(r, model), { status: 200, headers: { ...head, 'Content-Type': 'application/json' } });
+      last = await errorOf(r);
+      if (r.status !== 429 && r.status !== 503) return fail(r.status, last);   // 키 · 요청이 잘못된 것은 다른 곳으로 넘겨도 소용없다
     }
-    last = await errorOf(r);
-    if (r.status !== 429 && r.status !== 503) return fail(r.status, last);   // 키 · 요청이 잘못된 것은 다른 곳으로 넘겨도 소용없다
-  }
-  // 모든 열쇠가 구글 인증에서 막혔다 (429 가 아니다): 다른 지역으로 넘겨도 소용없으니 까닭을 그대로 알린다
-  if (thrown === list.length) return fail(502, '구글 인증에 실패했어요. 서비스 계정 JSON 이 맞는지, 그 계정에 Vertex AI 사용자 권한이 있는지 확인하세요. (' + last + ')', 'auth_error');
-  // 이 지역에서는 모든 키가 막혔다: 아직 안 가 본 지역의 함수에 넘긴다
-  const next = REGIONS.find(x => x !== region && !tried.includes(x));
-  if (next) {
-    try {
-      const sib = await fetch(`${url.origin}/${next}/v1/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + KEY, 'x-relay-tried': [...tried, region].join(',') }, body: JSON.stringify(body) });
-      const head = new Headers(CORS); for (const k of ['content-type', 'x-relay-region', 'x-relay-key']) { const v = sib.headers.get(k); if (v) head.set(k, v); } head.set('Cache-Control', 'no-store');
-      return new Response(sib.body, { status: sib.status, headers: head });
-    } catch (e) { last = last || String(e && e.message || e); }
-  }
-  return fail(429, 'Every key in every region returned 429. ' + last, 'rate_limit_exceeded');
+    // 모든 열쇠가 구글 인증에서 막혔다 (429 가 아니다): 다른 지역으로 넘겨도 소용없으니 까닭을 그대로 알린다
+    if (thrown === list.length) return fail(502, '구글 인증에 실패했어요. 서비스 계정 JSON 이 맞는지, 그 계정에 Vertex AI 사용자 권한이 있는지 확인하세요. (' + last + ')', 'auth_error');
+    // 이 지역에서는 모든 키가 막혔다: 아직 안 가 본 지역의 함수에 넘긴다
+    const next = REGIONS.find(x => x !== region && !tried.includes(x));
+    if (next) {
+      try {
+        const sib = await fetch(`${url.origin}/${next}/v1/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + KEY, 'x-relay-tried': [...tried, region].join(',') }, body: JSON.stringify(body) });
+        const head = new Headers(CORS); for (const k of ['content-type', 'x-relay-region', 'x-relay-key']) { const v = sib.headers.get(k); if (v) head.set(k, v); } head.set('Cache-Control', 'no-store');
+        return new Response(sib.body, { status: sib.status, headers: head });
+      } catch (e) { last = last || String(e && e.message || e); }
+    }
+    return fail(429, 'Every key in every region returned 429. ' + last, 'rate_limit_exceeded');
+  }, !!body.stream, region);
 }
