@@ -1,0 +1,25 @@
+/* 실리태번용으로 내보내기 창 (src/editors/StExport.tsx) — 폰 너비에서도 옆으로 밀리지 않게 줄을 접는다 */
+.stx { display: grid; gap: 14px; min-width: 0; }
+.stx-sec { display: grid; gap: 8px; min-width: 0; }
+.stx-sec .check span, .stx-note span, .stx-facts li { overflow-wrap: anywhere; min-width: 0; }
+.stx-sec .check span { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.stx-facts { margin: 0; padding-left: 18px; display: grid; gap: 3px; }
+.stx-list { display: grid; gap: 4px; max-height: 220px; overflow-y: auto; overflow-x: hidden; padding-right: 2px; }
+.stx-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.stx-row .check { flex: 0 1 auto; }
+.stx-row select { flex: 1 1 160px; min-width: 0; max-width: 100%; }
+.stx-more summary { cursor: pointer; display: flex; align-items: center; gap: 6px; min-height: 28px; }
+.stx-more .stx-list { margin-top: 6px; }
+.stx-needs { display: grid; gap: 4px; padding: 10px 12px; border-radius: var(--r-sm, 10px); background: var(--surface2); }
+.stx-needs ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.stx-needs li span { font-weight: 600; overflow-wrap: anywhere; }
+.stx-needs li small { display: block; color: var(--dim); overflow-wrap: anywhere; }
+.stx-ok { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--ok, var(--accent)); }
+.stx-grp h5 { margin: 6px 0 4px; font-size: .9em; color: var(--dim); }
+.stx-grp ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.stx-note { display: flex; gap: 8px; align-items: flex-start; line-height: 1.5; min-width: 0; }
+.stx-note > div { display: grid; gap: 2px; min-width: 0; }
+.stx-note small { color: var(--dim); overflow-wrap: anywhere; }
+.stx-mk { flex: none; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font: 700 .75em/1 inherit; font-style: normal; margin-top: 2px; background: var(--surface2); color: var(--dim); }
+.stx-note.warn .stx-mk { background: var(--bad, #c55); color: #fff; }
+.stx-go { position: sticky; bottom: 0; padding-top: 6px; background: linear-gradient(transparent, var(--surface) 40%); }
