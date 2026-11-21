@@ -9942,6 +9942,7 @@
   "conns.cf.v3": "배포가 끝나면 나오는 주소(https://….vercel.app)를 아래에 붙여넣고 \"확인\" → \"이 연결에 쓰기\"를 누릅니다.",
   "conns.cf.copyKeyFirst": "암호 먼저 복사",
   "conns.cf.deployVercel": "Vercel 에 배포",
+  "chat.status.vars": "상태 변수 받는 중…",
   "chat.status.hop429": "{conn}: 429 — 다른 지역의 중계로 다시 보내요 ({n}/{of})",
   "conns.cf.appliedMany": "이 연결은 이제 중계 {n}곳을 돌려 써요. 429 가 나면 다음 지역으로 넘어갑니다",
   "conns.cf.addrHint.cf": "한 지역만 쓰면 그 지역도 결국 429 가 납니다. 워커를 지역만 달리해 여러 개 만들고(같은 코드 · 같은 암호) 주소를 빈칸으로 띄워 모두 적으면, 429 가 날 때 다음 워커로 자동으로 넘어갑니다.",

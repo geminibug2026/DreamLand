@@ -2,7 +2,7 @@
 export * from './update';
 export * from './initvar';
 export * from './extra';
-export { parseString, yamlParse, yamlStringify, yamlStringifyQuoted } from './parse';
+export { parseString, yamlParse, yamlStringify, yamlStringifyQuoted, loadMath } from './parse';
 export { cleanUpMetadata, generateSchema, getSchemaForPath, reconcileAndApplySchema } from './schema';
 export { closeUpdateMarkup, findUpdateMarkupBlocks, scanUpdateMarkup } from './markup';
 export * as lo from './lo';

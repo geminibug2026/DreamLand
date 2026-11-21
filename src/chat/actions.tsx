@@ -615,7 +615,11 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
     cur.paint.set(target.id, (talkStagger ? '' : bodyHtml(target)) || TYPING);
     flush('m:' + target.id);
     if (keep && S.settings.autoScroll) toBottom();
+    // 상태창 변수 블록(<UpdateVariable>)은 화면에 숨는다 — 답이 끝난 것처럼 보여도 아직 받는 중이면 그렇다고 알린다
+    const open = acc.lastIndexOf('<UpdateVariable'), inVars = open >= 0 && acc.indexOf('</UpdateVariable>', open) < 0;
+    if (inVars !== varsNote) { varsNote = inVars; setStatus(inVars ? t('chat.status.vars') : ''); }
   };
+  let varsNote = false;
   const schedule = () => { if (!raf) raf = requestAnimationFrame(paint); };
   const abort = cur.abort = new AbortController(); setBusy(true); cur.gen = { chat, msgs }; try { paint(); } catch (e) { console.warn(e); } emit('generate:start', { chat, type });
   if (built.talk && pres && mo('presenceDelay') && type === 'normal' && !opt.proactive && !opt.chime) {
@@ -638,7 +642,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
     if (!(e instanceof Error && e.name === 'AbortError')) { console.error(e); toast(errMsg(e), 'err'); }
   } finally {
     if (raf) cancelAnimationFrame(raf);
-    setBusy(false); cur.abort = null;
+    setBusy(false); cur.abort = null; if (varsNote) { varsNote = false; setStatus(''); }
     const alive = S.get('chats', chat.id) === chat;   // 답변이 나오는 동안 지워진 방은 되살리지 않는다
     if (target) cur.paint.delete(target.id);
     if (!alive) { if (cur.gen?.msgs === msgs) cur.gen = null; }

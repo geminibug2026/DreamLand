@@ -57,7 +57,9 @@ function setup() {
   const warm = (c: Chat | null) => { if (c && A.usesMvu(c)) void load(); };
   // 원래 틀처럼: 대화를 열 때 · 보낸 메시지 · 받은 답만 계산한다. 고치기 · 후보 바꾸기는 다시 계산하지 않는다 (후보마다 제 변수가 있다)
   on('chat:open', c => { warm(c as Chat); setTimeout(() => void A.opened(c as Chat), 0); });
-  on('message:sent', d => { const c = chatOf(d); warm(c); void A.sent(c, (d as { msg?: Msg })?.msg); });
+  on('message:sent', d => { const c = chatOf(d); warm(c); void A.sent(c, (d as { msg?: Msg })?.msg);
+    // 답을 기다리는 동안 셈 모듈도 미리 불러 둔다 (답이 오고 나서 처음 불러오면 휴대폰에서 1~3초 늦다)
+    if (c && A.usesMvu(c)) setTimeout(() => void load().then(R => R.loadMath()).catch(() => { }), 300); });
   on('message:swiped', () => A.pushFrames());
   on('message:deleted', d => { A.deleted(chatOf(d)); A.pushFrames(); });
 

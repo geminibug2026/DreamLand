@@ -9942,6 +9942,7 @@
   "conns.cf.v3": "部署完成后，把显示的地址（https://….vercel.app）粘贴到下方，点\"检查\"→\"用于此连接\"。",
   "conns.cf.copyKeyFirst": "先复制密码",
   "conns.cf.deployVercel": "部署到 Vercel",
+  "chat.status.vars": "正在接收状态变量…",
   "chat.status.hop429": "{conn}：429 — 改用其他区域的中转重发（{n}/{of}）",
   "conns.cf.appliedMany": "此连接现在轮流使用 {n} 个中转位置，出现 429 时切换到下一个区域",
   "conns.cf.addrHint.cf": "只用一个区域迟早也会 429。可以多建几个只有区域不同的 Worker（代码和密码相同），把地址用空格隔开全部填上，出现 429 时会自动切换到下一个。",

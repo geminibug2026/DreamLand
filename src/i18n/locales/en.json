@@ -10022,6 +10022,7 @@
   "conns.cf.v3": "When it finishes, paste the address it shows (https://….vercel.app) below, then \"Check\" → \"Use for this connection\".",
   "conns.cf.copyKeyFirst": "Copy password first",
   "conns.cf.deployVercel": "Deploy to Vercel",
+  "chat.status.vars": "Receiving status variables…",
   "chat.status.hop429": "{conn}: 429 — trying the relay in another region ({n}/{of})",
   "conns.cf.appliedMany": "This connection now rotates {n} relay locations — on a 429 it moves to the next region",
   "conns.cf.addrHint.cf": "One region alone eventually hits 429 too. Make several Workers that differ only in region (same code, same password) and list all their addresses separated by spaces — on a 429 the app moves to the next one automatically.",
