@@ -124,17 +124,26 @@ export function analyze(root = path.resolve(here, '..')) {
   return out;
 }
 
-/** vite 플러그인: import ref from 'virtual:st-ref' */
+/** 명령이 어디서 왔나: core 실리태번 본체(과 함께 오는 확장) · lalib LALib 확장. 이름 또는 이름 틀(/정규식/)
+ *  실리태번으로 옮길 때 "이 명령은 실리태번에 없어요 · LALib 이 있어야 해요"를 가르는 데 쓴다 (드림랜드에만 있는 명령은 이 파일들 밖에서 등록된다) */
+export const LALIB_FILES = ['src/stscript/ext/lalib.tsx', 'src/stscript/ext/lalib-app.tsx'];
+export function origins(root = path.resolve(here, '..')) {
+  const core = new Set(), lalib = new Set();
+  for (const f of ST_FILES) for (const d of scanFile(fs.readFileSync(path.join(root, f), 'utf8')).defs) for (const n of d.names) (LALIB_FILES.includes(f) ? lalib : core).add(n);
+  return { core: [...core].sort(), lalib: [...lalib].filter(n => !core.has(n)).sort() };
+}
+
+/** vite 플러그인: import ref from 'virtual:st-ref' · import origin from 'virtual:st-origin' */
 export function stRefPlugin() {
-  const ID = 'virtual:st-ref', RID = '\0' + ID;
+  const ID = 'virtual:st-ref', OID = 'virtual:st-origin';
   return {
     name: 'st-ref',
-    resolveId(id) { return id === ID ? RID : null; },
+    resolveId(id) { return id === ID || id === OID ? '\0' + id : null; },
     load(id) {
-      if (id !== RID) return null;
+      if (id !== '\0' + ID && id !== '\0' + OID) return null;
       const root = path.resolve(here, '..');
       for (const f of ST_FILES) this.addWatchFile?.(path.join(root, f));
-      return 'export default ' + JSON.stringify(analyze(root)) + ';';
+      return 'export default ' + JSON.stringify(id === '\0' + ID ? analyze(root) : origins(root)) + ';';
     },
   };
 }
