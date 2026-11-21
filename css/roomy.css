@@ -23,12 +23,12 @@
 @media (max-width: 820px) {
   .msg-head { flex-wrap: wrap; row-gap: 0; }
   .msg:last-child .msg-head .msg-tools.mt-top, .msg.picked .msg-head .msg-tools.mt-top { display: flex !important; }
-  .msg-head .msg-tools.mt-top { order: 20; margin: 0 -4px 0 auto; padding: 0; border: 0; background: none; position: static; flex: none; flex-wrap: nowrap; gap: 0; opacity: 1; pointer-events: auto; }
+  .msg-head .msg-tools.mt-top { order: 20; margin: 0 -4px 0 auto !important; padding: 0; border: 0; background: none; position: static !important; flex: none; flex-wrap: nowrap; gap: 0; opacity: 1; pointer-events: auto; }
   .msg-head .msg-tools.mt-top .ibtn { width: 27px; height: 27px; opacity: .5; background: none; }
   .msg-head .msg-tools.mt-top .ibtn:active { opacity: 1; }
   .msg-head .msg-tools.mt-top .ibtn .ic { width: 13px; height: 13px; }
-  .msg.user .msg-head .msg-tools.mt-top { margin: 0 auto 0 -4px; }
-  .mode-rp .msg.user .msg-head .msg-tools.mt-top { margin: 0 -4px 0 auto; }
+  .msg.user .msg-head .msg-tools.mt-top { margin: 0 auto 0 -4px !important; }
+  .mode-rp .msg.user .msg-head .msg-tools.mt-top { margin: 0 -4px 0 auto !important; }
   /* 아래 줄에는 넘기기만 */
   .msg:not(.sys) .msg-main > .msg-tools > :not(.swipe) { display: none !important; }
   .msg:not(.sys) .msg-main > .msg-tools:not(:has(.swipe)) { display: none !important; }
@@ -50,4 +50,15 @@
   .rc-tog { width: 40px; height: 44px; }
   .rc-all-bar { flex-wrap: wrap; } .rc-all-bar .inp { flex: 1 1 100%; }
   .rc-pick-foot > * { flex: 1 1 auto; justify-content: center; } .rc-mixsw { white-space: nowrap; }
+}
+
+/* ── 주사위 · 카드가 뒤따라도 마지막 답변의 단추는 남는다 ──
+   마지막 메시지에만 단추를 보이던 규칙이, 주사위 같은 시스템 카드가 뒤에 붙으면 그 앞 답변의 단추를 모두 감췄다.
+   "뒤에 시스템 카드만 있는 메시지"도 마지막으로 친다. (다시 생성 · 이어 쓰기는 정말 마지막 답변일 때만 있다) */
+@media (max-width: 820px), (hover: none) {
+  .msg:not(.sys):not(:last-child):not(:has(~ .msg:not(.sys))) .msg-main > .msg-tools { display: flex; opacity: 1; }
+  .msg:not(.sys):not(:has(~ .msg:not(.sys))) .msg-head .msg-tools.mt-top { display: flex !important; }
+}
+@media (max-width: 820px) {
+  .msg:not(.sys):not(:last-child):not(:has(~ .msg:not(.sys))) .msg-main > .msg-tools:not(:has(.swipe)) { display: none; }
 }
