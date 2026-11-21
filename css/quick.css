@@ -72,22 +72,47 @@
 .qr-ask { margin: 0 0 14px; line-height: 1.6; }
 .qr-ask p { margin: 0 0 6px; }
 
-/* ── 새 대화 · 설정 후 시작 ── */
-.modal:has(.setup) { max-width: 560px; }
-.setup { display: flex; flex-direction: column; gap: 4px; }
-.setup-lead { margin: 0 0 6px; color: var(--dim); font-size: .92em; line-height: 1.6; }
-.setup-sec { display: flex; flex-direction: column; }
-.setup-row { display: flex; flex-direction: column; gap: 8px; padding: 14px 0; border-bottom: 1px dashed var(--ink-line); position: relative; }
-.setup-row:last-child { border-bottom: 0; }
-.setup-row.moved .setup-head b::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 7px; border-radius: 50%; background: var(--accent); vertical-align: 2px; }
-.setup-head { display: flex; align-items: center; gap: 8px; } .setup-head b { font-weight: 700; }
-.setup-tag { font-style: normal; font-size: .72em; padding: 1px 7px; border: 1px solid var(--ink-line); border-radius: 999px; color: var(--dim); }
-.setup-row .hint { margin-top: -4px; }
-.setup-slots { margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--ink-line); }
-.setup-sub { display: flex; flex-direction: column; gap: 2px; }
-.setup-foot { position: sticky; bottom: -1px; display: flex; flex-direction: column; gap: 10px; margin: 8px -4px 0; padding: 12px 4px 4px; background: var(--panel, var(--surface)); border-top: 1px solid var(--ink-line); }
-.setup-quiet { display: flex; align-items: center; gap: 8px; font-size: .86em; color: var(--dim); cursor: pointer; } .setup-quiet input { accent-color: var(--accent); }
-.setup-btns { display: flex; gap: 8px; } .setup-btns .btn.primary { flex: 1; justify-content: center; min-height: 44px; }
+/* ── 새 대화 설정 (설정 후 시작) ── */
+.modal:has(.su) { width: min(540px, 100%); }
+.modal:has(.su) .modal-body { padding: 0; display: flex; flex-direction: column; min-height: 0; }
+.su { display: flex; flex-direction: column; min-height: 0; }
+.su-top { padding: 2px 24px 14px; border-bottom: 1px solid var(--ink-line); }
+.su-preset { display: inline-block; margin-bottom: 6px; padding: 2px 9px; border-radius: 999px; background: var(--soft); color: var(--text); font-size: .76em; font-weight: 700; letter-spacing: .02em; }
+.su-top p { margin: 0; color: var(--dim); font-size: .88em; line-height: 1.55; }
+.su-list { padding: 6px 24px 8px; }
+.su-item { padding: 18px 0; border-bottom: 1px solid var(--ink-line); } .su-item:last-child { border-bottom: 0; }
+.su-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; } .su-head b { font-size: 1em; font-weight: 800; }
+.su-tag { font-style: normal; font-size: .7em; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--surface2); color: var(--dim); }
+.su-now { margin-left: auto; font-size: .82em; color: var(--dim); max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .su-now.moved { color: var(--accent); font-weight: 700; }
+.su-hint { margin: -4px 0 10px; color: var(--dim); font-size: .84em; line-height: 1.5; }
+.su-opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; } .su-opts.long { grid-template-columns: 1fr; }
+.su-opt { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 10px 14px; text-align: left; border: 1.5px solid var(--ink-line); border-radius: var(--r-sm, 12px); background: var(--surface); color: var(--text); font-size: .93em; font-weight: 600; line-height: 1.35; transition: border-color .15s, background .15s; -webkit-tap-highlight-color: transparent; }
+.su-opt:hover { border-color: color-mix(in srgb, var(--text) 35%, transparent); }
+.su-opt.on { border-color: var(--text); background: var(--soft); }
+.su-mark { flex: none; width: 18px; height: 18px; border: 1.5px solid color-mix(in srgb, var(--text) 40%, transparent); border-radius: 50%; position: relative; transition: border-color .15s, background .15s; }
+.su-opt.multi .su-mark { border-radius: 5px; }
+.su-opt.on .su-mark { border-color: var(--text); background: var(--text); }
+.su-opt.on:not(.multi) .su-mark::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: var(--surface); }
+.su-opt.on.multi .su-mark::after { content: ""; position: absolute; left: 5px; top: 1.5px; width: 5px; height: 9px; border: solid var(--surface); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.su-ctl .range, .su-ctl .pv-toggle { width: 100%; }
+.su-field { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; } .su-field span { font-size: .84em; font-weight: 700; color: var(--dim); }
+.su-field .inp { min-height: 46px; font-size: 16px; }
+.su-foot { position: sticky; bottom: 0; padding: 14px 24px 18px; background: var(--surface); border-top: 1px solid var(--ink-line); display: flex; flex-direction: column; gap: 10px; }
+.su-go { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 52px; border-radius: var(--r-sm, 12px); background: var(--text); color: var(--surface); font-weight: 800; font-size: 1em; }
+.su-go small { font-size: .74em; font-weight: 600; opacity: .7; }
+.su-go:active { transform: scale(.99); }
+.su-sub { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: .86em; }
+.su-link { color: var(--dim); text-decoration: underline; text-underline-offset: 3px; padding: 6px 0; }
+.su-quiet { display: flex; align-items: center; gap: 7px; color: var(--dim); cursor: pointer; padding: 6px 0; } .su-quiet input { width: 16px; height: 16px; accent-color: var(--text); }
+@media (max-width: 820px) {
+  .modal:has(.su) { height: 92dvh; }
+  .modal:has(.su) .modal-body { flex: 1; overflow: hidden; }
+  .su { flex: 1; min-height: 0; }
+  .su-list { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 4px 18px 12px; -webkit-overflow-scrolling: touch; }
+  .su-top { padding: 0 18px 12px; } .su-foot { position: static; padding: 12px 18px calc(14px + var(--safe-b, 0px)); box-shadow: 0 -8px 16px -12px color-mix(in srgb, var(--text) 30%, transparent); }
+  .su-opts { grid-template-columns: 1fr 1fr; } .su-opts.long { grid-template-columns: 1fr; }
+  .su-opt { min-height: 50px; font-size: .95em; }
+}
 /* 여러 개 고르기: 켜고 끄는 단추 */
 .pv-multi { display: flex; flex-wrap: wrap; gap: 6px; }
 .pv-multi button { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px 7px 9px; border: 1px solid var(--ink-line); border-radius: var(--r-xs, 6px); font: 600 .84em var(--display, inherit); color: var(--dim); background: var(--surface); transition: border-color .15s, color .15s, background .15s; }

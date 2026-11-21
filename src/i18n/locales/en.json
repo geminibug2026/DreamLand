@@ -9650,10 +9650,10 @@
   "conns.cf.addrHint.cf": "One region alone eventually hits 429 too. Make several Workers that differ only in region (same code, same password) and list all their addresses separated by spaces — on a 429 the app moves to the next one automatically.",
   "conns.cf.addrHint.vc": "One deploy opens 4 US and 2 European locations. \"Use for this connection\" registers all six, so on a 429 the app moves to the next region automatically.",
   "chat.setup.title": "{name} settings",
-  "chat.setup.lead": "Your picks fill the matching spots in the preset. You can change them later in the scene panel.",
+  "chat.setup.lead": "Your picks go into the prompt. You can change them later in the scene panel.",
   "chat.setup.multi": "multiple",
-  "chat.setup.slots": "Blanks",
-  "chat.setup.slotsHint": "Spots written only as {{…}} in the preset, with no choices defined. Leave empty to insert nothing.",
+  "chat.setup.slots": "Fill in",
+  "chat.setup.slotsHint": "Spots the preset names without giving choices. Leave empty to insert nothing.",
   "chat.setup.slotPh": "Type a value (empty = nothing)",
   "chat.setup.quiet": "Next time, start right away with this preset",
   "chat.setup.reset": "Defaults",
@@ -9662,5 +9662,10 @@
   "chat.setup.goN": "Set up and start · {n} changed",
   "chat.setup.askEach": "Ask for these settings whenever a new chat opens",
   "presets.vars.f.multi": "Allow multiple",
-  "presets.vars.f.multiHint": "The texts of all picked options go in, one per line. The default can be several too."
+  "presets.vars.f.multiHint": "The texts of all picked options go in, one per line. The default can be several too.",
+  "chat.setup.title2": "New chat setup",
+  "chat.setup.picked": "{n} picked",
+  "chat.setup.none": "none",
+  "chat.setup.changedN": "{n} changed from defaults",
+  "chat.setup.quietShort": "Don't ask next time"
 }
