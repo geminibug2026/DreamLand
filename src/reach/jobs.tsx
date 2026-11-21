@@ -18,7 +18,7 @@ export const JOBS: Job[] = [
   { key: 'auto', group: 'talk', path: 'modes.autoConn' },
   { key: 'all', group: 'help', model: true },
   { key: 'translate', group: 'help', model: true }, { key: 'memory', group: 'help', model: true }, { key: 'illust', group: 'help', model: true },
-  { key: 'expr', group: 'help', model: true }, { key: 'caption', group: 'help', model: true }, { key: 'choices', group: 'help', model: true },
+  { key: 'expr', group: 'help', model: true }, { key: 'caption', group: 'help', model: true }, { key: 'choices', group: 'help', model: true }, { key: 'mvu', group: 'help', model: true },
   { key: 'crew', group: 'crew', model: true }, { key: 'gate', group: 'crew', model: true }, { key: 'guide', group: 'crew', model: true }, { key: 'feed', group: 'crew', model: true },
 ];
 const GROUPS: [Job['group'], string][] = [['talk', 'conversation'], ['help', 'helpers'], ['crew', 'backstage']];

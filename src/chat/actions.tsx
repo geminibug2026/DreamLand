@@ -663,6 +663,10 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
         if (document.hidden || cur.chat !== chat) { chat.unread = (chat.unread || 0) + 1; Live.ping(speaker.name, final); } else chat.seenAt = now();
       }
       if (final) emit('message:received', { msg: target, chat });   // 저장 전에 알린다 (이야기 시각 등 메시지에 적히는 것이 함께 저장되게)
+      if (final && X.received.length) {   // 저장 전에 기다려 주는 일 (변수 갱신 등: 답변 글에 덧붙일 수도 있다)
+        for (const h of X.received) { try { await h.fn({ chat, msgs, msg: target, type }); } catch (e) { console.warn('[답변 뒤 처리]', h.owner, e); } }
+        if (cur.chat === chat) redraw(target);
+      }
       await S.saveMsgs(chat, msgs);
       if (cur.gen?.msgs === msgs) cur.gen = null;
       if (final && cur.chat === chat) {

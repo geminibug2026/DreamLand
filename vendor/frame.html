@@ -7,7 +7,10 @@ addEventListener("message", function on(e) {
   if (dlDone || e.source !== parent || !e.data || typeof e.data.dlHtml !== "string") return;
   dlDone = true; removeEventListener("message", on);
   var v = /\/frame$/.test(location.pathname) ? "vendor/" : "", h = e.data.dlHtml, init = JSON.stringify(e.data.init || {}).replace(/</g, "\\u003c");
-  var pre = '<script>window.__dlInit=' + init + '<\/script><script src="' + v + 'jquery.min.js"><\/script><script src="' + v + 'lodash.min.js"><\/script><script src="' + v + 'th-shim.js"><\/script>';
+  // 스크립트 화면 · zod / YAML 을 쓰는 화면에는 실리태번 도우미처럼 z 와 YAML 도 깐다 (앱에 들어 있는 것)
+  var lib = function (f) { return '<script src="' + v + f + '"><\/script>'; }, all = !!(e.data.init && e.data.init.script);
+  var extra = (all || /\bz\s*\.\s*[A-Za-z]|zod|registerMvuSchema/.test(h) ? lib("zod.min.js") : "") + (all || /\bYAML\b|mvu_zod|variable_zod/.test(h) ? lib("yaml.min.js") : "");
+  var pre = '<script>window.__dlInit=' + init + '<\/script>' + lib("jquery.min.js") + lib("lodash.min.js") + extra + lib("th-shim.js");
   var post = '<script src="' + v + 'th-size.js"><\/script>';
   var m = h.match(/<head[^>]*>/i) || h.match(/<html[^>]*>/i) || h.match(/<!doctype[^>]*>/i);
   h = m ? h.replace(m[0], function () { return m[0] + pre; }) : pre + h;

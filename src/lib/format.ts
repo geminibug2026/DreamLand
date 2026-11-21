@@ -111,7 +111,7 @@ function isPage(lang: string, code: string) {
 }
 const frameSrc = new Map<string, string>();
 /** 화면(iframe)의 시작 자료와 도우미 호출을 채팅 쪽이 채운다 (src/chat/frameBridge) */
-export const frameHooks: { init?: (f: HTMLIFrameElement) => unknown; call?: (f: HTMLIFrameElement, fn: string, args: unknown[]) => unknown } = {};
+export const frameHooks: { init?: (f: HTMLIFrameElement) => unknown; call?: (f: HTMLIFrameElement, fn: string, args: unknown[]) => unknown; /** 듣기 시작 · 부름 결과 · 준비됨 알림 (src/chat/frameEvents) */ msg?: (f: HTMLIFrameElement, d: Record<string, unknown>) => void; /** 화면에 넣기 전에 글을 고친다 (알려진 외부 모듈 주소를 앱에 든 것으로) */ src?: (code: string) => string } = {};
 /** 열려 있는 모든 화면에 알린다 */
 export function framePost(data: unknown) { for (const f of document.querySelectorAll<HTMLIFrameElement>('iframe.dl-frame-el')) f.contentWindow?.postMessage(data, '*'); }
 const hashOf = (s: string) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return h.toString(36) + s.length.toString(36); };
@@ -125,12 +125,15 @@ export function bridgeFrames() { watchFrames(); }
 function watchFrames() {
   if (watching || typeof document === 'undefined') return; watching = true;
   window.addEventListener('message', e => {
-    const d = e.data as { dlFrame?: unknown; dlFrameReady?: unknown; h?: number; dlCall?: number; fn?: string; args?: unknown[] } | null;
-    if (!d || (d.dlFrame == null && d.dlFrameReady == null && d.dlCall == null)) return;
+    const d = e.data as { dlFrame?: unknown; dlFrameReady?: unknown; h?: number; dlCall?: number; fn?: string; args?: unknown[]; dlListen?: unknown; dlInvoked?: unknown; dlReady?: unknown } | null;
+    if (!d || (d.dlFrame == null && d.dlFrameReady == null && d.dlCall == null && d.dlListen == null && d.dlInvoked == null && d.dlReady == null)) return;
     for (const f of document.querySelectorAll<HTMLIFrameElement>('iframe.dl-frame-el')) {
       const w = f.contentWindow; if (!w || w !== e.source) continue;
+      if (d.dlListen != null || d.dlInvoked != null || d.dlReady != null) { frameHooks.msg?.(f, d as Record<string, unknown>); return; }
       if (d.dlFrameReady != null) {
-        const src = frameSrc.get(f.dataset.frame || ''); if (src == null) return;
+        frameHooks.msg?.(f, { dlReset: 1 });   // 새 문서가 떴다: 앞 문서가 듣던 이벤트는 잊는다
+        const raw = frameSrc.get(f.dataset.frame || ''); if (raw == null) return;
+        const src = frameHooks.src ? frameHooks.src(raw) : raw;
         void Promise.resolve(frameHooks.init?.(f)).catch(() => ({})).then(init => w.postMessage({ dlHtml: src, init: init || {} }, '*'));
       } else if (d.dlCall != null) {
         const id = d.dlCall;

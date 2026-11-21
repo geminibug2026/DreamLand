@@ -3,10 +3,12 @@ import type { Msg } from '../lib/types';
 import { DB, S, msgText, newMsg, on } from '../lib/core';
 import { frameHooks, framePost } from '../lib/format';
 import { toast } from '../ui';
+import { t } from '../i18n';
 import { cur } from './store';
 import { chatApi } from './actions';
 import { appHost, runQrScript } from '../stscript/host';
-import { applyText, clone as cloneData, type MvuData } from '../mvu/engine';
+import { appCalls, onFrameMessage, relayEmit } from './frameEvents';
+import { isDuringExtra, pending as mvuPending } from '../mvu/app';
 
 type Obj = Record<string, unknown>;
 type MsgD = Msg & { thData?: Obj };
@@ -30,24 +32,27 @@ function msgIndexOf(f: HTMLIFrameElement) {
   return i >= 0 ? i : cur.msgs.length - 1;
 }
 
+frameHooks.msg = onFrameMessage;
+/** zod 스키마 카드 도우미(vendor/mvu_zod.js)가 띄우는 말 */
+const mvuText = () => ({ path: t('mvu.zod.path'), input: t('mvu.zod.input'), cmdErr: t('mvu.zod.cmdErr', { cmd: '{cmd}' }), initErr: t('mvu.zod.initErr', { n: '{n}' }), notNumber: t('mvu.zod.notNumber', { type: '{type}' }), moveMissing: t('mvu.zod.moveMissing', { path: '{path}' }), ok: t('mvu.zod.ok') });
 frameHooks.init = async f => {
   await lsReady;
   const chat = cur.chat, ch = chat ? S.get('chars', chat.charIds[0]) : undefined;
-  return { ls, msgId: msgIndexOf(f), lastId: cur.msgs.length - 1, messages: snapshot(), vars: vars(), user: chat ? S.persona(chat)?.name : '', char: ch?.name || '', charId: ch?.id || '', charAvatar: ch?.avatar || '' };
+  return { ls, msgId: msgIndexOf(f), lastId: cur.msgs.length - 1, messages: snapshot(), vars: vars(), user: chat ? S.persona(chat)?.name : '', char: ch?.name || '', charId: ch?.id || '', charAvatar: ch?.avatar || '', mvuExtra: isDuringExtra(), mvuNotify: !!(S.settings as { mvu?: { notifyErr?: boolean } }).mvu?.notifyErr, mvuText: mvuText() };
 };
 
 async function commit() { await chatApi.save(); chatApi.redraw?.(); }
 
-frameHooks.call = async (_f, fn, args) => {
+frameHooks.call = async (f, fn, args) => {
   const chat = cur.chat;
+  const own = appCalls[fn]; if (own) return await own(f, args);
   switch (fn) {
     case 'lsSet': ls[String(args[0])] = String(args[1]); lsSave(); return null;
     case 'lsDel': delete ls[String(args[0])]; lsSave(); return null;
     case 'lsClear': ls = {}; lsSave(); return null;
     case 'toast': { const [kind, m, title] = args as string[]; toast([title, m].filter(Boolean).join(' — '), (kind || '') as 'ok'); return null; }
     case 'slash': return await runQrScript(String(args[0] || ''));
-    case 'emit': return null;
-    case 'mvuParse': { const d = cloneData(args[1]) as MvuData; if (d && typeof d === 'object' && d.stat_data) applyText(String(args[0] ?? ''), d); return d; }   // 글의 갱신 명령을 자료에 적용해 돌려준다 (저장하지 않음)
+    case 'emit': return await relayEmit(f, String(args[0] ?? ''), Array.isArray(args[1]) ? args[1] as unknown[] : []);   // 다른 화면 · 앱에도 알리고, 고쳐진 인자를 돌려준다
   }
   if (!chat) throw new Error('no chat open');
   const ms = cur.msgs as MsgD[];
@@ -91,12 +96,15 @@ frameHooks.call = async (_f, fn, args) => {
 };
 
 // 앱에서 일어난 일을 화면들에 알린다 (실리태번 이벤트 이름으로)
-const send = (ev: string, i?: number) => framePost({ dlState: { lastId: cur.msgs.length - 1, messages: snapshot(), vars: vars() }, dlEvent: ev, args: i == null ? [] : [i] });
+const send = (ev: string, i?: number) => framePost({ dlState: { lastId: cur.msgs.length - 1, messages: snapshot(), vars: vars(), mvuExtra: isDuringExtra() }, dlEvent: ev, args: i == null ? [] : [i] });
+/** 변수 갱신이 끝난 뒤에 알린다 (실리태번에서 변수 갱신이 먼저 끝나는 것과 같게) */
+const after = (ev: string, d: unknown, i: () => number) => { const chat = (d as { chat?: unknown })?.chat || cur.chat; void Promise.resolve().then(() => mvuPending(chat as typeof cur.chat)).then(() => send(ev, i())); };
+on('mvu:updated', () => framePost({ dlState: { lastId: cur.msgs.length - 1, messages: snapshot(), vars: vars(), mvuExtra: isDuringExtra() } }));
 const idx = (d: unknown) => { const m = (d as { msg?: Msg })?.msg; return m ? cur.msgs.indexOf(m) : cur.msgs.length - 1; };
-on('message:received', d => send('message_received', idx(d)));
-on('message:sent', d => send('message_sent', idx(d)));
-on('message:edited', d => send('message_edited', idx(d)));
-on('message:swiped', d => send('message_swiped', idx(d)));
+on('message:received', d => { const i = idx(d); after('message_received', d, () => i); });
+on('message:sent', d => { const i = idx(d); after('message_sent', d, () => i); });
+on('message:edited', d => { const i = idx(d); after('message_edited', d, () => i); });
+on('message:swiped', d => { const i = idx(d); after('message_swiped', d, () => i); });
 on('message:deleted', () => send('message_deleted', cur.msgs.length));
 on('generate:start', () => send('generation_started'));
 on('generate:end', () => send('generation_ended', cur.msgs.length - 1));
