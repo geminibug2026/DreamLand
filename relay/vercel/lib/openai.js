@@ -188,7 +188,7 @@ async function openaiInner(request, region, parts, url, authed) {
   return keepAlive(async () => {
     const tried = (request.headers.get('x-relay-tried') || '').split(',').map(s => s.trim()).filter(Boolean);
     let payload = toGemini({ ...body, model }), last = '';
-    const start = Math.floor(Math.random() * list.length); let thrown = 0;
+    const start = Math.floor(Math.random() * list.length); let thrown = 0, busy = 0;
     for (let i = 0; i < list.length; i++) {
       const cred = list[(start + i) % list.length]; let r;
       try {
@@ -204,6 +204,7 @@ async function openaiInner(request, region, parts, url, authed) {
         return body.stream ? new Response(streamOut(r, model), { status: 200, headers: { ...head, 'Content-Type': 'text/event-stream' } }) : new Response(jsonOut(r, model), { status: 200, headers: { ...head, 'Content-Type': 'application/json' } });
       }
       last = await errorOf(r);
+      if (r.status === 503) busy++;
       if (r.status !== 429 && r.status !== 503) return fail(r.status, last);   // 키 · 요청이 잘못된 것은 다른 곳으로 넘겨도 소용없다
     }
     // 모든 열쇠가 구글 인증에서 막혔다 (429 가 아니다): 다른 지역으로 넘겨도 소용없으니 까닭을 그대로 알린다
@@ -212,11 +213,13 @@ async function openaiInner(request, region, parts, url, authed) {
     const next = REGIONS.find(x => x !== region && !tried.includes(x));
     if (next) {
       try {
-        const sib = await fetch(`${url.origin}/${next}/v1/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + KEY, 'x-relay-tried': [...tried, region].join(',') }, body: JSON.stringify(body) });
+        const sib = await fetch(`${url.origin}/${next}/v1/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + KEY, 'x-relay-tried': [...tried, region].join(','), ...(busy || request.headers.get('x-relay-busy') === '1' ? { 'x-relay-busy': '1' } : {}) }, body: JSON.stringify(body) });
         const head = new Headers(CORS); for (const k of ['content-type', 'x-relay-region', 'x-relay-key']) { const v = sib.headers.get(k); if (v) head.set(k, v); } head.set('Cache-Control', 'no-store');
         return new Response(sib.body, { status: sib.status, headers: head });
       } catch (e) { last = last || String(e && e.message || e); }
     }
-    return fail(429, 'Every key in every region returned 429. ' + last, 'rate_limit_exceeded');
+    // 503 은 한도가 아니라 구글 쪽 모델이 붐비는 것 — 키 · 지역을 다 돌아도 그대로면 그렇다고 알린다
+    if (busy || (request.headers.get('x-relay-busy') === '1')) return fail(503, '구글 쪽 모델이 지금 붐벼요 (503 · overloaded). 모든 키 · 지역에서 같은 답이 왔어요. 잠시 뒤 다시 하거나 다른 모델(예: flash)로 바꿔 보세요. ' + last, 'overloaded');
+    return fail(429, '모든 키 · 지역이 429 예요 (Every key in every region returned 429). 잠시 쉬거나 다른 프로젝트 키(API_2 …)를 더 넣어 주세요. ' + last, 'rate_limit_exceeded');
   }, !!body.stream, region);
 }
