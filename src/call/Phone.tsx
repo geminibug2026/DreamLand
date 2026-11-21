@@ -75,18 +75,21 @@ function LineRow({ s, l, i, picked, pick }: { s: C.Session; l: C.Line; i: number
  *  자막을 누르면 멈춤 · 이어 듣기, ‹ › 로 앞뒤 문장. (문장부터 다시 듣기는 아래 주고받은 말에서 문장을 누른다) */
 function Caption({ s }: { s: C.Session }) {
   const r = useReadingState(), l = nowLine(s, r?.key), who = l ? C.charOfLine(s, l) : null;
-  if (!l || !who) return null;
-  const reading = r?.key === C.lineKey(l), paused = reading && !!r?.paused, group = s.chars.length > 1;
+  // 목소리가 꺼져 있으면 자막 자리도 없다 (읽지 않는데 버튼 · 글이 뜨면 거슬린다)
+  if (!s.speaker || !TTS.enabled()) return null;
+  const reading = !!l && r?.key === C.lineKey(l), paused = reading && !!r?.paused, group = s.chars.length > 1;
+  // 읽지 않는 동안(말을 고르는 중 · 쓰는 중 · 끝난 뒤)에는 글을 띄우지 않고 자리만 비워 둔다 — 자막이 생겼다 없어지며 아래 기록이 오르내리지 않게
+  if (!reading || !l || !who) return <div className="call-now idle" aria-hidden="true"><div className="call-now-top" /><div className="call-now-text" /></div>;
   const toggle = () => { if (!reading) return; if (paused) TTS.resume(); else TTS.pause(); };
   return <div className={`call-now${reading ? ' reading' : ''}${paused ? ' paused' : ''}`} role="group" aria-label={t('call.read.title')}>
     <div className="call-now-top">
       <button type="button" className="call-now-step" title={t('call.read.back')} aria-label={t('call.read.back')} disabled={!reading} onClick={() => TTS.step(-1)}><Icon name="left" size={14} /></button>
-      <span className="call-now-tag"><i className="call-now-rule" aria-hidden />{group ? <><Ava c={who} /><b>{who.name}</b></> : null}<small>{reading ? (paused ? t('call.read.pausedNow') : t('call.read.now')) : t('call.read.coming')}</small><i className="call-now-rule" aria-hidden /></span>
+      <span className="call-now-tag"><i className="call-now-rule" aria-hidden />{group ? <><Ava c={who} /><b>{who.name}</b></> : null}<small>{paused ? t('call.read.pausedNow') : t('call.read.now')}</small><i className="call-now-rule" aria-hidden /></span>
       <button type="button" className="call-now-step" title={t('call.read.next')} aria-label={t('call.read.next')} disabled={!reading || !r?.canNext} onClick={() => TTS.step(1)}><Icon name="right" size={14} /></button>
     </div>
     <div className="call-now-text" role="button" tabIndex={reading ? 0 : -1} aria-pressed={paused} aria-live="polite" aria-label={reading ? (paused ? t('call.read.resume') : t('call.read.pause')) : undefined} title={reading ? t('call.read.tapHint') : undefined}
       onClick={toggle} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}>
-      {l.text ? <ReadAlong text={l.text} k={C.lineKey(l)} follow="page" /> : <span className="call-dots"><i /><i /><i /></span>}{l.cut ? <em>—</em> : null}</div>
+      {l.text ? <ReadAlong text={l.text} k={C.lineKey(l)} follow="page" /> : null}{l.cut ? <em>—</em> : null}</div>
   </div>;
 }
 
