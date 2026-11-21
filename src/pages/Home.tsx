@@ -41,10 +41,12 @@ async function newFolder(): Promise<Folder | null> {
 async function moveToFolder(ids: string[], folderId: string) {
   for (const id of ids) { const c = S.get('chars', id); if (c && (c.folder || '') !== folderId) { c.folder = folderId; await S.save('chars', c, true); } }
 }
-/** 캐릭터 한 명을 담을 폴더 고르기 */
+/** 캐릭터 카드의 메뉴: 담을 폴더 고르기 · 실리태번용으로 내보내기 */
 function folderMenu(anchor: Element, c: Char, after: () => void) {
   const cur = folderOf(c);
   menu(anchor, [
+    { label: t('stx.menu'), ic: 'upload', hint: 'ZIP', onclick: () => void import('../editors/StExport').then(m => m.stExport(c)) },
+    '-',
     ...folders().map(fo => ({ label: fo.name, ic: cur === fo.id ? 'check' : 'folder', onclick: async () => { await moveToFolder([c.id], fo.id); after(); } })),
     cur ? { label: t('home.folder.takeOut'), ic: 'x', onclick: async () => { await moveToFolder([c.id], ''); after(); } } : null,
     folders().length ? '-' : null,

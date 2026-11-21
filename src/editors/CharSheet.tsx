@@ -43,6 +43,7 @@ function Sheet({ c, close }: { c: XChar; close: () => void }) {
     { label: t('editors.sheet.exportPng'), ic: 'image', onclick: async () => download(`${c.name}.png`, new Blob([await cards.exportCharPng(c) as BlobPart], { type: 'image/png' })) },
     { label: t('editors.sheet.exportJson'), ic: 'import', hint: 'V2', onclick: () => download(`${c.name}.json`, JSON.stringify(cards.charToCard(c), null, 2)) },
     { label: t('editors.sheet.exportJson'), ic: 'import', hint: 'V3', onclick: () => download(`${c.name}.v3.json`, JSON.stringify(cards.charToCard(c, true), null, 2)) },
+    { label: t('stx.menu'), ic: 'upload', hint: 'ZIP', onclick: () => void import('./StExport').then(m => m.stExport(c)) },
     { label: t('editors.sheet.folder'), ic: 'folder', hint: folders().find(f => f.id === folderOf(c))?.name || '', onclick: () => folderMenu(title.current || document.body, c, () => { redraw(); pageRefresh(); }) },
     { label: t('common.duplicate'), ic: 'copy', onclick: async () => { await S.save('chars', { ...structuredClone(c), id: uid(), name: c.name + ' (사본)', src: '', createdAt: now() }, true); close(); pageRefresh(); } },
     '-',

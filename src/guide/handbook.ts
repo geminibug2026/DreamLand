@@ -10,7 +10,7 @@ const LABELS: Record<string, string> = {
   panel: 'chat.drawer.title', inspect: 'chat.drawer.inspect', note: 'chat.drawer.noteSec', vars: 'chat.drawer.varsSec', bg: 'chat.drawer.bgSec', cast: 'chat.drawer.castSec',
   tabTr: 'studio.tab.translate', tabIl: 'studio.tab.illust', tabAs: 'studio.tab.assets', tabHp: 'studio.tab.helpers', tabSc: 'studio.tab.schedule', tabEx: 'studio.tab.expressions', tabVec: 'studio.tab.vectors', tabMem: 'studio.tab.memoria', tabTts: 'studio.tab.tts',
   data: 'settings.data.section', export: 'settings.data.export', restore: 'settings.data.restore', backupNow: 'datafolder.backupNow', security: 'settings.security.section', tracker: 'settings.tracker.section',
-  importCard: 'home.empty.importCard', game: 'game.mode', talk: 'chat.side.talk', profiles: 'flow.page.tabProfiles', auto: 'flow.page.tabAuto', direct: 'flow.page.tabDirect', name: 'guide.name', tour: 'guide.tour.name',
+  importCard: 'home.empty.importCard', game: 'game.mode', talk: 'chat.side.talk', profiles: 'flow.page.tabProfiles', auto: 'flow.page.tabAuto', direct: 'flow.page.tabDirect', name: 'guide.name', tour: 'guide.tour.name', stx: 'stx.menu',
 };
 /** 지금 언어의 라벨 묶음 (없는 열쇠는 자리 이름 그대로 — 설명서가 깨지지 않게) */
 export const labels = (): Record<string, string> => Object.fromEntries(Object.entries(LABELS).map(([k, key]) => [k, has(key) ? t(key) : k]));
@@ -24,6 +24,7 @@ export const TOPICS: Topic[] = [
   T('keys', 'start', 'settings', '키 보안 금고 vault secret password 비밀번호 密钥 安全 server'),
   T('cards', 'start', 'home', '캐릭터 카드 가져오기 import png json charx chub 링크 link 角色卡 导入 만들기 create'),
   T('migrate', 'start', 'import', '이식 옮기기 sillytavern 실리태번 marinara 마리나라 migrate 迁移 import 폴더'),
+  T('toSt', 'start', 'home', '실리태번 내보내기 이식 옮기기 역방향 되돌리기 sillytavern 실리 zip 시뮬 시뮬봇 sim export tavern helper mvu lalib 导出 酒馆 迁移'),
   T('editor', 'people', 'home', '캐릭터 편집 편집기 설명 성격 시나리오 인사말 예시 editor description greeting first message 编辑 开场白'),
   T('greetings', 'people', 'home', '인사말 첫 메시지 대체 alt greeting swipe 开场白 first'),
   T('personas', 'people', 'personas', '페르소나 나 persona user 사용자 用户 人设 기본'),
