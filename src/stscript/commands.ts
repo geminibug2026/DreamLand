@@ -107,17 +107,32 @@ for (const [p, store] of [['', 'local'], ['global', 'global']] as [string, Store
   def(p ? `dec${p}var` : ['decvar', 'decchatvar'], { help: '1 빼기', run: async (a, c) => { const k = S(a, 'key') || str(a.unnamed).trim(), s = io(c, store); const n = fmt((num(s.get(k)) || 0) - 1); await s.set(k, n); return n; } });
   def(p ? `flush${p}var` : ['flushvar', 'flushchatvar'], { help: '변수 지우기', run: async (a, c) => { const k = S(a, 'key') || str(a.unnamed).trim(); if (k) await io(c, store).del(k); return ''; } });
 }
+/** /let 이름 "값" · /var 이름 "값": 이름 뒤의 값이 통째로 따옴표면 따옴표를 벗긴다 (실리태번은 이름과 값을 나눠 읽는다) */
+function unquoteRest(a: Args, rest: string): string {
+  const raw = a.cmd.unnamed.filter((p): p is string => typeof p === 'string').join('');
+  if (!/^\s*\S+\s+"(?:[^"\\]|\\.)*"\s*$/.test(raw) || !/^"[\s\S]*"$/.test(rest.trim())) return rest;
+  return rest.trim().slice(1, -1).replace(/\\(["\\])/g, '$1');
+}
 def('let', { help: '이 스크립트(닫힌 블록) 안에서만 쓰는 변수를 만든다', args: 'key=이름 값 | 이름 값', run: (a, c) => {
   if (has(a, 'key')) { const v: Val = isBound(a.unnamed) ? a.unnamed : str(a.unnamed); c.scope.let(S(a, 'key'), v); return isBound(v) ? '' : v; }
   const b = a.parts.find(isBound); const s = a.parts.map(p => isBound(p) ? '' : str(p)).join('').trim();
   const m = /^(\S+)\s*([\s\S]*)$/.exec(s); if (!m) return '';
-  const v: Val = b ? b : m[2]; c.scope.let(m[1], v); return isBound(v) ? '' : v;
+  const v: Val = b ? b : unquoteRest(a, m[2]); c.scope.let(m[1], v); return isBound(v) ? '' : v;
 } });
-def('var', { help: '범위 변수 읽기 · 바꾸기', args: 'key=이름 [값] | 이름 [값]', run: (a, c) => {
+/** /var index=: 범위 변수(JSON 목록 · 사전)의 한 칸에 글자 그대로 넣는다 (실리태번과 같다). JSON 이 아니면 새로 만든다 */
+function setScopedIndexed(cur: Val | undefined, index: string, v: string): string {
+  let j = parseJson(cur === undefined || isBound(cur) ? '' : cur);
+  if (j === null || typeof j !== 'object') j = /^-?\d+$/.test(index) ? [] : {};
+  const n = Number(index);
+  if (Array.isArray(j) && Number.isInteger(n)) j[n < 0 ? j.length + n : n] = v; else (j as Record<string, unknown>)[index] = v;
+  return JSON.stringify(j);
+}
+const setVar = (c: Ctx, k: string, v: Val, index: string): Val => { const next = index && !isBound(v) ? setScopedIndexed(c.scope.get(k), index, v) : v; c.scope.set(k, next); return isBound(v) ? '' : v; };
+def('var', { help: '범위 변수 읽기 · 바꾸기', args: 'key=이름 [index=] [값] | 이름 [값]', run: (a, c) => {
   const b = a.parts.find(isBound);
-  if (has(a, 'key')) { const k = S(a, 'key'); if (a.given && (b || str(a.unnamed) !== '')) { const v: Val = b || str(a.unnamed); c.scope.set(k, v); return isBound(v) ? '' : v; } return getIndexed(str(c.scope.get(k) ?? ''), S(a, 'index')); }
+  if (has(a, 'key')) { const k = S(a, 'key'); if (a.given && (b || str(a.unnamed) !== '')) return setVar(c, k, b || str(a.unnamed), S(a, 'index')); return getIndexed(str(c.scope.get(k) ?? ''), S(a, 'index')); }
   const s = a.parts.map(p => isBound(p) ? '' : str(p)).join('').trim(), m = /^(\S+)\s*([\s\S]*)$/.exec(s); if (!m) return '';
-  if (b || m[2]) { const v: Val = b || m[2]; c.scope.set(m[1], v); return isBound(v) ? '' : v; }
+  if (b || m[2]) return setVar(c, m[1], b || unquoteRest(a, m[2]), S(a, 'index'));
   const v = c.scope.get(m[1]); return isBound(v) ? v : getIndexed(v === undefined ? undefined : str(v), S(a, 'index'));
 } });
 def('listvar', { alias: ['listchatvar'], help: '변수 목록', run: (_a, c) => JSON.stringify(c.scope.flat()) });
@@ -192,7 +207,8 @@ def('replace', { alias: ['re'], help: '바꾸기 (mode=literal|regex pattern= re
   const s = str(a.unnamed), p = S(a, 'pattern'), r = S(a, 'replacer');
   return S(a, 'mode', 'literal') === 'regex' ? s.replace(toRegex(p), r) : s.split(p).join(r);
 } });
-def('test', { help: '정규식에 맞는지 (true/false)', run: a => String(toRegex(S(a, 'pattern')).test(str(a.unnamed))) });
+// pattern= 이면 정규식 시험 (실리태번), left= rule= right= 이면 비교 (LALib 를 깐 실리태번의 /test — /if 와 같은 규칙)
+def('test', { help: '정규식에 맞는지 · 두 값 비교 (true/false)', run: (a, c) => has(a, 'pattern') ? String(toRegex(S(a, 'pattern')).test(str(a.unnamed))) : String(cond(a, c)) });
 def('match', { help: '정규식에 맞는 부분 (g 면 목록)', run: a => {
   const re = toRegex(S(a, 'pattern')), s = str(a.unnamed);
   if (re.global) return JSON.stringify([...s.matchAll(re)].map(m => [...m]));

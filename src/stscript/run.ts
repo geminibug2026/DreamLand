@@ -19,6 +19,11 @@ export class Scope {
   set(k: string, v: Val) { (this.find(k) || this).vars.set(k, v); }
   /** 매크로가 읽을 평평한 모양 (가까운 것이 이긴다) */
   flat(): Record<string, string> { const o: Record<string, string> = {}; const chain: Scope[] = []; for (let s: Scope | null = this; s; s = s.parent) chain.unshift(s); for (const s of chain) for (const [k, v] of s.vars) o[k] = isBound(v) ? v.closure.src : v; return o; }
+  /** 닫힌 블록에만 걸린 매크로 ({{item}} · {{exception}} · {{$1}} 처럼 그 블록을 부른 명령이 넣어 주는 것). 변수와 따로 둔다 */
+  macros: Map<string, string> | null = null;
+  setMacro(k: string, v: string) { (this.macros ||= new Map()).set(k, v); }
+  macro(k: string): string | undefined { for (let s: Scope | null = this; s; s = s.parent) { const v = s.macros?.get(k); if (v !== undefined) return v; } return undefined; }
+  hasMacros() { for (let s: Scope | null = this; s; s = s.parent) if (s.macros?.size) return true; return false; }
 }
 
 export interface Host {
@@ -77,6 +82,8 @@ export async function evalParts(v: Value, c: Ctx): Promise<Val[]> {
 /** 매크로 바꾸기. {{timesIndex}} 같은 지역 이름은 범위에서 먼저 찾는다 */
 export function expand(s: string, c: Ctx): string {
   if (!s.includes('{{')) return s;
+  // 블록 매크로가 먼저 ({{item}} · {{$1}} …). 이름이 없는 것은 그대로 두어 앱 매크로가 읽는다
+  if (c.scope.hasMacros()) s = s.replace(/\{\{([^{}]+?)\}\}/g, (m, k: string) => c.scope.macro(k.trim()) ?? m);
   const flat = c.scope.flat();
   s = s.replace(/\{\{(timesIndex|pipe)\}\}/g, (m, k: string) => k === 'pipe' ? c.pipe : (flat[k] ?? m));
   // {{arg::이름}} — /run 으로 넘겨받은 값 (없으면 빈 글자)
@@ -140,8 +147,9 @@ async function runCmd(cmd: Cmd, c: Ctx, first: boolean): Promise<Val | void | nu
 }
 
 /** 닫힌 블록을 돌린다. args 는 블록 머리에 적은 이름=기본값을 채운다 */
-export async function callClosure(b: Bound, c: Ctx, args: Record<string, string> = {}, pipe = c.pipe): Promise<string> {
+export async function callClosure(b: Bound, c: Ctx, args: Record<string, string> = {}, pipe = c.pipe, macros?: Record<string, string>): Promise<string> {
   const scope = new Scope(b.scope);
+  if (macros) for (const [k, v] of Object.entries(macros)) scope.setMacro(k, v);
   for (const a of b.closure.args) { const [k, ...dv] = a.split('='); scope.let(k, k in args ? args[k] : expand(dv.join('='), { ...c, scope })); }
   for (const [k, v] of Object.entries(args)) if (!scope.vars.has(k)) scope.let(k, v);
   // /return 은 여기서 잡지 않는다: /if 안의 /return 도 그 스크립트(또는 /run 으로 부른 블록)를 끝낸다

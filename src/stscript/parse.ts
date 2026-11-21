@@ -89,7 +89,8 @@ class Parser {
     }
     let out = '';
     while (this.i < this.s.length && !/\s/.test(this.c) && this.c !== '|' && !(inClosure && this.peek(':}'))) {
-      if (this.c === '\\' && this.i + 1 < this.s.length) { out += this.s[this.i + 1]; this.i += 2; continue; }
+      // \| \{ \} \\ \: 만 글자 그대로 (이름 없는 값과 같다). 나머지 \ 는 남긴다 — find=/\s+/ 같은 정규식이 그대로 간다
+      if (this.c === '\\' && this.i + 1 < this.s.length) { const n = this.s[this.i + 1]; if ('|{}\\:'.includes(n)) { out += n; this.i += 2; continue; } out += '\\'; this.i++; continue; }
       if (this.peek('{{')) { const e = this.s.indexOf('}}', this.i); if (e > 0) { out += this.s.slice(this.i, e + 2); this.i = e + 2; continue; } }
       out += this.c; this.i++;
     }
