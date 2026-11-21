@@ -1,141 +1,176 @@
-// 밤의 게시판: 화면 — 한 줄 기둥에 꽂힌 쪽지들. 글 쓰기 · 글 한 장(답글 레일 · 투표 · 그림) · 참여자 · 프로필 · 나에게 온 것 · 설정
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
+// 밤의 게시판: 화면 — 타임라인(추천 / 팔로우 중) · 게시물 상세와 답글 타래 · 프로필 · 알림 · 글쓰기 · 오른쪽 보조 기둥 · 참여자와 설정 창
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Avatar, useEvents } from '../kit';
-import { S, emit, pickFiles, readDataURL } from '../lib/core';
-import { Form, PageHead, charPicker, confirmBox, menu, toast } from '../ui';
+import { S, pickFiles, readDataURL } from '../lib/core';
+import { tint } from '../lib/tone';
+import { Form, charPicker, confirmBox, toast } from '../ui';
 import { openModal } from '../addons/parts';
 import { fmtDate, t } from '../i18n';
-import { ME, type Note } from './types';
+import { ME, type Note, type Notice } from './types';
 import { threadOf, unseen, visible } from './logic';
-import { F, account, answerNow, canDraw, cfg, draw, echo, follow, hide, imgOf, like, makeProfiles, markSeen, members, myAccount, post, refresh, remove, run, save, setMembers, talkAbout, undo, wipe } from './store';
-import { EmptyBoard, Ln, Pin, PollView, agoLabel, faceOf, pad2 } from './parts';
+import { F, account, cfg, follow, makeProfiles, markSeen, members, myAccount, post, refresh, run, save, setMembers, undo, wipe } from './store';
+import { Acts, Face, Ic, Media, PollView, Row, agoLabel, back, faceOf, noteMenu, picsOf, show, view } from './parts';
 
-// 화면을 떠났다 와도 남는 것
-const view = { tab: 'all' as 'all' | 'mine' | 'hidden', shown: 30, replyTo: '' as string, replyRe: '' as string };
-const copyText = (s: string) => { void navigator.clipboard?.writeText(s).then(() => toast(t('feed.copied'), 'ok')).catch(() => { }); };
-
-// ── 글 쓰기 ──
-function Write({ root, re, onDone, autoFocus }: { root?: string; re?: string; onDone?: () => void; autoFocus?: boolean }) {
-  const [text, setText] = useState(''), [img, setImg] = useState(''), [poll, setPoll] = useState<{ q: string; opts: string[] } | null>(null), [busy, setBusy] = useState(false);
+// ── 글쓰기 ── 내 얼굴 + 자리글, 아래 줄에 그림 · 투표와 글자 수 고리, 오른쪽에 알약 단추
+function Ring({ used, limit }: { used: number; limit: number }) {
+  const left = limit - used, p = Math.min(1, used / limit), C = 2 * Math.PI * 9;
+  return <span className={'fd-ring' + (left < 0 ? ' over' : left <= 20 ? ' near' : '')} role="img" aria-label={t('feed.write.left', { n: left })}>
+    <svg viewBox="0 0 24 24" width="24" height="24"><circle cx="12" cy="12" r="9" className="bg" /><circle cx="12" cy="12" r="9" className="fg" strokeDasharray={`${C * p} ${C}`} transform="rotate(-90 12 12)" /></svg>{left <= 20 ? <b>{left}</b> : null}</span>;
+}
+function Write({ root, re, onDone, autoFocus, focusKey }: { root?: string; re?: string; onDone?: () => void; autoFocus?: boolean; focusKey?: string }) {
+  const [text, setText] = useState(''), [imgs, setImgs] = useState<string[]>([]), [poll, setPoll] = useState<{ q: string; opts: string[] } | null>(null), [busy, setBusy] = useState(false);
   const limit = cfg().limit, ta = useRef<HTMLTextAreaElement>(null), left = limit - text.length;
-  const grow = () => { const el = ta.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(240, el.scrollHeight) + 'px'; } };
-  useEffect(() => { if (autoFocus) ta.current?.focus(); }, [autoFocus]);
-  const pollOk = !poll || poll.opts.filter(o => o.trim()).length >= 2, can = !busy && left >= 0 && pollOk && (!!text.trim() || !!img || (!!poll && pollOk));
-  const send = async () => { if (!can) return; setBusy(true); try { await post(text, { image: img || undefined, poll: poll || undefined, root, re }); setText(''); setImg(''); setPoll(null); requestAnimationFrame(grow); onDone?.(); } finally { setBusy(false); } };
-  const attach = async () => { const [f] = await pickFiles({ accept: 'image/*' }); if (f) setImg(await readDataURL(f)); };
+  const grow = () => { const el = ta.current; if (el) { el.style.height = 'auto'; el.style.height = Math.min(260, el.scrollHeight) + 'px'; } };
+  useEffect(() => { if (autoFocus || focusKey) ta.current?.focus(); }, [autoFocus, focusKey]);
+  const pollOk = !poll || poll.opts.filter(o => o.trim()).length >= 2, can = !busy && left >= 0 && pollOk && (!!text.trim() || !!imgs.length || !!poll);
+  const send = async () => { if (!can) return; setBusy(true); try { await post(text, { image: imgs[0], more: imgs.slice(1), poll: poll || undefined, root, re }); setText(''); setImgs([]); setPoll(null); requestAnimationFrame(grow); onDone?.(); } finally { setBusy(false); } };
+  const attach = async () => { const fs = await pickFiles({ accept: 'image/*', multiple: !root }); const got = await Promise.all(fs.slice(0, 4).map(f => readDataURL(f))); if (got.length) setImgs(x => [...x, ...got].slice(0, root ? 1 : 4)); };
+  const ph = root ? (re ? t('feed.replyingTo', { name: '@' + faceOf(F.notes.find(n => n.id === re)?.by || '').handle }) : t('feed.detail.replyPh')) : t('feed.write.ph');
   return <div className={'fd-write' + (root ? ' re' : '')}>
-    <textarea ref={ta} className="fd-ta" rows={1} value={text} maxLength={limit + 40} placeholder={root ? t('feed.write.replyPh') : t('feed.write.ph')} aria-label={root ? t('feed.write.replyPh') : t('feed.write.ph')}
-      onChange={e => { setText(e.target.value); grow(); }} onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void send(); } }} />
-    {img ? <div className="fd-pic fx-frame"><img src={img} alt="" /><button type="button" className="fd-pic-x" aria-label={t('feed.write.dropImage')} onClick={() => setImg('')}><Ln name="x" size={14} /></button></div> : null}
-    {poll ? <div className="fd-pollmake">
-      <input className="fd-in" value={poll.q} maxLength={120} placeholder={t('feed.write.pollQ')} aria-label={t('feed.write.pollQ')} onChange={e => setPoll({ ...poll, q: e.target.value })} />
-      {poll.opts.map((o, i) => <div className="fd-pollmake-row" key={i}><span className="fx-num">{pad2(i + 1)}</span><input className="fd-in" value={o} maxLength={40} placeholder={t('feed.write.pollOpt')} aria-label={t('feed.write.pollOpt') + ' ' + (i + 1)} onChange={e => setPoll({ ...poll, opts: poll.opts.map((x, j) => j === i ? e.target.value : x) })} />
-        {poll.opts.length > 2 ? <button type="button" className="fd-tool" aria-label={t('common.delete')} onClick={() => setPoll({ ...poll, opts: poll.opts.filter((_, j) => j !== i) })}><Ln name="x" size={14} /></button> : null}</div>)}
-      {poll.opts.length < 4 ? <button type="button" className="fd-link" onClick={() => setPoll({ ...poll, opts: [...poll.opts, ''] })}>{t('feed.write.pollAdd')}</button> : null}
-    </div> : null}
-    <div className="fd-write-foot">
-      {root ? null : <><button type="button" className={'fd-tool' + (img ? ' on' : '')} title={t('feed.write.image')} aria-label={t('feed.write.image')} onClick={() => void attach()}><Ln name="image" /></button>
-        <button type="button" className={'fd-tool' + (poll ? ' on' : '')} title={t('feed.write.poll')} aria-label={t('feed.write.poll')} aria-pressed={!!poll} onClick={() => setPoll(poll ? null : { q: '', opts: ['', ''] })}><Ln name="fdpoll" /></button></>}
-      <span className={'fx-num fd-count' + (left < 0 ? ' over' : '')} aria-label={t('feed.write.left', { n: left })}>{String(text.length).padStart(3, '0')}<i>/</i>{limit}</span>
-      <button type="button" className="fd-pinbtn fx-tap inv" disabled={!can} onClick={() => void send()}>{root ? t('feed.write.reply') : t('feed.write.pin')}</button>
-    </div>
-  </div>;
-}
-
-// ── 글 한 장 ──
-function noteMenu(e: MouseEvent, n: Note) {
-  menu(e.currentTarget, [
-    n.by !== ME && { label: t('feed.act.profile'), ic: 'user', onclick: () => openProfile(n.by) },
-    { label: t('feed.act.copy'), ic: 'copy', onclick: () => copyText(n.text) },
-    n.hidden ? { label: t('feed.act.unhide'), ic: 'eye', onclick: () => hide(n.id, false) } : { label: t('feed.act.hide'), ic: 'eyeoff', hint: t('feed.act.hideHint'), onclick: () => hide(n.id) },
-    '-', { label: t('common.delete'), ic: 'trash', danger: true, onclick: async () => { if (await confirmBox(t('feed.act.deleteAsk'), t('common.delete'), true)) void remove(n.id); } },
-  ]);
-}
-/** 공감 · 옮겨 적기 · 답글 단추 줄 */
-function Acts({ n, replies, onReply, small }: { n: Note; replies?: number; onReply: () => void; small?: boolean }) {
-  const mine = n.by === ME, liked = n.likes.includes(ME), echoed = n.echoes.includes(ME);
-  return <footer className={'fd-acts' + (small ? ' sm' : '')}>
-    <button type="button" className="fd-act" aria-label={t('feed.act.reply')} title={t('feed.act.reply')} onClick={onReply}><Ln name="fdreply" />{replies != null ? <span className="fx-num">{pad2(replies)}</span> : null}</button>
-    <button type="button" className={'fd-act' + (liked ? ' on' : '')} aria-pressed={liked} aria-label={t('feed.act.like')} title={t('feed.act.like')} onClick={() => like(n.id)}><Ln name="fdstar" fill={liked} /><span className="fx-num">{pad2(n.likes.length)}</span></button>
-    {small ? null : <button type="button" className={'fd-act' + (echoed ? ' on' : '')} aria-pressed={echoed} aria-label={t('feed.act.echo')} title={t('feed.act.echo')} onClick={() => echo(n.id)}><Ln name="fdecho" /><span className="fx-num">{pad2(n.echoes.length)}</span></button>}
-    <span className="fd-acts-gap" />
-    {mine ? <button type="button" className="fd-act word" disabled={run.busy || !!run.answering} title={t('feed.act.answerHint')} onClick={() => void answerNow(n.id)}>{run.answering === n.id ? t('feed.act.answering') : t('feed.act.answer')}<span className="fx-lbl fd-cost">{t('feed.cost.one')}</span></button>
-      : small || faceOf(n.by).gone ? null : <button type="button" className="fd-act word" title={t('feed.act.talkHint')} onClick={() => void talkAbout(n.id)}><Ln name="fdtalk" />{t('feed.act.talk')}</button>}
-  </footer>;
-}
-function Picture({ n }: { n: Note }) {
-  const src = imgOf(n.image);
-  if (src) return <button type="button" className="fd-pic fx-frame" aria-label={t('feed.picture')} onClick={() => openModal({ title: faceOf(n.by).name, wide: true }, () => <img className="fd-pic-full" src={src} alt={n.imagePrompt || ''} />)}><img src={src} alt={n.imagePrompt || ''} loading="lazy" /></button>;
-  // 그림 설명만 있고 삽화가 연결되지 않았으면 아무것도 보이지 않는다
-  if (!n.imagePrompt || !canDraw()) return null;
-  const busy = run.drawing.has(n.id);
-  return <div className="fd-sketch fx-corners"><span className="fd-sketch-t">{n.imagePrompt}</span><button type="button" className="fd-act word" disabled={busy} onClick={() => void draw(n.id)}><Ln name="fdbrush" />{busy ? t('feed.draw.busy') : t('feed.draw.go')}<span className="fx-lbl fd-cost">{t('feed.cost.image')}</span></button></div>;
-}
-function Reply({ n, depth, onReply }: { n: Note; depth: number; onReply: () => void }) {
-  const f = faceOf(n.by);
-  return <div className={'fd-re' + (depth ? ' d1' : '') + (run.fresh.has(n.id) ? ' fx-in' : '') + (n.by === ME ? ' me' : '')} id={'fd-' + n.id}>
-    <i className="fd-elbow" aria-hidden="true" />
-    <div className="fd-re-main">
-      <header className="fd-head"><button type="button" className="fd-name fx-serif" onClick={() => n.by === ME ? openMembers() : openProfile(n.by)}>{f.name}</button><span className="fx-lbl fd-handle">@{f.handle}</span><time className="fx-lbl fd-time" dateTime={new Date(n.ts).toISOString()} title={fmtDate(n.ts, { dateStyle: 'medium', timeStyle: 'short' })}>{agoLabel(n.ts)}</time>
-        <button type="button" className="fd-more" aria-label={t('feed.act.more')} onClick={e => noteMenu(e, n)}><Ln name="more" /></button></header>
-      <p className="fd-text">{n.text}</p>
-      <Acts n={n} onReply={onReply} small />
-    </div>
-  </div>;
-}
-function NoteItem({ n, i }: { n: Note; i: number }) {
-  const [, bump] = useState(0), f = faceOf(n.by), thread = threadOf(F.notes, n.id), open = view.replyTo === n.id;
-  const setReply = (re = '') => { if (open && view.replyRe === re) { view.replyTo = ''; view.replyRe = ''; } else { view.replyTo = n.id; view.replyRe = re; } bump(x => x + 1); };
-  const echoers = n.echoes.map(id => faceOf(id).name);
-  return <article className={'fd-note' + (run.fresh.has(n.id) ? ' fx-in fresh' : '') + (n.hidden ? ' hid' : '') + (n.by === ME ? ' me' : '')} id={'fd-' + n.id} style={{ ['--d' as string]: `${Math.min(i, 8) * 70}ms` }}>
-    <div className="fd-gut"><Pin seed={n.id} /><button type="button" className="fd-face" aria-label={f.name} onClick={() => n.by === ME ? openMembers() : openProfile(n.by)}><Avatar o={f.o} cls="sm" /></button></div>
-    <div className="fd-main">
-      <header className="fd-head"><button type="button" className="fd-name fx-serif" onClick={() => n.by === ME ? openMembers() : openProfile(n.by)}>{f.name}</button><span className="fx-lbl fd-handle">@{f.handle}</span>
-        <time className="fx-lbl fd-time" dateTime={new Date(n.ts).toISOString()} title={fmtDate(n.ts, { dateStyle: 'medium', timeStyle: 'short' })}>{agoLabel(n.ts)}</time>
-        {n.src ? <span className="fx-lbl kr fd-tag">{t('feed.tag.fromChat')}</span> : null}{n.hidden ? <span className="fx-lbl kr fd-tag">{t('feed.tag.hidden')}</span> : null}
-        <button type="button" className="fd-more" aria-label={t('feed.act.more')} onClick={e => noteMenu(e, n)}><Ln name="more" /></button></header>
-      {n.text ? <p className="fd-text">{n.text}</p> : null}
-      <Picture n={n} />
-      {n.poll ? <PollView note={n} poll={n.poll} /> : null}
-      {echoers.length ? <p className="fx-lbl kr fd-echoed"><Ln name="fdecho" size={12} />{t('feed.echoedBy', { names: echoers.slice(0, 3).join(' · ') + (echoers.length > 3 ? ' +' + (echoers.length - 3) : '') })}</p> : null}
-      <Acts n={n} replies={thread.length} onReply={() => setReply()} />
-      {thread.length || open ? <div className="fd-thread">
-        {thread.map(({ n: r, depth }) => <Reply key={r.id} n={r} depth={depth} onReply={() => setReply(r.id)} />)}
-        {open ? <div className="fd-re write"><i className="fd-elbow" aria-hidden="true" /><div className="fd-re-main">{view.replyRe ? <span className="fx-lbl kr">{t('feed.write.replyingTo', { name: faceOf(F.notes.find(x => x.id === view.replyRe)?.by || '').name })}</span> : null}
-          <Write root={n.id} re={view.replyRe || undefined} autoFocus onDone={() => { view.replyTo = ''; view.replyRe = ''; bump(x => x + 1); }} /></div></div> : null}
+    <div className="fd-left"><Face id={ME} link={false} /></div>
+    <div className="fd-body">
+      <textarea ref={ta} className="fd-ta" rows={1} value={text} maxLength={limit + 60} placeholder={ph} aria-label={ph} onChange={e => { setText(e.target.value); grow(); }} onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void send(); } }} />
+      {imgs.length ? <div className={'fd-media n' + imgs.length}>{imgs.map((src, i) => <span key={i}><img src={src} alt="" /><button type="button" className="fd-media-x" aria-label={t('feed.write.dropImage')} onClick={() => setImgs(imgs.filter((_, j) => j !== i))}><Ic name="x" size={16} /></button></span>)}</div> : null}
+      {poll ? <div className="fd-pollmake">
+        <input className="fd-in" value={poll.q} maxLength={120} placeholder={t('feed.write.pollQ')} aria-label={t('feed.write.pollQ')} onChange={e => setPoll({ ...poll, q: e.target.value })} />
+        {poll.opts.map((o, i) => <div className="fd-pollmake-row" key={i}><input className="fd-in" value={o} maxLength={40} placeholder={t('feed.write.pollOpt') + ' ' + (i + 1)} aria-label={t('feed.write.pollOpt') + ' ' + (i + 1)} onChange={e => setPoll({ ...poll, opts: poll.opts.map((x, j) => j === i ? e.target.value : x) })} />
+          {poll.opts.length > 2 ? <button type="button" className="fd-ibtn" aria-label={t('common.delete')} onClick={() => setPoll({ ...poll, opts: poll.opts.filter((_, j) => j !== i) })}><Ic name="x" size={17} /></button> : null}</div>)}
+        <div className="fd-pollmake-foot">{poll.opts.length < 4 ? <button type="button" className="fd-link" onClick={() => setPoll({ ...poll, opts: [...poll.opts, ''] })}>{t('feed.write.pollAdd')}</button> : <span />}<button type="button" className="fd-link dim" onClick={() => setPoll(null)}>{t('feed.write.pollDrop')}</button></div>
       </div> : null}
+      <div className="fd-write-foot">
+        <button type="button" className="fd-ibtn acc" disabled={imgs.length >= (root ? 1 : 4) || !!poll} title={t('feed.write.image')} aria-label={t('feed.write.image')} onClick={() => void attach()}><Ic name="image" /></button>
+        {root ? null : <button type="button" className="fd-ibtn acc" disabled={!!imgs.length || !!poll} title={t('feed.write.poll')} aria-label={t('feed.write.poll')} onClick={() => setPoll({ q: '', opts: ['', ''] })}><Ic name="fdpoll" /></button>}
+        <span className="fd-grow" />{text.length ? <Ring used={text.length} limit={limit} /> : null}
+        <button type="button" className="fd-pill solid" disabled={!can} onClick={() => void send()}>{root ? t('feed.write.reply') : t('feed.write.pin')}</button>
+      </div>
     </div>
-  </article>;
+  </div>;
 }
+function openCompose() { openModal({ title: '', wide: true, spec: 'div.fd-compose' }, close => <Write autoFocus onDone={close} />); }
 
-// ── 창: 프로필 ──
-export function openProfile(id: string) {
-  openModal({ title: t('feed.profile.title'), spec: 'div.fd-prof' }, close => <Profile id={id} close={close} />);
-}
-function Profile({ id, close }: { id: string; close: () => void }) {
-  useEvents('feed:changed');
-  const f = faceOf(id), a = account(id), notes = F.notes.filter(n => n.by === id && visible(n)).slice(-30).reverse(), follows = (F.follows[id] || []).filter(x => x === ME || account(x)), fans = Object.keys(F.follows).filter(k => F.follows[k].includes(id));
-  const mineFollows = (F.follows[ME] || []).includes(id);
+/** 위에 붙는 머리: 뒤로 단추 + 제목 (+ 작은 설명) */
+const Bar = ({ title, sub, children }: { title: ReactNode; sub?: ReactNode; children?: ReactNode }) =>
+  <header className="fd-top"><div className="fd-bar"><button type="button" className="fd-ibtn" aria-label={t('feed.back')} onClick={back}><Ic name="fdback" size={20} /></button><div className="fd-head-t"><h2>{title}</h2>{sub ? <span className="fd-meta">{sub}</span> : null}</div>{children}</div></header>;
+const Empty = ({ title, line, children }: { title: string; line?: string; children?: ReactNode }) => <div className="fd-none"><h3>{title}</h3>{line ? <p>{line}</p> : null}{children}</div>;
+
+// ── 타임라인 ──
+function Home() {
+  const mem = members(F), mine = new Set([ME, ...(F.follows[ME] || [])]), news = unseen(F);
+  const roots = F.notes.filter(n => !n.root && visible(n)), list = (view.tab === 'following' ? roots.filter(n => mine.has(n.by)) : roots).slice().reverse(), shown = list.slice(0, view.shown);
+  const [, bump] = useState(0), setTab = (k: typeof view.tab) => { view.tab = k; view.shown = 30; bump(x => x + 1); };
+  const doRefresh = async () => { const n = await refresh(); if (n) setTimeout(() => { run.fresh = new Set(); }, 5000); };
   return <>
-    <div className="fd-prof-top"><div className="fd-prof-face fx-ring"><Avatar o={f.o} /></div>
-      <div className="fd-prof-id"><h3 className="fx-serif">{f.name}</h3><span className="fx-lbl fd-handle">@{f.handle}</span>{a?.bio ? <p className="fd-prof-bio">{a.bio}</p> : null}</div>
-      {id !== ME ? <button type="button" className={'fx-pill fx-tap' + (mineFollows ? ' on' : '')} aria-pressed={mineFollows} onClick={() => follow(id)}>{mineFollows ? t('feed.profile.following') : t('feed.profile.follow')}</button> : null}</div>
-    <div className="fd-prof-kv">
-      <div className="fx-kv"><span className="fx-lbl kr">{t('feed.profile.notes')}</span><i /><b>{pad2(F.notes.filter(n => n.by === id && !n.root && visible(n)).length)}</b></div>
-      <div className="fx-kv"><span className="fx-lbl kr">{t('feed.profile.follows')}</span><i /><b>{pad2(follows.length)}</b></div>
-      <div className="fx-kv"><span className="fx-lbl kr">{t('feed.profile.fans')}</span><i /><b>{pad2(fans.length)}</b></div>
-    </div>
-    {follows.length ? <div className="fd-prof-ties"><span className="fx-lbl kr">{t('feed.profile.follows')}</span>{follows.map(x => <button type="button" key={x} className="fx-pill fx-tap" disabled={x === ME} onClick={() => { close(); openProfile(x); }}>{faceOf(x).name}</button>)}</div> : null}
-    <div className="fx-head"><span className="fx-lbl kr ink">{t('feed.profile.recent')}</span></div>
-    {notes.length ? <div className="fx-rows fd-prof-list">{notes.map(n => { const root = n.root ? F.notes.find(x => x.id === (n.re || n.root)) || F.notes.find(x => x.id === n.root) : null;
-      return <button type="button" key={n.id} className="fd-prof-row" onClick={() => { close(); jump(n.root || n.id); }}>
-        <span className="fx-lbl fd-time">{agoLabel(n.ts)}</span><span className="fd-prof-txt">{root ? <em className="fx-lbl kr">{t('feed.profile.repliedTo', { name: faceOf(root.by).name })}</em> : null}{n.text || t('feed.picture')}</span>
-        <span className="fx-num fd-prof-n"><Ln name="fdstar" size={12} />{pad2(n.likes.length)}</span></button>; })}</div>
-      : <p className="hint">{t('feed.profile.none')}</p>}
+    <header className="fd-top">
+      <div className="fd-bar"><div className="fd-head-t"><h2>{t('feed.title')}</h2></div>
+        <button type="button" className="fd-ibtn" aria-label={t('feed.notices.title') + (news ? ` (${news})` : '')} title={t('feed.notices.title')} onClick={() => show({ k: 'notices' })}><Ic name="fdbell" size={20} />{news ? <span className="fd-badge">{news > 9 ? '9+' : news}</span> : null}</button>
+        <button type="button" className="fd-ibtn only-narrow" aria-label={t('feed.members.title')} title={t('feed.members.title')} onClick={openMembers}><Ic name="users" size={20} /></button>
+        <button type="button" className="fd-ibtn only-narrow" aria-label={t('feed.set.title')} title={t('feed.set.title')} onClick={openSettings}><Ic name="gear" size={20} /></button></div>
+      <div className="fd-tabs" role="tablist">{([['all', t('feed.tab.all')], ['following', t('feed.tab.following')]] as [typeof view.tab, string][]).map(([k, l]) => <button type="button" key={k} role="tab" aria-selected={view.tab === k} className={view.tab === k ? 'on' : ''} onClick={() => setTab(k)}><span>{l}</span></button>)}</div>
+    </header>
+    {!mem.length ? <Empty title={t('feed.welcome.title')} line={t('feed.first.line')}><button type="button" className="fd-pill solid big" onClick={pickMembers}>{t('feed.members.pick')}</button><p className="fd-meta">{t('feed.first.cost')}</p></Empty> : <>
+      <div className="fd-inline-write"><Write /></div>
+      <button type="button" className={'fd-band' + (run.busy ? ' busy' : '')} disabled={run.busy} onClick={() => void doRefresh()}>{run.busy ? t('feed.refresh.busy') : t('feed.band.new')}<small>{t('feed.cost.one')}</small>{run.busy ? <i className="fd-progress" aria-hidden="true" /> : null}</button>
+      {F.last && !run.busy ? <UndoLine /> : null}
+      {shown.length ? shown.map(n => <Row key={n.id} n={n} fresh={run.fresh.has(n.id)} />) : <Empty title={view.tab === 'following' ? t('feed.empty.followingTitle') : t('feed.empty.allTitle')} line={view.tab === 'following' ? t('feed.empty.following') : t('feed.empty.all')} />}
+      {list.length > shown.length ? <button type="button" className="fd-band" onClick={() => { view.shown += 30; bump(x => x + 1); }}>{t('feed.more', { n: list.length - shown.length })}</button> : null}
+    </>}
   </>;
 }
-/** 그 글이 보이게 화면을 옮긴다 */
-function jump(id: string) { const roots = F.notes.filter(n => !n.root); view.tab = 'all'; view.shown = Math.max(view.shown, roots.length - roots.findIndex(n => n.id === id)); emit('feed:changed'); setTimeout(() => { const el = document.getElementById('fd-' + id); el?.scrollIntoView({ block: 'center', behavior: 'smooth' }); el?.classList.add('flash'); setTimeout(() => el?.classList.remove('flash'), 1600); }, 80); }
+/** 방금 묶음 되돌리기: 타임라인 위의 작은 줄 */
+function UndoLine() {
+  const n = F.last?.notes.length || 0; if (!n) return null;
+  return <div className="fd-undo"><span>{t('feed.undo.line', { n })}</span><button type="button" className="fd-link" title={t('feed.undo.hint')} onClick={async () => { if (await confirmBox(t('feed.undo.ask', { n }), t('feed.undo.go'))) { const k = await undo(); toast(t('feed.undo.done', { n: k }), 'ok'); } }}>{t('feed.undo.go')}</button></div>;
+}
+
+// ── 게시물 상세 ──
+function Detail({ id }: { id: string }) {
+  const n = F.notes.find(x => x.id === id), [re, setRe] = useState(''), [focus, setFocus] = useState('');
+  if (!n) return <><Bar title={t('feed.detail.title')} /><Empty title={t('feed.detail.gone')} /></>;
+  const f = faceOf(n.by), thread = threadOf(F.notes, n.id), reply = (rid = '') => { setRe(rid); setFocus(rid + ':' + Date.now()); };
+  const names = n.echoes.map(x => faceOf(x).name);
+  return <>
+    <Bar title={t('feed.detail.title')} />
+    <article className="fd-main" id={'fd-' + n.id}>
+      {names.length ? <span className="fd-ctx"><Ic name="fdecho" size={15} />{t('feed.echoedBy', { names: names[0] + (names.length > 1 ? t('feed.andMore', { n: names.length - 1 }) : '') })}</span> : null}
+      <div className="fd-main-head"><Face id={n.by} /><div className="fd-main-id"><button type="button" className="fd-name" onClick={() => show({ k: 'profile', id: n.by })}>{f.name}</button><span className="fd-handle">@{f.handle}</span></div>
+        <button type="button" className="fd-more" aria-label={t('feed.act.more')} onClick={e => noteMenu(e, n)}><Ic name="more" size={18} /></button></div>
+      {n.text ? <p className="fd-text big">{n.text}</p> : null}
+      <Media n={n} />{n.poll ? <PollView note={n} poll={n.poll} /> : null}
+      <p className="fd-meta fd-stamp"><time dateTime={new Date(n.ts).toISOString()}>{fmtDate(n.ts, { hour: 'numeric', minute: '2-digit' })} · {fmtDate(n.ts, { year: 'numeric', month: 'long', day: 'numeric' })}</time>{n.src ? <> · {t('feed.tag.fromChat')}</> : null}</p>
+      {thread.length + n.echoes.length + n.likes.length ? <p className="fd-stats"><span><b>{thread.length}</b> {t('feed.act.reply')}</span><span><b>{n.echoes.length}</b> {t('feed.act.echo')}</span><span><b>{n.likes.length}</b> {t('feed.stats.likes')}</span></p> : null}
+      <Acts n={n} replies={thread.length} onReply={() => reply()} />
+    </article>
+    <Write root={n.id} re={re || undefined} focusKey={focus} onDone={() => setRe('')} />
+    {thread.map(({ n: r, depth }, i) => { const next = thread[i + 1], parent = r.re ? F.notes.find(x => x.id === r.re) : null;
+      return <Row key={r.id} n={r} line={!!next && next.depth > 0} replyTo={depth && parent ? parent.by : undefined} onReply={() => reply(r.id)} fresh={run.fresh.has(r.id)} />; })}
+    {thread.length ? null : <p className="fd-meta fd-quiet">{n.by === ME ? t('feed.detail.waitMine') : t('feed.detail.noReplies')}</p>}
+  </>;
+}
+
+// ── 프로필 ──
+function Profile({ id }: { id: string }) {
+  const [, bump] = useState(0), f = faceOf(id), a = account(id), all = F.notes.filter(n => n.by === id && visible(n)).slice().reverse();
+  const posts = all.filter(n => !n.root), replies = all.filter(n => n.root), media = posts.filter(n => picsOf(n).length);
+  const follows = (F.follows[id] || []).filter(x => x === ME || account(x)), fans = Object.keys(F.follows).filter(k => F.follows[k].includes(id) && (k === ME || account(k))), mine = (F.follows[ME] || []).includes(id);
+  const list = view.ptab === 'replies' ? replies : view.ptab === 'media' ? media : posts;
+  return <>
+    <Bar title={f.name} sub={t('feed.profile.count', { n: posts.length })} />
+    <div className="fd-banner" ref={el => { tint(el, f.o as { avatar?: string } | null); }} />
+    <div className="fd-prof">
+      <div className="fd-prof-row"><span className="fd-prof-face"><Face id={id} size={84} link={false} /></span><span className="fd-grow" />
+        {id === ME ? <button type="button" className="fd-pill" onClick={openMembers}>{t('feed.profile.edit')}</button> : <>
+          <button type="button" className="fd-ibtn ring" aria-label={t('feed.profile.edit')} title={t('feed.profile.edit')} onClick={openMembers}><Ic name="edit" size={18} /></button>
+          <button type="button" className={'fd-pill' + (mine ? '' : ' solid')} aria-pressed={mine} onClick={() => follow(id)}>{mine ? t('feed.profile.following') : t('feed.profile.follow')}</button></>}</div>
+      <h3 className="fd-prof-name">{f.name}</h3><p className="fd-handle">@{f.handle}{follows.includes(ME) ? <em className="fd-tag">{t('feed.profile.followsYou')}</em> : null}</p>
+      {a?.bio ? <p className="fd-text">{a.bio}</p> : null}
+      <p className="fd-prof-nums"><span><b>{follows.length}</b> {t('feed.profile.follows')}</span><span><b>{fans.length}</b> {t('feed.profile.fans')}</span></p>
+    </div>
+    <div className="fd-tabs" role="tablist">{([['notes', t('feed.profile.notes')], ['replies', t('feed.profile.replies')], ['media', t('feed.profile.media')]] as [typeof view.ptab, string][]).map(([k, l]) => <button type="button" key={k} role="tab" aria-selected={view.ptab === k} className={view.ptab === k ? 'on' : ''} onClick={() => { view.ptab = k; bump(x => x + 1); }}><span>{l}</span></button>)}</div>
+    {list.length ? list.slice(0, 60).map(n => { const parent = n.root ? F.notes.find(x => x.id === (n.re || n.root)) : null; return <Row key={n.id} n={n} replyTo={parent?.by} />; }) : <Empty title={t('feed.profile.none')} />}
+  </>;
+}
+
+// ── 알림 ── 같은 글에 온 같은 종류는 한 줄로 묶는다: 종류 아이콘 + 작은 얼굴들 + 한 줄
+function Notices() {
+  const [from] = useState(() => F.seenAt);
+  useEffect(() => { markSeen(); }, []);
+  const groups: { key: string; kind: Notice['kind']; note?: Note; by: string[]; ts: number; reply?: Note }[] = [];
+  for (const q of [...F.notices].reverse()) {
+    const note = F.notes.find(n => n.id === q.note); if (!note) continue;
+    if (q.kind === 'reply') { const reply = F.notes.filter(n => n.by === q.by && n.root === (note.root || note.id) && Math.abs(n.ts - q.ts) < 5000)[0]; groups.push({ key: q.id, kind: 'reply', note, by: [q.by], ts: q.ts, reply }); continue; }
+    const g = groups.find(x => x.kind === q.kind && x.note === note); if (g) { if (!g.by.includes(q.by)) g.by.push(q.by); } else groups.push({ key: q.id, kind: q.kind, note, by: [q.by], ts: q.ts });
+  }
+  groups.sort((a, b) => b.ts - a.ts);
+  const fans = Object.keys(F.follows).filter(k => k !== ME && F.follows[k].includes(ME) && account(k));
+  const who = (ids: string[]) => faceOf(ids[0]).name + (ids.length > 1 ? t('feed.andMore', { n: ids.length - 1 }) : '');
+  const icon = { like: 'fdheart', echo: 'fdecho', vote: 'fdpoll', reply: 'fdreply' } as const;
+  return <>
+    <Bar title={t('feed.notices.title')} />
+    {groups.map(g => <article key={g.key} className={'fd-ntc ' + g.kind + (g.ts > from ? ' new' : '')} onClick={() => g.note && show({ k: 'note', id: g.note.root || g.note.id })}>
+      <span className="fd-ntc-i"><Ic name={icon[g.kind]} size={24} fill={g.kind === 'like'} /></span>
+      <div className="fd-body"><div className="fd-ntc-faces">{g.by.slice(0, 6).map(id => <Face key={id} id={id} size={30} />)}<span className="fd-grow" /><span className="fd-time">{agoLabel(g.ts)}</span></div>
+        <p className="fd-text"><b>{who(g.by)}</b>{t('feed.ntc.' + g.kind)}</p>
+        <p className="fd-meta fd-clip">{g.kind === 'reply' && g.reply ? g.reply.text : g.note?.text}</p></div>
+    </article>)}
+    {fans.length ? <article className="fd-ntc follow"><span className="fd-ntc-i"><Ic name="fdfollow" size={24} /></span><div className="fd-body"><div className="fd-ntc-faces">{fans.slice(0, 6).map(id => <Face key={id} id={id} size={30} />)}</div><p className="fd-text"><b>{who(fans)}</b>{t('feed.ntc.follow')}</p></div></article> : null}
+    {groups.length || fans.length ? null : <Empty title={t('feed.notices.noneTitle')} line={t('feed.notices.none')} />}
+  </>;
+}
+
+// ── 오른쪽 보조 기둥 (넓은 화면에서만) ──
+function Side() {
+  const mem = members(F), mine = new Set(F.follows[ME] || []), sug = [...mem.filter(m => !mine.has(m.char.id)), ...mem.filter(m => mine.has(m.char.id))].slice(0, 5), auto = cfg().auto;
+  return <aside className="fd-side">
+    <section className="fd-card"><h3>{t('feed.side.refreshTitle')}</h3><p className="fd-meta">{t('feed.side.refreshLine')}</p>
+      <button type="button" className="fd-pill solid" disabled={run.busy || !mem.length} onClick={() => void refresh()}>{run.busy ? t('feed.refresh.busy') : t('feed.refresh.go')}<small>{t('feed.cost.one')}</small></button>
+      {F.lastAt ? <p className="fd-meta">{t('feed.mast.last', { ago: agoLabel(F.lastAt) })}{auto > 0 ? ' · ' + t('feed.mast.auto', { n: F.auto.day === new Date().toDateString() ? F.auto.count : 0, max: auto }) : ''}</p> : null}</section>
+    <section className="fd-card"><h3>{t('feed.side.suggest')}</h3>
+      {sug.length ? sug.map(m => <div className="fd-sug" key={m.char.id} onClick={() => show({ k: 'profile', id: m.char.id })}><Face id={m.char.id} /><div className="fd-main-id"><span className="fd-name">{m.char.name}</span><span className="fd-handle">@{m.handle}</span></div>
+        <button type="button" className={'fd-pill sm' + (mine.has(m.char.id) ? '' : ' solid')} onClick={e => { e.stopPropagation(); follow(m.char.id); }}>{mine.has(m.char.id) ? t('feed.profile.following') : t('feed.profile.follow')}</button></div>) : <p className="fd-meta">{t('feed.side.noMembers')}</p>}
+      <button type="button" className="fd-link" onClick={openMembers}>{t('feed.side.manage')}</button></section>
+    <nav className="fd-side-links"><button type="button" className="fd-link dim" onClick={openSettings}>{t('feed.set.title')}</button><button type="button" className="fd-link dim" onClick={openMembers}>{t('feed.members.title')}</button></nav>
+  </aside>;
+}
 
 // ── 창: 참여자 ──
 export function openMembers() { openModal({ title: t('feed.members.title'), wide: true, spec: 'div.fd-mem' }, () => <Members />); }
@@ -154,30 +189,21 @@ function Members() {
   const mine = myAccount(), rows = [mine, ...F.accounts.filter(a => a.id !== ME && S.get('chars', a.id))], fresh = rows.filter(a => a.fresh && a.on).map(a => a.id);
   const edit = (a: typeof mine, k: 'handle' | 'bio' | 'voice', v: string) => { a[k] = k === 'handle' ? v.replace(/^@/, '').replace(/\s+/g, '_').slice(0, 18) : v; delete a.fresh; save(); };
   return <>
-    <p className="hint">{t('feed.members.intro')}</p>
-    <div className="row wrap fd-mem-tools"><button type="button" className="btn" onClick={pickMembers}>{t('feed.members.pick')}</button>
-      {fresh.length ? <button type="button" className="btn ghost" onClick={() => void writeProfiles(fresh)}>{t('feed.members.makeProfiles')} <span className="fx-lbl fd-cost">{t('feed.cost.one')}</span></button> : null}</div>
-    <div className="fx-rows fd-mem-list">{rows.map(a => { const f = faceOf(a.id), me = a.id === ME;
-      return <div className={'fd-mem-row' + (a.on ? '' : ' off')} key={a.id + ':' + (a.fresh ? 'f' : a.handle.length + a.bio.length + a.voice.length > 0 ? 'k' : '')}>
-        <Avatar o={f.o} cls="sm" />
-        <div className="fd-mem-body">
-          <div className="fd-mem-top"><b className="fx-serif">{f.name}</b>{me ? <span className="fx-lbl kr">{t('feed.me')}</span> : a.fresh ? <span className="fx-lbl kr acc">{t('feed.members.fresh')}</span> : null}
-            {me ? null : <label className="fd-mem-on"><input type="checkbox" checked={a.on} onChange={e => { a.on = e.target.checked; save(); }} /><span className="fx-lbl kr">{a.on ? t('feed.members.on') : t('feed.members.off')}</span></label>}</div>
-          <label className="fd-mem-f"><span className="fx-lbl kr">{t('feed.members.handle')}</span><span className="fd-at fx-num">@</span><input className="fd-in fx-num" defaultValue={a.handle} maxLength={18} onChange={e => edit(a, 'handle', e.target.value)} /></label>
-          <label className="fd-mem-f"><span className="fx-lbl kr">{t('feed.members.bio')}</span><input className="fd-in" defaultValue={a.bio} maxLength={80} placeholder={t('feed.members.bioPh')} onChange={e => edit(a, 'bio', e.target.value)} /></label>
-          {me ? null : <label className="fd-mem-f"><span className="fx-lbl kr">{t('feed.members.voice')}</span><input className="fd-in" defaultValue={a.voice} maxLength={240} placeholder={t('feed.members.voicePh')} onChange={e => edit(a, 'voice', e.target.value)} /></label>}
+    <p className="fd-meta">{t('feed.members.intro')}</p>
+    <div className="fd-mem-tools"><button type="button" className="fd-pill solid" onClick={pickMembers}>{t('feed.members.pick')}</button>
+      {fresh.length ? <button type="button" className="fd-pill" onClick={() => void writeProfiles(fresh)}>{t('feed.members.makeProfiles')}<small>{t('feed.cost.one')}</small></button> : null}</div>
+    {rows.map(a => { const f = faceOf(a.id), me = a.id === ME;
+      return <div className={'fd-mem-row' + (a.on ? '' : ' off')} key={a.id + (a.fresh ? ':f' : ':k')}>
+        <span className="fd-face" style={{ ['--s' as string]: '40px' }}><Avatar o={f.o} cls="fd-av" /></span>
+        <div className="fd-body">
+          <div className="fd-mem-top"><b className="fd-name">{f.name}</b>{me ? <em className="fd-tag">{t('feed.me')}</em> : a.fresh ? <em className="fd-tag acc">{t('feed.members.fresh')}</em> : null}<span className="fd-grow" />
+            {me ? null : <label className="fd-mem-on"><input type="checkbox" checked={a.on} onChange={e => { a.on = e.target.checked; save(); }} /><span>{a.on ? t('feed.members.on') : t('feed.members.off')}</span></label>}</div>
+          <label className="fd-mem-f"><span>{t('feed.members.handle')}</span><input className="fd-in" defaultValue={a.handle} maxLength={18} onChange={e => edit(a, 'handle', e.target.value)} /></label>
+          <label className="fd-mem-f"><span>{t('feed.members.bio')}</span><input className="fd-in" defaultValue={a.bio} maxLength={80} placeholder={t('feed.members.bioPh')} onChange={e => edit(a, 'bio', e.target.value)} /></label>
+          {me ? null : <label className="fd-mem-f"><span>{t('feed.members.voice')}</span><input className="fd-in" defaultValue={a.voice} maxLength={240} placeholder={t('feed.members.voicePh')} onChange={e => edit(a, 'voice', e.target.value)} /></label>}
         </div>
-      </div>; })}</div>
+      </div>; })}
   </>;
-}
-
-// ── 창: 나에게 온 것 ──
-function openNotices() {
-  const list = [...F.notices].reverse().slice(0, 40), from = F.seenAt; markSeen();
-  openModal({ title: t('feed.notices.title'), spec: 'div.fd-ntc' }, close => list.length ? <div className="fx-rows">{list.map(q => { const f = faceOf(q.by), n = F.notes.find(x => x.id === q.note);
-    return <button type="button" key={q.id} className={'fd-ntc-row' + (q.ts > from ? ' new' : '')} onClick={() => { close(); if (n) jump(n.root || n.id); }}>
-      <Ln name={q.kind === 'like' ? 'fdstar' : q.kind === 'echo' ? 'fdecho' : q.kind === 'vote' ? 'fdpoll' : 'fdreply'} /><span className="fd-ntc-txt"><b className="fx-serif">{f.name}</b> {t('feed.notices.' + q.kind)}{n ? <em>{n.text.slice(0, 60)}</em> : null}</span><span className="fx-lbl fd-time">{agoLabel(q.ts)}</span></button>; })}</div>
-    : <div className="fx-empty"><Pin seed="notices" size={40} /><p>{t('feed.notices.none')}</p></div>);
 }
 
 // ── 창: 설정 ──
@@ -209,35 +235,14 @@ function openSettings() {
 
 // ── 게시판 ──
 export function Board({ arg }: { arg?: unknown }) {
-  useEvents('feed:changed', 'chars', 'personas');
+  useEvents('feed:changed', 'feed:view', 'chars', 'personas');
   const [, tick] = useState(0);
-  useEffect(() => { const id = setInterval(() => tick(x => x + 1), 60e3); return () => clearInterval(id); }, []);   // "N분 전"이 흐르게
-  useEffect(() => { if (typeof arg === 'string' && arg) jump(arg); }, [arg]);
-  const mem = members(F), roots = F.notes.filter(n => !n.root && !n.off), hiddenN = roots.filter(n => n.hidden).length, news = unseen(F);
-  const list = (view.tab === 'hidden' ? roots.filter(n => n.hidden) : view.tab === 'mine' ? roots.filter(n => !n.hidden && (n.by === ME || F.notes.some(x => x.root === n.id && x.by === ME))) : roots.filter(n => !n.hidden)).slice().reverse();
-  const shown = list.slice(0, view.shown), setTab = (k: typeof view.tab) => { view.tab = k; view.shown = 30; tick(x => x + 1); };
-  const doRefresh = async () => { const n = await refresh(); if (n) setTimeout(() => { run.fresh = new Set(); }, 4000); };
-  return <section className="pagebox fd-page">
-    <PageHead eyebrow="night board" title={t('feed.title')}>
-      <button type="button" className="fd-tool bell" aria-label={t('feed.notices.title') + (news ? ` (${news})` : '')} title={t('feed.notices.title')} onClick={openNotices}><Ln name="fdbell" size={18} />{news ? <i className="fd-dot" aria-hidden="true" /> : null}{news ? <span className="fx-num">{pad2(news)}</span> : null}</button>
-      <button type="button" className="fd-tool" aria-label={t('feed.members.title')} title={t('feed.members.title')} onClick={openMembers}><Ln name="users" size={18} /></button>
-      <button type="button" className="fd-tool" aria-label={t('feed.set.title')} title={t('feed.set.title')} onClick={openSettings}><Ln name="gear" size={18} /></button>
-    </PageHead>
-    {!mem.length ? <div className="fx-empty fd-first"><EmptyBoard /><p>{t('feed.first.line')}</p><button type="button" className="fd-pinbtn fx-tap inv" onClick={pickMembers}>{t('feed.members.pick')}</button><small className="hint">{t('feed.first.cost')}</small></div> : <>
-      <div className="fd-mast">
-        <div className="fd-mast-kv"><span className="fx-lbl">notes <b className="fx-num">{String(roots.length).padStart(3, '0')}</b></span><span className="fx-lbl">members <b className="fx-num">{pad2(mem.length)}</b></span>{F.lastAt ? <span className="fx-lbl kr">{t('feed.mast.last', { ago: agoLabel(F.lastAt) })}</span> : null}{cfg().auto > 0 ? <span className="fx-lbl kr">{t('feed.mast.auto', { n: F.auto.day === new Date().toDateString() ? F.auto.count : 0, max: cfg().auto })}</span> : null}</div>
-        <div className="fd-mast-do">
-          {F.last && !run.busy ? <button type="button" className="fd-act word" title={t('feed.undo.hint')} onClick={async () => { if (await confirmBox(t('feed.undo.ask', { n: F.last?.notes.length || 0 }), t('feed.undo.go'))) { const n = await undo(); toast(t('feed.undo.done', { n }), 'ok'); } }}><Ln name="fdundo" />{t('feed.undo.go')}</button> : null}
-          <button type="button" className="fd-refresh fx-tap inv" disabled={run.busy} onClick={() => void doRefresh()}><Ln name="refresh" />{run.busy ? t('feed.refresh.busy') : t('feed.refresh.go')}<span className="fx-lbl fd-cost">{t('feed.cost.one')}</span></button>
-        </div>
-      </div>
-      <div className={'fd-wire' + (run.busy ? ' on' : '')} role="status" aria-live="polite">{run.busy ? <span className="sr">{t('feed.refresh.busy')}</span> : null}</div>
-      <Write />
-      <div className="fd-tabs" role="tablist">{([['all', t('feed.tab.all')], ['mine', t('feed.tab.mine')], ...(hiddenN || view.tab === 'hidden' ? [['hidden', t('feed.tab.hidden')]] : [])] as [typeof view.tab, string][]).map(([k, l]) =>
-        <button type="button" key={k} role="tab" aria-selected={view.tab === k} className={'fx-pill fx-tap' + (view.tab === k ? ' on' : '')} onClick={() => setTab(k)}>{l}{k === 'hidden' ? <span className="fx-num">{pad2(hiddenN)}</span> : null}</button>)}</div>
-      {shown.length ? <div className="fd-list fx-rows">{shown.map((n, i) => <NoteItem key={n.id} n={n} i={i} />)}</div>
-        : <div className="fx-empty"><EmptyBoard seed={view.tab} /><p>{view.tab === 'all' ? t('feed.empty.all') : view.tab === 'mine' ? t('feed.empty.mine') : t('feed.empty.hidden')}</p></div>}
-      {list.length > shown.length ? <button type="button" className="fd-link fd-moreb" onClick={() => { view.shown += 30; tick(x => x + 1); }}>{t('feed.more', { n: list.length - shown.length })}</button> : null}
-    </>}
+  useEffect(() => { const id = setInterval(() => tick(x => x + 1), 60e3); return () => clearInterval(id); }, []);   // "N분"이 흐르게
+  useEffect(() => { if (typeof arg === 'string' && arg) { const n = F.notes.find(x => x.id === arg); if (n) { view.stack = [{ k: 'note', id: n.root || n.id }]; tick(x => x + 1); } } }, [arg]);
+  const s = view.stack[view.stack.length - 1];
+  return <section className={'fd-page' + (s ? ' sub' : '')}>
+    <div className="fd-col">{!s ? <Home /> : s.k === 'note' ? <Detail key={s.id} id={s.id} /> : s.k === 'profile' ? <Profile key={s.id} id={s.id} /> : <Notices />}</div>
+    <Side />
+    {!s && members(F).length ? <button type="button" className="fd-fab" aria-label={t('feed.fab')} title={t('feed.fab')} onClick={openCompose}><Ic name="fdpen" size={24} /></button> : null}
   </section>;
 }

@@ -35,7 +35,7 @@ export async function load() {
   F.notes = (F.notes || []).filter(n => n && n.id && typeof n.text === 'string').map(n => ({ ...n, likes: n.likes || [], echoes: n.echoes || [] }));
   imgs.clear(); for (const a of await DB.byOwner(OWNER)) imgs.set(a.id, a.data);
   // 주인 없는 그림은 치운다 (글이 정리되며 남은 것)
-  const used = new Set(F.notes.map(n => n.image).filter(Boolean)); void dropImgs([...imgs.keys()].filter(id => !used.has(id)));
+  const used = new Set(F.notes.flatMap(n => [n.image, ...(n.images || [])]).filter(Boolean)); void dropImgs([...imgs.keys()].filter(id => !used.has(id)));
   run.loaded = true; changed();
 }
 
@@ -110,7 +110,7 @@ export async function answerNow(noteId: string): Promise<number> {
 export async function undo() { const n = F.last?.notes.length || 0; await dropImgs(undoBatch(F)); save(); return n; }
 
 // ── 내가 하는 일 ──
-export async function post(text: string, { poll, image, root, re }: { poll?: { q: string; opts: string[] }; image?: string; root?: string; re?: string } = {}): Promise<Note | null> {
+export async function post(text: string, { poll, image, more, root, re }: { poll?: { q: string; opts: string[] }; image?: string; /** 둘째 그림부터 (넷까지) */ more?: string[]; root?: string; re?: string } = {}): Promise<Note | null> {
   const body = text.trim().slice(0, cfg().limit); if (!body && !image && !poll) return null;
   myAccount();
   const n: Note = { id: nid(root ? 'r' : 'n'), by: ME, text: body, ts: Date.now(), likes: [], echoes: [] };
@@ -118,6 +118,7 @@ export async function post(text: string, { poll, image, root, re }: { poll?: { q
   if (poll && !root) n.poll = { q: poll.q.trim().slice(0, 120), opts: poll.opts.map(o => o.trim().slice(0, 40)).filter(Boolean).slice(0, 4), votes: {} };
   if (n.poll && n.poll.opts.length < 2) delete n.poll;
   if (image) n.image = await putImg(await shrinkImage(image, 1280, 'image/webp', 0.88).catch(() => image) || image, 'note');
+  if (image && more?.length) { n.images = []; for (const m of more.slice(0, 3)) n.images.push(await putImg(await shrinkImage(m, 1280, 'image/webp', 0.88).catch(() => m) || m, 'note')); }
   F.notes.push(n); await tidy(); save(); return n;
 }
 const flip = (bag: string[], who: string) => { const i = bag.indexOf(who); if (i >= 0) bag.splice(i, 1); else bag.push(who); };
