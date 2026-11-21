@@ -7,6 +7,7 @@ import { parseLoose } from './memory';
 import * as SB from '../scenebook/prompts';
 import { orientation, sizeFor, LOOKS, withLook, parsePlanText } from '../scenebook/framing';
 import { t } from '../i18n';
+import { dataToBlob } from './blobUrl';
 import { Server } from './server';
 import type { IllustDraft, IllustDraftChar, IllustGenConfig, IllustItem, IllustScene, IllustVersion, Swipe } from './types';
 
@@ -146,16 +147,6 @@ const markAuto = (sc: object) => Object.defineProperty(sc, '_auto', { value: tru
 const urls = new Map<string, string>(), gone = new Set<string>(), picSubs = new Set<() => void>();
 let asked = new Set<string>(), askTimer = 0;
 const busyIds = new Set<string>();
-/** data: 주소 → 파일(Blob) */
-function dataToBlob(d: string): Blob | null {
-  if (!d.startsWith('data:')) return null;
-  try {
-    const at = d.indexOf(','), head = d.slice(5, at), b64 = /;base64$/i.test(head), body = d.slice(at + 1);
-    const bin = b64 ? atob(body) : decodeURIComponent(body), u = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
-    return new Blob([u], { type: head.split(';')[0] || 'image/png' });
-  } catch { return null; }
-}
 /** 그림 상자: 화면용 사본. 없거나 열리지 않으면 그냥 원본을 읽는다 */
 let picDb: Promise<IDBDatabase | null> | undefined;
 const pics = () => picDb ||= new Promise<IDBDatabase | null>(res => {

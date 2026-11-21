@@ -33,7 +33,10 @@ export interface MirrorState {
 interface QEntry { k: string; store: string; id: unknown; del: boolean; t: number }
 interface BaseEntry { k: string; h: string | null; gen: string }
 interface Meta { store: string; id: unknown; hash: string; at: number }
+interface WorkerReply { gone?: boolean; same?: boolean; error?: string; hash?: string; result?: { ok: boolean; hash?: string; error?: string } }
 interface Op { op: 'put' | 'del'; store: string; id: unknown; value?: Json; base?: string | null; keep?: boolean }
+/** 보낼 값의 JSON 길이 (pack 이 이미 만든 글자에서) — 묶음 크기를 재려고 한 번 더 JSON 으로 바꾸지 않게 */
+const sizes = new WeakMap<Op, number>();
 
 const keyOf = (store: string, id: unknown) => store + '\u0001' + JSON.stringify(id);
 const idOf = (v: unknown) => (v && typeof v === 'object' ? (v as { id?: unknown }).id : undefined);
@@ -94,8 +97,12 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
     const k = keyOf(store, id); live.set(k, { store, id, del, val });
     const p = mirrorDb().then(db => mtx(db, 'q', 'readwrite', o => o.put({ k, store, id, del, t: Date.now() + Math.random() } satisfies QEntry))).catch(() => { });
     qWrites.add(p); p.finally(() => qWrites.delete(p));
-    st.pending = Math.max(st.pending, live.size); emit(); schedule(300);
+    st.pending = Math.max(st.pending, live.size); emit();
+    // 메시지 묶음은 크다(긴 방은 수 MB): 답장 하나에 여러 번 저장해도 한 번만 보내도록 조금 모았다가, 화면이 한가할 때 보낸다
+    if (store === 'msgs') heavyAt = Date.now();
+    schedule(Date.now() - heavyAt < 5000 ? 4000 : 300);
   }
+  let heavyAt = 0;
 
   // ── 감싸기 ──
   // frozen: 서버 자료를 받아 와 화면을 새로 열기 직전. 이 창의 메모리 상태는 낡았으므로 그 사이의 쓰기는 버린다 (받아 온 것을 덮지 않게)
@@ -142,12 +149,26 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
     const out: { ok: boolean; hash?: string; error?: string }[] = [];
     let batch: Op[] = [], size = 0;
     const go = async () => { if (!batch.length) return; const r = await post<{ results: { ok: boolean; hash?: string; error?: string }[] }>('put', { dev, ops: batch }); out.push(...r.results); batch = []; size = 0; };
-    for (const op of ops) { const n = op.value === undefined ? 100 : JSON.stringify(op.value).length; if (size && size + n > BATCH) await go(); batch.push(op); size += n; }
+    for (const op of ops) { const n = op.value === undefined ? 100 : sizes.get(op) ?? JSON.stringify(op.value).length; if (size && size + n > BATCH) await go(); batch.push(op); size += n; }
     await go(); return out;
   }
 
+  // ── 무거운 보내기 일꾼 (못 만들면 예전처럼 화면에서) ──
+  let worker: Worker | null | undefined; let wn = 0; const waits = new Map<number, (r: WorkerReply) => void>();
+  const pusher = () => {
+    if (worker !== undefined) return worker;
+    if (opts.base || Server.web || typeof Worker === 'undefined') return (worker = null);
+    try {
+      worker = new Worker(new URL('./pusher.worker.ts', import.meta.url), { type: 'module' });
+      worker.onmessage = (e: MessageEvent<WorkerReply & { n: number }>) => { const f = waits.get(e.data.n); if (f) { waits.delete(e.data.n); f(e.data); } };
+      worker.onerror = () => { worker = null; for (const f of waits.values()) f({ error: 'worker' }); waits.clear(); };
+    } catch { worker = null; }
+    return worker;
+  };
+  const viaWorker = (job: Record<string, unknown>) => new Promise<WorkerReply>(res => { const w = pusher(); if (!w) return res({ error: 'worker' }); const n = ++wn; waits.set(n, res); w.postMessage({ ...job, n }); });
+
   let flushing: Promise<void> | null = null, again = false, timer = 0, backoff = 1000;
-  function schedule(ms: number) { clearTimeout(timer); timer = window.setTimeout(() => { void flush(); }, ms); }
+  function schedule(ms: number) { clearTimeout(timer); timer = window.setTimeout(() => { const w = window as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }; if (w.requestIdleCallback) w.requestIdleCallback(() => void flush(), { timeout: 3000 }); else void flush(); }, ms); }
   const locked = <T,>(fn: () => Promise<T>): Promise<T> => {
     const L = (navigator as Navigator & { locks?: { request(n: string, f: () => Promise<T>): Promise<T> } }).locks;
     return L ? L.request('dl-mirror', fn) : fn();
@@ -162,9 +183,18 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
     const q = await mtx<QEntry[]>(db, 'q', 'readonly', o => o.getAll()); if (!q.length) { live.clear(); await count(); return; }
     const base = await bases();
     const ops: Op[] = [], meta: { e: QEntry; hash: string | null }[] = [], done: QEntry[] = [];
+    const nb: [string, string | null][] = []; let bad = 0;
     for (const e of q) {
-      const v = await raw.get(e.store, e.id).catch(() => undefined);
       const b = base.has(e.k) ? base.get(e.k) : undefined;
+      // 메시지 묶음(긴 방은 수 MB)은 일꾼이 화면 밖에서 읽고 · 바꾸고 · 보낸다
+      if (e.store === 'msgs' && !e.del && pusher()) {
+        const r = await viaWorker({ store: e.store, id: e.id, base: b ?? null, dev, url: Server.url('store/put'), headers: { ...SERVER_HEADERS } });
+        if (r.gone || r.same) { done.push(e); continue; }
+        if (r.error) throw new Error(r.error);
+        if (r.result?.ok) { nb.push([e.k, r.result.hash || r.hash || null]); done.push(e); } else { bad++; st.error = r.result?.error || t('datafolder.err.save'); }
+        continue;
+      }
+      const v = await raw.get(e.store, e.id).catch(() => undefined);
       if (v === undefined) {
         if (!e.del) { done.push(e); continue; }   // 쓰라고 했는데 없다: 지우지 않는다 (다음 시작 때 다시 맞춘다)
         if (b === undefined) { /* 서버에 보낸 적이 없을 수도: 그래도 지우기를 알린다 (서버는 _trash 로 옮긴다) */ }
@@ -172,10 +202,9 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
       }
       const p = await pack(e.store, v);
       if (b === p.hash) { done.push(e); continue; }
-      ops.push({ op: 'put', store: e.store, id: e.id, value: p.json, ...(b !== undefined ? { base: b } : {}) }); meta.push({ e, hash: p.hash });
+      const op: Op = { op: 'put', store: e.store, id: e.id, value: p.json, ...(b !== undefined ? { base: b } : {}) }; sizes.set(op, p.str.length); ops.push(op); meta.push({ e, hash: p.hash });
     }
     const res = await sendOps(ops);
-    const nb: [string, string | null][] = []; let bad = 0;
     res.forEach((r, i) => { const m = meta[i]; if (r.ok) { nb.push([m.e.k, m.hash === null ? null : r.hash || m.hash]); done.push(m.e); } else { bad++; st.error = r.error || t('datafolder.err.save'); } });
     await setBases(nb);
     // 보내는 사이 다시 바뀐 것(t 가 달라진 것)은 지우지 않고 남긴다

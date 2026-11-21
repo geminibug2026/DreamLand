@@ -15,6 +15,7 @@ import { TtsConnBody } from '../tts/ui';
 import { ConnExtras, exportAllConns, importConnFile } from '../reach/jobs';
 import { Mark } from '../reach/models';
 import { useCss } from '../addons/parts';
+import { cfRelayGuide } from './cfRelay';
 
 export const page = { name: 'conns', Component: ConnsPage };
 
@@ -131,6 +132,7 @@ function ConnEditor({ c, api }: { c: Conn; api: EditorApi }) {
     {def.kind === 'vertex' && <div className="card sa-box"><h3 className="form-sec">{t('conns.sa.section')}</h3>
       <p className="hint">{t('conns.sa.sectionHint')}</p>
       <SaField c={c} api={api} />
+      <div className="row cf-row"><Btn label={/\.workers\.dev\//i.test(c.baseUrl || '') ? t('conns.cf.openOn') : t('conns.cf.open')} ic="sparkle" cls="ghost" onClick={() => cfRelayGuide(c, sv)} /><small className="hint">{t('conns.cf.openHint')}</small></div>
       <Form obj={c} defs={[{ k: 'region', label: t('conns.region'), type: 'select', opts: ['global', 'us-central1', 'us-east5', 'us-east4', 'us-west1', 'europe-west1', 'europe-west4', 'asia-northeast1', 'asia-northeast3', 'asia-southeast1'], half: true }, { k: 'project', label: t('conns.project'), half: true, ph: t('conns.projectPh') }]} onChange={sv} /></div>}
     <div className="field"><span className="field-label">{t('conns.model')}</span>
       <div className="row"><input className="inp" list={'models-' + c.id} value={model} placeholder={def.kind === 'azure' ? t('conns.deployName') : t('conns.modelId')} autoComplete="off" spellCheck={false} onChange={e => { setModel(e.target.value); c.model = e.target.value.trim(); sv(); }} />

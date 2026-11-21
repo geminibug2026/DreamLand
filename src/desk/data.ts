@@ -28,16 +28,29 @@ let cache: { key: string; scan: Scan } | null = null, running: Promise<Scan> | n
 const WINDOW = 45 * DAY, MAX_ROOMS = 24;
 const rooms = () => { const since = Date.now() - WINDOW; return [...S.chats].filter(c => !c.temp).sort((a, b) => b.updatedAt - a.updatedAt).filter((c, i) => i < MAX_ROOMS || c.updatedAt >= since).slice(0, 60); };
 const keyOf = (list: Chat[]) => list.map(c => c.id + ':' + c.updatedAt + ':' + c.count).join('|');
+// 방마다 따로 셈해 둔다: 한 방이 바뀌면 그 방만 다시 읽는다 (메시지가 수천 개인 방을 답장마다 통째로 다시 훑지 않게)
+type RoomScan = { k: string; days: [string, number, number][]; quotes: Quote[] };
+const perRoom = new Map<string, RoomScan>();
+const idle = () => new Promise<void>(r => { const w = window as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }; if (w.requestIdleCallback) w.requestIdleCallback(() => r(), { timeout: 1500 }); else setTimeout(r, 0); });
+async function scanRoom(c: Chat, since: number): Promise<RoomScan | null> {
+  const k = c.updatedAt + ':' + c.count + ':' + dayKey(since), old = perRoom.get(c.id); if (old?.k === k) return old;
+  await idle();
+  let msgs; try { msgs = await S.msgs(c.id); } catch { return null; }
+  const days = new Map<string, [number, number]>(), quotes: Quote[] = [];
+  for (const m of msgs) {
+    if (m.role === 'system' || m.hidden) continue;
+    const ts = msgTs(m);
+    if (ts >= since) { const key = dayKey(ts), d = days.get(key) || [0, 0]; if (m.role === 'user') d[0]++; else d[1]++; days.set(key, d); }
+    if (m.pin) { const text = plain(swipeOf(m).text); if (text) quotes.push({ chatId: c.id, msgId: m.id, text: text.slice(0, 220), who: m.role === 'user' ? '' : m.name || '', at: ts, from: 'pin' }); }
+  }
+  const r: RoomScan = { k, days: [...days].map(([key, [u, a]]) => [key, u, a]), quotes }; perRoom.set(c.id, r); return r;
+}
 async function scan(list: Chat[]): Promise<Scan> {
   const days: Scan['days'] = new Map(), quotes: Quote[] = [], since = Date.now() - WINDOW;
   for (const c of list) {
-    let msgs; try { msgs = await S.msgs(c.id); } catch { continue; }
-    for (const m of msgs) {
-      if (m.role === 'system' || m.hidden) continue;
-      const ts = msgTs(m);
-      if (ts >= since) { const k = dayKey(ts), d = days.get(k) || { user: 0, ai: 0 }; if (m.role === 'user') d.user++; else d.ai++; days.set(k, d); }
-      if (m.pin) { const text = plain(swipeOf(m).text); if (text) quotes.push({ chatId: c.id, msgId: m.id, text: text.slice(0, 220), who: m.role === 'user' ? '' : m.name || '', at: ts, from: 'pin' }); }
-    }
+    const r = await scanRoom(c, since); if (!r) continue;
+    for (const [k, u, a] of r.days) { const d = days.get(k) || { user: 0, ai: 0 }; d.user += u; d.ai += a; days.set(k, d); }
+    quotes.push(...r.quotes);
   }
   // 예제 확장 "명장면 책갈피"가 켜져 있으면 그 책갈피도 문장으로 친다
   try {

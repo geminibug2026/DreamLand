@@ -55,8 +55,9 @@ function decorate() {
   sweep();
   const { chat, msgs } = cur(); if (!chat || !msgs) return;
   const c = Illust.cfg(), jobs = Illust.queue();
+  let byId: Map<string, (typeof msgs)[number]> | null = null;   // 메시지가 수천 개여도 칸마다 처음부터 찾지 않게 (꾸밀 칸이 있을 때만 만든다)
   for (const art of document.querySelectorAll<HTMLElement>('.msgs article.msg[data-id]')) {
-    const m = msgs.find(x => x.id === art.dataset.id), sw = m?.swipes?.[m.sw], main = art.querySelector<HTMLElement>('.msg-main');
+    const m = (byId ||= new Map(msgs.map(x => [x.id, x]))).get(art.dataset.id || ''), sw = m?.swipes?.[m.sw], main = art.querySelector<HTMLElement>('.msg-main');
     if (!m || !sw || !main || m.role !== 'assistant') continue;
     for (const box of art.querySelectorAll<HTMLElement>('.illusts')) {
       const figs = [...box.querySelectorAll<HTMLElement>('figure.illust')], fresh = !box.dataset.sb; box.dataset.sb = '1';

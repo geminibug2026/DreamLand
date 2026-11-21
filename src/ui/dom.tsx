@@ -1,5 +1,6 @@
 // 옛 ui.js 의 DOM 모양 부품: avatar · modal(body 는 DOM) · form(DOM 을 돌려줌). 확장 API 와 DOM 을 만드는 옛 코드가 쓴다
 import { createElement, useLayoutEffect, useRef, type ReactNode } from 'react';
+import { shownUrl } from '../lib/blobUrl';
 import { createRoot } from 'react-dom/client';
 import { h, type HKid } from '../lib/core';
 import { Emblems } from '../lib/emblems';
@@ -20,7 +21,7 @@ const emblem = (o: { tags?: unknown; name?: string } | null | undefined, mini = 
 };
 export function avatar(o: { avatar?: string; tags?: unknown; name?: string } | null | undefined, cls = '') {
   const el = h(`div.avatar${cls ? '.' + cls : ''}`);
-  if (o?.avatar) el.style.backgroundImage = `url("${o.avatar}")`;
+  if (o?.avatar) el.style.backgroundImage = `url("${shownUrl(o.avatar)}")`;
   else if (Array.isArray(o?.tags) && cls !== 'xs') { el.classList.add('blank'); el.append(emblem(o, true)); }   // 캐릭터
   else { el.classList.add('blank'); el.textContent = (o?.name || '?').trim().slice(0, 1); }                       // 페르소나 · 이름만 있는 대상
   return el;

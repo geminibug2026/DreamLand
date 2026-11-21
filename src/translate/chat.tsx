@@ -72,10 +72,11 @@ function MsgBtns({ id, list }: { id: string; list: BtnDef[] }) {
 }
 function decorate() {
   const c = cfg(), { msgs } = chatApi.current();
+  let byId: Map<string, (typeof msgs)[number]> | null = null;   // 메시지가 수천 개여도 칸마다 처음부터 찾지 않게 (꾸밀 칸이 있을 때만 만든다)
   for (const tools of document.querySelectorAll<HTMLElement>('article.msg[data-id] .msg-tools:not([data-trx])')) {
     tools.dataset.trx = '1';
     const art = tools.closest<HTMLElement>('article.msg'); if (!art || art.classList.contains('sys')) continue;
-    const m = msgs.find(x => x.id === art.dataset.id), s = m?.swipes?.[m.sw]; if (!m || !s) continue;
+    const m = (byId ||= new Map(msgs.map(x => [x.id, x]))).get(art.dataset.id || ''), s = m?.swipes?.[m.sw]; if (!m || !s) continue;
     const wait = busy.has(m.id) ? 'busy' : '';
     const add: BtnDef[] = [];
     if (c.btnTranslate !== false) add.push({ cls: 'trx-go', d: GLOBE, title: s.tr ? (s.showTr ? t('chat.msgMenu.original') : t('chat.msgMenu.showTr')) : t('chat.msgMenu.translate'), mark: [wait, s.tr ? (s.showTr ? 'on' : 'has') : ''].filter(Boolean).join(' '), fn: x => void translateMsg(x) });

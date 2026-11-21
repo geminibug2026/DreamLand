@@ -1,5 +1,6 @@
 // 통화 화면: 화면 위에 휴대폰 한 대 (PC 는 가운데 기기, 휴대폰은 화면 전체)
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { shownUrl } from '../lib/blobUrl';
 import { createRoot } from 'react-dom/client';
 import { S } from '../lib/core';
 import { Emblem, Icon } from '../kit';
@@ -62,7 +63,7 @@ function PickerScreen({ p, t }: { p: C.Picker; t: number }) {
       <div className="call-pick-head"><b>{tt('call.pick.title')}</b><small>{tt('call.pick.hint', { count: C.MAX_PARTY })}</small></div>
       <div className="call-pick-list">{list.map(c => { const on = p.sel.includes(c.id), st = C.statusOf(p.chat, c);
         return <button key={c.id} type="button" className={`call-contact${on ? ' on' : ''}`} aria-pressed={on} disabled={p.busy} onClick={() => C.togglePick(c.id)}>
-          <span className="call-ava">{c.avatar ? <img src={c.avatar} alt="" /> : <Emblem o={c} />}</span>
+          <span className="call-ava">{c.avatar ? <img src={shownUrl(c.avatar)} alt="" /> : <Emblem o={c} />}</span>
           <span className="call-contact-main"><b>{c.name}</b><small><i className={`call-st is-${st.status}`} />{tt('schedule.status.' + st.status)}{st.activity ? ` · ${st.activity}` : ''}</small></span>
           <i className="call-check">{on ? <Icon name="check" size={14} /> : null}</i>
         </button>; })}</div>
@@ -107,8 +108,8 @@ function Phone() {
       <div className="call-head">
         {group
           ? <div className="call-party">{party.map(c => <button key={c.id} type="button" className={`call-member${speakingId === c.id ? ' talking' : ''}`} title={live ? tt('call.do.kick', { name: c.name }) : c.name} disabled={!live} onClick={() => C.kick(c.id)}>
-              <span className="call-ava">{c.avatar ? <img src={c.avatar} alt="" /> : <Emblem o={c} />}</span><small>{c.name}</small>{live ? <i className="call-x"><Icon name="x" size={10} /></i> : null}</button>)}</div>
-          : <div className={`call-portrait ${s.talking ? 'talking' : ''}`}>{ch.avatar ? <img src={ch.avatar} alt="" /> : <Emblem o={ch} />}<i className="call-moon"><Icon name="moon" size={16} /></i></div>}
+              <span className="call-ava">{c.avatar ? <img src={shownUrl(c.avatar)} alt="" /> : <Emblem o={c} />}</span><small>{c.name}</small>{live ? <i className="call-x"><Icon name="x" size={10} /></i> : null}</button>)}</div>
+          : <div className={`call-portrait ${s.talking ? 'talking' : ''}`}>{ch.avatar ? <img src={shownUrl(ch.avatar)} alt="" /> : <Emblem o={ch} />}<i className="call-moon"><Icon name="moon" size={16} /></i></div>}
         <b className="call-name">{group ? tt('call.group.title', { count: party.length }) : ch.name}</b>
         <span className="call-state">{s.rec && live ? <i className="call-recdot" /> : null}{state}{live && s.talking ? <i className="call-wave"><b /><b /><b /><b /></i> : null}</span>
         {s.absent.length ? <small className="call-used">{tt('call.group.absent', { names: s.absent.map(c => c.name).join(', ') })}</small> : null}
@@ -116,7 +117,7 @@ function Phone() {
       </div>
       {live || (ended && s.lines.length) ? <div className="call-lines" ref={box}>{s.lines.map((l, i) => <LineRow key={i} s={s} l={l} i={i} picked={picked === i} pick={setPicked} />)}</div> : <div className="call-space"><i className="call-star" /></div>}
       {live && adding ? <div className="call-add">{addable.length ? addable.map(c => <button key={c.id} type="button" className="call-contact" onClick={() => { setAdding(false); void C.invite(c.id); }}>
-        <span className="call-ava">{c.avatar ? <img src={c.avatar} alt="" /> : <Emblem o={c} />}</span><span className="call-contact-main"><b>{c.name}</b><small>{tt('schedule.status.' + C.statusOf(s.chat, c).status)}</small></span><i className="call-check"><Icon name="plus" size={14} /></i></button>) : <small>{tt('call.group.noOne')}</small>}</div> : null}
+        <span className="call-ava">{c.avatar ? <img src={shownUrl(c.avatar)} alt="" /> : <Emblem o={c} />}</span><span className="call-contact-main"><b>{c.name}</b><small>{tt('schedule.status.' + C.statusOf(s.chat, c).status)}</small></span><i className="call-check"><Icon name="plus" size={14} /></i></button>) : <small>{tt('call.group.noOne')}</small>}</div> : null}
       {live && s.keypad ? <div className="call-pad">{keys.map(k => <button key={k} type="button" onClick={() => { C.press(k); setText(x => x + k); }}>{k}</button>)}</div> : null}
       {live ? <form className="call-say" onSubmit={e => { e.preventDefault(); send(); }}>
         <button type="button" className={`ibtn call-ghost${ghosting ? ' busy' : ''}`} title={tt('call.do.ghostHint')} aria-label={tt('call.do.ghost')} disabled={s.muted || s.hold || ghosting} onClick={() => void ghost()}><Icon name="sparkle" /></button>
