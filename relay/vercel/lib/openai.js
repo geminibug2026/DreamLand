@@ -18,13 +18,18 @@ const fail = (status, message, code) => new Response(JSON.stringify({ error: { m
 const b64url = buf => { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
 
 // ── 키: 서비스 계정(JSON) 또는 익스프레스 API 키 ──
+/** 읽지 못한 열쇠들 (이름과 까닭만 — 값은 절대 내보내지 않는다) */
+export const bad = [];
+/** 읽을 수 있는 구글 열쇠 수 (확인용) */
+export const keyCount = () => creds().length;
 function creds() {
+  bad.length = 0;
   const names = new Set(['GOOGLE_SERVICE_ACCOUNT', ...Array.from({ length: 9 }, (_, i) => 'API_' + (i + 1))]);
   try { for (const k of Object.keys(process.env)) if (/^API_/.test(k)) names.add(k); } catch { /* 열쇠 이름을 훑을 수 없는 곳이면 위의 정해진 이름만 */ }
   const out = [], seen = new Set();
   for (const name of names) {
     const v = String(process.env[name] || '').trim(); if (!v || seen.has(v)) continue; seen.add(v);
-    if (v.startsWith('{')) { try { const sa = JSON.parse(v); if (sa.client_email && sa.private_key) out.push({ name, sa }); } catch { /* JSON 이 깨졌으면 건너뛴다 */ } }
+    if (v.startsWith('{')) { try { const sa = JSON.parse(v); if (sa.client_email && sa.private_key) out.push({ name, sa }); else bad.push(name + ': client_email / private_key 가 없는 JSON'); } catch { bad.push(name + ': JSON 이 깨졌어요 (처음부터 끝까지 통째로 붙여 넣었는지 확인)'); } }
     else out.push({ name, key: v });
   }
   return out;
@@ -69,7 +74,7 @@ export function toGemini(body) {
   const num = v => typeof v === 'number' && Number.isFinite(v) ? v : undefined;
   const g = {}, set = (k, v) => { if (v !== undefined && v !== null) g[k] = v; };
   set('temperature', num(body.temperature)); set('topP', num(body.top_p)); set('topK', num(body.top_k));
-  set('maxOutputTokens', num(body.max_completion_tokens) ?? num(body.max_tokens)); set('seed', num(body.seed));
+  set('maxOutputTokens', num(body.max_completion_tokens) ?? num(body.max_tokens)); { const sd = num(body.seed); if (sd != null && sd >= 0) set('seed', sd); }   // 실리태번의 -1(무작위)은 보내지 않는다
   if (num(body.frequency_penalty)) g.frequencyPenalty = body.frequency_penalty;   // 0 은 보내지 않는다 (받지 않는 모델이 있다)
   if (num(body.presence_penalty)) g.presencePenalty = body.presence_penalty;
   const stop = (Array.isArray(body.stop) ? body.stop : body.stop ? [body.stop] : []).filter(s => typeof s === 'string' && s).slice(0, 5); if (stop.length) g.stopSequences = stop;
@@ -141,7 +146,12 @@ async function callVertex(cred, model, payload) {
 async function errorOf(r) { const t = await r.text().catch(() => ''); try { const j = JSON.parse(t), e = (Array.isArray(j) ? j[0] : j)?.error; return e?.message || t.slice(0, 400); } catch { return t.slice(0, 400) || r.statusText; } }
 
 /** parts: 암호를 뗀 길 (['v1','models'] · ['v1','chat','completions']). authed: 길에 든 암호가 이미 맞았는지 */
+/** 어디서든 터지면 빈 "Internal Server Error" 대신 까닭을 알린다 */
 export async function openai(request, region, parts, url, authed) {
+  try { return await openaiInner(request, region, parts, url, authed); }
+  catch (e) { return fail(500, '중계 안에서 오류가 났어요: ' + String(e && e.message || e)); }
+}
+async function openaiInner(request, region, parts, url, authed) {
   const KEY = String(process.env.RELAY_KEY || '').trim();
   if (!KEY) return fail(500, 'RELAY_KEY is not set on this project.');
   const bearer = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
@@ -153,10 +163,10 @@ export async function openai(request, region, parts, url, authed) {
   if (request.method !== 'POST') return fail(405, 'POST only');
   let body; try { body = await request.json(); } catch { return fail(400, 'Request body is not JSON.'); }
   const model = String(body.model || '').replace(/^(models\/|google\/)/, ''); if (!model) return fail(400, 'model is required.');
-  const list = creds(); if (!list.length) return fail(500, 'No Google key on this project. Add API_1 (service account JSON) in Environment Variables and redeploy.');
+  const list = creds(); if (!list.length) return fail(500, '중계에 구글 열쇠가 없어요 (No Google key). Vercel → Settings → Environment Variables 에 API_1 이름으로 서비스 계정 JSON 을 통째로 넣고, Deployments 에서 Redeploy 하세요.' + (bad.length ? ' 읽지 못한 것: ' + bad.join(' / ') : ''));
   const tried = (request.headers.get('x-relay-tried') || '').split(',').map(s => s.trim()).filter(Boolean);
   let payload = toGemini({ ...body, model }), last = '';
-  const start = Math.floor(Math.random() * list.length);
+  const start = Math.floor(Math.random() * list.length); let thrown = 0;
   for (let i = 0; i < list.length; i++) {
     const cred = list[(start + i) % list.length]; let r;
     try {
@@ -166,7 +176,7 @@ export async function openai(request, region, parts, url, authed) {
         if (/think/i.test(why)) { payload = { ...payload, generationConfig: { ...payload.generationConfig } }; delete payload.generationConfig.thinkingConfig; r = await callVertex(cred, model, payload); }
         else return fail(400, why);
       }
-    } catch (e) { last = String(e && e.message || e); continue; }
+    } catch (e) { last = String(e && e.message || e); thrown++; continue; }
     if (r.ok) {
       const head = { ...CORS, 'Cache-Control': 'no-store', 'X-Relay-Region': region, 'X-Relay-Key': cred.name };
       return body.stream ? new Response(streamOut(r, model), { status: 200, headers: { ...head, 'Content-Type': 'text/event-stream' } }) : new Response(jsonOut(r, model), { status: 200, headers: { ...head, 'Content-Type': 'application/json' } });
@@ -174,6 +184,8 @@ export async function openai(request, region, parts, url, authed) {
     last = await errorOf(r);
     if (r.status !== 429 && r.status !== 503) return fail(r.status, last);   // 키 · 요청이 잘못된 것은 다른 곳으로 넘겨도 소용없다
   }
+  // 모든 열쇠가 구글 인증에서 막혔다 (429 가 아니다): 다른 지역으로 넘겨도 소용없으니 까닭을 그대로 알린다
+  if (thrown === list.length) return fail(502, '구글 인증에 실패했어요. 서비스 계정 JSON 이 맞는지, 그 계정에 Vertex AI 사용자 권한이 있는지 확인하세요. (' + last + ')', 'auth_error');
   // 이 지역에서는 모든 키가 막혔다: 아직 안 가 본 지역의 함수에 넘긴다
   const next = REGIONS.find(x => x !== region && !tried.includes(x));
   if (next) {
