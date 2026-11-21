@@ -132,7 +132,7 @@ function ConnEditor({ c, api }: { c: Conn; api: EditorApi }) {
     {def.kind === 'vertex' && <div className="card sa-box"><h3 className="form-sec">{t('conns.sa.section')}</h3>
       <p className="hint">{t('conns.sa.sectionHint')}</p>
       <SaField c={c} api={api} />
-      <div className="row cf-row"><Btn label={/\.workers\.dev\//i.test(c.baseUrl || '') ? t('conns.cf.openOn') : t('conns.cf.open')} ic="sparkle" cls="ghost" onClick={() => cfRelayGuide(c, sv)} /><small className="hint">{t('conns.cf.openHint')}</small></div>
+      <div className="row cf-row"><Btn label={/\.(workers\.dev|vercel\.app)\//i.test(c.baseUrl || '') ? t('conns.cf.openOn') : t('conns.cf.open')} ic="sparkle" cls="ghost" onClick={() => cfRelayGuide(c, sv)} /><small className="hint">{t('conns.cf.openHint')}</small></div>
       <Form obj={c} defs={[{ k: 'region', label: t('conns.region'), type: 'select', opts: ['global', 'us-central1', 'us-east5', 'us-east4', 'us-west1', 'europe-west1', 'europe-west4', 'asia-northeast1', 'asia-northeast3', 'asia-southeast1'], half: true }, { k: 'project', label: t('conns.project'), half: true, ph: t('conns.projectPh') }]} onChange={sv} /></div>}
     <div className="field"><span className="field-label">{t('conns.model')}</span>
       <div className="row"><input className="inp" list={'models-' + c.id} value={model} placeholder={def.kind === 'azure' ? t('conns.deployName') : t('conns.modelId')} autoComplete="off" spellCheck={false} onChange={e => { setModel(e.target.value); c.model = e.target.value.trim(); sv(); }} />
@@ -142,6 +142,10 @@ function ConnEditor({ c, api }: { c: Conn; api: EditorApi }) {
     {def.kind !== 'mock' && <details className="adv"><summary><Icon name="sliders" size={15} />{t('conns.adv.section')}</summary><Form obj={c} defs={[
       { k: 'proxy', label: t('conns.adv.proxy'), type: 'check', hint: t('conns.adv.proxyHint') },
       { k: 'via', label: t('conns.adv.via'), ph: 'http://127.0.0.1:7890', hint: t('conns.adv.viaHint') },
+      def.kind !== 'tts' && { section: t('conns.adv.retrySec') },
+      def.kind !== 'tts' && { k: 'retry429', label: t('conns.adv.retry429'), type: 'num', min: 0, max: 5, step: 1, half: true, ph: '0', nullable: true, hint: t('conns.adv.retry429Hint') },
+      def.kind !== 'tts' && { k: 'retryWait', label: t('conns.adv.retryWait'), type: 'num', min: 0.5, max: 30, step: 0.5, half: true, ph: '2', nullable: true, hint: t('conns.adv.retryWaitHint') },
+      def.kind !== 'tts' && { el: <p className="hint retry-warn"><b>{t('conns.adv.retryRec')}</b> {t('conns.adv.retryWarn')}</p> },
       def.kind === 'anthropic' && { k: 'cache', label: t('conns.adv.cache'), type: 'check', hint: t('conns.adv.cacheHint') },
       (def.kind === 'openai' || def.kind === 'azure') && { k: 'postProcess', label: t('conns.adv.postProcess'), type: 'select', opts: [['none', t('common.none')], ['merge', t('conns.adv.ppMerge')], ['semi', t('conns.adv.ppSemi')], ['strict', t('conns.adv.ppStrict')], ['single', t('conns.adv.ppSingle')]], hint: t('conns.adv.postProcessHint') },
       textKind && { k: 'instruct', label: t('conns.adv.instruct'), type: 'select', half: true, opts: [['', t('conns.adv.followFormat')], ['plain', t('conns.adv.instructPlain')], ['custom', t('conns.adv.instructCustom')], ...names('instruct')], hint: t('conns.adv.instructHint') },

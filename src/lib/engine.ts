@@ -992,7 +992,22 @@ async function vertexTarget(conn: Conn, publisher: string, model: string, method
 /** 생각하는 모델에 덧붙이는 출력 여유분 */
 const THINK_ROOM = () => Math.max(0, +(S.settings.format?.reasoning?.headroom ?? 8000) || 0);
 interface CallOpts { method?: string; headers?: Record<string, string>; body?: unknown; signal?: AbortSignal }
-async function call(conn: Conn, url: string, { method = 'POST', headers = {}, body, signal }: CallOpts): Promise<Response> {
+/** 429 자동 재시도 (연결마다, 기본 꺼짐): 글자가 오기 전의 429 만 — 응답을 받기 시작한 뒤에는 다시 보내지 않는다.
+ *  서버가 Retry-After 를 주면 그만큼, 아니면 retryWait 초부터 두 배씩 (조금씩 흔들어 여러 창이 한꺼번에 몰리지 않게) */
+async function call(conn: Conn, url: string, opts: CallOpts): Promise<Response> {
+  const n = Math.max(0, Math.min(5, Math.round(+(conn.retry429 || 0)) || 0)), wait = Math.max(0.5, Math.min(30, +(conn.retryWait || 0) || 2));
+  for (let i = 0; ; i++) {
+    try { return await callOnce(conn, url, opts); }
+    catch (e) {
+      const st = (e as { status?: number }).status, after = (e as { retryAfter?: number }).retryAfter;
+      if (i >= n || st !== 429 || opts.signal?.aborted) throw e;
+      const ms = Math.min(60000, after ? after * 1000 : wait * 1000 * 2 ** i * (0.85 + Math.random() * 0.3));
+      core.emit('conn:retry', { conn: conn.name, n: i + 1, of: n, sec: Math.round(ms / 100) / 10 });
+      await new Promise<void>((res, rej) => { const tm = setTimeout(res, ms); opts.signal?.addEventListener('abort', () => { clearTimeout(tm); rej(Object.assign(new Error('aborted'), { name: 'AbortError' })); }, { once: true }); });
+    }
+  }
+}
+async function callOnce(conn: Conn, url: string, { method = 'POST', headers = {}, body, signal }: CallOpts): Promise<Response> {
   headers = { ...headers, ...jsonOr<Record<string, string>>(conn.extraHeaders, {}) };
   const tap = signal ? taps.get(signal) : undefined;   // 터미널 로그(전체): 실제로 보낸 요청 · 받은 응답
   tap?.req(method, url, body);
@@ -1018,7 +1033,8 @@ async function call(conn: Conn, url: string, { method = 'POST', headers = {}, bo
       const j = JSON.parse(t as string), e = Array.isArray(j) ? j[0]?.error : j.error;
       t = e?.message || e?.type || j.message || j.detail || (typeof j.error === 'string' ? j.error : t);
     } catch { /* JSON 이 아니면 글 그대로 */ }
-    throw Object.assign(new Error(tr('engine.err.apiStatus', { status: r.status, body: String(t).slice(0, 400) || r.statusText })), { status: r.status });
+    const ra = Number(r.headers.get('retry-after')) || 0;
+    throw Object.assign(new Error(tr('engine.err.apiStatus', { status: r.status, body: String(t).slice(0, 400) || r.statusText })), { status: r.status, ...(ra > 0 && ra <= 60 ? { retryAfter: ra } : {}) });
   }
   if (tap && /json/i.test(r.headers.get('content-type') || '')) tap.res(r.status, r.clone().json().catch(() => null));   // 스트리밍(SSE)은 다 받은 뒤 글로 남긴다
   return r;
