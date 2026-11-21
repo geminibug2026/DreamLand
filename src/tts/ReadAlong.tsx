@@ -21,8 +21,9 @@ export function useReadingOf(key: string): Reading | null {
 const hooked = new WeakSet<Element>();
 function scroller(el: HTMLElement): HTMLElement | null {
   for (let p = el.parentElement; p; p = p.parentElement) {
-    const oy = getComputedStyle(p).overflowY;
+    const cs = getComputedStyle(p), oy = cs.overflowY;
     if ((oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight + 2) return p;
+    if (cs.position === 'fixed') return null;   // 떠 있는 판(통화 화면 · 읽는 글 띄우기) 밖의 화면은 건드리지 않는다
   }
   return null;
 }
