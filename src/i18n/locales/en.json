@@ -7629,6 +7629,8 @@
   "game.scene.station": "Station and lab",
   "game.scene.arena": "Arena",
   "game.tab.media": "Look & sound",
+  "game.tab.mediaShort": "Look",
+  "game.tab.linkShort": "Vars",
   "game.media.bg": "Backdrops",
   "game.media.bgHint": "Pick a scene and add your own pictures. A scene with your pictures uses only those (a different one per place if there are several); remove them to go back to the built-in art. Stored on this device.",
   "game.media.music": "Music",

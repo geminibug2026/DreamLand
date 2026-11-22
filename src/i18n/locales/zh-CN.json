@@ -7549,6 +7549,8 @@
   "game.scene.station": "车站·实验室",
   "game.scene.arena": "竞技场",
   "game.tab.media": "背景·音乐",
+  "game.tab.mediaShort": "外观",
+  "game.tab.linkShort": "变量",
   "game.media.bg": "背景图",
   "game.media.bgHint": "选择场景并添加你自己的图片。有自己图片的场景只使用这些图片（多张时不同地点会用不同的图）；删除后恢复为内置图。保存在本设备上。",
   "game.media.music": "背景音乐",

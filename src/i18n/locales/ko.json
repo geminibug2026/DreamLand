@@ -7549,6 +7549,8 @@
   "game.scene.station": "정거장 · 연구소",
   "game.scene.arena": "경기장",
   "game.tab.media": "배경·음악",
+  "game.tab.mediaShort": "꾸미기",
+  "game.tab.linkShort": "변수",
   "game.media.bg": "배경 그림",
   "game.media.bgHint": "장면을 고르고 내 사진을 올리세요. 올린 장면은 내 사진만 쓰고(여러 장이면 장소마다 다르게), 지우면 기본 그림으로 돌아갑니다. 이 기기에 저장됩니다.",
   "game.media.music": "배경 음악",

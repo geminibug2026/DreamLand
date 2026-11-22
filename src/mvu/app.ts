@@ -290,14 +290,17 @@ async function cleanupAfter(chat: Chat, msgs: Msg[], i: number) {
   const old = i - E.keepRecent;
   if (old > 0) cleanupRange(msgs, Math.max(1, old - 2 - E.keepRecent * 2), old, Math.max(1, E.snapEvery));
 }
+const restoreWarned = new Set<string>();
 /** 메시지를 지운 뒤: 최근 메시지에 변수가 없으면 기준점부터 다시 계산해 되살린다 (원래 틀의 restoreVariables) */
 async function restore(R: R, chat: Chat, msgs: Msg[]): Promise<boolean> {
   const E = eff(chat), last = msgs.length - 1; if (last < 1) return false;
   const lastN = Math.max(1, last - E.restoreRecent);
-  let missing = -1; for (let i = last; i >= 0; i--) { const v = varsOf(msgs[i]); if (!v || v.stat_data === undefined || v.schema === undefined) { missing = i; break; } }
+  // 주사위 · 안내 같은 시스템 메시지는 원래 변수를 갖지 않으므로 '변수가 빠진 메시지'로 치지 않는다
+  let missing = -1; for (let i = last; i >= 0; i--) { const m = msgs[i]; if (m.role === 'system' || m.dice) continue; const v = varsOf(m); if (!v || v.stat_data === undefined || v.schema === undefined) { missing = i; break; } }
   if (lastN > missing) return false;
   const keepFrom = Math.max(1, last - E.keepRecent), snap = lastValidIndex(msgs, keepFrom);
-  if (snap === -1) { toast(t('mvu.toast.restoreNone', { n: keepFrom })); return false; }
+  // 되살릴 기준점이 없다는 알림은 한 방에서 한 번만 (지울 때마다 다시 띄우지 않는다)
+  if (snap === -1) { if (!restoreWarned.has(chat.id)) { restoreWarned.add(chat.id); toast(t('mvu.toast.restoreNone', { n: keepFrom })); } return false; }
   let variables = clone(dataOf(msgs[snap])!), changed = false;
   for (let i = snap + 1; i <= missing; i++) {
     await R.updateVariables(msgText(msgs[i]), variables, undefined, hostFor(chat));
