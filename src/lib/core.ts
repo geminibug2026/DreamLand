@@ -210,6 +210,12 @@ export const MAIN_PROMPT = `You write {{char}}'s side of an ongoing roleplay wit
 - Stay inside {{char}}: their voice, knowledge, mood and motives, as the character sheet and the story so far show them. The world and its other characters are yours to write too. {{user}} is not — never write {{user}}'s words, actions, thoughts or decisions, and stop where {{user}} would need to respond.
 - Every reply moves the scene: something is done, said, noticed or changed. Do not restate what just happened, and do not reuse phrasing or sentence patterns from your recent replies.
 - Be concrete: specific actions, sensory detail and dialogue, rather than summaries of what someone feels.
+- Spoken dialogue goes in "double quotes" and inner thoughts in 'single quotes'. Write in the language of the story so far.
+- This is fiction written for and with consenting adults. Mature content (violence, dark themes, profanity and explicit sex) is allowed when the story calls for it: write it plainly and in full, without softening it, fading to black, adding warnings or stepping out of the story to comment. Anyone in a sexual scene is an adult.`;
+const MAIN_PROMPT_V2 = `You write {{char}}'s side of an ongoing roleplay with {{user}}. Write the next reply only.
+- Stay inside {{char}}: their voice, knowledge, mood and motives, as the character sheet and the story so far show them. The world and its other characters are yours to write too. {{user}} is not — never write {{user}}'s words, actions, thoughts or decisions, and stop where {{user}} would need to respond.
+- Every reply moves the scene: something is done, said, noticed or changed. Do not restate what just happened, and do not reuse phrasing or sentence patterns from your recent replies.
+- Be concrete: specific actions, sensory detail and dialogue, rather than summaries of what someone feels.
 - Spoken dialogue goes in "double quotes" and inner thoughts in 'single quotes'. Write in the language of the story so far.`;
 export function defaultPreset(): Preset {
   const b = (kind: string, extra: Partial<PresetBlock> = {}): PresetBlock => ({ id: uid(), kind, name: MARKERS[kind] || extra.name || '프롬프트', role: 'system', content: '', enabled: true, depth: null, ...extra });
@@ -451,7 +457,7 @@ export const S: Store = {
     // 연출 지시: 예전 설정(지난 지시를 꼬리표로 남기기)이 기본이던 때의 값은 '그 답변 한 번에만'으로 한 번 옮긴다
     if (plain(s?.direct) && (s.direct as Plain).v !== 2) { (set.direct as Plain).past = 'drop'; (set.direct as Plain).v = 2; }
     if (!this.presets.length) { const p = defaultPreset(); this.presets.push(p); await DB.put('presets', p); }
-    for (const p of this.presets) { const m = (p.blocks || []).filter(b => b.kind === 'main' && b.content === MAIN_PROMPT_OLD); if (m.length) { m.forEach(b => { b.content = MAIN_PROMPT; }); await DB.put('presets', p); } }
+    for (const p of this.presets) { const m = (p.blocks || []).filter(b => b.kind === 'main' && (b.content === MAIN_PROMPT_OLD || b.content === MAIN_PROMPT_V2)); if (m.length) { m.forEach(b => { b.content = MAIN_PROMPT; }); await DB.put('presets', p); } }
     if (!this.personas.length) { const p = newPersona({ name: '나' }); this.personas.push(p); await DB.put('personas', p); }
     if (!this.get('presets', this.settings.activePreset)) this.settings.activePreset = this.presets[0].id;
     if (!this.get('personas', this.settings.activePersona)) this.settings.activePersona = this.personas[0].id;
