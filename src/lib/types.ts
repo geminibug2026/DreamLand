@@ -191,7 +191,7 @@ export interface Theme {
   [k: string]: unknown;
 }
 export interface Settings {
-  id: 'settings'; theme: string; customThemes: Theme[]; font: string; fontCustom: string; fontSize: number; lineHeight: number; chatWidth: number; bubbles: boolean; motion: boolean; avatarShape: string; exts: Record<string, boolean>;
+  id: 'settings'; theme: string; customThemes: Theme[]; font: string; fontCustom: string; chatFont?: string; chatFontCustom?: string; fontSize: number; lineHeight: number; chatWidth: number; bubbles: boolean; motion: boolean; avatarShape: string; exts: Record<string, boolean>;
   enterSend: boolean | 'auto'; autoScroll: boolean; showMeta: boolean; customCss: string; userNameFallback: string;
   ux: Open & { sound: boolean; soundVolume: number; soundUnfocused: boolean; swipes: boolean; gestures: boolean; confirmDelete: boolean; autoLoadChat: boolean; restoreInput: boolean; clickEdit: boolean; mdKeys: boolean; logPrompts: boolean; toastPos: string; showIds: boolean; showAvatars: boolean; metaTime: boolean; metaModel: boolean; metaTimer: boolean; metaTokens: boolean };
   activeConn: string; activePreset: string; activePersona: string; activeLore: string[];

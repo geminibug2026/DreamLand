@@ -84,7 +84,8 @@ function Themes() {
         <div className="row wrap"><Btn label={tr('themes.make.btn')} ic="edit" cls="primary" onClick={() => { const t = T.newCustomTheme(cur); saveCustom(t); use(t.id); }} /></div></div>
       : <Editor key={cur.id + ':' + epoch} t={cur} live={() => { saveCustom(cur); T.applyTheme(); }} use={use} redraw={redraw} />}
     <div className="card" key={'look' + epoch}><LForm obj={st} defs={[{ section: tr('themes.text.section') },
-      { k: 'font', label: tr('themes.text.font'), type: 'select', opts: fonts, half: true, live: true }, { k: 'fontCustom', label: tr('themes.text.fontCustom'), ph: tr('themes.text.fontCustomPh'), half: true },
+      { k: 'font', label: tr('themes.text.uiFont'), type: 'select', opts: fonts, half: true, live: true }, { k: 'fontCustom', label: tr('themes.text.fontCustom'), ph: tr('themes.text.fontCustomPh'), half: true },
+      { k: 'chatFont', label: tr('themes.text.chatFont'), type: 'select', opts: [['', tr('themes.text.chatFontSame')], ...fonts], half: true, live: true }, { k: 'chatFontCustom', label: tr('themes.text.fontCustom'), ph: tr('themes.text.chatFontCustomPh'), half: true },
       { k: 'fontSize', label: tr('themes.text.fontSize'), type: 'range', min: 13, max: 22, half: true, live: true }, { k: 'lineHeight', label: tr('themes.text.lineHeight'), type: 'range', min: 1.4, max: 2.3, step: 0.05, half: true, live: true },
       { k: 'chatWidth', label: tr('themes.text.chatWidth'), type: 'range', min: 520, max: 1280, step: 20, half: true, live: true }, { k: 'avatarShape', label: tr('themes.text.avatarShape'), type: 'select', opts: [['round', tr('themes.text.avatarRound')], ['tall', tr('themes.text.avatarTall')]], half: true, live: true },
       { k: 'rpBubbles', label: tr('themes.text.rpBubbles'), type: 'check' }, { k: 'motion', label: tr('themes.text.motion'), type: 'check' }]} onChange={look} /></div>

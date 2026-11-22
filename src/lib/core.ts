@@ -233,7 +233,7 @@ export function defaultPreset(): Preset {
 }
 
 export const defaultSettings = (): Settings => ({
-  id: 'settings', theme: 'moonpress', customThemes: [], font: 'pretendard', fontCustom: '', fontSize: 16, lineHeight: 1.8, chatWidth: 780, bubbles: true, motion: true, avatarShape: 'round', exts: {},
+  id: 'settings', theme: 'moonpress', customThemes: [], font: 'pretendard', fontCustom: '', chatFont: '', chatFontCustom: '', fontSize: 16, lineHeight: 1.8, chatWidth: 780, bubbles: true, motion: true, avatarShape: 'round', exts: {},
   enterSend: 'auto', autoScroll: true, showMeta: true, customCss: '', userNameFallback: '나',   // enterSend: true(항상) · false(끔) · 'auto'(휴대폰에서는 줄바꿈)
   // 사용자 설정 (src/features/usersettings.tsx): 알림음 · 넘기기 · 삭제 확인 · 시작할 때 마지막 대화 · 쓰던 글 되살리기 · 메시지 표시
   ux: { sound: false, soundVolume: 60, soundUnfocused: false, swipes: true, gestures: false, confirmDelete: true, autoLoadChat: true, restoreInput: true, clickEdit: false, mdKeys: false, logPrompts: false, toastPos: 'bottom', showIds: true, showAvatars: true, metaTime: true, metaModel: true, metaTimer: true, metaTokens: true },

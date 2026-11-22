@@ -29,6 +29,22 @@ export const FONTS: Record<string, FontDef> = {
   gaegu: { name: '개구 (손글씨)', stack: 'Gaegu', css: 'https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&display=swap' },
   himelody: { name: '하이멜로디 (손글씨)', stack: '"Hi Melody"', css: 'https://fonts.googleapis.com/css2?family=Hi+Melody&display=swap' },
   system: { name: '기기 기본 글꼴', stack: 'system-ui' },
+  // ── 더한 무료 글꼴 (모두 OFL: 무료 · 상업 사용 가능) ──
+  ridibatang: { name: '리디바탕', stack: '"리디바탕", RIDIBatang', css: 'https://cdn.jsdelivr.net/npm/@kfonts/ridi-batang@0.2.0/index.css' },
+  maruburi: { name: '마루 부리', stack: '"마루 부리", MaruBuri', css: 'https://cdn.jsdelivr.net/npm/@kfonts/maruburi@0.1.0/index.css' },
+  gowunbatang: { name: '고운바탕', stack: '"Gowun Batang"', css: 'https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&display=swap' },
+  nanummyeongjo: { name: '나눔명조', stack: '"Nanum Myeongjo"', css: 'https://fonts.googleapis.com/css2?family=Nanum+Myeongjo:wght@400;700;800&display=swap' },
+  notoserif: { name: '노토 세리프', stack: '"Noto Serif KR"', css: 'https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;700&display=swap' },
+  hahmlet: { name: '함렛', stack: 'Hahmlet', css: 'https://fonts.googleapis.com/css2?family=Hahmlet:wght@400;500;700&display=swap' },
+  suit: { name: 'SUIT', stack: '"SUIT Variable"', css: 'https://cdn.jsdelivr.net/npm/@sun-typeface/suit@2.0.5/fonts/variable/woff2/SUIT-Variable.css' },
+  wanted: { name: '원티드 산스', stack: '"Wanted Sans Variable"', css: 'https://cdn.jsdelivr.net/npm/wanted-sans@1.0.3/fonts/webfonts/variable/split/WantedSansVariable.css' },
+  lineseed: { name: 'LINE Seed', stack: '"LINE Seed Sans KR"', css: 'https://cdn.jsdelivr.net/npm/@kfonts/line-seed-sans-kr@0.1.0/index.css' },
+  nanumsquareround: { name: '나눔스퀘어라운드', stack: '"나눔스퀘어라운드", NanumSquareRound', css: 'https://cdn.jsdelivr.net/npm/@kfonts/nanum-square-round@0.2.0/index.css' },
+  nanumbarun: { name: '나눔바른고딕', stack: '"나눔바른고딕", NanumBarunGothic', css: 'https://cdn.jsdelivr.net/npm/@kfonts/nanum-barun-gothic@0.3.0/index.css' },
+  gothica1: { name: '고딕 A1', stack: '"Gothic A1"', css: 'https://fonts.googleapis.com/css2?family=Gothic+A1:wght@400;500;700&display=swap' },
+  nanumpen: { name: '나눔손글씨 펜', stack: '"Nanum Pen Script"', css: 'https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&display=swap' },
+  gamjaflower: { name: '감자꽃 (손글씨)', stack: '"Gamja Flower"', css: 'https://fonts.googleapis.com/css2?family=Gamja+Flower&display=swap' },
+  jua: { name: '주아 (동글)', stack: 'Jua', css: 'https://fonts.googleapis.com/css2?family=Jua&display=swap' },
 };
 /** [색 칸, 이름 키] — 이름은 그릴 때 t(키) */
 export const COLOR_FIELDS: [string, string][] = ['bg', 'bg2', 'surface', 'text', 'dim', 'accent', 'accent2', 'sayBg', 'sayText', 'userBg', 'userText', 'nar', 'think'].map(k => [k, 'theme.color.' + k]);
@@ -56,9 +72,12 @@ export function applyTheme() {
   root.classList.toggle('has-bg-image', !!t.bgImage);
   root.dataset.pattern = t.bgImage ? 'none' : (t.pattern || 'grid');
   set('--fs', (st.fontSize || 16) + 'px'); set('--lh', String(st.lineHeight || 1.8)); set('--chat-w', (st.chatWidth || 780) + 'px');
-  const f = FONTS[st.font] || FONTS.pretendard;
-  if (f.css && !document.querySelector(`link[data-font="${st.font}"]`)) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = f.css; l.dataset.font = st.font; document.head.append(l); }
+  const load = (k: string) => { const f = FONTS[k]; if (f?.css && !document.querySelector(`link[data-font="${k}"]`)) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = f.css; l.dataset.font = k; document.head.append(l); } return f; };
+  const f = load(st.font) || FONTS.pretendard;
   set('--font-user', st.fontCustom ? st.fontCustom : f.stack);
+  // 대화 글꼴: 비워 두면 화면 글꼴을 따른다
+  const cf = st.chatFont ? load(st.chatFont) : null;
+  set('--font-chat', st.chatFontCustom ? `${st.chatFontCustom}, var(--font)` : cf ? `${cf.stack}, var(--font)` : null);
   root.classList.toggle('no-motion', !st.motion);
   let css = document.getElementById('user-css');
   if (!css) { css = document.createElement('style'); css.id = 'user-css'; document.head.append(css); }
