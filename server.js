@@ -80,7 +80,11 @@ const hostOk = host => { const name = String(host || '').replace(/:\d+$/, '').re
 const fails = new Map();
 const blocked = ip => { const f = fails.get(ip); return !!f && f.n >= 10 && Date.now() - f.t < 600000; };
 const failed = ip => { const f = fails.get(ip); if (!f || Date.now() - f.t > 600000) fails.set(ip, { n: 1, t: Date.now() }); else { f.n++; f.t = Date.now(); } };
-const isLocal = req => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+// 터널(ngrok · Cloudflare Tunnel 등)이나 역방향 프록시는 같은 PC 에서 돌기 때문에 요청이 127.0.0.1 에서 온 것처럼 보인다.
+// 그런 프로그램이 붙이는 머리글이 있으면 바깥에서 온 요청으로 본다 (접속 키 없이 들어오거나 "이 PC 에서만" 기능을 쓰지 못하게)
+const FWD = ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'forwarded', 'x-real-ip', 'cf-connecting-ip', 'cf-ray', 'true-client-ip', 'x-original-forwarded-for', 'ngrok-trace-id', 'tailscale-user-login'];
+const forwarded = req => FWD.some(h => req.headers[h] !== undefined);
+const isLocal = req => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress) && !forwarded(req);
 const SEC_HEADERS = {
   'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer', 'Cross-Origin-Opener-Policy': 'same-origin',
   'Content-Security-Policy': "default-src 'self'; script-src 'self' blob:; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; font-src 'self' data: https://cdn.jsdelivr.net https://fonts.gstatic.com; img-src 'self' data: blob: https: http:; media-src 'self' data: blob: https:; connect-src *; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
@@ -401,7 +405,7 @@ async function restoreBackup(name) {
   const pre = await makeBackup('pre-restore');
   const keepKeys = new Set(); let written = 0;
   await readBackup(name, async o => {
-    if (o.t === 'bin') { const p = binPath(o.sha); if (!(await exists(p))) await atomicWrite(p, Buffer.from(o.b64, 'base64')); return; }
+    if (o.t === 'bin') { if (!/^[0-9a-f]{64}$/.test(String(o.sha))) return; const p = binPath(o.sha); if (!(await exists(p))) await atomicWrite(p, Buffer.from(o.b64, 'base64')); return; }
     if (o.t !== 'rec' || !storeOk(o.meta.store) || !idOk(o.meta.id)) return;
     const file = recPath(o.meta.store, o.meta.id); keepKeys.add(file.toLowerCase());
     const cur = await readMeta(file); if (cur && cur.hash === o.meta.hash) return;
@@ -574,7 +578,7 @@ async function api(req, res, url) {
   const origin = req.headers.origin;
   if (origin && origin !== `http://${req.headers.host}`) return send(res, 403, { error: 'forbidden origin' });
   // 폴더 읽기는 서버를 실행한 PC 에서 접속했을 때만 허용한다
-  const local = ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress);
+  const local = isLocal(req);
   if (!local && /^\/api\/(fs|detect|resolve)/.test(url.pathname)) return send(res, 403, { error: '이 기능은 서버를 실행한 PC 에서만 쓸 수 있습니다' });
   if (url.pathname.startsWith('/api/store/')) return storeApi(req, res, url);
   if (req.method === 'POST' && req.headers['x-dreamland'] !== '1') return send(res, 403, { error: 'forbidden' });
@@ -723,7 +727,9 @@ const server = http.createServer(async (req, res) => {
         'Content-Security-Policy': "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'; frame-ancestors 'self'" });
       return res.end(buf);
     }
-    if (LAN && !isLocal(req) && !url.pathname.startsWith('/vendor/')) {   // 다른 기기에서 올 때는 접속 키가 있어야 한다 (공개 라이브러리 /vendor 는 빼고)
+    if (!LAN && forwarded(req)) return send(res, 403, '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dreamland</title><body style="font-family:sans-serif;display:grid;place-items:center;height:90vh;margin:0;padding:16px"><div style="text-align:center;line-height:1.7;max-width:30em"><b>바깥에서 들어온 접속은 막혀 있어요</b><br>터널(ngrok · Cloudflare Tunnel 등)이나 프록시를 거쳐 열려면, 서버를 <code>node server.js --lan</code> 으로 켜서 접속 키를 쓰세요.</div>', 'text/html; charset=utf-8');
+    let vendorOnly = false; try { const r = path.relative(path.join(ROOT, 'vendor'), path.resolve(ROOT, '.' + decodeURIComponent(url.pathname))); vendorOnly = url.pathname.startsWith('/vendor/') && !!r && !r.startsWith('..') && !path.isAbsolute(r); } catch { }
+    if (LAN && !isLocal(req) && !vendorOnly) {   // 다른 기기에서 올 때는 접속 키가 있어야 한다 (공개 라이브러리 /vendor 는 빼고)
       const cookie = String(req.headers.cookie || '').match(/(?:^|;\s*)dl_key=([0-9a-f]+)/)?.[1];
       const ip = req.socket.remoteAddress;
       if (blocked(ip)) return send(res, 429, '접속 키를 여러 번 틀렸습니다. 10분 뒤에 다시 시도해 주세요.', 'text/plain; charset=utf-8');
