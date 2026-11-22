@@ -114,7 +114,8 @@ export const langDisplay = (l: string[]) => { if (getLang() === 'ko') return l[2
 export const langLabel = (v: unknown) => { const l = findLang(v); return l ? langDisplay(l) : String(v || '').trim(); };
 
 // ════════ 지시문 ════════
-export const DEFAULT_PROMPT = `# Task: Translate Text
+/** 예전 기본 지시문 (그대로 쓰던 사람은 새 기본으로 옮긴다) */
+export const OLD_PROMPTS = [`# Task: Translate Text
 
 You are an expert multilingual translator. Your task is to translate the user's text into {{language}} accurately, preserving the original markdown formatting.
 
@@ -139,7 +140,37 @@ You are an expert multilingual translator. Your task is to translate the user's 
 3.  Keep names consistent with the previous messages. Translate meaning and tone, not word by word.
 4.  Your response **must** only contain the translated text, enclosed in a single markdown code block.
 
-Important: Your response must follow this exact format with the translation enclosed in code blocks (\`\`\`).`;
+Important: Your response must follow this exact format with the translation enclosed in code blocks (\`\`\`).`];
+export const DEFAULT_PROMPT = `Translate the text below into {{language}}. Reply with the translation only.
+{{#if chat}}
+
+Earlier in this story, for names, who talks to whom, and the speech levels already used (lines that were already translated are shown translated):
+{{#each chat}}
+{{this.name}}: {{this.mes}}
+{{/each}}
+{{/if}}
+
+How to translate:
+- Write it the way a skilled {{language}} novelist would have written it in the first place: natural sentences, not word for word.
+- Keep the meaning, mood and every detail. Add nothing, leave nothing out, do not soften or censor anything.
+- Keep the layout exactly: paragraphs, line breaks, *asterisks*, quotation marks, markdown, HTML tags, {{img::…}} tags. Do not translate code or HTML attributes.
+- Keep every name and title the same as in the earlier lines.
+- This text is {{name}}'s turn.
+{{#if korean}}
+
+한국어로 옮길 때:
+- 지문(서술)은 '~했다' 체로 이어 쓴다. 말투는 대사에만 살린다.
+- 존댓말 · 반말: 두 사람의 관계와 앞서 번역된 대사에서 쓰던 말씨를 그대로 이어 간다. 원문에 근거가 없으면 바꾸지 않는다. 처음 만난 사이 · 윗사람 · 격식 있는 자리는 존댓말, 가까운 사이는 반말이 기본이고 sir · ma'am · my lady 같은 말과 원문의 격식을 따른다.
+- 판타지 · 사극 인물이라도 '~하오' '~하시오' 같은 낡은 말투는 쓰지 않는다. 격식은 '~합니다' '~하십시오', 부드러운 존대는 '~해요'.
+- you 를 '당신' 으로, he · she 를 '그' '그녀' 로 기계적으로 옮기지 않는다. 이름 · 호칭(아가씨, 선배, 대표님 …)으로 부르거나, 한국어답게 빼도 되는 주어는 뺀다.
+- darling · sweetheart · love · princess 같은 애칭은 맥락에 맞는 한국어로 옮기거나 이름으로 부른다. '달링' '허니' 같은 소리 옮김은 쓰지 않는다.
+- 담백하고 세련되게. 원문보다 감정을 부풀리거나 꾸밈말을 덧붙이지 않고, 원문에 없는 로맨스 소설 상투구를 만들지 않는다.
+- 번역투를 피한다: '~하는 것이었다', '~에 의해', '그것은', '~하고 있는 중이다', 겹치는 '~의'.
+- 감탄사 · 의성어 · 의태어(Oh, Well, Hmm, *sigh*)는 한국어에서 실제로 쓰는 말로.
+{{/if}}
+
+Text:
+{{prompt}}`;
 export const SYSTEM = 'You are a professional translator. Follow the instructions in the user message exactly and output nothing else.';
 /** [빈칸, 설명] — 설명은 부를 때의 언어로 */
 export const VARS = (): [string, string][] => ([['{{language}}', 'language'], ['{{prompt}}', 'prompt'], ['{{name}}', 'name'], ['{{#each chat}}…{{/each}}', 'each'], ['{{#each (slice chat -3)}}…{{/each}}', 'slice'], ['{{context}}', 'context'], ['{{chat_1}}', 'chat1'], ['{{#if chat}}…{{else}}…{{/if}}', 'if'], ['{{user}} {{char}}', 'userChar']] as [string, string][]).map(([v, k]): [string, string] => [v, t('translate.vars.' + k)]);

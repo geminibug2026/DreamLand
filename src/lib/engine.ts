@@ -1575,9 +1575,9 @@ function gemSchema(v: unknown): unknown {
 }
 /** 생각을 적게 하라는 요청을 거절한 모델 (이번 실행 동안은 다시 보내지 않는다) */
 const noLowThink = new Set<string>();
-export async function quickCall(system: string, user: string, { maxTokens = 1500, signal, conn, lowThink = false }: { maxTokens?: number; signal?: AbortSignal; conn?: Conn | null; lowThink?: boolean } = {}): Promise<string> {
+export async function quickCall(system: string, user: string, { maxTokens = 1500, signal, conn, lowThink = false, temp }: { maxTokens?: number; signal?: AbortSignal; conn?: Conn | null; lowThink?: boolean; temp?: number } = {}): Promise<string> {
   const c = conn || S.conn(), key = `${c?.provider}|${c?.model}`, low = lowThink && !noLowThink.has(key);
-  const P: Params = { ...S.preset().params, stream: false, maxTokens, prefill: '', stop: [], ...(low ? { lowThink: true } : {}) };
+  const P: Params = { ...S.preset().params, stream: false, maxTokens, prefill: '', stop: [], ...(low ? { lowThink: true } : {}), ...(temp != null ? { temperature: temp } : {}) };
   const msgs: PromptList = [{ role: 'system', content: system }, { role: 'user', content: user }];
   let r: StreamResult;
   try { r = await streamChat(c, P, msgs, { signal, label: 'helper' }); }

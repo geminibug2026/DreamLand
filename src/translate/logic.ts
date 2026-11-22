@@ -1,7 +1,7 @@
 // 번역: 설정 · 지시문 채우기 · 번역 한 번 · 메시지 번역 · 번역 기록 지우기 · 명령어 인자
 import type { ChatX, Msg, TranslateOpt } from '../addons/types';
 import { errMsg, isAbort } from '../addons/parts';
-import { DEFAULT_PROMPT, SYSTEM, langName } from './lang';
+import { DEFAULT_PROMPT, OLD_PROMPTS, SYSTEM, langName } from './lang';
 import * as libIllust from '../lib/illust';
 import { S, clamp, msgText } from '../lib/core';
 import { confirmBox, toast } from '../ui';
@@ -28,6 +28,8 @@ export function cfg(): TrCfg {
     c.preset = c.presets[c.presets.length - 1].id;
   }
   if (!c.presets.some(p => p.id === c.preset)) c.preset = c.presets[0].id;
+  // 손대지 않은 예전 기본 지시문은 새 기본으로 (고쳐 쓴 것은 그대로 둔다)
+  for (const p of c.presets) if (OLD_PROMPTS.includes(p.content)) p.content = DEFAULT_PROMPT;
   return c;
 }
 export const presetOf = (key?: string) => { const c = cfg(); return (key && c.presets.find(p => p.id === key || p.name === key)) || c.presets.find(p => p.id === c.preset) || c.presets[0]; };
@@ -39,7 +41,7 @@ interface FillVars { language: string; text: string; name: string; user: string;
 export function fill(tpl: string, v: FillVars): string {
   const keep: string[] = []; const stash = (s: unknown) => { keep.push(String(s ?? '')); return `\u0000${keep.length - 1}\u0000`; };
   const chat = v.chat || [];
-  const simple: Record<string, string> = { language: v.language, prompt: v.text, text: v.text, name: v.name, user: v.user, char: v.char, context: chat.map(c => `${c.name}: ${c.mes}`).join('\n') };
+  const simple: Record<string, string> = { korean: /^korean$/i.test(v.language) ? '1' : '', language: v.language, prompt: v.text, text: v.text, name: v.name, user: v.user, char: v.char, context: chat.map(c => `${c.name}: ${c.mes}`).join('\n') };
   const itemVal = (it: CtxItem, i: number, key: string) => {
     key = key.trim(); const add = key.match(/^add\s+@index\s+(-?\d+)$/);
     if (add) return String(i + +add[1]); if (key === '@index') return String(i);
@@ -63,8 +65,12 @@ export async function translate(text: string, language?: string, { chat, context
     language: langName(language || c.lang), text, name: name || '', user: persona?.name || '', char: S.get('chars', chat?.charIds?.[0])?.name || '',
     chat: context.map(x => ({ name: x.name, mes: String(x.text ?? x.mes ?? '').slice(0, 4000), text: String(x.text ?? x.mes ?? '').slice(0, 4000) })),
   });
-  let out = await quickCall(SYSTEM, prompt, { maxTokens: clamp(+(c.maxTokens ?? 0) || 20000, 256, 200000), signal, conn: conn || S.helperConn('translate', chat) });
-  if (p.filter !== false) { const m = out.match(FENCE); if (m) out = m[1]; }
+  let out = await quickCall(SYSTEM, prompt, { maxTokens: clamp(+(c.maxTokens ?? 0) || 20000, 256, 200000), signal, conn: conn || S.helperConn('translate', chat), temp: 0.3, lowThink: true });   // 번역은 낮은 온도로 (대화 프리셋의 높은 온도를 따르면 말투 · 호칭이 흔들린다)
+  if (p.filter !== false) {
+    const whole = out.trim().match(/^```[^\n]*\n([\s\S]*?)\n?```$/);
+    if (whole && !/^\s*```/.test(text)) out = whole[1];
+    else if (!text.includes('```')) { const m = out.match(FENCE); if (m) out = m[1]; }
+  }
   out = out.trim();
   if (!out) throw new Error(tt('translate.err.empty'));
   return out;
@@ -76,7 +82,7 @@ export const artOf = (id: string) => document.querySelector<HTMLElement>(`articl
 const markBusy = (id: string) => artOf(id)?.querySelectorAll('.trx-btn.trx-go, .trx-btn.trx-re').forEach(b => b.classList.toggle('busy', busy.has(id)));
 const contextOf = (chat: ChatX, msgs: Msg[], m: Msg) => {
   const n = +(cfg().context ?? 0) || 0, idx = msgs.indexOf(m), user = S.persona(chat)?.name || '';
-  return n && idx > 0 ? msgs.slice(Math.max(0, idx - n), idx).filter(x => !x.hidden).map(x => ({ name: x.role === 'user' ? user : (x.name || S.get('chars', x.charId)?.name || 'Narrator'), text: strip(msgText(x)) })) : [];
+  return n && idx > 0 ? msgs.slice(Math.max(0, idx - n), idx).filter(x => !x.hidden).map(x => { const sw = x.swipes?.[x.sw] as { tr?: string } | undefined; return { name: x.role === 'user' ? user : (x.name || S.get('chars', x.charId)?.name || 'Narrator'), text: sw?.tr?.trim() ? strip(sw.tr) : strip(msgText(x)) }; }) : [];   // 이미 번역한 앞 메시지는 번역문으로 (말씨 · 이름을 이어 가게)
 };
 export const persist = async (chat: ChatX, msgs: Msg[]) => { if (chatApi.current().chat === chat) { await chatApi.save(); chatApi.redraw(); } else await S.saveMsgs(chat, msgs); };
 
