@@ -1,4 +1,4 @@
-import{a as e,o as t}from"./parts-UGtCb4Rd.js";import{i as n,s as r,u as i}from"./i18n-C6s2FObo.js";import{gn as a,u as o}from"./actions-C3oUKool.js";import{T as s,o as c,p as l}from"./core-CcZAtpOs.js";import{_ as u,at as d,ot as f}from"./engine-B14v2uTf.js";import{c as p}from"./advanced-BZQl5euN.js";var m=`ko|Korean|한국어
+import{a as e,o as t}from"./parts-UGtCb4Rd.js";import{i as n,s as r,u as i}from"./i18n-C6s2FObo.js";import{gn as a,u as o}from"./actions-rkEfnox_.js";import{T as s,o as c,p as l}from"./core-CcZAtpOs.js";import{_ as u,at as d,ot as f}from"./engine-B14v2uTf.js";import{c as p}from"./advanced-BZQl5euN.js";var m=`ko|Korean|한국어
 en|English|영어
 ja|Japanese|일본어
 zh-CN|Chinese (Simplified)|중국어 (간체)
@@ -128,7 +128,7 @@ You are an expert multilingual translator. Your task is to translate the user's 
 3.  Keep names consistent with the previous messages. Translate meaning and tone, not word by word.
 4.  Your response **must** only contain the translated text, enclosed in a single markdown code block.
 
-Important: Your response must follow this exact format with the translation enclosed in code blocks (\`\`\`).`],b=`Translate the text below into {{language}}. Reply with the translation only.
+Important: Your response must follow this exact format with the translation enclosed in code blocks (\`\`\`).`,`Translate the text below into {{language}}. Reply with the translation only.
 {{#if chat}}
 
 Earlier in this story, for names, who talks to whom, and the speech levels already used (lines that were already translated are shown translated):
@@ -152,6 +152,36 @@ How to translate:
 - you 를 '당신' 으로, he · she 를 '그' '그녀' 로 기계적으로 옮기지 않는다. 이름 · 호칭(아가씨, 선배, 대표님 …)으로 부르거나, 한국어답게 빼도 되는 주어는 뺀다.
 - darling · sweetheart · love · princess 같은 애칭은 맥락에 맞는 한국어로 옮기거나 이름으로 부른다. '달링' '허니' 같은 소리 옮김은 쓰지 않는다.
 - 담백하고 세련되게. 원문보다 감정을 부풀리거나 꾸밈말을 덧붙이지 않고, 원문에 없는 로맨스 소설 상투구를 만들지 않는다.
+- 번역투를 피한다: '~하는 것이었다', '~에 의해', '그것은', '~하고 있는 중이다', 겹치는 '~의'.
+- 감탄사 · 의성어 · 의태어(Oh, Well, Hmm, *sigh*)는 한국어에서 실제로 쓰는 말로.
+{{/if}}
+
+Text:
+{{prompt}}`],b=`Translate the text below into {{language}}. Reply with the translation only.
+{{#if chat}}
+
+Earlier in this story, for names, who talks to whom, and the speech levels already used (lines that were already translated are shown translated):
+{{#each chat}}
+{{this.name}}: {{this.mes}}
+{{/each}}
+{{/if}}
+
+How to translate:
+- Write it the way a skilled {{language}} novelist would have written it in the first place: natural sentences, not word for word.
+- Keep the meaning, mood and every detail. Add nothing, leave nothing out, do not soften or censor anything.
+- Keep the layout exactly: paragraphs, line breaks, *asterisks*, quotation marks, markdown, HTML tags, {{img::…}} tags. Do not translate code or HTML attributes.
+- Keep every name and title the same as in the earlier lines.
+- This text is {{name}}'s turn.
+{{#if korean}}
+
+한국어로 옮길 때:
+- 지문(서술)은 '~했다' 체로 이어 쓴다. 말투는 대사에만 살린다.
+- 존댓말 · 반말: 두 사람의 관계와 앞서 번역된 대사에서 쓰던 말씨를 그대로 이어 간다. 원문에 근거가 없으면 바꾸지 않는다. 처음 만난 사이 · 윗사람 · 격식 있는 자리는 존댓말, 가까운 사이는 반말이 기본이고 sir · ma'am · my lady 같은 말과 원문의 격식을 따른다.
+- 판타지 · 사극 인물이라도 '~하오' '~하시오' 같은 낡은 말투는 쓰지 않는다. 격식은 '~합니다' '~하십시오', 부드러운 존대는 '~해요'.
+- you 를 '당신' 으로, he · she 를 '그' '그녀' 로 기계적으로 옮기지 않는다. 이름 · 호칭(아가씨, 선배, 대표님 …)으로 부르거나, 한국어답게 빼도 되는 주어는 뺀다.
+- darling · sweetheart · love · princess 같은 애칭은 맥락에 맞는 한국어로 옮기거나 이름으로 부른다. '달링' '허니' 같은 소리 옮김은 쓰지 않는다.
+- 남초 커뮤니티 · 인터넷 은어 말투를 섞지 않는다 ('~노' '~누' '~이기야', '개웃기네' 같은 '개-', '지린다' '레전드' '실화냐' '쌉가능' '~각' '알빠노', '꼴린다' '암컷' '따먹다' 같은 말). 거칠거나 가벼운 인물도 실제 사람이 입으로 하는 자연스러운 말투로 옮기고, 욕은 원문만큼의 세기로 평범한 욕('젠장' '빌어먹을' '씨발')을 쓴다.
+- 성적인 장면도 순화하거나 빼지 않되, 비하하는 말 · 야설이나 커뮤니티식 표현이 아니라 소설에서 쓰는 자연스러운 문장으로 옮긴다.
 - 번역투를 피한다: '~하는 것이었다', '~에 의해', '그것은', '~하고 있는 중이다', 겹치는 '~의'.
 - 감탄사 · 의성어 · 의태어(Oh, Well, Hmm, *sigh*)는 한국어에서 실제로 쓰는 말로.
 {{/if}}
@@ -181,7 +211,8 @@ How to translate:
 - 판타지 · 사극 인물이라도 '~하오' '~하시오' 같은 낡은 말투는 쓰지 않는다. 격식은 '~합니다' '~하십시오', 부드러운 존대는 '~해요'.
 - you 를 '당신' 으로, he · she 를 '그' '그녀' 로 기계적으로 옮기지 않는다. 이름 · 호칭(아가씨, 선배, 대표님 …)으로 부르거나, 한국어답게 빼도 되는 주어는 뺀다.
 - darling · sweetheart · love · princess 같은 애칭은 맥락에 맞는 한국어로 옮기거나 이름으로 부른다. '달링' '허니' 같은 소리 옮김은 쓰지 않는다.
-- 담백하고 세련되게. 원문보다 감정을 부풀리거나 꾸밈말을 덧붙이지 않고, 원문에 없는 로맨스 소설 상투구를 만들지 않는다.
+- 남초 커뮤니티 · 인터넷 은어 말투를 섞지 않는다 ('~노' '~누' '~이기야', '개웃기네' 같은 '개-', '지린다' '레전드' '실화냐' '쌉가능' '~각' '알빠노', '꼴린다' '암컷' '따먹다' 같은 말). 거칠거나 가벼운 인물도 실제 사람이 입으로 하는 자연스러운 말투로 옮기고, 욕은 원문만큼의 세기로 평범한 욕('젠장' '빌어먹을' '씨발')을 쓴다.
+- 성적인 장면도 순화하거나 빼지 않되, 비하하는 말 · 야설이나 커뮤니티식 표현이 아니라 소설에서 쓰는 자연스러운 문장으로 옮긴다.
 - 번역투를 피한다: '~하는 것이었다', '~에 의해', '그것은', '~하고 있는 중이다', 겹치는 '~의'.
 - 감탄사 · 의성어 · 의태어(Oh, Well, Hmm, *sigh*)는 한국어에서 실제로 쓰는 말로.
 {{/if}}
