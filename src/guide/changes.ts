@@ -6,7 +6,7 @@ import { newQrItem, newQrSet, qrSave, qrStore, type QrItem, type QrSet } from '.
 import type { Char, Lore, LoreEntry, Persona, Preset, PresetBlock, Regex, Theme } from '../lib/types';
 import type { Change, Kind, Op, UndoRow } from './types';
 
-const LEDGER = 'guide:undo', KEEP_DAYS = 14, KEEP_N = 50;
+const LEDGER = 'guide:undo', KEEP_DAYS = 14, KEEP_N = 50, KEEP_TH = 30;
 type Obj = Record<string, unknown>;
 const themes = () => (S.settings.customThemes ||= []);
 
@@ -44,7 +44,9 @@ function build(kind: Kind, o: Obj): Obj {
 
 async function ledger(): Promise<UndoRow[]> { return ((await DB.get('kv', LEDGER)) as { list?: UndoRow[] } | undefined)?.list || []; }
 async function saveLedger(list: UndoRow[]) {
-  const min = now() - KEEP_DAYS * 864e5, keep = list.filter(r => r.at >= min).slice(-KEEP_N), gone = list.filter(r => !keep.includes(r));
+  // 스크립트가 적은 줄(src: 'th')은 따로 세어 조수의 되돌리기 기록을 밀어내지 않게 한다
+  const min = now() - KEEP_DAYS * 864e5, live = list.filter(r => r.at >= min), mine = live.filter(r => r.src !== 'th').slice(-KEEP_N), th = live.filter(r => r.src === 'th').slice(-KEEP_TH);
+  const keep = live.filter(r => mine.includes(r) || th.includes(r)), gone = list.filter(r => !keep.includes(r));
   for (const r of gone) await DB.del('kv', 'gdundo:' + r.id).catch(() => { });
   await DB.put('kv', { id: LEDGER, list: keep }); emit('guide:undo');
 }
@@ -108,6 +110,16 @@ export async function applyChange(ch: Change): Promise<void> {
     ch.state = 'applied'; ch.undoId = id; ch.at = now(); delete ch.err;
     if (op.type === 'create') ch.op = { ...op, obj: { ...op.obj, id: targetId } };
   } catch (e) { ch.state = 'failed'; ch.err = e instanceof Error ? e.message : String(e); throw e; }
+}
+
+/** 조수 밖에서 고친 것(실리태번 스크립트 등)도 같은 장부에 적는다: 고치기 직전 사본(before, 새로 만든 것이면 null)을 두고 되돌릴 번호를 돌려준다.
+ *  고친 뒤 put 을 마친 다음에 부르면 stamp(고친 시각)가 맞게 적힌다 */
+export async function keepUndo(kind: Kind, targetId: string, target: string, before: Obj | null): Promise<string> {
+  const id = uid();
+  await DB.put('kv', { id: 'gdundo:' + id, before: before ? structuredClone(before) : null });
+  const after = current(kind, targetId);
+  await saveLedger([...(await ledger()), { id, at: now(), kind, targetId, target, created: !before, stamp: Number(after?.updatedAt) || 0, src: 'th' }]);
+  return id;
 }
 
 /** 되돌릴 때 그 뒤로 사람이 또 고쳤는지 (고쳤으면 화면에서 한 번 더 묻는다) */

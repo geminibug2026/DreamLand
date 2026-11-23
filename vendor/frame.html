@@ -43,7 +43,7 @@ addEventListener("message", function on(e) {
     }
   }
   var init = JSON.stringify(I).replace(/</g, "\\u003c");
-  var pre = '<script>window.__dlInit=' + init + '<\/script>' + lib + js("th-shim.js");
+  var pre = '<script>window.__dlInit=' + init + '<\/script>' + lib + (script || I.more ? js("th-more.js") : "") + js("th-shim.js");
   var post = js("th-size.js");
   var m = h.match(/<head[^>]*>/i) || h.match(/<html[^>]*>/i) || h.match(/<!doctype[^>]*>/i);
   h = m ? h.replace(m[0], function () { return m[0] + pre; }) : pre + h;

@@ -116,6 +116,8 @@ function isPage(lang: string, code: string) {
 const frameSrc = new Map<string, string>(), frameH = new Map<string, number>();   // 화면 글 · 마지막으로 잰 높이
 /** 화면(iframe)의 시작 자료와 도우미 호출을 채팅 쪽이 채운다 (src/chat/frameBridge) */
 export const frameHooks: { init?: (f: HTMLIFrameElement) => unknown; call?: (f: HTMLIFrameElement, fn: string, args: unknown[]) => unknown; /** 듣기 시작 · 부름 결과 · 준비됨 알림 (src/chat/frameEvents) */ msg?: (f: HTMLIFrameElement, d: Record<string, unknown>) => void; /** 화면에 넣기 전에 글을 고친다 (알려진 외부 모듈 주소를 앱에 든 것으로) */ src?: (code: string) => string } = {};
+/** 화면 글 (화면 id 로). 도우미가 화면이 쓰는 함수를 미리 살필 때 쓴다 */
+export const frameSource = (id: string) => frameSrc.get(id) || '';
 /** 열려 있는 모든 화면에 알린다 */
 export function framePost(data: unknown) { for (const f of document.querySelectorAll<HTMLIFrameElement>('iframe.dl-frame-el')) f.contentWindow?.postMessage(data, '*'); }
 const hashOf = (s: string) => { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return h.toString(36) + s.length.toString(36); };
