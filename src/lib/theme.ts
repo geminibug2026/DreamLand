@@ -45,6 +45,8 @@ export const FONTS: Record<string, FontDef> = {
   nanumpen: { name: '나눔손글씨 펜', stack: '"Nanum Pen Script"', css: 'https://fonts.googleapis.com/css2?family=Nanum+Pen+Script&display=swap' },
   gamjaflower: { name: '감자꽃 (손글씨)', stack: '"Gamja Flower"', css: 'https://fonts.googleapis.com/css2?family=Gamja+Flower&display=swap' },
   jua: { name: '주아 (동글)', stack: 'Jua', css: 'https://fonts.googleapis.com/css2?family=Jua&display=swap' },
+  huinkkolisuli: { name: '흰꼬리수리 (손글씨)', stack: '"나눔손글씨 흰꼬리수리"', css: 'https://cdn.jsdelivr.net/npm/@kfonts/nanum-handwritting-huinkkolisuli@0.2.0/index.css' },
+  yedang: { name: '예당체 (손글씨)', stack: '"나눔손글씨 예당체"', css: 'https://cdn.jsdelivr.net/npm/@kfonts/nanum-handwritting-yedangche@0.2.0/index.css' },
 };
 /** [색 칸, 이름 키] — 이름은 그릴 때 t(키) */
 export const COLOR_FIELDS: [string, string][] = ['bg', 'bg2', 'surface', 'text', 'dim', 'accent', 'accent2', 'sayBg', 'sayText', 'userBg', 'userText', 'nar', 'think'].map(k => [k, 'theme.color.' + k]);
