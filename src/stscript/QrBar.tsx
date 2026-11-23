@@ -33,14 +33,15 @@ export function qrItemMenu(el: Element, it: QrItem, set: QrSet, run?: (fn: () =>
 }
 
 export function QrBar({ chat }: { chat: Chat }) {
-  useEvents('qr:changed', 'chat:open', 'thscripts:menu', 'thscripts:changed');
+  useEvents('qr:changed', 'chat:open', 'thscripts:menu', 'thscripts:changed', 'thscripts:buttons');
   const [busy, setBusy] = useState('');
   const [tray, setTray] = useState('');
   const hold = useRef<{ timer: number; fired: boolean }>({ timer: 0, fired: false });
   const anchor = useRef<HTMLButtonElement>(null);
   if (!qrStore().bar) return null;
   const sets = qrActive(chat).filter(s => s.items.some(i => !i.hidden));
-  if (!sets.length) return null;
+  const sbtn = TH.scriptButtons();   // 실리태번 스크립트가 단 단추 (Tavern Helper 의 스크립트 단추)
+  if (!sets.length && !sbtn.length) return null;
   const press = async (id: string, fn: () => Promise<unknown>) => { if (busy) return; setBusy(id); try { await fn(); } finally { setBusy(''); } };
   const hasCtx = (i: QrItem) => (i.contextList || []).some(c => qrStore().sets.some(s => s.name === c.set));
   const btn = (i: QrItem, s: QrSet, cls: string, after?: () => void): ReactNode => <button key={i.id} type="button"
@@ -54,6 +55,7 @@ export function QrBar({ chat }: { chat: Chat }) {
   const pinned = sets.flatMap(s => visible(s).filter(i => i.pinned).map(i => btn(i, s, 'chip qr-chip qr--button')));
   const cur = sets.find(s => s.id === tray);
   return <>{pinned.length ? <span className="qr-set qr-pinned">{pinned}</span> : null}
+    {sbtn.length ? <span className="qr-set th-btns">{sbtn.map(b => <button key={b.id} type="button" className="chip qr-chip qr--button" title={b.name} onClick={() => TH.clickButton(b.script, b.name)}>{b.name}</button>)}</span> : null}
     {sets.map(s => qrInline(s)
       ? <span className="qr-set" key={s.id} title={sets.length > 1 ? s.name : undefined}>{visible(s).filter(i => !i.pinned).map(i => btn(i, s, 'chip qr-chip qr--button'))}</span>
       : <button key={s.id} type="button" className={'chip qr-setchip' + (tray === s.id ? ' on' : '')} aria-expanded={tray === s.id} title={s.name}

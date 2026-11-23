@@ -10,7 +10,10 @@ import { confirmBox } from '../ui';
 import { t } from '../i18n';
 import type { Char } from './types';
 
-export interface ThScript { id: string; name: string; content: string; enabled: boolean; trusted: boolean; info?: string; ts?: number }
+export interface ThButton { name: string; visible: boolean }
+export interface ThScript { id: string; name: string; content: string; enabled: boolean; trusted: boolean; info?: string; ts?: number; /** 스크립트 단추 (Tavern Helper 의 button) */ button?: { enabled: boolean; buttons: ThButton[] }; /** 스크립트 변수 (Tavern Helper 의 data · type: 'script') */ data?: Record<string, unknown> }
+const btnOf = (x: Record<string, unknown>): ThScript['button'] => { const b = x.button && typeof x.button === 'object' ? x.button as Record<string, unknown> : null, list = Array.isArray(b?.buttons) ? b!.buttons : Array.isArray(x.buttons) ? x.buttons : []; const buttons = (list as unknown[]).filter((v): v is Record<string, unknown> => !!v && typeof v === 'object' && typeof (v as { name?: unknown }).name === 'string').map(v => ({ name: String(v.name), visible: v.visible !== false })); return buttons.length || b ? { enabled: b ? b.enabled !== false : true, buttons } : undefined; };
+const dataOf = (x: Record<string, unknown>) => x.data && typeof x.data === 'object' && !Array.isArray(x.data) ? x.data as Record<string, unknown> : undefined;
 
 const KEY = 'th-scripts';
 export let scripts: ThScript[] = [];
@@ -24,7 +27,7 @@ const save = async () => { await DB.put('kv', { id: KEY, data: scripts }); emit(
 export function parseScripts(j: unknown): ThScript[] {
   const list = Array.isArray(j) ? j : j && typeof j === 'object' && Array.isArray((j as { scripts?: unknown[] }).scripts) ? (j as { scripts: unknown[] }).scripts : [j];
   return list.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && typeof (x as { content?: unknown }).content === 'string')
-    .map(x => ({ id: String(x.id || uid()), name: String(x.name || '스크립트'), content: String(x.content), info: String(x.info || ''), enabled: false, trusted: false, ts: Date.now() }));
+    .map(x => ({ id: String(x.id || uid()), name: String(x.name || '스크립트'), content: String(x.content), info: String(x.info || ''), enabled: false, trusted: false, ts: Date.now(), ...(btnOf(x) ? { button: btnOf(x) } : {}), ...(dataOf(x) ? { data: dataOf(x) } : {}) }));
 }
 
 export async function addScripts(list: ThScript[]) {
@@ -131,6 +134,7 @@ function start(s: ThScript) {
   const onReady = async (e: MessageEvent) => {
     if (e.source !== f.contentWindow || !(e.data as { dlFrameReady?: unknown })?.dlFrameReady) return;
     removeEventListener('message', onReady);
+    await loadTh().catch(e => console.warn('[스크립트] 도우미를 불러오지 못함', e));
     await ensureJq();
     if (JQUI.test(s.content)) await ensureJqUi();
     const init = await Promise.resolve(frameHooks.init?.(f)).catch(() => ({}));
@@ -142,9 +146,54 @@ function start(s: ThScript) {
   addEventListener('message', onReady);
   f.src = Server.frameUrl;
   document.body.append(f);
-  running.set(s.id, f);
+  running.set(s.id, f); metas.set(s.id, s);
+  if (s.button?.enabled !== false && s.button?.buttons.length) { btns.set(s.id, s.button.buttons.map(b => ({ ...b }))); emit('thscripts:buttons'); }
 }
-function stop(s: ThScript) { const f = running.get(s.id); if (f) { f.remove(); running.delete(s.id); emit('thscripts:changed'); } }
+function stop(s: ThScript) { const f = running.get(s.id); if (f) { f.remove(); running.delete(s.id); if (btns.delete(s.id)) emit('thscripts:buttons'); emit('thscripts:changed'); } }
+
+// ── Tavern Helper 의 나머지 도우미(로어북 · 프리셋 · 캐릭터 …)는 스크립트가 처음 돌 때 불러온다 (src/th) ──
+let thMod: Promise<unknown> | null = null;
+export const loadTh = () => thMod ||= import('../th').then(m => { m.install(); return m; });
+// ── 스크립트 단추: 스크립트가 정한 단추를 입력창 위 줄에 보이고, 누르면 그 스크립트에 알린다 ──
+const btns = new Map<string, ThButton[]>(), metas = new Map<string, ThScript>();
+/** 돌고 있는 스크립트의 정보 (이름 · 설명 · 단추 · 변수) */
+export const scriptMeta = (id: string) => metas.get(id) || scripts.find(s => s.id === id);
+export const scriptFrame = (id: string) => running.get(id) || null;
+/** 스크립트를 다시 띄운다 (reloadIframe) */
+export async function restart(id: string) { const s = metas.get(id) || scripts.find(x => x.id === id); if (!s || !running.has(id)) return; stop(s); start(s); }
+export const scriptOfFrame = (f: HTMLIFrameElement) => f.dataset.script || '';
+/** 입력창 위에 보일 단추 */
+export function scriptButtons(): { id: string; name: string; script: string }[] {
+  const out: { id: string; name: string; script: string }[] = [];
+  for (const [id, list] of btns) if (running.has(id)) for (const b of list) if (b.visible) out.push({ id: id + '_' + b.name, name: b.name, script: id });
+  return out;
+}
+export const getButtons = (id: string): ThButton[] => (btns.get(id) || scriptMeta(id)?.button?.buttons || []).map(b => ({ ...b }));
+export function setButtons(id: string, list: ThButton[]) {
+  const next = list.filter(b => b && typeof b.name === 'string').map(b => ({ name: String(b.name), visible: b.visible !== false }));
+  if (JSON.stringify(next) === JSON.stringify(btns.get(id) || [])) return;
+  btns.set(id, next); emit('thscripts:buttons');
+}
+/** 단추를 눌렀다: 그 스크립트 화면에 단추 이벤트를 보낸다 (Tavern Helper 의 getButtonEvent 이름과, 옛 판처럼 단추 이름 그대로) */
+export function clickButton(script: string, name: string) {
+  const w = running.get(script)?.contentWindow; if (!w) return;
+  w.postMessage({ dlEvent: script + '_' + name, args: [] }, '*');
+  w.postMessage({ dlEvent: name, args: [] }, '*');
+}
+export function setScriptInfo(id: string, info: string) { const s = scriptMeta(id); if (!s) return; s.info = info; if (scripts.includes(s)) void save(); }
+/** 스크립트 변수: 가져온 스크립트는 스크립트 안에, 카드 스크립트는 카드의 스크립트 칸에 둔다 (실리태번과 같다) */
+export const scriptVars = (id: string): Record<string, unknown> => scriptMeta(id)?.data || {};
+export async function setScriptVars(id: string, v: Record<string, unknown>) {
+  const s = scriptMeta(id); if (!s) return;
+  s.data = v;
+  if (scripts.includes(s)) { await save(); return; }
+  const m = /^char:([^:]+):(.*)$/.exec(id), ch = m ? S.get('chars', m[1]) as Char | undefined : undefined; if (!ch) return;
+  const x = (ch.ext || {}) as Raw; let th = x.tavern_helper as unknown;
+  if (Array.isArray(th)) th = Object.fromEntries((th as unknown[]).filter((p): p is [string, unknown] => Array.isArray(p) && typeof p[0] === 'string'));
+  const walk = (list: unknown): boolean => Array.isArray(list) && list.some(it => { if (!it || typeof it !== 'object') return false; const r = it as Raw; if (r.type === 'folder') return walk(r.scripts ?? r.value); if (String(r.id || r.name) !== m![2]) return false; r.data = v; return true; });
+  const tree = ((th as Raw | undefined)?.scripts ?? x.TavernHelper_scripts) as unknown;
+  if (walk(tree)) { if (th && typeof th === 'object') x.tavern_helper = th; await S.save('chars', ch, true); }
+}
 
 export function load() {
   return loaded ||= (async () => {
@@ -164,7 +213,7 @@ export function charScripts(ch: Char | undefined | null): ThScript[] {
   if (Array.isArray(th)) th = Object.fromEntries((th as unknown[]).filter((p): p is [string, unknown] => Array.isArray(p) && typeof p[0] === 'string'));
   const raw = ((th as Raw | undefined)?.scripts ?? x.TavernHelper_scripts ?? []) as unknown;
   const flat = (list: unknown): Raw[] => Array.isArray(list) ? list.flatMap(it => it && typeof it === 'object' ? ((it as Raw).type === 'folder' ? flat((it as Raw).scripts ?? (it as Raw).value) : [it as Raw]) : []) : [];
-  return flat(raw).filter(s => typeof s.content === 'string' && s.content.trim()).map(s => ({ id: 'char:' + (ch as Char).id + ':' + String(s.id || s.name), name: String(s.name || 'script'), content: String(s.content), info: String(s.info || ''), enabled: s.enabled !== false, trusted: true }))
+  return flat(raw).filter(s => typeof s.content === 'string' && s.content.trim()).map(s => ({ id: 'char:' + (ch as Char).id + ':' + String(s.id || s.name), name: String(s.name || 'script'), content: String(s.content), info: String(s.info || ''), enabled: s.enabled !== false, trusted: true, ...(btnOf(s) ? { button: btnOf(s) } : {}), ...(dataOf(s) ? { data: dataOf(s) } : {}) }))
     .map(s => { const o = onMap()[s.id]; return o === undefined ? s : { ...s, enabled: o }; });
 }
 /** 카드 스크립트 하나씩 켜고 끄기 (카드에 적힌 켜짐 상태보다 앞선다) */

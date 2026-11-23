@@ -28,7 +28,7 @@ export interface Change {
   state: ChangeState; at: number; undoId?: string; err?: string;
 }
 /** 되돌리기 장부의 한 줄. 사본(before)은 따로 한 줄씩 둔다 (kv 의 gdundo:<id>) */
-export interface UndoRow { id: string; at: number; kind: Kind; targetId: string; target: string; created: boolean; stamp?: number }
+export interface UndoRow { id: string; at: number; kind: Kind; targetId: string; target: string; created: boolean; stamp?: number; /** 'th': 실리태번 스크립트가 고친 것 (조수의 기록과 따로 센다) */ src?: string }
 
 /** 입력창에서 @ 로 붙인 맥락 */
 export interface Ref { kind: 'chars' | 'personas' | 'lore' | 'presets' | 'chats' | 'regex'; id: string; name: string }

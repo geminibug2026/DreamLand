@@ -5,14 +5,14 @@
   function call(fn, args) {
     return new Promise(function (res, rej) {
       var id = ++seq; wait[id] = { res: res, rej: rej };
-      var a; try { a = JSON.parse(JSON.stringify(args || [])); } catch (e) { a = []; }
+      var a; try { a = JSON.parse(JSON.stringify(args || [], function (k, v) { return v instanceof RegExp ? String(v) : typeof v === "function" ? undefined : v; })); } catch (e) { a = []; }
       parent.postMessage({ dlCall: id, fn: fn, args: a }, "*");
     });
   }
   addEventListener("message", function (e) {
     var d = e.data; if (e.source !== parent || !d) return;
     if (d.dlRet != null && wait[d.dlRet]) { var w = wait[d.dlRet]; delete wait[d.dlRet]; if (d.ok) w.res(d.val); else w.rej(new Error(d.err || "error")); }
-    if (d.dlState) { takeState(d.dlState); if (d.dlState.lastId != null) I.lastId = d.dlState.lastId; if (d.dlState.vars) V = d.dlState.vars; }
+    if (d.dlState) { takeState(d.dlState); if (d.dlState.lastId != null) I.lastId = d.dlState.lastId; if (d.dlState.vars) V = Object.assign({}, d.dlState.vars, { script: V.script, extension: V.extension }); if (d.dlState.th) I.th = d.dlState.th; if (d.dlState.thx) I.thx = d.dlState.thx; }
     if (d.dlState && d.dlState.mvuExtra != null) I.mvuExtra = !!d.dlState.mvuExtra;
     if (d.dlState && d.dlState.viewH) setVh(d.dlState.viewH);
     if (d.dlState) checkMvuWait();
@@ -119,11 +119,14 @@
   function deleteChatMessages(ids, opt) { return call("delMsgs", [(ids || []).map(idOf), opt || {}]); }
 
   // ── 변수 ──
-  var V = I.vars || { chat: {}, global: {}, character: {}, message: {} };
+  var V = I.vars || { chat: {}, global: {}, character: {}, message: {} }; V.script = I.scriptVars || {}; V.extension = {};
   function slot(o) {
     o = o || {}; var t = o.type || "chat";
     if (t === "message") { var id = o.message_id == null || o.message_id === "latest" ? lastId() : idOf(o.message_id); var m = msgs().filter(function (x) { return x.message_id === id; })[0]; return { t: t, id: id, get: function () { return m ? (m.data || (m.data = {})) : {}; }, set: function (v) { if (m) { m.data = v; if (m.swipes_data) m.swipes_data[m.swipe_id || 0] = v; } } }; }
-    if (t === "script" || t === "extension") t = "chat";
+    // 스크립트 변수는 그 스크립트에 · 확장 변수는 확장 이름마다 · 캐릭터 · 프리셋 변수는 카드 · 프리셋에 (실리태번과 같다)
+    if (t === "script") return { t: t, id: o.script_id || I.scriptId || null, get: function () { return V.script || (V.script = {}); }, set: function (v) { V.script = v; } };
+    if (t === "extension") { var eid = String(o.extension_id || ""); return { t: t, id: eid, get: function () { return V.extension[eid] || (V.extension[eid] = {}); }, set: function (v) { V.extension[eid] = v; } }; }
+    if (t !== "global" && t !== "character" && t !== "preset") t = "chat";
     return { t: t, id: null, get: function () { return V[t] || (V[t] = {}); }, set: function (v) { V[t] = v; } };
   }
   function push(s) { return call("setVars", [s.t, s.id, s.get()]); }
@@ -158,30 +161,55 @@
       if (Array.isArray(back)) back.forEach(function (v, i) { if (i < args.length) adopt(args[i], v); });
     });
   }
-  var tavern_events = { APP_READY: "app_ready", MESSAGE_SENT: "message_sent", MESSAGE_RECEIVED: "message_received", MESSAGE_EDITED: "message_edited", MESSAGE_DELETED: "message_deleted", MESSAGE_SWIPED: "message_swiped", MESSAGE_UPDATED: "message_updated", USER_MESSAGE_RENDERED: "user_message_rendered", CHARACTER_MESSAGE_RENDERED: "character_message_rendered", GENERATION_STARTED: "generation_started", GENERATION_ENDED: "generation_ended", GENERATION_STOPPED: "generation_stopped", CHAT_CHANGED: "chat_id_changed", STREAM_TOKEN_RECEIVED: "stream_token_received" };
-  var iframe_events = { MESSAGE_IFRAME_RENDER_STARTED: "message_iframe_render_started", MESSAGE_IFRAME_RENDER_ENDED: "message_iframe_render_ended", GENERATION_STARTED: "js_generation_started", STREAM_TOKEN_RECEIVED_FULLY: "js_stream_token_received_fully", GENERATION_ENDED: "js_generation_ended" };
+  var tavern_events = {"APP_READY":"app_ready","EXTRAS_CONNECTED":"extras_connected","MESSAGE_SWIPED":"message_swiped","MESSAGE_SENT":"message_sent","MESSAGE_RECEIVED":"message_received","MESSAGE_EDITED":"message_edited","MESSAGE_DELETED":"message_deleted","MESSAGE_UPDATED":"message_updated","MESSAGE_FILE_EMBEDDED":"message_file_embedded","MESSAGE_REASONING_EDITED":"message_reasoning_edited","MESSAGE_REASONING_DELETED":"message_reasoning_deleted","MESSAGE_SWIPE_DELETED":"message_swipe_deleted","MORE_MESSAGES_LOADED":"more_messages_loaded","IMPERSONATE_READY":"impersonate_ready","CHAT_CHANGED":"chat_id_changed","GENERATION_AFTER_COMMANDS":"GENERATION_AFTER_COMMANDS","GENERATION_STARTED":"generation_started","GENERATION_STOPPED":"generation_stopped","GENERATION_ENDED":"generation_ended","SD_PROMPT_PROCESSING":"sd_prompt_processing","EXTENSIONS_FIRST_LOAD":"extensions_first_load","EXTENSION_SETTINGS_LOADED":"extension_settings_loaded","SETTINGS_LOADED":"settings_loaded","SETTINGS_UPDATED":"settings_updated","MOVABLE_PANELS_RESET":"movable_panels_reset","SETTINGS_LOADED_BEFORE":"settings_loaded_before","SETTINGS_LOADED_AFTER":"settings_loaded_after","CHATCOMPLETION_SOURCE_CHANGED":"chatcompletion_source_changed","CHATCOMPLETION_MODEL_CHANGED":"chatcompletion_model_changed","OAI_PRESET_CHANGED_BEFORE":"oai_preset_changed_before","OAI_PRESET_CHANGED_AFTER":"oai_preset_changed_after","OAI_PRESET_EXPORT_READY":"oai_preset_export_ready","OAI_PRESET_IMPORT_READY":"oai_preset_import_ready","WORLDINFO_SETTINGS_UPDATED":"worldinfo_settings_updated","WORLDINFO_UPDATED":"worldinfo_updated","CHARACTER_EDITOR_OPENED":"character_editor_opened","CHARACTER_EDITED":"character_edited","CHARACTER_PAGE_LOADED":"character_page_loaded","USER_MESSAGE_RENDERED":"user_message_rendered","CHARACTER_MESSAGE_RENDERED":"character_message_rendered","FORCE_SET_BACKGROUND":"force_set_background","CHAT_DELETED":"chat_deleted","CHAT_CREATED":"chat_created","GENERATE_BEFORE_COMBINE_PROMPTS":"generate_before_combine_prompts","GENERATE_AFTER_COMBINE_PROMPTS":"generate_after_combine_prompts","GENERATE_AFTER_DATA":"generate_after_data","WORLD_INFO_ACTIVATED":"world_info_activated","TEXT_COMPLETION_SETTINGS_READY":"text_completion_settings_ready","CHAT_COMPLETION_SETTINGS_READY":"chat_completion_settings_ready","CHAT_COMPLETION_PROMPT_READY":"chat_completion_prompt_ready","CHARACTER_FIRST_MESSAGE_SELECTED":"character_first_message_selected","CHARACTER_DELETED":"characterDeleted","CHARACTER_DUPLICATED":"character_duplicated","CHARACTER_RENAMED":"character_renamed","CHARACTER_RENAMED_IN_PAST_CHAT":"character_renamed_in_past_chat","SMOOTH_STREAM_TOKEN_RECEIVED":"stream_token_received","STREAM_TOKEN_RECEIVED":"stream_token_received","STREAM_REASONING_DONE":"stream_reasoning_done","FILE_ATTACHMENT_DELETED":"file_attachment_deleted","WORLDINFO_FORCE_ACTIVATE":"worldinfo_force_activate","OPEN_CHARACTER_LIBRARY":"open_character_library","ONLINE_STATUS_CHANGED":"online_status_changed","IMAGE_SWIPED":"image_swiped","CONNECTION_PROFILE_LOADED":"connection_profile_loaded","CONNECTION_PROFILE_CREATED":"connection_profile_created","CONNECTION_PROFILE_DELETED":"connection_profile_deleted","CONNECTION_PROFILE_UPDATED":"connection_profile_updated","TOOL_CALLS_PERFORMED":"tool_calls_performed","TOOL_CALLS_RENDERED":"tool_calls_rendered","CHARACTER_MANAGEMENT_DROPDOWN":"charManagementDropdown","SECRET_WRITTEN":"secret_written","SECRET_DELETED":"secret_deleted","SECRET_ROTATED":"secret_rotated","SECRET_EDITED":"secret_edited","PRESET_CHANGED":"preset_changed","PRESET_DELETED":"preset_deleted","PRESET_RENAMED":"preset_renamed","PRESET_RENAMED_BEFORE":"preset_renamed_before","MAIN_API_CHANGED":"main_api_changed","WORLDINFO_ENTRIES_LOADED":"worldinfo_entries_loaded","WORLDINFO_SCAN_DONE":"worldinfo_scan_done","MEDIA_ATTACHMENT_DELETED":"media_attachment_deleted"};
+  var iframe_events = { MESSAGE_IFRAME_RENDER_STARTED: "message_iframe_render_started", MESSAGE_IFRAME_RENDER_ENDED: "message_iframe_render_ended", GENERATION_REQUESTED: "js_generation_requested", GENERATION_STARTED: "js_generation_started", STREAM_TOKEN_RECEIVED_FULLY: "js_stream_token_received_fully", STREAM_TOKEN_RECEIVED_INCREMENTALLY: "js_stream_token_received_incrementally", REASONING_TOKEN_RECEIVED_FULLY: "js_reasoning_token_received_fully", REASONING_TOKEN_RECEIVED_INCREMENTALLY: "js_reasoning_token_received_incrementally", GENERATION_ENDED: "js_generation_ended" };
 
   // ── 그 밖 ──
   function substitudeMacros(t) { return String(t).replace(/\{\{user\}\}/gi, I.user || "User").replace(/\{\{char\}\}/gi, I.char || "").replace(/\{\{lastMessageId\}\}/gi, String(lastId())); }
   function triggerSlash(cmd) { return call("slash", [String(cmd)]); }
-  function generate(cfg) { return call("generate", [cfg || {}]); }
-  function generateRaw(cfg) { return call("generateRaw", [cfg || {}]); }
+  function generate(cfg) { return api("generate", [cfg || {}]); }
+  function generateRaw(cfg) { return api("generateRaw", [cfg || {}]); }
   function errorCatched(fn) { return function () { try { var r = fn.apply(this, arguments); if (r && r.catch) r.catch(function (e) { console.error(e); toastr.error(String(e && e.message || e)); }); return r; } catch (e) { console.error(e); toastr.error(String(e && e.message || e)); } }; }
 
   var TH = {
     triggerSlash: triggerSlash, triggerSlashWithResult: triggerSlash,
     getChatMessages: getChatMessages, setChatMessages: setChatMessages, setChatMessage: setChatMessage, createChatMessages: createChatMessages, deleteChatMessages: deleteChatMessages,
     getLastMessageId: lastId, getCurrentMessageId: function () { return I.msgId != null ? I.msgId : lastId(); }, getMessageId: function () { return I.msgId; },
-    getIframeName: function () { return "message-iframe-" + I.msgId; }, getScriptId: function () { return "dl-frame"; },
+    getIframeName: function () { return I.script ? "TH-script--" + (I.scriptName || "") + "--" + (I.scriptId || "") : "message-iframe-" + I.msgId; }, getScriptId: function () { return I.scriptId || "dl-frame"; },
     getVariables: getVariables, replaceVariables: replaceVariables, insertOrAssignVariables: insertOrAssignVariables, insertVariables: insertVariables, deleteVariable: deleteVariable, updateVariablesWith: updateVariablesWith,
-    eventOn: eventOn, eventOnce: eventOnce, eventMakeFirst: eventMakeFirst, eventMakeLast: eventMakeLast, eventOnButton: eventOn, eventRemoveListener: eventRemoveListener, eventClearAll: eventClearAll, eventClearEvent: function (t) { delete handlers[t]; told(t); }, eventClearListener: function (fn) { Object.keys(handlers).forEach(function (t) { eventRemoveListener(t, fn); }); }, eventEmit: eventEmit, eventEmitAndWait: eventEmit,
+    eventOn: eventOn, eventOnce: eventOnce, eventMakeFirst: eventMakeFirst, eventMakeLast: eventMakeLast, eventOnButton: function (n, fn) { return eventOn(getButtonEvent(n), fn); }, eventRemoveListener: eventRemoveListener, eventClearAll: eventClearAll, eventClearEvent: function (t) { delete handlers[t]; told(t); }, eventClearListener: function (fn) { Object.keys(handlers).forEach(function (t) { eventRemoveListener(t, fn); }); }, eventEmit: eventEmit, eventEmitAndWait: eventEmit,
     tavern_events: tavern_events, iframe_events: iframe_events,
     substitudeMacros: substitudeMacros, generate: generate, generateRaw: generateRaw, errorCatched: errorCatched,
     getCharAvatarPath: function () { return I.charAvatar || ""; }, getCharData: function () { return { name: I.char, avatar: I.charAvatar || "" }; },
     waitGlobalInitialized: waitGlobalInitialized, initializeGlobal: initializeGlobal, builtin: {},
-    getTavernHelperVersion: function () { return Promise.resolve("4.8.20"); }, getTavernVersion: function () { return Promise.resolve("1.13.5"); },
-    registerVariableSchema: function () { }, getButtonEvent: function (n) { return String(n); }, getScriptButtons: function () { return []; }, replaceScriptButtons: function () { }, appendInexistentScriptButtons: function () { }
+    getTavernHelperVersion: function () { return "4.12.2"; }, getTavernVersion: function () { return "1.13.5"; },
+    registerVariableSchema: function () { }
   };
+  // ══ Tavern Helper 의 나머지 함수 (로어북 · 프리셋 · 캐릭터 · 페르소나 · 정규식 · 오디오 · 끼워 넣기 · 스크립트 · 확장 …) ══
+  // 실제 일은 앱이 한다 (src/th). 사용자가 허락해 켠 스크립트(같은 출처)는 앱 함수를 바로 부르고, 메시지 속 화면은 postMessage 로 부른다.
+  // 실리태번에서 동기인 읽기 함수는 메시지 속 화면에서는 앱이 보내 둔 사본(I.th · I.thx)으로 바로 답한다.
+  var SCRIPT = !!I.script;
+  function H() { try { return SCRIPT && window.parent !== window && parent.__dlTH ? parent.__dlTH : null; } catch (e) { return null; } }
+  var isRe = function (v) { return Object.prototype.toString.call(v) === "[object RegExp]"; };
+  // 앱 쪽 객체를 이 화면의 것으로 베낀다 (Array.isArray · instanceof 가 이 화면 기준으로 맞게 · 정규식은 그대로)
+  function own(v) {
+    if (v == null || typeof v !== "object") return v;
+    if (isRe(v)) return new RegExp(v.source, v.flags);
+    if (Array.isArray(v)) return v.map(own);
+    if (Object.prototype.toString.call(v) !== "[object Object]") return v;
+    var o = {}; for (var k in v) if (Object.prototype.hasOwnProperty.call(v, k)) o[k] = own(v[k]); return o;
+  }
+  var T = function () { return I.th || {}; }, X = function () { return I.thx || {}; };
+  /** 비동기 함수: 앱에서 처리하고 결과를 돌려받는다 */
+  function api(name, args) {
+    args = [].slice.call(args || []); var h = H();
+    if (h) return new Promise(function (res, rej) { try { Promise.resolve(h.call(window, name, args)).then(function (v) { res(own(v)); }, rej); } catch (e) { rej(e); } });
+    return call("th", [name, args]);
+  }
+  function getButtonEvent(n) { return I.scriptId ? I.scriptId + "_" + n : String(n); }
+  // 나머지 함수(로어북 · 프리셋 · 캐릭터 …)는 쓰는 화면에만 vendor/th-more.js 로 깐다 (상태창마다 풀지 않게)
+  if (window.__dlThMore) window.__dlThMore({ I: I, call: call, eventOn: eventOn, clone: clone, V: function () { return V; }, msgs: msgs, lastId: lastId, TH: TH, sub: substitudeMacros, H: H, T: T, X: X, own: own, api: api, getButtonEvent: getButtonEvent });
+
   // ── 전역 공유 (Mvu 등): 내 창에 두고, 같은 출처의 부모 창이면 거기에도 둔다 ──
   function parentGet(name) { try { return window.parent !== window && _.has(window.parent, name) ? _.get(window.parent, name) : undefined; } catch (e) { return undefined; } }
   function initializeGlobal(name, value) { _.set(window, name, value); try { if (window.parent !== window) _.set(window.parent, name, value); } catch (e) { } return eventEmit("global_" + name + "_initialized"); }
@@ -224,15 +252,26 @@
   for (var k in TH) window[k] = TH[k];
   window.TavernHelper = TH;
   window.toastr = toastr;
+  var POPUP_TYPE = { TEXT: 1, CONFIRM: 2, INPUT: 3, DISPLAY: 4, CROP: 5 }, POPUP_RESULT = { AFFIRMATIVE: 1, NEGATIVE: 0, CANCELLED: null };
+  function callGenericPopup(content, type, value, opt) {
+    var h = H(), o = opt && typeof opt === "object" ? { okButton: typeof opt.okButton === "string" ? opt.okButton : undefined, cancelButton: typeof opt.cancelButton === "string" ? opt.cancelButton : undefined } : {};
+    if (h) return Promise.resolve(h.popup(content && content.jquery ? content[0] : content, type, value, o));
+    var html = content && content.jquery ? content.prop("outerHTML") : content && content.outerHTML ? content.outerHTML : String(content == null ? "" : content);
+    return call("popup", [html, type, value, o]);
+  }
   function stChat() { return msgs().map(function (m) { return { name: m.name, is_user: m.role === "user", is_system: m.role === "system", mes: m.message, swipe_id: m.swipe_id, swipes: m.swipes, extra: {}, variables: [m.data || {}] }; }); }
   var ctx = function () {
     return { chat: stChat(), name1: I.user, name2: I.char, characterId: I.charId, chatMetadata: { variables: V.chat }, extensionSettings: {},
       event_types: tavern_events, eventSource: { on: eventOn, once: eventOnce, emit: eventEmit, removeListener: eventRemoveListener, makeFirst: eventMakeFirst },
       executeSlashCommandsWithOptions: function (t) { return triggerSlash(t).then(function (r) { return { pipe: r }; }); }, executeSlashCommands: function (t) { return triggerSlash(t).then(function (r) { return { pipe: r }; }); },
-      substituteParams: substitudeMacros, generate: generate, generateRaw: generateRaw, getRequestHeaders: function () { return {}; }, saveChat: function () { return Promise.resolve(); } };
+      substituteParams: TH.substitudeMacros, generate: generate, generateRaw: generateRaw, getRequestHeaders: function () { return {}; }, saveChat: function () { return Promise.resolve(); },
+      // 실리태번 알림 창: 드림랜드 창으로 띄운다 (스크립트 화면은 요소를 그대로, 메시지 속 화면은 글로 넘긴다)
+      callGenericPopup: callGenericPopup, POPUP_TYPE: POPUP_TYPE, POPUP_RESULT: POPUP_RESULT, characters: (T().chars || []).map(function (x) { return { name: x[1], avatar: x[0] + ".png" }; }), characterId: T().cur ? (T().chars || []).map(function (x) { return x[0]; }).indexOf(T().cur.id) : undefined,
+      reloadCurrentChat: function () { return api("refreshOneMessage", [lastId()]); }, getCurrentChatId: function () { return I.chatId || ""; } };
   };
+  // Tavern Helper 처럼 SillyTavern 에서도 getContext() 의 것을 바로 쓴다 (SillyTavern.chat · SillyTavern.callGenericPopup …)
   window.SillyTavern = { getContext: ctx };
-  try { Object.defineProperty(window.SillyTavern, "chat", { get: function () { return stChat(); } }); } catch (e) { }
+  Object.keys(ctx()).forEach(function (k) { try { Object.defineProperty(window.SillyTavern, k, { get: function () { return ctx()[k]; }, enumerable: true }); } catch (e) { } });
   setTimeout(function () { fire(iframe_events.MESSAGE_IFRAME_RENDER_ENDED, ["message-iframe-" + I.msgId]); }, 0);
   // 스크립트(모듈 포함)가 다 실리면 앱에 알린다 (앱은 카드 스크립트가 준비된 뒤에 변수를 계산한다)
   addEventListener("load", function () { setTimeout(function () { parent.postMessage({ dlReady: 1 }, "*"); }, 50); });

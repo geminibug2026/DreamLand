@@ -1,15 +1,17 @@
 // 메시지 속 HTML 화면(iframe)이 부르는 실리태번 JS 러너 도우미를 실제로 처리한다 (vendor/th-shim.js 의 짝)
 import type { Msg } from '../lib/types';
 import { DB, S, msgText, newMsg, on } from '../lib/core';
-import { frameHooks, framePost } from '../lib/format';
+import { bridgeFrames, frameHooks, framePost, frameSource } from '../lib/format';
+import * as TH from '../lib/thscripts';
 import { toast } from '../ui';
 import { t } from '../i18n';
-import { cur } from './store';
+import { bump, cur } from './store';
 import { chatApi } from './actions';
 import { appHost, runQrScript } from '../stscript/host';
-import { appCalls, onFrameMessage, relayEmit } from './frameEvents';
+import { appCalls, hasListeners, onFrameMessage, relayEmit } from './frameEvents';
 import { setVarsOf, swipesVars, varsOf } from './msgVars';
 import { isDuringExtra, pending as mvuPending } from '../mvu/app';
+import { regexAllowed } from '../lib/engine';
 
 type Obj = Record<string, unknown>;
 const hostGen = (p: string, o: { raw?: boolean }) => (appHost() as unknown as { gen: (p: string, o: { raw?: boolean }) => Promise<string> }).gen(p, o);
@@ -47,7 +49,53 @@ function fullState() {
   const d = stateDelta(); if (d) framePost({ dlState: d });
   return { ver: stateVer, messages: [...sentView.values()] };
 }
-const vars = () => ({ chat: cur.chat?.vars || {}, global: S.settings.globalVars || {}, character: {}, message: {} });
+// 캐릭터 변수: 카드의 extensions.tavern_helper.variables · 프리셋 변수: 프리셋의 extensions.tavern_helper.variables (실리태번과 같은 자리)
+type ThBox = { tavern_helper?: unknown };
+const thVarsOf = (ext: unknown): Obj => { let th = (ext as ThBox | undefined)?.tavern_helper; if (Array.isArray(th)) th = Object.fromEntries(th.filter((p): p is [string, unknown] => Array.isArray(p) && typeof p[0] === 'string')); const v = (th as { variables?: unknown } | undefined)?.variables; return v && typeof v === 'object' && !Array.isArray(v) ? v as Obj : {}; };
+const curCharOf = () => cur.chat ? S.get('chars', cur.chat.charIds[0]) : undefined;
+const presetExt = () => (((S.presetFor(cur.chat) as { st?: { cc?: { extensions?: unknown } } }).st?.cc?.extensions) as unknown);
+const vars = () => ({ chat: cur.chat?.vars || {}, global: S.settings.globalVars || {}, character: thVarsOf(curCharOf()?.ext), preset: thVarsOf(presetExt()), message: {} });
+async function setThVars(kind: 'character' | 'preset', v: Obj) {
+  if (kind === 'character') { const ch = curCharOf(); if (!ch) return; let th = (ch.ext as ThBox)?.tavern_helper; if (Array.isArray(th)) th = Object.fromEntries(th as [string, unknown][]); ch.ext = { ...(ch.ext || {}), tavern_helper: { scripts: [], ...(th && typeof th === 'object' ? th : {}), variables: v } }; await S.save('chars', ch, true); return; }
+  const p = S.presetFor(cur.chat) as { st?: { cc?: Obj } } & Parameters<typeof S.save<'presets'>>[1]; const st = (p.st ||= {}), cc = (st.cc ||= {}), ext = (cc.extensions && typeof cc.extensions === 'object' ? cc.extensions : {}) as Obj, th = (ext.tavern_helper && typeof ext.tavern_helper === 'object' ? ext.tavern_helper : {}) as Obj;
+  cc.extensions = { ...ext, tavern_helper: { scripts: [], ...th, variables: v } }; await S.save('presets', p, true);
+}
+// ── 메시지 속 화면이 바로(동기로) 읽는 가벼운 사본: 로어북 · 캐릭터 · 페르소나 · 프리셋 이름 같은 것. 바뀔 때만 다시 만든다 ──
+let metaCache: Obj | null = null;
+function thMeta(): Obj {
+  if (metaCache) return metaCache;
+  const c = cur.chat, ch = curCharOf(), p = S.persona(c), bn = (id?: string) => (id && S.get('lore', id)?.name) || null;
+  const books = (ids?: string[]) => { const l = (ids || []).filter(id => S.get('lore', id)); return { primary: bn(l[0]), additional: l.slice(1).map(bn).filter(Boolean) }; };
+  const G = (S.settings.lore || {}) as Obj, st = (G.st || {}) as Obj;
+  // 페르소나 설명은 모두 합쳐 길면 지금 페르소나 것만 싣는다 (화면마다 시작 자료에 들어가므로)
+  const long = S.personas.reduce((n, x) => n + (x.description || '').length, 0) > 20000, desc = (x: { id: string; description?: string }) => !long || x.id === p?.id ? x.description || '' : '';
+  return metaCache = {
+    wb: S.lore.map(b => b.name), gwb: (S.settings.activeLore || []).map(bn).filter(Boolean), chatWb: bn(c?.loreIds?.[0]), cwb: ch ? books(ch.loreIds) : { primary: null, additional: [] },
+    chars: S.chars.map(x => [x.id, x.name]), cur: ch ? { id: ch.id, name: ch.name } : null,
+    personas: S.personas.map(x => ({ avatar_id: x.id, avatar: x.id + '.png', name: x.name, title: String(x.title || ''), description: desc(x), position: 0, depth: 2, role: 0, lorebook: bn(x.loreIds?.[0]) || '', connections: [], is_default: S.settings.activePersona === x.id })),
+    persona: p ? { id: p.id, name: p.name } : null, presets: S.presets.map(x => x.name), preset: S.presetFor(c).name,
+    rxChar: !!ch && regexAllowed('chars', ch.id),
+    lbs: { selected_global_lorebooks: (S.settings.activeLore || []).map(bn).filter(Boolean), scan_depth: st.scan_depth ?? 2, context_percentage: st.context_percentage ?? 25, budget_cap: st.budget_cap ?? 0, min_activations: Number(G.minActivations) || 0, max_depth: Number(G.minDepthMax) || 0, max_recursion_steps: Number(G.maxRecursion) || 0, insertion_strategy: st.insertion_strategy ?? 'character_first', include_names: !!G.includeNames, recursive: st.recursive ?? true, case_sensitive: st.case_sensitive ?? false, match_whole_words: st.match_whole_words ?? false, use_group_scoring: !!G.groupScoring, overflow_alert: st.overflow_alert ?? false },
+  };
+}
+let metaSent = '', metaTimer = 0;
+const metaDirty = () => {
+  metaCache = null; if (metaTimer) return;
+  metaTimer = window.setTimeout(() => {
+    metaTimer = 0; if (!document.querySelector('iframe.dl-frame-el')) return;
+    const m = thMeta(), j = JSON.stringify(m); if (j !== metaSent) { metaSent = j; framePost({ dlState: { th: m, vars: vars() } }); }
+    // 무거운 사본을 받은 화면에는 그것도 새로 (그런 화면이 있을 때만)
+    for (const f of heavyFrames.keys()) if (!f.isConnected) heavyFrames.delete(f);
+    if (heavyFrames.size) void thMod().then(M => { for (const [f, src] of heavyFrames) f.contentWindow?.postMessage({ dlState: { thx: M.heavy(src) } }, '*'); });
+  }, 200);
+};
+const heavyFrames = new Map<HTMLIFrameElement, string>();
+for (const ev of ['lore', 'chars', 'personas', 'presets', 'regex', 'settings', 'chat:open']) on(ev, metaDirty);
+/** 화면 글이 무거운 사본(프리셋 · 정규식 · 카드)을 쓰는 함수를 부르면 그것도 넣는다 (그때만 도우미 묶음을 불러온다) */
+const HEAVY = /getPreset\b|updatePresetWith|setPreset\b|getTavernRegexes|formatAsTavernRegexedString|updateTavernRegexesWith|getCharData|RawCharacter|getAudio|playAudio|getCurrentAudio/;
+const thMod = () => import('../th');
+/** 화면 글이 vendor/th-more.js 의 함수를 쓰는가 (이름이 보이거나, 밖에서 스크립트를 불러와 무엇을 부를지 모르면 깐다). 아니면 상태창마다 풀지 않는다 */
+const MORE = /\b(?:isCharacterTavernRegexesEnabled|appendInexistentScriptButtons|getCurrentCharPrimaryLorebook|builtin_prompt_default_order|formatAsTavernRegexedString|getAllEnabledScriptButtons|getTavernHelperExtensionId|updateLorebookEntriesWith|isPresetPlaceholderPrompt|createOrReplaceCharacter|retrieveDisplayedMessage|getOrCreateChatWorldbook|formatAsDisplayedMessage|createOrReplaceWorldbook|updateTavernRegexesWith|getGlobalWorldbookNames|getOrCreateChatLorebook|updateScriptButtonsWith|setCurrentCharLorebooks|getCurrentCharacterName|deleteWorldbookEntries|rebindGlobalWorldbooks|createWorldbookEntries|createOrReplacePersona|replaceLorebookEntries|deleteLorebookEntries|createOrReplacePreset|getCurrentPersonaName|getCharWorldbookNames|updateFrontendVersion|createLorebookEntries|getCurrentCharacterId|updateScriptTreesWith|isPresetSystemPrompt|rebindCharWorldbooks|importRawTavernRegex|getChatHistoryDetail|replaceScriptButtons|getChatWorldbookName|isInstalledExtension|replaceTavernRegexes|getPersonaAvatarPath|isPresetNormalPrompt|setLorebookSettings|rebindChatWorldbook|createLorebookEntry|getChatHistoryBrief|deleteLorebookEntry|unregisterMacroLike|getLorebookSettings|updateCharacterWith|getCurrentPersonaId|updateWorldbookWith|getProxyPresetNames|getLoadedPresetName|rotateChatMessages|getFrontendVersion|importRawCharacter|getLorebookEntries|reinstallExtension|importRawWorldbook|updateTavernHelper|getExtensionStatus|setLorebookEntries|stopGenerationById|replaceScriptTrees|uninstallExtension|updatePersonaWith|registerMacroLike|stopAllGeneration|getCharAvatarPath|getCharacterNames|replaceScriptInfo|refreshOneMessage|getWorldbookNames|installExtension|deleteTavernFile|getScriptButtons|getCharLorebooks|getTavernRegexes|updatePresetWith|getAudioSettings|setAudioSettings|replaceWorldbook|substitudeMacros|replaceCharacter|replaceAudioList|uploadTavernFile|getExtensionType|getCharacterIds|setChatLorebook|getChatLorebook|deleteCharacter|createWorldbook|appendAudioList|updateExtension|createCharacter|importRawPreset|getCurrentAudio|getPersonaNames|uninjectPrompts|deleteWorldbook|getAllVariables|createLorebook|deleteLorebook|getScriptTrees|getPresetNames|replacePersona|default_preset|createPersona|replacePreset|getPersonaIds|importRawChat|getTavernFile|getScriptName|injectPrompts|deletePersona|getScriptInfo|deletePreset|getCharacter|getWorldbook|reloadIframe|getLorebooks|getAudioList|getModelList|renamePreset|createPreset|RawCharacter|audioEnable|audioImport|audioSelect|getCharData|getPersona|pauseAudio|loadPreset|audioMode|audioPlay|setPreset|getPreset|playAudio|isAdmin|builtin)\b|TavernHelper\s*[.[]|<script[^>]*\bsrc\s*=|\bimport\s*[('"{*\w]/;
 
 function msgIndexOf(f: HTMLIFrameElement) {
   const id = f.closest<HTMLElement>('[data-id]')?.dataset.id;
@@ -62,10 +110,22 @@ frameHooks.init = async f => {
   await lsReady;
   const chat = cur.chat, ch = chat ? S.get('chars', chat.charIds[0]) : undefined;
   const st = fullState();
-  return { ls, msgId: msgIndexOf(f), lastId: cur.msgs.length - 1, messages: st.messages, ver: st.ver, vars: vars(), user: chat ? S.persona(chat)?.name : '', char: ch?.name || '', charId: ch?.id || '', charAvatar: ch?.avatar || '', userAvatar: chat ? S.persona(chat)?.avatar || '' : '', viewH: innerHeight, mvuExtra: isDuringExtra(), mvuNotify: !!(S.settings as { mvu?: { notifyErr?: boolean } }).mvu?.notifyErr, mvuText: mvuText() };
+  const sid = f.dataset.script || '', src = sid ? '' : frameSource(f.dataset.frame || '');
+  const more = !!sid || MORE.test(src), thx = more && src && HEAVY.test(src) ? (await thMod()).heavy(src) : undefined;
+  if (thx) heavyFrames.set(f, src);
+  return { ls, msgId: msgIndexOf(f), lastId: cur.msgs.length - 1, messages: st.messages, ver: st.ver, vars: vars(), user: chat ? S.persona(chat)?.name : '', char: ch?.name || '', charId: ch?.id || '', charAvatar: ch?.avatar || '', userAvatar: chat ? S.persona(chat)?.avatar || '' : '', viewH: innerHeight, mvuExtra: isDuringExtra(), mvuNotify: !!(S.settings as { mvu?: { notifyErr?: boolean } }).mvu?.notifyErr, mvuText: mvuText(),
+    ...(more ? { more: true, th: thMeta() } : {}), chatId: chat?.id || '', busy: cur.busy, ...(thx ? { thx } : {}), ...(sid ? { scriptId: sid, scriptName: TH.scriptMeta(sid)?.name || '', scriptVars: TH.scriptVars(sid) } : {}) };
 };
 
 async function commit() { await chatApi.save(); chatApi.redraw?.(); }
+/** 메시지를 고친 뒤: refresh 'none' 이면 다시 그리지 않고, 'affected'(기본)면 고친 메시지만, 'all' 이면 전부 (Tavern Helper 와 같다) */
+async function refreshAfter(list: Obj[], how: unknown) {
+  const ms = cur.msgs, hit = list.map(p => ms[Number(p.message_id)]).filter((m): m is Msg => !!m);
+  S.touchMsgs(...hit); await chatApi.save();
+  if (how === 'none') return;
+  if (how === 'all' || hit.length > 20) { chatApi.redraw?.(); return; }
+  bump(...hit.map(m => 'm:' + m.id));
+}
 
 frameHooks.call = async (f, fn, args) => {
   const chat = cur.chat;
@@ -78,6 +138,9 @@ frameHooks.call = async (f, fn, args) => {
     case 'slash': return await runQrScript(String(args[0] || ''));
     case 'emit': return await relayEmit(f, String(args[0] ?? ''), Array.isArray(args[1]) ? args[1] as unknown[] : []);   // 다른 화면 · 앱에도 알리고, 고쳐진 인자를 돌려준다
     case 'state': return { ...fullState(), lastId: cur.msgs.length - 1 };   // 화면이 받은 판이 어긋났다: 통째로 다시
+    case 'th': return await (await thMod()).fromFrame(f, String(args[0] ?? ''), Array.isArray(args[1]) ? args[1] as unknown[] : []);   // 그 밖의 Tavern Helper 함수 (src/th)
+    case 'popup': return await (await thMod()).popup(String(args[0] ?? ''), args[1], args[2], args[3]);
+    case 'reloadFrame': { if (f.dataset.script) { await TH.restart(f.dataset.script); return null; } const box = f.parentElement; if (box?.classList.contains('dl-frame')) { const n = box.cloneNode(false) as HTMLElement; n.removeAttribute('data-on'); n.removeAttribute('data-wait'); n.style.minHeight = f.offsetHeight + 'px'; bridgeFrames(); box.replaceWith(n); } return null; }   // 자리를 새로 만들면 화면이 다시 뜬다
   }
   if (!chat) throw new Error('no chat open');
   const ms = cur.msgs;
@@ -93,24 +156,27 @@ frameHooks.call = async (f, fn, args) => {
         if (Array.isArray(p.swipes_data)) p.swipes_data.forEach((v, k) => { if (m.swipes[k] && v && typeof v === 'object') setVarsOf(m, v as Obj, k); });
         if (p.data && typeof p.data === 'object') setVarsOf(m, p.data as Obj);
       }
-      await commit(); return null;
+      await refreshAfter((args[0] as Obj[]) || [], (args[1] as Obj)?.refresh); pushState(); return null;
     }
     case 'createMsgs': {
       const list = (args[0] as Obj[]) || [], at = (args[1] as Obj)?.insert_at;
       const made = list.map(p => { const role = p.role === 'user' ? 'user' : p.role === 'system' ? 'system' : 'assistant'; const m = newMsg(role, String(p.message ?? ''), { name: String(p.name || '') }); if (role === 'assistant') m.charId = chat.charIds[0] || ''; if (p.is_hidden) m.hidden = true; if (p.data && typeof p.data === 'object') setVarsOf(m, p.data as Obj); return m; });
       const pos = typeof at === 'number' ? (at < 0 ? ms.length + 1 + at : at) : ms.length;
       ms.splice(Math.max(0, Math.min(ms.length, pos)), 0, ...made);
-      await commit(); return null;
+      await commit(); pushState(); return null;
     }
     case 'delMsgs': {
       const ids = new Set(((args[0] as number[]) || []).map(Number));
       for (let i = ms.length - 1; i >= 0; i--) if (ids.has(i)) ms.splice(i, 1);
-      await commit(); return null;
+      await commit(); pushState(); return null;
     }
     case 'setVars': {
-      const [t, id, v] = args as [string, number | null, Obj];
-      if (t === 'message') { const m = ms[Number(id)]; if (m) setVarsOf(m, v || {}); await chatApi.save(); }
+      const [t, id, v] = args as [string, number | string | null, Obj];
+      if (t === 'message') { const m = ms[Number(id)]; if (m) { setVarsOf(m, v || {}); S.touchMsgs(m); } await chatApi.save(); }
       else if (t === 'global') { S.settings.globalVars = v as Record<string, string>; S.saveSettings(); }
+      else if (t === 'character' || t === 'preset') await setThVars(t, v || {});
+      else if (t === 'script') { const sid = String(id || f.dataset.script || ''); if (sid) await TH.setScriptVars(sid, v || {}); }
+      else if (t === 'extension') { const box = ((S.settings as { thExtVars?: Record<string, Obj> }).thExtVars ||= {}); box[String(id || '')] = v || {}; S.saveSettings(); }
       else { chat.vars = v as Record<string, string>; await S.save('chats', chat, true); }
       return null;
     }
@@ -127,12 +193,16 @@ frameHooks.call = async (f, fn, args) => {
 const state = () => ({ ...(stateDelta() || {}), lastId: cur.msgs.length - 1, vars: vars(), mvuExtra: isDuringExtra() });
 const anyFrame = () => !!document.querySelector('iframe.dl-frame-el');   // 화면이 하나도 없으면 사본을 만들 것도 없다
 const send = (ev: string, i?: number) => { if (anyFrame()) framePost({ dlState: state(), dlEvent: ev, args: i == null ? [] : [i] }); };
+/** 스크립트 · 화면이 메시지를 고친 뒤: 다른 화면들의 사본도 맞춘다 (달라진 것만 보낸다) */
+let pushTimer = 0;
+export const pushState = () => { if (pushTimer) return; pushTimer = window.setTimeout(() => { pushTimer = 0; if (anyFrame()) framePost({ dlState: state() }); }, 30); };   // 잇달아 고치면 한 번만
 /** 변수 갱신이 끝난 뒤에 알린다 (실리태번에서 변수 갱신이 먼저 끝나는 것과 같게) */
 const after = (ev: string, d: unknown, i: () => number) => { const chat = (d as { chat?: unknown })?.chat || cur.chat; void Promise.resolve().then(() => mvuPending(chat as typeof cur.chat)).then(() => send(ev, i())); };
 on('mvu:updated', () => { if (anyFrame()) framePost({ dlState: state() }); });
 const idx = (d: unknown) => { const m = (d as { msg?: Msg })?.msg; return m ? cur.msgs.indexOf(m) : cur.msgs.length - 1; };
-on('message:received', d => { const i = idx(d); after('message_received', d, () => i); });
-on('message:sent', d => { const i = idx(d); after('message_sent', d, () => i); });
+// 그려졌다는 알림 (실리태번의 *_MESSAGE_RENDERED): 듣는 화면이 있을 때만 보낸다
+on('message:received', d => { const i = idx(d); after('message_received', d, () => i); if (hasListeners('character_message_rendered')) after('character_message_rendered', d, () => i); });
+on('message:sent', d => { const i = idx(d); after('message_sent', d, () => i); if (hasListeners('user_message_rendered')) after('user_message_rendered', d, () => i); });
 on('message:edited', d => { const i = idx(d); after('message_edited', d, () => i); });
 on('message:swiped', d => { const i = idx(d); after('message_swiped', d, () => i); });
 on('message:deleted', () => send('message_deleted', cur.msgs.length));
