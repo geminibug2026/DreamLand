@@ -79,19 +79,39 @@ export function stQrToSet(j: StQrSet, name?: string): QrSet {
   const list = j.qrList != null ? toArr(j.qrList) : toArr(j.quickReplySlots).map(fromSlot);
   return newQrSet({
     name: j.name || name || t('qr.importedSet'), src: 'st', nosend: noSend, before: !!j.placeBeforeInput, inject: !!j.injectInput,
-    items: list.filter(x => x && (x.message || x.label)).map(x => newQrItem({
-      label: String(x.label || x.title || t('qr.button')), title: x.title || '', text: x.message || '', kind: /^\s*\//.test(x.message || '') ? 'script' : (noSend ? 'insert' : 'send'), hidden: !!x.isHidden,
+    items: list.filter(x => x && (x.message || x.label)).map(x => { const back = fromStMessage(x.message || ''); return newQrItem({
+      label: String(x.label || x.title || t('qr.button')), title: x.title || '', text: back ? back.text : x.message || '', kind: back ? back.kind : /^\s*\//.test(x.message || '') ? 'script' : (noSend ? 'insert' : 'send'), hidden: !!x.isHidden,
       auto: { start: !!x.executeOnStartup, open: !!x.executeOnChatChange, newChat: !!x.executeOnNewChat, user: !!x.executeOnUser, ai: !!x.executeOnAi, gen: !!x.executeBeforeGeneration },
       automationId: x.automationId || '', stIcon: x.icon || '', ...(x.showLabel !== undefined ? { showLabel: !!x.showLabel } : {}),
       ...(Array.isArray(x.contextList) && x.contextList.length ? { contextList: x.contextList.filter(c => c && c.set).map(c => ({ set: String((c.set as unknown as { name?: string }).name ?? c.set), isChained: !!c.isChained })) } : {}),
-    })),
+    }); }),
   });
+}
+// 실리태번은 "보내지 않기"(disableSend)가 세트 하나에 하나뿐이고, 켜 두면 / 로 시작하는 스크립트도 돌리지 않고 입력창에 넣기만 한다.
+// 드림랜드는 버튼마다 "입력창에 넣기"를 고를 수 있으니, 보내는 세트 안의 넣기 버튼은 같은 일을 하는 명령(/setinput 글)으로 적고 가져올 때 다시 알아본다.
+// ("보내지 않기" 세트에서는 드림랜드도 모든 버튼을 입력창에 넣기만 하므로 그대로 둔다)
+const escArg = (s: string) => s.replace(/\|/g, '\\|');
+const unescArg = (s: string) => s.replace(/\\\|/g, '|');
+const noBarePipe = (s: string) => !/(^|[^\\])\|/.test(s);
+/** 버튼 글을 실리태번 세트 설정(disableSend)에 맞는 메시지로 */
+function stMessage(it: QrItem, disableSend: boolean): string {
+  const text = it.text || '';
+  if (it.kind === 'script' || !text || /^\s*\//.test(text) || /\{:|:\}/.test(text)) return text;
+  if (it.kind === 'insert' && !disableSend) return '/setinput ' + escArg(text);
+  return text;
+}
+/** 위에서 바꿔 적은 메시지를 원래 버튼으로 (아니면 null) */
+function fromStMessage(msg: string): { kind: QrItem['kind']; text: string } | null {
+  const m = /^\/setinput\s+([\s\S]*)$/.exec(msg); if (m && noBarePipe(m[1])) return { kind: 'insert', text: unescArg(m[1]) };
+  return null;
 }
 /** 세트 → Quick Reply 세트(.json) */
 export function setToStQr(set: QrSet) {
+  // 정하지 않은 세트: 넣기 버튼만 있을 때만 "보내지 않기" (스크립트가 있으면 꺼 둬야 실리태번에서도 스크립트가 돈다)
+  const disableSend = set.nosend ?? (set.items.length > 0 && set.items.every(i => i.kind === 'insert'));
   return {
-    version: 2, name: set.name, disableSend: set.nosend ?? (set.items.length > 0 && set.items.every(i => i.kind !== 'send')), placeBeforeInput: !!set.before, injectInput: !!set.inject, color: 'transparent', onlyBorderColor: false,
-    qrList: set.items.map((it, i) => ({ id: i + 1, icon: it.stIcon || '', showLabel: it.showLabel ?? !it.stIcon, label: it.label, title: it.title || '', message: it.text || '', contextList: Array.isArray(it.contextList) ? it.contextList : [], preventAutoExecute: true, isHidden: !!it.hidden,
+    version: 2, name: set.name, disableSend, placeBeforeInput: !!set.before, injectInput: !!set.inject, color: 'transparent', onlyBorderColor: false,
+    qrList: set.items.map((it, i) => ({ id: i + 1, icon: it.stIcon || '', showLabel: it.showLabel ?? !it.stIcon, label: it.label, title: it.title || '', message: stMessage(it, disableSend), contextList: Array.isArray(it.contextList) ? it.contextList : [], preventAutoExecute: true, isHidden: !!it.hidden,
       executeOnStartup: !!it.auto?.start, executeOnUser: !!it.auto?.user, executeOnAi: !!it.auto?.ai, executeOnChatChange: !!it.auto?.open, executeOnGroupMemberDraft: false, executeOnNewChat: !!it.auto?.newChat, executeBeforeGeneration: !!it.auto?.gen, automationId: it.automationId || '' })),
     idIndex: set.items.length + 1,
   };

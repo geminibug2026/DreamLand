@@ -2,7 +2,7 @@
 // 카드(PNG, 연결된 로어북을 모두 합친 책 · 캐릭터 정규식 · Tavern Helper 스크립트) + 로어북 따로 · 퀵 리플라이 · 프리셋 · 전역 정규식 + README.txt
 // 그리고 실리태번에서 그대로는 안 되는 것(드림랜드에만 있는 명령 · 매크로 · 기능)을 미리 짚는다.
 // 저장소 · 화면을 모른다: 부르는 쪽(src/editors/StExport.tsx)이 자료를 모아 넘긴다 (node 로 따로 시험한다)
-import { buildCard, stKeepsBlock, loreToCardBook, loreToWorld, presetToSt, presetToStTc, regexToSt, writePngCard, type DChar, type DPreset, type DRegex, type LoreBook, type LoreEntry, type PackNote } from './cards';
+import { bakeEntry, buildCard, stKeepsBlock, loreToCardBook, loreToWorld, presetToSt, presetToStTc, regexToSt, writePngCard, type DChar, type DPreset, type DRegex, type LoreBook, type LoreEntry, type PackNote } from './cards';
 import { setToStQr, type QrSet } from './qr-data';
 import type { ThScript } from './thscripts';
 import { lintScript } from '../stscript/lint';
@@ -70,18 +70,16 @@ export function thBlock(ext: O | undefined, extra: ThScript[] = [], onOf: (id: s
 export const flatScripts = (tree: ThTree[]) => tree.flatMap(s => s.type === 'folder' ? s.scripts : [s]);
 
 // ════════ 로어북 합치기 ════════
-/** 여러 책 → 카드에 넣을 책 하나. 순서 · 항목 설정은 그대로, 책마다 달랐던 설정(대소문자 · 낱말 단위 · 훑는 깊이 · 재귀)은 항목에 옮겨 적는다 */
+/** 여러 책 → 카드에 넣을 책 하나. 순서 · 항목 설정은 그대로, 책마다의 설정(대소문자 · 낱말 단위 · 훑는 깊이 · 재귀)은 항목에 옮겨 적는다
+ *  (실리태번에는 책 설정이 없으니 어차피 항목마다 적는다 — cards.ts 의 bakeEntry) */
 export function mergeBooks(books: LoreBook[], name: string): LoreBook | null {
   if (!books.length) return null;
   if (books.length === 1) return books[0];
   const recursive = books.some(b => b.recursive), depth = Math.max(...books.map(b => b.scanDepth ?? 4));
-  const entries: LoreEntry[] = books.flatMap(b => (b.entries || []).map(e => ({
-    ...e,
-    caseSensitive: e.caseSensitive ?? (b.caseSensitive ? true : null), wholeWord: e.wholeWord ?? (b.wholeWord ? true : null),
-    scanDepth: e.scanDepth ?? ((b.scanDepth ?? 4) !== depth ? (b.scanDepth ?? 4) : null),
-    ...(recursive && !b.recursive ? { noRecurse: true } : {}),
-    more: { ...(e.more || {}), book: b.name },
-  })));
+  const entries: LoreEntry[] = books.flatMap(b => (b.entries || []).map(e => {
+    const bk = bakeEntry(e, b);
+    return { ...e, caseSensitive: bk.caseSensitive, wholeWord: bk.wholeWord, scanDepth: bk.scanDepth, noRecurse: bk.noRecurse, more: { ...(e.more || {}), book: b.name, ...(bk.baked.length ? { baked: bk.baked } : {}) } };
+  }));
   return { id: books[0].id, name, description: books.map(b => b.description).filter(Boolean).join('\n\n'), scanDepth: depth, tokenBudget: Math.max(...books.map(b => b.tokenBudget || 2048)), recursive, caseSensitive: false, wholeWord: false, entries };
 }
 /** 카드 책: 합친 책이면 항목마다 원래 책 이름을 extensions.dreamland_book 에 남긴다 */
@@ -193,17 +191,21 @@ export function compatCheck(I: PackInput, env: CompatEnv): Note[] {
     out.push(known.has(n) ? { level: 'warn', group: 'cmd', text: t('stx.chk.dlCmd', { cmd: '/' + n }), where: list(where) } : { level: 'info', group: 'cmd', text: t('stx.chk.unknownCmd', { cmd: '/' + n }), where: list(where) });
   }
   // 매크로
-  const dlm = new Set(env.macros.map(m => m.toLowerCase()).filter(m => !ST_MACROS_TOO.includes(m))), macroUse = new Map<string, Set<string>>(), pvar = new Set<string>(), each = new Set<string>(), asks = new Set<string>();
+  const dlm = new Set(env.macros.map(m => m.toLowerCase()).filter(m => !ST_MACROS_TOO.includes(m))), macroUse = new Map<string, Set<string>>(), pvar = new Set<string>(), each = new Set<string>(), asks = new Set<string>(), condX = new Set<string>();
   for (const p of ps) {
     if (p.kind === 'script') continue;
     for (const m of p.text.matchAll(/\{\{\s*([#/]?[\w-]+)/g)) {
       const name = m[1].toLowerCase();
-      if (name === 'var' || name === 'pvar') { pvar.add(p.where); continue; }
+      // 명령 스크립트 속 {{var::이름}} 은 실리태번에서도 /let · 클로저 인자(/foreach 의 item 따위) 를 읽는 매크로라 그대로 돈다
+      if (name === 'pvar' || (name === 'var' && p.kind !== 'qrScript')) { pvar.add(p.where); continue; }
       if (name === '#each') { each.add(p.where); continue; }
       if (dlm.has(name)) { const k = [...macroUse.keys()].find(x => x.toLowerCase() === name) || m[1]; (macroUse.get(k) || macroUse.set(k, new Set()).get(k)!).add(p.where); }
     }
     if (/\{\{\s*#(if|unless)\b[^}]*\bask\s*:/i.test(p.text)) asks.add(p.where);
+    // 실리태번 1.19 의 {{if}} 는 값 하나가 비었는지만 본다: 비교식 · {{#unless}} · {{else if}} 는 늘 참이거나 글자 그대로 남는다
+    for (const m of p.text.matchAll(/\{\{\s*(#if|#unless|else\s*if|elseif)\b([^}]*)\}\}/gi)) if (!/\bask\s*:/i.test(m[2]) && (!/^#if$/i.test(m[1]) || !/^\s*!?\s*[.$]?[\p{L}_][\p{L}\p{N}_-]*\s*$/u.test(m[2]))) { condX.add(p.where); break; }
   }
+  if (condX.size) out.push({ level: 'warn', group: 'macro', text: t('stx.chk.condExpr'), where: list(condX) });
   for (const [n, where] of macroUse) out.push({ level: 'warn', group: 'macro', text: t('stx.chk.dlMacro', { macro: `{{${n}}}` }), where: list(where) });
   if (each.size) out.push({ level: 'warn', group: 'macro', text: t('stx.chk.each'), where: list(each) });
   // 드림랜드 기능
@@ -213,6 +215,8 @@ export function compatCheck(I: PackInput, env: CompatEnv): Note[] {
   if (asks.size) out.push({ level: 'warn', group: 'feature', text: t('stx.chk.asks'), where: list(asks) });
   if (I.game) out.push({ level: 'warn', group: 'feature', text: t('stx.chk.game') });
   if (I.preset) { const dropped = (I.preset.blocks || []).filter(b => b.kind && !stKeepsBlock(b.kind)).map(b => b.name || b.kind); if (dropped.length) out.push({ level: 'info', group: 'feature', text: t('stx.chk.presetBlocks', { names: list(dropped).join(', ') }) }); }
+  // 조건부 블록 (…일 때만 넣기): 실리태번 프롬프트에는 조건이 없어 늘 들어간다
+  if (I.preset) { const cond = (I.preset.blocks || []).filter(b => b.enabled !== false && stKeepsBlock(b.kind) && typeof b.when === 'string' && b.when.trim()).map(b => b.name || b.kind); if (cond.length) out.push({ level: 'warn', group: 'feature', text: t('stx.chk.presetWhen', { names: list(cond).join(', ') }) }); }
   out.push({ level: 'info', group: 'feature', text: t('stx.chk.stays') });
   // 화면 · 스크립트
   const frame = new Set<string>();
@@ -229,6 +233,11 @@ export function compatCheck(I: PackInput, env: CompatEnv): Note[] {
   }
   // 묶음
   if (I.books.length > 1) out.push({ level: 'info', group: 'pack', text: t('stx.chk.merged', { n: I.books.length }) });
+  // 실리태번에는 책마다의 설정이 없다: 항목마다 적어 넣었다고 알리고, 토큰 예산은 옮길 수 없다고 적는다
+  if (I.books.some(b => (b.entries || []).length)) out.push({ level: 'info', group: 'pack', text: t('stx.chk.bookBaked') });
+  // 실리태번은 카드에 든 책을 가져올 때 항목의 캐릭터 필터를 버린다 (따로 담은 로어북 파일에는 남는다)
+  const filtered = I.books.flatMap(b => (b.entries || []).filter(e => (e.charFilter?.names || []).length || (e.charFilter?.tags || []).length).map(e => t('stx.where.lore', { book: b.name, entry: e.name || (e.keys || [])[0] || '?' })));
+  if (filtered.length) out.push({ level: 'warn', group: 'pack', text: t('stx.chk.cardBookFilter'), where: list(filtered) });
   const names = new Set((I.qrSets || []).map(s => s.name)), missing = new Set<string>();
   for (const s of I.qrSets || []) for (const it of s.items) for (const c of it.contextList || []) if (!names.has(c.set)) missing.add(c.set);
   if (missing.size) out.push({ level: 'info', group: 'pack', text: t('stx.chk.qrLinks', { names: list(missing).join(', ') }) });
@@ -263,15 +272,31 @@ export function stCard(I: PackInput) {
     return c; };
   return { card: make(false), cardV3: make(true), book, scripts: th.scripts, regex };
 }
+/** 다른 세트가 부르는 세트를 앞으로 (서로 부르면 원래 차례) */
+function qrOrder(sets: QrSet[]): QrSet[] {
+  const out: QrSet[] = [], seen = new Set<QrSet>(), byName = new Map(sets.map(s => [s.name, s]));
+  const visit = (s: QrSet, path: Set<QrSet>) => {
+    if (seen.has(s) || path.has(s)) return; path.add(s);
+    for (const it of s.items) for (const c of it.contextList || []) { const d = byName.get(c.set); if (d && d !== s) visit(d, path); }
+    seen.add(s); out.push(s);
+  };
+  for (const s of sets) visit(s, new Set());
+  return out;
+}
 /** 묶음 전체. png: 카드를 적어 넣을 그림 (없으면 카드는 JSON 으로만 — 시험용) */
 export function buildPack(I: PackInput, env: CompatEnv, png?: Uint8Array): Pack {
   const { card, cardV3, book, scripts, regex } = stCard(I), name = safeName(I.char.name, 'character');
   const files: ZipEntry[] = [];
   files.push(png ? { name: name + '.png', data: writePngCard(png, card, cardV3) } : { name: name + '.json', data: json(cardV3) });
-  const lb = uniq(); for (const b of I.books) files.push({ name: `lorebooks/${lb(safeName(b.name, 'lorebook'))}.json`, data: json(loreToWorld(b)) });
-  const qn = uniq(), qrNames: string[] = [];
-  for (const s of I.qrSets || []) { const n = qn(safeName(s.name, 'quick-reply')); qrNames.push(n); files.push({ name: `quick-replies/${n}.json`, data: json(setToStQr(s)) }); }
-  if (I.preset) files.push({ name: 'preset.json', data: json((I.preset.st as { tc?: unknown } | undefined)?.tc ? presetToStTc(I.preset) : presetToSt(I.preset)) });
+  const lb = uniq(); for (const b of I.books) files.push({ name: `lorebooks/${lb(safeName(b.name, 'lorebook'))}.json`, data: json(loreToWorld(b, { forSt: true })) });
+  // 퀵 리플라이: 실리태번은 버튼이 부르는 세트(contextList)를 가져오는 그 순간에 찾고, 없으면 연결을 버린다.
+  // 그래서 불리는 세트를 먼저 놓고, 세트끼리 이어져 있으면 파일 이름 앞에 번호를 붙여 그 차례대로 넣게 한다
+  const qrSets = qrOrder(I.qrSets || []), numbered = qrSets.some(s => s.items.some(it => (it.contextList || []).some(c => c.set !== s.name && qrSets.some(o => o.name === c.set))));
+  const qn = uniq();
+  qrSets.forEach((s, i) => { const n = qn((numbered ? `${i + 1} ` : '') + safeName(s.name, 'quick-reply')); files.push({ name: `quick-replies/${n}.json`, data: json(setToStQr(s)) }); });
+  // 프리셋: 실리태번은 파일 이름을 프리셋 이름으로 쓴다
+  const presetFile = I.preset ? `presets/${safeName(I.preset.name, 'preset')}.json` : '';
+  if (I.preset) files.push({ name: presetFile, data: json((I.preset.st as { tc?: unknown } | undefined)?.tc ? presetToStTc(I.preset) : presetToSt(I.preset)) });
   const rn = uniq(); for (const r of I.globalRegex || []) files.push({ name: `regex/${rn(safeName(r.name, 'regex'))}.json`, data: json(regexToSt(r)) });
   const needs = needsOf(I, env, scripts), notes = compatCheck(I, env);
   const readme = makeReadme(I, { files: files.map(f => f.name), needs, notes, scripts: flatScripts(scripts).length, regex: regex.length, book });
@@ -292,7 +317,7 @@ function makeReadme(I: PackInput, P: { files: string[]; needs: Need[]; notes: No
   ln('- ' + card + ' : ' + t('stx.rd.card', { books: I.books.length, entries: P.book?.entries.length || 0, regex: P.regex, scripts: P.scripts }));
   if (has('lorebooks').length) ln('- lorebooks/ : ' + t('stx.rd.books', { names: I.books.map(b => b.name).join(', ') }));
   if (has('quick-replies').length) ln('- quick-replies/ : ' + t('stx.rd.qr', { names: (I.qrSets || []).map(s => s.name).join(', ') }));
-  if (P.files.includes('preset.json')) ln('- preset.json : ' + t('stx.rd.preset', { name: I.preset?.name || '' }));
+  if (has('presets').length) ln('- ' + has('presets')[0] + ' : ' + t('stx.rd.preset', { name: I.preset?.name || '' }));
   if (has('regex').length) ln('- regex/ : ' + t('stx.rd.regex', { n: has('regex').length }));
   ln('- dreamland.json : ' + t('stx.rd.note'));
   ln();
@@ -310,8 +335,8 @@ function makeReadme(I: PackInput, P: { files: string[]; needs: Need[]; notes: No
   if (P.scripts) step(t('stx.rd.s.scripts'));
   if (MACRO_VARS.test(JSON.stringify([I.regex, I.char]))) step(t('stx.rd.s.macro'));
   if (has('lorebooks').length) step(t('stx.rd.s.books'));
-  if (has('quick-replies').length) step(t('stx.rd.s.qr'));
-  if (P.files.includes('preset.json')) step(t('stx.rd.s.preset'));
+  if (has('quick-replies').length) step(t(has('quick-replies').some(f => /^quick-replies\/1 /.test(f)) ? 'stx.rd.s.qrOrder' : 'stx.rd.s.qr'));
+  if (has('presets').length) step(t('stx.rd.s.preset', { file: has('presets')[0] }));
   if (has('regex').length) step(t('stx.rd.s.gregex'));
   ln();
   const warns = P.notes.filter(n => n.level === 'warn'), infos = P.notes.filter(n => n.level === 'info');

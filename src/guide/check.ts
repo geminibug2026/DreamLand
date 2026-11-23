@@ -7,7 +7,7 @@ import type { Char, Persona, Preset } from '../lib/types';
 export interface Finding { level: 'warn' | 'note'; code: string; where: string; n?: number; detail?: string }
 
 const KNOWN = new Set(['user', 'char', 'group', 'persona', 'description', 'personality', 'scenario', 'mesexamples', 'model', 'input', 'lastmessage', 'lastusermessage', 'lastcharmessage', 'time', 'date', 'weekday', 'isotime', 'isodate',
-  'random', 'pick', 'roll', 'getvar', 'setvar', 'addvar', 'incvar', 'decvar', 'getglobalvar', 'setglobalvar', 'addglobalvar', 'incglobalvar', 'decglobalvar', 'outlet', 'original', 'var', 'pvar', 'pipe', 'trim', 'slot', 'newline', 'noop', 'img', 'idle_duration', 'bot', 'charifnotgroup',
+  'random', 'pick', 'roll', 'getvar', 'setvar', 'addvar', 'incvar', 'decvar', 'getglobalvar', 'setglobalvar', 'addglobalvar', 'incglobalvar', 'decglobalvar', 'hasvar', 'deletevar', 'hasglobalvar', 'deleteglobalvar', 'getvarkey', 'setvarkey', 'getvarindex', 'setvarindex', 'getglobalvarkey', 'setglobalvarkey', 'getglobalvarindex', 'setglobalvarindex', 'outlet', 'original', 'var', 'pvar', 'pipe', 'trim', 'slot', 'newline', 'noop', 'img', 'idle_duration', 'bot', 'charifnotgroup',
   'if', 'unless', 'else', 'charprompt', 'charjailbreak', 'chardepthprompt', 'creatornotes', 'charversion', 'char_version', 'mesexamplesraw', 'worldinfo', 'lorebook', 'banned', 'timediff', 'datetimeformat', 'currentswipeid', 'lastswipeid', 'lastmessageid', 'firstincludedmessageid', 'maxprompt', 'exampleseparator', 'chatstart', 'systemprompt', 'instructsystem', 'reverse']);
 
 /** 깨진 매크로: 짝이 안 맞는 {{ }}, 모르는 이름, 흔한 오타({char} · <user>) */
@@ -17,12 +17,12 @@ export function macroIssues(text: string): string[] {
   if (open !== close) out.push(`unbalanced {{ }} (${open} open, ${close} close)`);
   const seen = new Set<string>();
   for (const m of s.matchAll(/\{\{\s*([#/]?)\s*([^\s:}]*)[^}]*\}\}/g)) {
-    const name = m[2].toLowerCase(); if (!name || name.startsWith('//') || seen.has(name)) continue; seen.add(name);
+    const name = m[2].toLowerCase(); if (!name || name.startsWith('//') || /^[.$][a-z]/.test(name) || seen.has(name)) continue; seen.add(name);   // {{.변수}} · {{$변수}} 줄임 꼴
     if (!KNOWN.has(name) && !X.macros.has(name) && !X.macros.has(m[2])) out.push(`unknown macro {{${m[2]}}}`);
   }
   const typo = s.match(/(?<!\{)\{(char|user)\}(?!\})|<(char|user|bot)>/gi);
   if (typo) out.push(`single-brace or angle placeholder ${[...new Set(typo)].join(' ')} is not replaced (use {{char}} / {{user}})`);
-  const ifs = (s.match(/\{\{\s*#(if|unless)\b/g) || []).length, ends = (s.match(/\{\{\s*\/(if|unless)\s*\}\}/g) || []).length;
+  const ifs = (s.match(/\{\{\s*(#(if|unless)\b|if\s)/g) || []).length, ends = (s.match(/\{\{\s*\/(if|unless)\s*\}\}/g) || []).length;
   if (ifs !== ends) out.push(`{{#if}} blocks not closed (${ifs} open, ${ends} close)`);
   return out;
 }
