@@ -224,6 +224,7 @@ export function LoreEditor({ b, api }: { b: Lore; api: EditorApi }) {
   const allOpen = vis.length > 0 && vis.every(e => open.has(e.id));
 
   const links = loreLinks(b), active = S.settings.activeLore.includes(b.id);
+  const delBook = async () => { if (await confirmBox(t('lore.confirmDelete', { name: b.name }), t('common.delete'), true)) { await S.remove('lore', b.id); S.set({ activeLore: S.settings.activeLore.filter(i => i !== b.id) }); api.refresh(); } };
   return <div className="editor lore-editor">
     <header className="editor-head"><h2>{b.name}</h2><div className="row">
       <Btn label={t('lore.addEntry')} ic="plus" cls="primary" onClick={() => { const e = newEntry(); b.entries.unshift(e); open.add(e.id); st.q = ''; setQText(''); st.filter = 'all'; pg.setPage(0); void api.save(); draw(); api.redraw(); }} />
@@ -232,7 +233,7 @@ export function LoreEditor({ b, api }: { b: Lore; api: EditorApi }) {
       <IconBtn ic="search" title={t('lorelint.open0')} onClick={() => loreLint(b, id => { const hit = b.entries.find(x => x.id === id); if (!hit) return; open.add(id); const q = hit.name || hit.keys?.[0] || ''; st.q = q; setQText(q); st.filter = 'all'; draw(); })} />
       <IconBtn ic="sliders" title={t('lore.global.title')} onClick={() => loreSettingsDialog()} />
       <IconBtn ic="import" title={t('lore.exportSt')} onClick={() => download(`${b.name}.json`, JSON.stringify(cards.loreToWorld(b, { forSt: true }), null, 2))} />
-      <IconBtn ic="trash" title={t('lore.delete')} onClick={async () => { if (await confirmBox(t('lore.confirmDelete', { name: b.name }), t('common.delete'), true)) { await S.remove('lore', b.id); S.set({ activeLore: S.settings.activeLore.filter(i => i !== b.id) }); api.refresh(); } }} />
+      <IconBtn ic="trash" title={t('lore.delete')} onClick={() => void delBook()} />
     </div></header>
     <div className="lore-power"><LoreSwitch b={b} after={() => { redraw(); api.redraw(); }} /><div><b>{t('lore.power.title')}</b><small>{active ? t('lore.power.on') : links.length ? t('lore.power.linked', { links: links.join(' · ') }) : t('lore.power.off')}</small></div></div>
     <Form obj={b} defs={[{ k: 'name', label: t('common.name'), half: true }, { k: 'description', label: t('lore.b.description'), half: true }, { k: 'scanDepth', label: t('lore.b.scanDepth'), type: 'num', min: 0, half: true }, { k: 'tokenBudget', label: t('lore.b.tokenBudget'), type: 'num', half: true },
@@ -271,5 +272,6 @@ export function LoreEditor({ b, api }: { b: Lore; api: EditorApi }) {
       {!rows.length ? <p className="dim pad">{b.entries.length ? t('lore.noMatch') : t('lore.noEntries')}</p> : null}
     </div>
     {pg.pager}
+    <div className="row lore-danger"><Btn label={t('lore.deleteBook')} ic="trash" cls="danger ghost" title={t('lore.delete')} onClick={() => void delBook()} /></div>
   </div>;
 }

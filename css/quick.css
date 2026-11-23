@@ -120,3 +120,4 @@
 @media (max-width: 560px) { .pv-multi button { padding: 8px 12px 8px 9px; } }
 .pv-check i { border-radius: 3px; }
 .pv-multi button:not(.on), .pv-multi button:not(.on):hover { background: transparent; color: var(--dim); } .pv-multi button:not(.on):hover { color: var(--text); }
+.lore-danger { justify-content: flex-end; margin: 22px 0 4px; padding-top: 14px; border-top: 1px dashed var(--line); }

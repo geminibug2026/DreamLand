@@ -460,6 +460,8 @@ const W: ToolDef[] = [
   { name: 'delete_lore_entry', write: true, sig: '{book, entry}', desc: 'Propose deleting one lorebook entry (read the book first). Locked entries cannot be deleted. Undoable.',
     run: a => { const b = find(S.lore, a.book, 'lorebook'), e = find(b.entries, a.entry ?? a.id, 'entry'); if (e.locked) fail('This entry is locked by the user and cannot be deleted. Tell them; they can unlock it in the lorebook editor.'); mustHaveRead('lore', b.id, 'book');
       return propose('delete', 'lore', `${b.name} › ${e.name || show(e.keys)}`, { type: 'entrydel', loreId: b.id, entryId: e.id }, gone(e as unknown as Obj, ['name', 'keys', 'content'])); } },
+  { name: 'delete_lore', write: true, sig: '{book}', desc: 'Propose deleting a whole lorebook with all its entries (read it first with get_lore). Undoable. Tell the user the book is also unlinked from characters that used it.',
+    run: a => { const b = find(S.lore, a.book ?? a.id ?? a.name, 'lorebook'); mustHaveRead('lore', b.id); return propose('delete', 'lore', b.name, { type: 'delete', coll: 'lore', id: b.id }, [{ name: 'name', before: b.name, after: '' }, { name: 'entries', before: String(b.entries.length), after: '0' }]); } },
   { name: 'delete_qr', write: true, sig: '{set, item}', desc: 'Propose deleting one quick-reply button (read the set first). Undoable.',
     run: a => { const q = qrRef(a.set), it = itemRef(q, a.item ?? a.id ?? a.label); mustHaveRead('qr', q.id); return propose('delete', 'qr', `${q.name} › ${it.label}`, { type: 'qrdel', setId: q.id, itemId: it.id }, gone(it as unknown as Obj, ['label', 'kind', 'text'])); } },
   { name: 'delete_qr_set', write: true, sig: '{set}', desc: 'Propose deleting a whole quick-reply set with its buttons (read it first). Undoable.',
