@@ -111,13 +111,16 @@ function setup() {
       if ((type === 'regen' || type === 'swipe') && tail?.role === 'assistant' && mem0.turns.some(t => t.msgId === tail.id)) { M.dropTurn(mem0, tail.id); changed = true; }
       if (changed) M.save(mem0).catch(e => console.warn('[장기기억]', e));
     }
+    // 장부는 "마지막 메시지 바로 앞"(깊이 1)에 들어가는데, 내 입력이 끝에 있으면 [마지막 답변] [장부] [내 입력] 이 되어
+    // 몇 답변 늦은 장부의 장면 · 상태가 가장 무게가 실리는 자리에서 "지금"으로 읽힌다. 끝의 입력들과 마지막 답변 위로 올려 [장부] [마지막 답변] [내 입력] 이 되게 한다
+    const lift = (pieces: PromptPiece[]) => { let k = 0; for (let i = history.length - 1; i >= 0 && history[i].role === 'user'; i--) k++; if (!k || k >= history.length) return pieces; return pieces.map(p => p.where === 'depth' && (p.depth ?? 1) <= k ? { ...p, depth: k + 1 } : p); };
     const opts = { msgs, type, preview: commit === false };   // 프롬프트 미리보기는 회상 학습 · 직전 주입 기록 · 고정 장부에 넣지 않는다
-    if (M.injection) return M.injection(chat, history, opts);   // 어디에 실을지(한 덩어리 · 나눠 싣기 · 고정 장부)는 엔진이 정한다
+    if (M.injection) return lift(M.injection(chat, history, opts) as PromptPiece[]);   // 어디에 실을지(한 덩어리 · 나눠 싣기 · 고정 장부)는 엔진이 정한다
     const p = M.packet(chat, history, opts); if (!p) return [];
     const pos = M.cfg().position || 'split', depth = M.cfg().depth ?? 1;
-    if (p.fixed || pos !== 'split') return [(pos === 'chat' ? { where: 'depth', depth, order: 60, content: p.text, src: '장기기억' } : { where: 'before', content: p.text, src: '장기기억' }) as PromptPiece];
+    if (p.fixed || pos !== 'split') return lift([(pos === 'chat' ? { where: 'depth', depth, order: 60, content: p.text, src: '장기기억' } : { where: 'before', content: p.text, src: '장기기억' }) as PromptPiece]);
     const pieces: (PromptPiece | null)[] = [p.stable ? { where: 'before', content: p.stable, src: '장기기억 (줄거리)' } : null, p.live ? { where: 'depth', depth, order: 60, content: p.live, src: '장기기억 (지금)' } : null];
-    return pieces.filter((v): v is PromptPiece => !!v);
+    return lift(pieces.filter((v): v is PromptPiece => !!v));
   } });
 
   // ── 장면 패널 · 메시지 메뉴 ──

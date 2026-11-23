@@ -45,7 +45,7 @@ export interface PacketSections {
   bonds: Bond[]; voices: PacketVoice[]; banned: string[]; styleGuard: boolean; recallQuotes: boolean; banTell: boolean;
   publicRecall: MemItem[]; protectedRecall: MemItem[]; hiddenProtected: number; locks: PacketLock[]; rules: CanonRow[]; scene: PacketScene; states: StatusRow[];
   characters: PacketCast[]; milestones: Milestone[]; items: Item[]; summaries: PacketSummary[]; supervisorPlan: Plan | null; narratorMode: boolean; turnNow: number;
-  storyAges: Map<number, number> | null; storyTotalDays: number; sources: DossierExcerpt[]; recallCandidates: MemItem[]; trace: Map<string, RecallTrace>;
+  storyAges: Map<number, number> | null; storyTotalDays: number; lag?: number; sources: DossierExcerpt[]; recallCandidates: MemItem[]; trace: Map<string, RecallTrace>;
   notes: Map<string, string>; recent: string[];
   /** 기억 id → 지금 장면에 있지만 그 비밀을 모르는 사람 */
   unaware?: Map<string, string[]>;
@@ -93,6 +93,10 @@ export interface Part4 {
   pin(chatId: string, text?: string | null): Promise<void>;
   /** 대화의 대사에서 모은 부름말 (누가 누구를 무엇이라 부르나 · 몇 번 · 마지막 메시지 순번) */
   addressRows(chat: ChatM, mem: Mem, msgs: Msg[]): AddressRow[];
+  /** 아직 원문으로 프롬프트에 실릴 메시지에서 나온 기록 턴들 (회상에서 뺀다) */
+  visibleTurns(chat: ChatM | null | undefined, mem: Mem, msgs?: Msg[] | null): Set<number>;
+  /** 마지막 기록 뒤로 쌓인 답변 수 — 장부가 그만큼 늦다 */
+  recordLag(mem: Mem, msgs?: Msg[] | null): number;
 }
 
 /** 메시지 → 그 메시지에서 찾은 부름말 (본문 · 화자 · 상대 · 인물 명단이 같을 때만 다시 쓴다) */
@@ -107,7 +111,11 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     const cfg = this.cfg(), T = mem.turns.length, narratorMode = this.perspective(mem) === NARRATOR;
     const r = this.recallEx(chat, mem, history, opt), inp = r.inputs, query = r.query, lastAssistantText = String(inp.scene || ''), recallContext = inp.aux;
     const recallCandidates = [...r.pinned, ...r.triggered, ...r.selected], publicRecall: MemItem[] = [], protectedRecall: MemItem[] = [];
-    for (const m of recallCandidates) { if (!m.pinned && !m.manual && T - 1 - (m.turn ?? 0) <= 1) continue; (m.visibility === 'public' ? publicRecall : protectedRecall).push(m); }   // 직전 주고받음 안의 기억은 화면의 원문과 겹친다
+    // 아직 원문으로 프롬프트에 실리는 구간의 기억은 회상으로 다시 싣지 않는다 — 몇 턴 전 일을 "기억"으로 또 끌어와 장면이 뒤로 돌아가게 만든다
+    const shown = this.visibleTurns(chat, mem, opt.msgs);
+    for (const m of recallCandidates) { if (!m.pinned && !m.manual && (T - 1 - (m.turn ?? 0) <= 1 || shown.has(m.turn ?? -1))) continue; (m.visibility === 'public' ? publicRecall : protectedRecall).push(m); }
+    // 장부의 장면 · 상태는 몇 답변 늦게 기록된다(묶어 기록 · 기록 지연). 얼마나 늦었는지 알려 "지금"으로 읽지 않게 한다
+    const lag = this.recordLag(mem, opt.msgs);
     const notes = this.markOutdatedRecall([...publicRecall, ...protectedRecall], mem);
     // 서약 고르기: 비밀 · 경계 · 제약은 늘 싣고, 떡밥은 지금 장면과 닿아 있거나 최근 것만 (잠든 것은 뺀다) —
     // 무관한 옛 떡밥이 매 턴 자리를 차지하면 모델이 억지로 꺼내 든다 (서고에는 그대로 남는다)
@@ -218,7 +226,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     const d = mem.direction, supervisorPlan = cfg.supervisor && !opt.noDirection && d?.plan && (opt.anchor == null || opt.anchor === d.afterId) ? d.plan : null;
     const recent = cfg.trim || cfg.autoHide ? mem.turns.slice(this.summaryCoveredTurn(mem)).slice(-6).filter(t => t.digest).map(t => t.digest!) : [];
     return { bonds, voices, banned, styleGuard: cfg.styleGuard !== false, recallQuotes: cfg.recallQuotes !== false, banTell: cfg.banTell === true,
-      publicRecall: publicRecallDeduped, protectedRecall, hiddenProtected: r.hidden, locks, rules, scene, states, characters, milestones, items, summaries, supervisorPlan, narratorMode, turnNow: T, storyAges, storyTotalDays,
+      lag, publicRecall: publicRecallDeduped, protectedRecall, hiddenProtected: r.hidden, locks, rules, scene, states, characters, milestones, items, summaries, supervisorPlan, narratorMode, turnNow: T, storyAges, storyTotalDays,
       sources: this.dossierPick(mem, query, recallContext), recallCandidates, trace: r.trace, notes, recent, unaware, deadlines, nowIds, address };
   },
   parts(chat, mem, history, opt) { return this.buildPacketSections(chat, mem, history, opt); },
@@ -324,6 +332,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
       if (P.scene.present) bits.push(`present: ${P.scene.present}`);
       if (P.scene.mood) bits.push(`mood: ${P.scene.mood}`);
       if ((P.storyTotalDays || 0) >= 1) bits.push(`story clock: ~${ago(P.storyTotalDays)} since the story began`);
+      if ((P.lag || 0) >= 1) bits.push(`recorded ${P.lag} ${P.lag === 1 ? 'reply' : 'replies'} ago — the latest replies in the chat are newer and win where they differ`);
       lines.push(`## Scene Now — ${bits.join(' · ')}`);
     }
     if (stableMode) { const looks = chars.filter(c => c.sceneNow && c.appearance && !c.provisional); if (looks.length) lines.push(`(Looks of those in the scene — ${looks.map(c => `${c.name}: ${c.appearance}`).join(' | ')})`); }   // 안정 구간에서 뺀 "지금 장면에 있는 인물의 외형"
@@ -336,7 +345,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     // 장면 인물의 지금 모습 — 장면에 있는 사람은 위치 · 하는 일 · 옷차림 · 다친 곳 · 가진 것 · 기분을 한 줄로. 같은 사람의 칸이 흩어지면 모델이 한 사람의 모습으로 읽지 못한다
     const people = P.nowIds?.size ? states.filter(s => P.nowIds!.has(s.id)) : [], board = states.filter(s => !people.includes(s));
     if (people.length) {
-      lines.push('## People in the Scene Now (as the story last showed them — the visible chat wins where it differs)');
+      lines.push(`## People in the Scene Now (as the story last showed them${(P.lag || 0) >= 1 ? `, recorded ${P.lag} ${P.lag === 1 ? 'reply' : 'replies'} ago` : ''} — the visible chat wins where it differs)`);
       const by = new Map<string, StatusRow[]>(); for (const s of people) { const k = ekey(s.entity); if (!by.has(k)) by.set(k, []); by.get(k)!.push(s); }
       for (const rows of [...by.values()].sort((a, b) => String(a[0].entity).localeCompare(String(b[0].entity)))) {
         const line = personNowLine(rows[0].entity, rows.map(s => ({ slot: canonSlot(s.slot), value: s.value, note: changeNote(s) }))); if (line) lines.push(line);
@@ -518,6 +527,26 @@ export const part4: Part4 & ThisType<MemoryApi> = {
    * 말한 사람은 메시지를 쓴 사람으로 본다(사용자 메시지 = 페르소나, 답변 = 그 캐릭터). 호칭(오빠 · 선배님)은 캐릭터가 하나인 대화에서만 상대를 부른 것으로 친다.
    * 막간 · 이야기 밖 대화는 뺀다. 최근 300개 메시지만 본다
    */
+  visibleTurns(chat, mem, msgs) {
+    const out = new Set<number>(); if (!Array.isArray(msgs) || !msgs.length || !mem.turns.length) return out;
+    // 대화 창에 원문으로 들어갈 범위를 넉넉하지 않게(작게) 어림한다 — 작게 잡으면 겹치는 회상이 조금 남을 뿐이지만, 크게 잡으면 실제로 잘려 나간 일을 잊게 된다
+    const P = chat ? S.presetFor(chat) : null, cfg = this.cfg();
+    const room = Math.max(1500, ((Number(P?.contextSize) || 32000) - (Number(P?.maxTokens) || 2048)) * 0.5), cap = cfg.trim ? Math.max(1, Number(cfg.keepRecent) || 20) : Infinity;
+    const seen = new Set<string>(); let used = 0, n = 0;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i]; if (!m || m.hidden || (m.role !== 'user' && m.role !== 'assistant')) continue;
+      used += tokens(msgText(m)) + 4; if (used > room || n >= cap) break;
+      n++; seen.add(m.id);
+    }
+    mem.turns.forEach((t, i) => { if (t.msgId && seen.has(t.msgId)) out.add(i); });
+    return out;
+  },
+  recordLag(mem, msgs) {
+    if (!Array.isArray(msgs) || !mem.turns.length) return 0;
+    const ids = new Set(mem.turns.filter(t => !t.failed).map(t => t.msgId)); let n = 0;
+    for (let i = msgs.length - 1; i >= 0; i--) { const m = msgs[i]; if (!m) continue; if (ids.has(m.id)) return n; if (m.role === 'assistant' && !m.hidden && !this.isSideMessage(m) && msgText(m).trim()) n++; }
+    return 0;   // 기록된 답변이 화면에 없다 (옛 기록만 있다) — 늦음을 말할 근거가 없다
+  },
   addressRows(chat, mem, msgs) {
     let me = ''; try { me = chat ? S.persona(chat)?.name || '' : ''; } catch { /* 페르소나가 없어도 된다 */ }
     const chars = (chat?.charIds || []).map(id => S.get('chars', id)?.name || '').filter(Boolean), solo = chars.length === 1;

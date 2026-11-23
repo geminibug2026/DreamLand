@@ -613,8 +613,11 @@ export const part3: Part3 & ThisType<MemoryApi> = {
       if (users.length >= want && scene != null && last4.length >= 4 && lastText) break;
     }
     scene = scene || ''; if (narrator) scene = scene.slice(-2400);
-    const query = narrator ? (lastRole === 'user' ? lastText : lastText.slice(-2400)) : (users[0] || lastAny || '');
-    return { query, aux: narrator ? [] : users.slice(1), scene, recentText: low(last4.join('\n')) };
+    // 사용자 입력은 마지막 답변보다 뒤에 쓴 것일 때만 질의가 된다. 입력 없이 이어 받거나(이어 쓰기 · 풀사칭) 다시 받을 때 "마지막 사용자 입력"은
+    // 수십 턴 전 것일 수 있고, 그걸로 찾으면 그때의 옛 장면이 끌려온다 — 그때는 마지막 장면의 끝으로 찾는다
+    const fresh = lastRole === 'user';
+    const query = narrator ? (fresh ? lastText : lastText.slice(-2400)) : fresh ? (users[0] || '') : (scene.slice(-2400) || lastAny || '');
+    return { query, aux: narrator || !fresh ? [] : users.slice(1), scene, recentText: low(last4.join('\n')) };
   },
   /**
    * 사용자의 입력이 이 기억의 "내용"을 직접 꺼냈는가 — 이름만 겹치는 것은 치지 않는다 (같은 인물이 나온다는 이유만으로 지나간 기억 · 방금 실린 기억이 다시 올라오면 안 된다).
