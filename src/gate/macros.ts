@@ -14,6 +14,8 @@ export const MACRO_DOCS: MacroDoc[] = [
   d('random', 'random', '{{random::A::B::C}}', '{{random::sunny::rainy::foggy}}'), d('random', 'weighted', '{{random::A@3::B@1::C@0.5}}', 'The stranger is {{random::friendly@3::wary@1::hostile@0.5}}.'),
   d('random', 'pick', '{{pick::A::B::C}}', '{{pick::north@2::south}}'), d('random', 'roll', '{{roll::2d6+1}}'),
   d('vars', 'getvar', '{{getvar::name}}'), d('vars', 'setvar', '{{setvar::name::value}}'), d('vars', 'addvar', '{{addvar::name::value}}'), d('vars', 'incvar', '{{incvar::name}}'), d('vars', 'decvar', '{{decvar::name}}'),
+  d('vars', 'hasvar', '{{hasvar::name}}'), d('vars', 'deletevar', '{{deletevar::name}}'), d('vars', 'getvarkey', '{{getvarkey::name::key}}', '{{getvarkey::bag::0}}'), d('vars', 'setvarkey', '{{setvarkey::name::key::value}}', '{{setvarkey::hero::hp::10}}'),
+  d('vars', 'varshort', '{{.name}}  ·  {{.name = value}}  ·  {{.name += 1}}  ·  {{.name++}}', '{{.visits++}}{{#if {{.visits}} > 3}}They know each other well.{{/if}}'), d('vars', 'gvarshort', '{{$name}}  ·  {{$name ?? default}}'),
   d('vars', 'getglobalvar', '{{getglobalvar::name}}'), d('vars', 'setglobalvar', '{{setglobalvar::name::value}}'), d('vars', 'var', '{{var::name}}'), d('vars', 'pipe', '{{pipe}}'),
   d('flow', 'if', '{{#if cond}} … {{else if cond}} … {{else}} … {{/if}}', '{{#if mode == "talk"}}Keep it short.{{else}}Write a full scene.{{/if}}'), d('flow', 'unless', '{{#unless cond}} … {{/unless}}'),
   d('flow', 'each', '{{#each char}} … {{/each}}', '{{#each char}}\n- {{char}}: {{personality}}\n{{/each}}'), d('flow', 'comment', '{{// note}}'),

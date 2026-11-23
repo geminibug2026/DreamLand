@@ -231,7 +231,7 @@ export function LoreEditor({ b, api }: { b: Lore; api: EditorApi }) {
       <IconBtn ic="note" title={t('loretext.menu')} onClick={ev => loreTextMenu(ev.currentTarget, b, () => { draw(); api.redraw(); })} />
       <IconBtn ic="search" title={t('lorelint.open0')} onClick={() => loreLint(b, id => { const hit = b.entries.find(x => x.id === id); if (!hit) return; open.add(id); const q = hit.name || hit.keys?.[0] || ''; st.q = q; setQText(q); st.filter = 'all'; draw(); })} />
       <IconBtn ic="sliders" title={t('lore.global.title')} onClick={() => loreSettingsDialog()} />
-      <IconBtn ic="import" title={t('lore.exportSt')} onClick={() => download(`${b.name}.json`, JSON.stringify(cards.loreToWorld(b), null, 2))} />
+      <IconBtn ic="import" title={t('lore.exportSt')} onClick={() => download(`${b.name}.json`, JSON.stringify(cards.loreToWorld(b, { forSt: true }), null, 2))} />
       <IconBtn ic="trash" title={t('lore.delete')} onClick={async () => { if (await confirmBox(t('lore.confirmDelete', { name: b.name }), t('common.delete'), true)) { await S.remove('lore', b.id); S.set({ activeLore: S.settings.activeLore.filter(i => i !== b.id) }); api.refresh(); } }} />
     </div></header>
     <div className="lore-power"><LoreSwitch b={b} after={() => { redraw(); api.redraw(); }} /><div><b>{t('lore.power.title')}</b><small>{active ? t('lore.power.on') : links.length ? t('lore.power.linked', { links: links.join(' · ') }) : t('lore.power.off')}</small></div></div>

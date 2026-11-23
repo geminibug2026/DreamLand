@@ -144,7 +144,8 @@ export function evalCond(expr: unknown, env: CondEnv = {}): boolean {
 }
 
 // ════════ {{#if 조건}} … {{else if 조건}} … {{else}} … {{/if}} ════════
-const TAG = /\{\{\s*(#if|#unless|else\s*if|elseif|else|\/if|\/unless)(?![\w-])/gi;
+// 실리태번 1.19 의 {{if 값}} … {{else}} … {{/if}} (# 없이) 도 받는다: 조건은 식이 아니라 값 하나 (비었거나 false · off · 0 이면 거짓)
+const TAG = /\{\{\s*(#if|#unless|if(?=\s)|else\s*if|elseif|else|\/if|\/unless)(?![\w-])/gi;
 interface Tag { at: number; end: number; kind: string; cond: string }
 function nextTag(src: string, from: number): Tag | null {
   TAG.lastIndex = from; const m = TAG.exec(src); if (!m) return null;
@@ -156,27 +157,31 @@ function nextTag(src: string, from: number): Tag | null {
   if (i >= src.length - 1) return null;
   return { at: m.index, end: i + 2, kind: m[1].toLowerCase().replace(/\s+/g, ''), cond: src.slice(TAG.lastIndex, i).trim() };
 }
-interface Branch { cond: string | null; neg?: boolean; from: number; to?: number }
+interface Branch { cond: string | null; neg?: boolean; st?: boolean; from: number; to?: number }
+/** 블록이 쓰였나 (#if · #unless · 실리태번의 {{if …}}) */
+export const hasCondBlock = (s: string) => /\{\{\s*(#(if|unless)\b|if\s)/i.test(s);
 /** test(조건글) → 참/거짓. 맞는 가지만 남기고 나머지는 지운다. 닫히지 않은 블록은 건드리지 않는다 */
-export function condBlocks(srcIn: unknown, test: (cond: string) => unknown): string {
+export function condBlocks(srcIn: unknown, test: (cond: string, st?: boolean) => unknown): string {
   const src = String(srcIn ?? '');
-  if (src.indexOf('{{') < 0 || !/\{\{\s*#(if|unless)/i.test(src)) return src;
+  if (src.indexOf('{{') < 0 || !hasCondBlock(src)) return src;
   let out = '', pos = 0;
+  const opens = (k: string) => k === '#if' || k === '#unless' || k === 'if';
   for (;;) {
     let open = nextTag(src, pos);
-    while (open && open.kind !== '#if' && open.kind !== '#unless') open = nextTag(src, open.end);
+    while (open && !opens(open.kind)) open = nextTag(src, open.end);
     if (!open) { out += src.slice(pos); break; }
     out += src.slice(pos, open.at);
-    const branches: Branch[] = [{ cond: open.cond, neg: open.kind === '#unless', from: open.end }]; let depth = 1, p = open.end, closed = false;
+    const st = open.kind === 'if';
+    const branches: Branch[] = [{ cond: open.cond, neg: open.kind === '#unless', st, from: open.end }]; let depth = 1, p = open.end, closed = false;
     while (depth) {
       const t = nextTag(src, p); if (!t) break; p = t.end;
-      if (t.kind === '#if' || t.kind === '#unless') depth++;
+      if (opens(t.kind)) depth++;
       else if (t.kind === '/if' || t.kind === '/unless') { if (!--depth) { branches[branches.length - 1].to = t.at; closed = true; } }
-      else if (depth === 1) { branches[branches.length - 1].to = t.at; branches.push({ cond: t.kind === 'else' ? null : t.cond, from: t.end }); }
+      else if (depth === 1) { branches[branches.length - 1].to = t.at; branches.push({ cond: t.kind === 'else' ? null : t.cond, st, from: t.end }); }
     }
     if (!closed) { out += src.slice(open.at, open.end); pos = open.end; continue; }
     let pick = '';
-    for (const b of branches) { const ok = b.cond === null ? true : (!!test(b.cond) !== !!b.neg); if (ok) { pick = src.slice(b.from, b.to); break; } }
+    for (const b of branches) { const ok = b.cond === null ? true : (!!test(b.cond, b.st) !== !!b.neg); if (ok) { pick = src.slice(b.from, b.to); break; } }
     pick = condBlocks(pick.replace(/^[ \t]*\r?\n/, '').replace(/\r?\n[ \t]*$/, ''), test);
     if (!pick && /(^|\n)[ \t]*$/.test(out) && /^[ \t]*\r?\n/.test(src.slice(p))) p += (src.slice(p).match(/^[ \t]*\r?\n/) as RegExpMatchArray)[0].length;   // 빈 가지가 남기는 빈 줄을 없앤다
     out += pick; pos = p;

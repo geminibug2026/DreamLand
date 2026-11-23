@@ -1,9 +1,9 @@
 // ── Dreamland engine: 토큰 추정 · 매크로 · 정규식 · 로어북 · 프롬프트 조립 · API ──
 import * as core from './core';
 import * as hooks from './hooks';
-import { bareNames, condBlocks, evalCond, pvResolve, type CondEnv, type PvMap } from './cond';
+import { bareNames, condBlocks, evalCond, hasCondBlock, pvResolve, type CondEnv, type PvMap } from './cond';
 import { ejs } from './ejs';
-import { caseFold, weighted, wpick } from './macro-extra';
+import { addTo, caseFold, getKey, macroText, runVarShorthand, setKey, varShorthand, weighted, wpick } from './macro-extra';
 import * as clock from './clock';
 import * as advanced from './advanced';
 import { t as tr } from '../i18n';
@@ -123,13 +123,22 @@ function notMuted(c: Ctx): string {
   const off = new Set(chat.muted || []);
   return chat.charIds.filter(id => !off.has(id)).map(id => (S.get('chars', id) as Char | undefined)?.name).filter(Boolean).join(', ');
 }
+/** 실리태번 1.19 의 {{if 조건}}: ! 를 앞에 붙이면 뒤집고, 매크로 이름 · {{.변수}} · {{$변수}} 줄임 꼴이면 그 값을, 아니면 글 그대로를 본다.
+ *  비었거나 false · off · 0 이면 거짓 */
+function stIf(condIn: string, c: Ctx): boolean {
+  let s = condIn.trim(), neg = false;
+  while (s.startsWith('!')) { neg = !neg; s = s.slice(1).trim(); }
+  let v = s;
+  if (/^[.$]?[A-Za-z][\w-]*$/.test(s)) { const r = macro('{{' + s + '}}', c); if (r !== '{{' + s + '}}') v = r; } else v = macro(s, c);
+  return !['', 'false', 'off', '0'].includes(v.trim().toLowerCase()) !== neg;
+}
 export function macro(textIn: string | null | undefined, c: Ctx = {}): string {
   let text = textIn as string;
   if (!text || (text.indexOf('{{') < 0 && text.indexOf('<') < 0)) return text || '';
   if (X.macroLike.length && text.indexOf('{{') >= 0) for (const f of X.macroLike) { try { text = f(text, c); } catch (e) { console.warn('[매크로]', e); } }
   const vars = c.vars || {}, g = S.settings.globalVars;
   if (X.gate && text.indexOf('{{#each') >= 0) text = X.gate.each(text, c);   // {{#each char}}…{{/each}}: 그룹의 캐릭터마다 되풀이
-  if (text.indexOf('{{') >= 0 && /\{\{\s*#(if|unless)/i.test(text)) text = condBlocks(text, cond => evalCond(macro(askCond(cond, c), c), condEnv(c)));   // {{#if 조건}}…{{else}}…{{/if}}
+  if (text.indexOf('{{') >= 0 && hasCondBlock(text)) text = condBlocks(text, (cond, st) => st ? stIf(cond, c) : evalCond(macro(askCond(cond, c), c), condEnv(c)));   // {{#if 조건}}…{{else}}…{{/if}} · 실리태번의 {{if 값}}
   const d = Clock.now(c.chat);   // 방마다 따로 가는 시계 (기본은 현실 시각)
   const simple: Record<string, unknown> = {
     user: c.user, char: c.char, charifnotgroup: c.char, group: c.group || c.char, groupnotmuted: notMuted(c) || c.group || c.char, persona: c.persona, description: c.description,
@@ -143,6 +152,9 @@ export function macro(textIn: string | null | undefined, c: Ctx = {}): string {
   const one = (body: string): string | null => {
     const raw = body.trim().replace(/^(ask_pick)\s*:\s*(?=["'“‘])/i, '$1::');   // {{ask_pick:"물음"::가::나}} 도 받는다
     if (raw.startsWith('//')) return '';
+    if (raw[0] === '.' || raw[0] === '$') {   // {{.변수}} · {{$전역변수}} 줄임 꼴 (실리태번 1.19)
+      const vs = varShorthand(raw); if (vs) { const r = runVarShorthand(vs, vs.global ? g : vars); if (vs.global && vs.op && !/^(\?\?|\|\||==|!=|[<>]=?)$/.test(vs.op)) S.saveSettings(); return r; }
+    }
     const sep = raw.includes('::') ? '::' : ':';
     const [nameRaw, ...rest] = raw.split(sep);
     const name = nameRaw.trim().toLowerCase();
@@ -160,13 +172,25 @@ export function macro(textIn: string | null | undefined, c: Ctx = {}): string {
         return wt ? wpick(wt.items, wt.w, (h >>> 0) / 4294967296) : o[(h >>> 0) % o.length].trim();
       }
       case 'roll': { const r = roll(/d/i.test(args[0] || '') ? args[0] : 'd' + args[0]); return r ? String(r.total) : ''; }
-      case 'getvar': return String(own(vars, args[0]) ?? '');
+      case 'getvar': return macroText(own(vars, args[0]));
       case 'setvar': vars[args[0]] = args.slice(1).join(sep); return '';
       case 'addvar': { const a = Number(own(vars, args[0])), b = Number(args[1]); vars[args[0]] = isNaN(a) || isNaN(b) ? String(own(vars, args[0]) ?? '') + (args[1] ?? '') : a + b; return ''; }
       case 'incvar': vars[args[0]] = (Number(own(vars, args[0])) || 0) + 1; return String(vars[args[0]]);
       case 'decvar': vars[args[0]] = (Number(own(vars, args[0])) || 0) - 1; return String(vars[args[0]]);
-      case 'getglobalvar': return String(own(g, args[0]) ?? '');
+      case 'getglobalvar': return macroText(own(g, args[0]));
       case 'setglobalvar': g[args[0]] = args.slice(1).join(sep); S.saveSettings(); return '';
+      // 실리태번에도 있는 변수 매크로들 (있나 · 지우기 · 전역 더하기 · 목록 · 사전의 한 칸)
+      case 'hasvar': return String(own(vars, args[0]) !== undefined);
+      case 'deletevar': delete vars[args[0]]; return '';
+      case 'hasglobalvar': return String(own(g, args[0]) !== undefined);
+      case 'deleteglobalvar': delete g[args[0]]; S.saveSettings(); return '';
+      case 'addglobalvar': g[args[0]] = addTo(own(g, args[0]), args.slice(1).join(sep)); S.saveSettings(); return '';
+      case 'incglobalvar': g[args[0]] = (Number(own(g, args[0])) || 0) + 1; S.saveSettings(); return String(g[args[0]]);
+      case 'decglobalvar': g[args[0]] = (Number(own(g, args[0])) || 0) - 1; S.saveSettings(); return String(g[args[0]]);
+      case 'getvarkey': case 'getvarindex': return getKey(own(vars, args[0]), args[1] ?? '');
+      case 'setvarkey': case 'setvarindex': vars[args[0]] = setKey(own(vars, args[0]), args[1] ?? '', args.slice(2).join(sep)); return '';
+      case 'getglobalvarkey': case 'getglobalvarindex': return getKey(own(g, args[0]), args[1] ?? '');
+      case 'setglobalvarkey': case 'setglobalvarindex': g[args[0]] = setKey(own(g, args[0]), args[1] ?? '', args.slice(2).join(sep)); S.saveSettings(); return '';
       case 'outlet': return ((c.outlets && own(c.outlets, args[0])) || []).join('\n');
       case 'original': return c.original ?? '';
       case 'var': case 'pvar': {   // 프리셋 변수 (명령 스크립트 안에서는 /let 으로 만든 값이 먼저)
@@ -782,6 +806,9 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
     return d;
   };
   const bias = type === 'impersonate' ? '' : mx(P.prefill || F.startReplyWith);   // 응답 시작 문구: 프리셋의 프리필이 먼저, 없으면 고급 포맷팅의 것
+  // 실리태번 프리셋 프롬프트의 "생성 종류" (injection_trigger): 정해 두었으면 그 종류의 생성에서만 넣는다
+  const gtypes = LORE_TRIGGER[type] || [type], onType = (b: Block) => !Array.isArray(b.trigger) || !b.trigger.length || (b.trigger as string[]).some(t => gtypes.includes(t));
+  const injOrder = (b: Block) => (typeof b.injOrder === 'number' && isFinite(b.injOrder) ? b.injOrder : 100);
   const done = (out: Built) => { if (commit) gen = { tc: out.messages.tc || null, user: ctx.user, char: ctx.char, type, bias }; return out; };
 
   // 4-A) 텍스트 완성형: 스토리 스트링
@@ -795,7 +822,7 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
     const anchorAfter = [...extBefore.map(p => p.content), chat.summary && sumB ? slot(sumB, chat.summary) : ''].filter(Boolean).join('\n').trim();
     const story = A.renderStory(C, I, { description: charDesc(), personality: mx(char.personality), persona: mx(persona?.description), scenario: mx(char.scenario), system, char: ctx.char, user: ctx.user,
       wiBefore: at('before'), wiAfter: at('after'), loreBefore: at('before'), loreAfter: at('after'), anchorBefore: '', anchorAfter, mesExamples: ex.join(''), mesExamplesRaw: rawEx.join('') }, mx);
-    for (const b of preset.blocks || []) if (b.enabled && b.kind === 'text' && b.depth != null && (b.depth as unknown) !== '' && (!b.when || testCond(b.when, ctx)) && mx(b.content).trim()) inject.push({ role: b.role || 'system', content: mx(b.content), depth: +b.depth, order: 100, src: b.name || '프롬프트' });
+    for (const b of preset.blocks || []) if (b.enabled && b.kind === 'text' && b.depth != null && (b.depth as unknown) !== '' && onType(b) && (!b.when || testCond(b.when, ctx)) && mx(b.content).trim()) inject.push({ role: b.role || 'system', content: mx(b.content), depth: +b.depth, order: injOrder(b), src: b.name || '프롬프트' });
     for (const t of tail) inject.push({ ...t, depth: 0, order: 300 });
     const inChat = +(C.story_string_position as Num) === 1;
     if (inChat && story) inject.push({ role: ROLE3[C.story_string_role as number] || 'system', content: story, depth: C.story_string_depth ?? 1, order: 0, src: '스토리 스트링' });
@@ -844,11 +871,12 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
     if (!b.enabled) continue;
     if (b.kind === 'chatHistory') { seenHistory = true; continue; }
     if (b.when && !testCond(b.when, ctx)) continue;   // 조건부 블록
+    if (!onType(b)) continue;
     let text = value(b);
     if (!text || !text.trim()) continue;
     if (b.wrapTag) text = `<${b.wrapTag}>\n${text}\n</${b.wrapTag}>`;
     const item = { role: b.role || 'system', content: text, src: b.name || b.kind };
-    if (b.depth != null && (b.depth as unknown) !== '') inject.push({ ...item, depth: +b.depth, order: 100 });
+    if (b.depth != null && (b.depth as unknown) !== '') inject.push({ ...item, depth: +b.depth, order: injOrder(b) });
     else (seenHistory ? after : before).push(item);
   }
   before.push(...extBefore.filter(p => !(memSlot && p.own === 'memoria')).map(({ own: _own, ...p }) => p));

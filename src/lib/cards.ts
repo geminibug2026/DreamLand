@@ -157,6 +157,38 @@ const WI_TRIGGERS = ['normal', 'continue', 'impersonate', 'swipe', 'regenerate',
 /** 월드 인포 · 카드 책의 항목 (두 형식의 필드가 섞여 들어온다) */
 export interface WiEntry { comment?: string; name?: string; content?: string; constant?: boolean; enabled?: boolean; disable?: boolean; selective?: boolean; position?: number | string; order?: number; insertion_order?: number; displayIndex?: number; extensions?: O; addMemo?: boolean; [k: string]: unknown }
 export interface WorldJson { name?: string; description?: string; scan_depth?: number; token_budget?: number; recursive_scanning?: boolean; extensions?: O; entries?: WiEntry[] | Record<string, WiEntry>; [k: string]: unknown }
+// 실리태번에는 책마다의 설정(훑는 깊이 · 대소문자 · 낱말 단위 · 재귀)이 없고 전역 설정 하나뿐이다 (새로 깐 실리태번: 깊이 2 · 재귀 켬 · 낱말 단위 켬).
+// 그래서 실리태번 꼴로 내보낼 때 "책 설정을 따름"인 항목에 책 설정을 직접 적어 드림랜드에서와 똑같이 돌게 하고,
+// 적어 넣은 칸 이름을 extensions.dreamland_baked 에 남긴다. 다시 가져올 때 그 값이 책 설정과 같으면 "책 설정을 따름"으로 되돌린다
+type Baked = 'scanDepth' | 'caseSensitive' | 'wholeWord' | 'noRecurse';
+export function bakeEntry(e: LoreEntry, book: LoreBook) {
+  const baked = new Set<Baked>(K.arr<Baked>(e.more?.baked));
+  const scanDepth = numOrNull(e.scanDepth) ?? (baked.add('scanDepth'), book.scanDepth ?? 4);
+  const caseSensitive = tri(e.caseSensitive) ?? (baked.add('caseSensitive'), !!book.caseSensitive);
+  const wholeWord = tri(e.wholeWord) ?? (baked.add('wholeWord'), !!book.wholeWord);
+  const noRecurse = !!e.noRecurse || (!book.recursive && (baked.add('noRecurse'), true));
+  return { scanDepth, caseSensitive, wholeWord, noRecurse, baked: [...baked] };
+}
+/** 실리태번은 /…/ 꼴 열쇠만 정규식으로 읽는다: 드림랜드에서 "열쇠를 정규식으로"를 켠 항목의 열쇠는 /열쇠/i 꼴로 적는다 (가져올 때 extensions.dreamland_wrapped 를 보고 되돌린다) */
+const RX_KEY = /^\/([\s\S]+)\/([a-z]*)$/;
+export const stKeys = (keys: unknown, e: LoreEntry, cs: boolean): string[] => K.arr<string>(keys).map(String).map(k => !e.useRegex || !k || RX_KEY.test(k) ? k : `/${k}/${cs ? '' : 'i'}`);
+const unwrapKeys = (keys: string[]) => keys.map(k => { const m = RX_KEY.exec(k); return m && /^i?$/.test(m[2]) ? m[1] : k; });
+/** 가져올 때: 적어 넣었던 책 설정이 지금 책 설정과 같으면 항목을 다시 "책 설정을 따름"으로 */
+function unbake(entry: LoreEntry, book: LoreBook, baked: unknown) {
+  for (const k of K.arr<string>(baked)) {
+    if (k === 'scanDepth' && entry.scanDepth === (book.scanDepth ?? 4)) entry.scanDepth = null;
+    else if (k === 'caseSensitive' && entry.caseSensitive === !!book.caseSensitive) entry.caseSensitive = null;
+    else if (k === 'wholeWord' && entry.wholeWord === !!book.wholeWord) entry.wholeWord = null;
+    else if (k === 'noRecurse' && entry.noRecurse && !book.recursive) entry.noRecurse = false;
+  }
+}
+/** 열쇠를 정규식으로 읽을지. 실리태번이 내보내는 카드 책은 모든 항목에 use_regex: true 를 적지만 실제로는 /…/ 꼴 열쇠만 정규식으로 쓴다.
+ *  그래서 드림랜드가 남긴 값이 있으면 그것을, 실리태번이 만든 카드 책 항목(display_index 같은 실리태번 칸이 있다)이면 무시한다 */
+function useRegexOf(e: WiEntry, x: O, isCardBook: boolean, fromDl: boolean): boolean {
+  if (typeof x.dreamland_use_regex === 'boolean') return x.dreamland_use_regex;
+  if (isCardBook && !fromDl && ('display_index' in x || 'selectiveLogic' in x)) return false;
+  return !!(e.use_regex ?? x.use_regex);
+}
 /** 월드 인포(.json) · 캐릭터 카드에 든 책(character_book) → 드림랜드 로어북 */
 export function worldToLore(json: WorldJson, name?: string): LoreBook {
   const book = K.newLore({ name: json.name || name || '로어북', description: json.description || '' });
@@ -184,19 +216,21 @@ export function worldToLore(json: WorldJson, name?: string): LoreBook {
       sticky: g('sticky', 'sticky') || null, cooldown: g('cooldown', 'cooldown') || null, delay: g('delay', 'delay') || null, scanDepth: numOrNull(g('scanDepth', 'scan_depth')),
       delayUntilRecursion: dur === true ? 1 : Math.max(0, +(dur as number) || 0), automationId: g('automationId', 'automation_id') || '',
       charFilter: { names: K.arr(cf.names).map(String), tags: K.arr(cf.tags).map(String), exclude: !!cf.isExclude },
-      triggers: K.arr<string>(g('triggers', 'triggers')).filter(t => WI_TRIGGERS.includes(t)), useRegex: !!(e.use_regex ?? x.use_regex ?? x.dreamland_use_regex ?? e.extensions?.dreamland_use_regex),
+      triggers: K.arr<string>(g('triggers', 'triggers')).filter(t => WI_TRIGGERS.includes(t)), useRegex: useRegexOf(e, x, isCardBook, isObj(dx)),
       ...(vectorized ? { vectorized: true } : {}), ...(Object.keys(more).length ? { more } : {}),
     });
     for (const [mine, st, cb] of WI_FLAGS) entry[mine] = !!g(st, cb);
+    unbake(entry, book, x.dreamland_baked);
+    if (x.dreamland_wrapped === true) { entry.keys = unwrapKeys(entry.keys || []); entry.keys2 = unwrapKeys(entry.keys2 || []); }
     book.entries.push(entry);
   }
   return book;
 }
 /** 드림랜드 로어북 → 월드 인포(.json). 드림랜드에만 있는 책 설정은 extensions.dreamland 에 담아 되돌아올 수 있게 한다 */
-export function loreToWorld(book: LoreBook) {
+export function loreToWorld(book: LoreBook, { forSt = false }: { forSt?: boolean } = {}) {
   const entries: Record<number, O> = {};
   (book.entries || []).forEach((e, i) => {
-    const cf = e.charFilter || {};
+    const cf = e.charFilter || {}, bk = forSt ? bakeEntry(e, book) : null;
     entries[i] = {
       uid: i, key: e.keys || [], keysecondary: e.keys2 || [], comment: e.name || '', content: e.content || '', constant: !!e.constant, vectorized: !!(e.vectorized || e.more?.vectorized), use_regex: !!e.useRegex, selective: true, selectiveLogic: +(e.logic as number) || 0,
       addMemo: e.more?.addMemo !== false, order: e.order ?? 100, position: posNum(e.position), disable: e.enabled === false,
@@ -206,6 +240,8 @@ export function loreToWorld(book: LoreBook) {
       sticky: +(e.sticky as number) || 0, cooldown: +(e.cooldown as number) || 0, delay: +(e.delay as number) || 0, delayUntilRecursion: +(e.delayUntilRecursion as number) || 0,
       characterFilter: { isExclude: !!cf.exclude, names: cf.names || [], tags: cf.tags || [] }, triggers: e.triggers || [], displayIndex: i,
       ...Object.fromEntries(WI_FLAGS.map(([mine, st]) => [st, mine === 'groupOverride' ? !!(e.groupOverride ?? true) : !!e[mine]])),
+      ...(bk ? { scanDepth: bk.scanDepth, caseSensitive: bk.caseSensitive, matchWholeWords: bk.wholeWord, preventRecursion: bk.noRecurse, key: stKeys(e.keys, e, bk.caseSensitive), keysecondary: stKeys(e.keys2, e, bk.caseSensitive),
+        ...(bk.baked.length || e.useRegex ? { extensions: { ...(bk.baked.length ? { dreamland_baked: bk.baked } : {}), ...(e.useRegex ? { dreamland_wrapped: true } : {}) } } : {}) } : {}),
     };
   });
   return { name: book.name, description: book.description || '', entries, extensions: { dreamland: { scanDepth: book.scanDepth ?? 4, tokenBudget: book.tokenBudget || 2048, recursive: !!book.recursive, caseSensitive: !!book.caseSensitive, wholeWord: !!book.wholeWord } } };
@@ -216,16 +252,18 @@ export function loreToCardBook(book: LoreBook) {
     name: book.name, description: book.description || '', scan_depth: book.scanDepth ?? 4, token_budget: book.tokenBudget || 2048, recursive_scanning: !!book.recursive,
     extensions: { dreamland: { caseSensitive: !!book.caseSensitive, wholeWord: !!book.wholeWord } },
     entries: (book.entries || []).map((e, i) => {
-      const cf = e.charFilter || {};
+      const cf = e.charFilter || {}, bk = bakeEntry(e, book);
       return {
-        id: i, keys: e.keys || [], secondary_keys: e.keys2 || [], comment: e.name || '', content: e.content || '', constant: !!e.constant, selective: true, insertion_order: e.order ?? 100, enabled: e.enabled !== false,
+        id: i, keys: stKeys(e.keys, e, bk.caseSensitive), secondary_keys: stKeys(e.keys2, e, bk.caseSensitive), comment: e.name || '', content: e.content || '', constant: !!e.constant, selective: true, insertion_order: e.order ?? 100, enabled: e.enabled !== false,
         position: e.position === 'after' ? 'after_char' : 'before_char', use_regex: !!e.useRegex,
         extensions: {
           position: posNum(e.position), depth: e.depth ?? 4, role: Math.max(0, ROLE.indexOf(e.role as string)), probability: e.probability ?? 100, useProbability: true, selectiveLogic: +(e.logic as number) || 0, display_index: i,
-          outlet_name: e.outlet || '', group: e.group || '', group_weight: e.groupWeight ?? 100, scan_depth: numOrNull(e.scanDepth), case_sensitive: tri(e.caseSensitive), match_whole_words: tri(e.wholeWord), use_group_scoring: tri(e.useGroupScoring),
+          outlet_name: e.outlet || '', group: e.group || '', group_weight: e.groupWeight ?? 100, use_group_scoring: tri(e.useGroupScoring),
           automation_id: e.automationId || '', vectorized: !!(e.vectorized || e.more?.vectorized), sticky: +(e.sticky as number) || 0, cooldown: +(e.cooldown as number) || 0, delay: +(e.delay as number) || 0, delay_until_recursion: +(e.delayUntilRecursion as number) || 0,
           character_filter: { isExclude: !!cf.exclude, names: cf.names || [], tags: cf.tags || [] }, triggers: e.triggers || [],
           ...Object.fromEntries(WI_FLAGS.map(([mine, , cb]) => [cb, mine === 'groupOverride' ? !!(e.groupOverride ?? true) : !!e[mine]])),
+          scan_depth: bk.scanDepth, case_sensitive: bk.caseSensitive, match_whole_words: bk.wholeWord, prevent_recursion: bk.noRecurse, dreamland_use_regex: !!e.useRegex,
+          ...(bk.baked.length ? { dreamland_baked: bk.baked } : {}), ...(e.useRegex ? { dreamland_wrapped: true } : {}),
         },
       };
     }),
@@ -277,16 +315,18 @@ export interface CardData {
 }
 export interface CardExt { fav?: unknown; talkativeness?: unknown; depth_prompt?: { prompt?: string; depth?: number; role?: string }; world?: string; regex_scripts?: unknown; backstory?: string; appearance?: string; [k: string]: unknown }
 export interface Card extends CardData { spec?: string; data?: CardData; creatorcomment?: string; fav?: unknown }
+// 실리태번 화면에서 한 번이라도 저장한 카드는 글 칸의 줄바꿈이 \r\n 이 된다 (웹 양식이 그렇게 보낸다). 드림랜드는 \n 으로 맞춘다
+const lf = (v: unknown) => typeof v === 'string' ? v.replace(/\r\n?/g, '\n') : '';
 /** 캐릭터 카드(V1/V2/V3) → 드림랜드 캐릭터 (+내장 로어북, 정규식) */
 export function cardToChar(card: Card, avatar = '') {
   const d: CardData = card.data && typeof card.data === 'object' ? card.data : card;
   const x: CardExt = d.extensions || {};
   const ch = K.newChar({
-    name: d.name || card.name || '이름 없음', avatar, description: d.description || '', personality: d.personality || '', scenario: d.scenario || '',
-    firstMes: d.first_mes || '', altGreetings: K.arr(d.alternate_greetings).filter(Boolean), mesExample: d.mes_example || '', systemPrompt: d.system_prompt || '',
-    postHistory: d.post_history_instructions || '', creatorNotes: d.creator_notes || card.creatorcomment || '', creator: d.creator || '', version: d.character_version || '',
+    name: d.name || card.name || '이름 없음', avatar, description: lf(d.description), personality: lf(d.personality), scenario: lf(d.scenario),
+    firstMes: lf(d.first_mes), altGreetings: K.arr(d.alternate_greetings).filter(Boolean).map(lf), mesExample: lf(d.mes_example), systemPrompt: lf(d.system_prompt),
+    postHistory: lf(d.post_history_instructions), creatorNotes: lf(d.creator_notes || card.creatorcomment), creator: d.creator || '', version: d.character_version || '',
     tags: K.arr(d.tags).map(String), fav: K.bool(x.fav ?? card.fav), talk: Number(x.talkativeness ?? 0.5) || 0.5,
-    depthPrompt: { prompt: x.depth_prompt?.prompt || '', depth: x.depth_prompt?.depth ?? 4, role: x.depth_prompt?.role || 'system' }, worldName: x.world || '',
+    depthPrompt: { prompt: lf(x.depth_prompt?.prompt), depth: x.depth_prompt?.depth ?? 4, role: x.depth_prompt?.role || 'system' }, worldName: x.world || '',
     ext: Object.fromEntries(Object.entries(x).filter(([k]) => !EXT_OWN.includes(k))),                                                  // 드림랜드가 따로 다루지 않는 확장 필드는 그대로 보관
     more: Object.fromEntries(Object.entries(d).filter(([k]) => !DATA_OWN.includes(k))),                                                // V3 의 nickname · source · group_only_greetings · assets 등
   });
@@ -405,7 +445,9 @@ export function stPresetToPreset(j: StPreset, name?: string): { preset: DPreset;
     else if (kind === 'worldInfoBefore' || kind === 'worldInfoAfter') content = fmt(j.wi_format, 'x');
     else if (kind !== 'text' && kind !== 'main' && kind !== 'jailbreak') content = '';
     if (kind === 'chatHistory' && !blocks.some(b => b.kind === 'summary')) blocks.push({ id: K.uid(), kind: 'summary', name: K.MARKERS.summary, role: 'system', content: '{{slot}}', enabled: true, depth: null });
-    blocks.push({ id: K.uid(), kind, name: kind === 'text' ? (x.name || ST_NAME[o.identifier] || o.identifier) : K.MARKERS[kind], role: x.role || 'system', content, enabled: o.enabled !== false, depth: x.injection_position === 1 ? (x.injection_depth ?? 4) : null, ...(kind === 'text' ? { stId: o.identifier } : {}) });
+    const trig = K.arr<string>(x.injection_trigger).filter(t => typeof t === 'string'), ord = num(x.injection_order);
+    blocks.push({ id: K.uid(), kind, name: kind === 'text' ? (x.name || ST_NAME[o.identifier] || o.identifier) : K.MARKERS[kind], role: x.role || 'system', content, enabled: o.enabled !== false, depth: x.injection_position === 1 ? (x.injection_depth ?? 4) : null, ...(kind === 'text' ? { stId: o.identifier } : {}),
+      ...(trig.length ? { trigger: trig } : {}), ...(ord !== null && ord !== 100 ? { injOrder: ord } : {}) });   // 그 생성 종류에서만 · 같은 깊이에서의 차례
   }
   if (!blocks.some(b => b.kind === 'chatHistory')) blocks.push({ id: K.uid(), kind: 'chatHistory', name: K.MARKERS.chatHistory, role: 'system', content: '', enabled: true, depth: null });
   p.blocks = blocks;
@@ -429,7 +471,7 @@ export function presetToSt(p: DPreset) {
     if (seen.has(identifier)) continue; seen.add(identifier);
     const depth = b.depth != null && b.depth !== '' && !isNaN(+b.depth) ? +b.depth : null;
     prompts.push(text
-      ? { identifier, name: b.name || identifier, system_prompt: b.kind !== 'text', role: b.role || 'system', content: b.content || '', injection_position: depth === null ? 0 : 1, injection_depth: depth ?? 4, forbid_overrides: false }
+      ? { identifier, name: b.name || identifier, system_prompt: b.kind !== 'text', role: b.role || 'system', content: b.content || '', injection_position: depth === null ? 0 : 1, injection_depth: depth ?? 4, injection_order: typeof b.injOrder === 'number' ? b.injOrder : 100, injection_trigger: Array.isArray(b.trigger) ? b.trigger : [], forbid_overrides: false }
       : { identifier, name: b.name || identifier, system_prompt: true, marker: true });
     order.push({ identifier, enabled: b.enabled !== false });
   }

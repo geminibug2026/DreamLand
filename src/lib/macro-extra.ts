@@ -55,3 +55,60 @@ export function includeText(name: string, book: string, stack: string[], find: (
   if (stack.includes(hit.key) || stack.length >= INCLUDE_MAX) return '';
   return expand(hit.text, [...stack, hit.key]);
 }
+
+// ── 실리태번 1.19 의 변수 매크로 ── {{getvarkey::이름::칸}} · {{setvarkey::이름::칸::값}} (목록 · 사전 변수의 한 칸) 과
+// 줄임 꼴 {{.이름}} (대화 변수) · {{$이름}} (전역 변수) 에 붙는 연산자 (=, +=, -=, ++, --, ??, ??=, ||, ||=, ==, !=, >, >=, <, <=)
+/** 매크로가 내보내는 글: 없으면 빈 글, 목록 · 사전은 JSON (실리태번과 같다) */
+export const macroText = (v: unknown): string => v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
+const parseJson = (v: unknown): unknown => { if (v && typeof v === 'object') return v; if (typeof v !== 'string') return null; try { return JSON.parse(v); } catch { return null; } };
+/** 목록 · 사전 변수의 한 칸 읽기 */
+export function getKey(raw: unknown, key: string): string {
+  const j = parseJson(raw); if (!j || typeof j !== 'object') return '';
+  return macroText((j as Record<string, unknown>)[Array.isArray(j) ? Number(key) : key]);
+}
+/** 한 칸 쓰기: 변수가 없으면 칸이 수이면 목록, 아니면 사전으로 새로 만든다. 돌려주는 값은 JSON 글 (실리태번처럼 글로 적어 둔다) */
+export function setKey(raw: unknown, key: string, value: string): string {
+  let j = parseJson(raw ?? null); const num = String(key).trim() !== '' && Number.isInteger(Number(key));
+  if (!j || typeof j !== 'object') j = num ? [] : {};
+  if (Array.isArray(j) && num) j[Number(key)] = value; else (j as Record<string, unknown>)[key] = value;
+  return JSON.stringify(j);
+}
+/** 더하기: 목록이면 끝에 붙이고, 둘 다 수이면 더하고, 아니면 글을 잇는다 */
+export function addTo(cur: unknown, value: string): unknown {
+  const j = parseJson(cur);
+  if (Array.isArray(j)) { j.push(value); return JSON.stringify(j); }
+  const a = Number(cur ?? 0), b = Number(value);
+  return isNaN(a) || isNaN(b) ? String(cur ?? '') + value : a + b;
+}
+export interface VarShort { global: boolean; name: string; op: string; value: string }
+/** {{.이름 연산자 값}} · {{$이름 …}} 를 읽는다. 아니면 null */
+export function varShorthand(body: string): VarShort | null {
+  const m = /^\s*([.$])([A-Za-z](?:[\w-]*\w)?)\s*(\+\+|--|\?\?=|\?\?|\|\|=|\|\||-=|\+=|==|!=|>=|<=|>|<|=)?([\s\S]*)$/.exec(body);
+  if (!m) return null;
+  if (!m[3] && m[4].trim()) return null;   // 이름 뒤에 연산자 없이 다른 글이 오면 줄임 꼴이 아니다
+  return { global: m[1] === '$', name: m[2], op: m[3] || '', value: m[4].trim() };
+}
+const falsy = (v: unknown) => !v || ['false', 'off', '0', 'no'].includes(macroText(v).trim().toLowerCase());
+/** 줄임 꼴 계산. vars 는 그 범위의 변수 묶음 (여기서 바꾼 값이 그대로 남는다) */
+export function runVarShorthand(s: VarShort, vars: Record<string, unknown>): string {
+  const has = Object.prototype.hasOwnProperty.call(vars, s.name), cur = has ? vars[s.name] : undefined, v = s.value;
+  const num = (x: unknown) => (x === '' || x == null ? NaN : Number(x));
+  const cmp = (f: (a: number, b: number) => boolean) => { const a = num(cur), b = num(v); return isNaN(a) || isNaN(b) ? 'false' : String(f(a, b)); };
+  switch (s.op) {
+    case '': return macroText(cur);
+    case '=': vars[s.name] = v; return '';
+    case '++': vars[s.name] = (Number(cur) || 0) + 1; return macroText(vars[s.name]);
+    case '--': vars[s.name] = (Number(cur) || 0) - 1; return macroText(vars[s.name]);
+    case '+=': vars[s.name] = addTo(cur, v); return '';
+    case '-=': { const n = Number(v); if (!isNaN(n)) vars[s.name] = addTo(cur, String(-n)); return ''; }
+    case '||': return falsy(cur) ? v : macroText(cur);
+    case '??': return has ? macroText(cur) : v;
+    case '||=': if (falsy(cur)) { vars[s.name] = v; return v; } return macroText(cur);
+    case '??=': if (!has) { vars[s.name] = v; return v; } return macroText(cur);
+    case '==': return String(macroText(cur) === v);
+    case '!=': return String(macroText(cur) !== v);
+    case '>': return cmp((a, b) => a > b); case '>=': return cmp((a, b) => a >= b);
+    case '<': return cmp((a, b) => a < b); case '<=': return cmp((a, b) => a <= b);
+  }
+  return '';
+}
