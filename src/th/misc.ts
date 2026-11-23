@@ -109,7 +109,8 @@ const script: Record<string, F> = {
   getAllEnabledScriptButtons: () => { const out: Record<string, { button_id: string; button_name: string }[]> = {}; for (const b of TS.scriptButtons()) (out[b.script] ||= []).push({ button_id: b.id, button_name: b.name }); return out; },
   getScriptTrees: (_c, o) => trees(o),
   replaceScriptTrees: (c, list, o) => replaceTrees(c, list, o),
-  getScriptVars: (c, id) => structuredClone(TS.scriptVars(str(id || c.script))),
+  // 예전 판은 스크립트 변수를 대화 변수에 함께 적었다: 이 스크립트의 새 자리가 비어 있으면 대화 변수를 읽어 설정이 처음으로 돌아가지 않게
+  getScriptVars: (c, id) => { const sid = str(id || c.script), d = TS.scriptMeta(sid)?.data; return structuredClone(d && Object.keys(d).length ? d : ((cur.chat?.vars as Obj | undefined) || {})); },
 };
 
 // ════════ 확장 (드림랜드에는 실리태번 확장 설치가 없다: 이미 들어 있는 것만 깔린 것으로 알린다) ════════

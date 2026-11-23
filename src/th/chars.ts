@@ -11,7 +11,7 @@ import { toTh as regexToTh } from './regex';
 import { regex as regexApi } from './regex';
 import { type Ctx, type Obj, bookByName, bookName, chat, clone, curChar, fail, findChar, findPersona, isObj, mayDelete, redraw, remember, str, undoToast } from './util';
 
-const OMIT = ['TavernHelper_scripts', 'TavernHelper_characterScriptVariables', 'fav', 'talkativeness', 'world', 'depth_prompt', 'pygmalion_id', 'github_repo', 'source_url', 'chub', 'risuai', 'sd_character_prompt'];
+const OMIT = ['TavernHelper_scripts', 'TavernHelper_characterScriptVariables', 'fav', 'talkativeness', 'world', 'depth_prompt', 'pygmalion_id', 'github_repo', 'source_url', 'chub', 'sd_character_prompt'];
 /** 카드 확장 칸의 tavern_helper (짝 배열 꼴도 받는다) */
 export function thOf(ext: Obj | undefined): Obj {
   const v = ext?.tavern_helper;
