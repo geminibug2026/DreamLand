@@ -11,7 +11,10 @@ import { statusOneLine } from '../scene';
 import { hasPhrase, stripPhrases, diffStableEntries, shouldRefreeze, pickPledges, stripOpenLines, isEndedValue, threadTouched } from '../craft';
 import { addressTermsIn, tallyAddress, pickAddressLines, pickDeadlines, storyDays, personNowLine } from '../stage';
 import type { AddressHit, AddressPerson, AddressRow } from '../stage';
-import type { FreezeMark, StableEntry as StableLine } from '../craft';
+import { pickBeats, beatLines } from '../calendar';
+import { VOICE_LINES, PLAN_HEAD } from '../directives';
+import { personaNameOf } from './part6';
+import type { FreezeMark, StableEntry as StableLine, TranscriptHit } from '../craft';
 
 /** 장부를 지을 때의 옵션 (회상 옵션 + 주입 옵션) */
 export interface PacketOpts extends RecallOpts {
@@ -19,6 +22,8 @@ export interface PacketOpts extends RecallOpts {
   anchor?: string | null; noDirection?: boolean;
   /** preview: 진단만 · fresh: 고정 · 수정본 무시 · force: 꺼져 있어도 짓는다 */
   preview?: boolean; fresh?: boolean; force?: boolean; limits?: PacketLimits; budget?: number;
+  /** 원문 회상을 되짚는 말인지 가리지 않고 한다 (서고에 묻기) */
+  rawRecall?: boolean;
 }
 /** 예산에 맞춰 줄이는 단수 하나 (renderPacket 의 상한들) */
 export interface PacketLimits {
@@ -55,6 +60,20 @@ export interface PacketSections {
   nowIds?: Set<string>;
   /** 장면에 함께 있는 두 사람 사이의 부름말 */
   address?: { from: string; to: string; terms: string[] }[];
+  /** 원문 회상 — 숨긴 옛 대화에서 글자 그대로 찾은 대목 (매 턴 바뀌는 구간에만 싣는다) */
+  transcript?: TranscriptHit[];
+  /** 기억 id → 지금 장면에 있지만 그 일이 있을 때 자리에 없던 사람 */
+  absent?: Map<string, string[]>;
+  /** 장면 카드 — 떠올린 옛 묶음에서 있었던 일을 순서대로 (매 턴 바뀌는 구간에만 싣는다) */
+  cards?: { head: string; lines: string[] }[];
+  /** 장면 속 인물이 마음에 둔 것 */
+  minds?: { name: string; lines: string[] }[];
+  /** 작가 계획 — 가린 줄만 */
+  plans?: { id: string; veil: string }[];
+  /** 날 세기 한 줄 */
+  trackerLine?: string;
+  /** 지난 일을 꺼내는 정도 */
+  voice?: string;
 }
 /** 고정 장부로 실었을 때의 진단 */
 export interface SplitDiag { stableTokens: number; nowTokens: number; delta: number; frozenAtTurn: number; refreshed: boolean }
@@ -95,6 +114,8 @@ export interface Part4 {
   addressRows(chat: ChatM, mem: Mem, msgs: Msg[]): AddressRow[];
   /** 아직 원문으로 프롬프트에 실릴 메시지에서 나온 기록 턴들 (회상에서 뺀다) */
   visibleTurns(chat: ChatM | null | undefined, mem: Mem, msgs?: Msg[] | null): Set<number>;
+  /** 아직 원문으로 프롬프트에 실릴 메시지들 (id) */
+  visibleMsgIds(chat: ChatM | null | undefined, msgs?: Msg[] | null): Set<string>;
   /** 마지막 기록 뒤로 쌓인 답변 수 — 장부가 그만큼 늦다 */
   recordLag(mem: Mem, msgs?: Msg[] | null): number;
 }
@@ -121,7 +142,9 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     // 무관한 옛 떡밥이 매 턴 자리를 차지하면 모델이 억지로 꺼내 든다 (서고에는 그대로 남는다)
     const threadScene = `${query}\n${lastAssistantText}`.slice(0, 3000);
     // 떡밥의 나이는 마지막으로 움직인 때(다시 적힘 · 언급 · "지금" 줄)부터 센다
-    const locks = pickPledges(mem.pledges.map(l => ({ ...l, kind: normLockKind(l.kind), turnIndex: threadTouched(l) + 1 })), { turnNow: T, sceneText: threadScene, overlap });
+    // 작가 계획은 서약 줄로 싣지 않는다 — 문구가 곧 답이라, 가린 줄만 따로 싣는다
+    const locks = pickPledges(mem.pledges.filter(l => normLockKind(l.kind) !== 'author_plan').map(l => ({ ...l, kind: normLockKind(l.kind), turnIndex: threadTouched(l) + 1 })), { turnNow: T, sceneText: threadScene, overlap });
+    const plans = mem.pledges.filter(l => normLockKind(l.kind) === 'author_plan' && l.status === 'active' && l.veil).slice(-4).map(l => ({ id: l.id, veil: String(l.veil) }));
     const rules = mem.canon.slice(-8), scene: PacketScene = this.scene(mem);
     // 가장 최근 상태창 — 옛 답변이 숨겨지거나 막간이 끼어도 시간 · 날짜 · 장소가 이어지게. 다시 생성하는 중이면 지금 다시 쓰는 답변의 상태창은 빼고 그 앞의 것을 알려준다
     if (cfg.statusInject !== false && Array.isArray(opt.msgs)) {
@@ -165,7 +188,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     // 지금 장면에 있는데 이 비밀 · 속사정을 모르는 사람 — 그 사람에게 새어 나가게 쓰지 않도록 이름으로 짚는다 (누가 아는지 적힌 것만)
     const unaware = new Map<string, string[]>();
     if (cfg.guardSecrets !== false) for (const m of protectedRecall) {
-      const knows = new Set([m.owner, ...(m.knowers || [])].filter(Boolean).map(n => ekey(this.canonName(mem, n))));
+      const knows = new Set([m.owner, ...(m.knowers || []), ...(m.guessers || [])].filter(Boolean).map(n => ekey(this.canonName(mem, n))));   // 짐작하는 사람은 "모르는 사람"으로 짚지 않는다 (따로 적힌다)
       if (!knows.size) continue;
       const blind = characters.filter(c => c.sceneNow && !knows.has(ekey(c.name)) && !(c.aka || []).some(a => knows.has(ekey(a)))).map(c => c.name);
       if (blind.length) unaware.set(m.id, blind.slice(0, 4));
@@ -225,9 +248,45 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     // 장면 연출 (미리 계산해 둔 것 — 그 뒤 대화가 바뀌었으면 싣지 않는다) · 아직 묶이지 않은 최근 턴 기록 (옛 대화를 보내지 않을 때)
     const d = mem.direction, supervisorPlan = cfg.supervisor && !opt.noDirection && d?.plan && (opt.anchor == null || opt.anchor === d.afterId) ? d.plan : null;
     const recent = cfg.trim || cfg.autoHide ? mem.turns.slice(this.summaryCoveredTurn(mem)).slice(-6).filter(t => t.digest).map(t => t.digest!) : [];
-    return { bonds, voices, banned, styleGuard: cfg.styleGuard !== false, recallQuotes: cfg.recallQuotes !== false, banTell: cfg.banTell === true,
+    // 원문 회상: 옛일을 되짚는 말일 때만, 지금은 원문으로 실리지 않는 옛 대화에서 그 대목을 한 곳 찾는다 (옛 대사를 싣지 않기로 했으면 하지 않는다. 점검 · 말로 고치기에는 싣지 않는다)
+    const transcript = Array.isArray(opt.msgs) && cfg.recallQuotes !== false && (opt.rawRecall || !opt.noDirection)
+      ? this.transcriptRecall(chat, mem, (opt.type === 'regen' || opt.type === 'swipe') && opt.msgs[opt.msgs.length - 1]?.role === 'assistant' ? opt.msgs.slice(0, -1) : opt.msgs, [query], { force: opt.rawRecall === true, max: opt.rawRecall ? 3 : 1 }) : [];
+    // 그 자리에 없던 사람: 공개된 사건이라도 그때 장면에 없던 사람이 지금 장면에 있으면 이름으로 짚는다 (목격자가 적힌 기억만 · 내 캐릭터는 내가 쓰므로 뺀다)
+    const meKey = ekey(this.canonName(mem, personaNameOf(chat))), inSceneCast = characters.filter(c => c.sceneNow && ekey(c.name) !== meKey), absent = new Map<string, string[]>();
+    const awayFrom = (names?: string[]) => { if (!names || names.length < 2) return []; const saw = new Set(names.map(n => ekey(this.canonName(mem, n)))); return inSceneCast.filter(c => !saw.has(ekey(c.name)) && !(c.aka || []).some(a => saw.has(ekey(a)))).map(c => c.name).slice(0, 3); };
+    if (cfg.guardSecrets !== false) for (const m of publicRecallDeduped) { const away = awayFrom(m.witnesses); if (away.length) absent.set(m.id, away); }
+    // 장면 카드: 떠올린 옛 묶음(없으면 가장 잘 맞은 회상이 든 구간)에서 있었던 일을 순서대로 — 아직 원문으로 실리는 구간은 펼치지 않는다
+    const cards: NonNullable<PacketSections['cards']> = [], cardMax = opt.noDirection && !opt.rawRecall ? 0 : Math.max(0, Math.min(2, Math.round(Number(cfg.sceneCards) || 0)));
+    if (cardMax) {
+      const spans: [number, number][] = []; if (recalledChapter) spans.push([recalledChapter.from, recalledChapter.to]);
+      for (const m of publicRecallDeduped) { if (m.pinned || m.manual || m.turn == null || (r.trace.get(m.id)?.score || 0) < 0.3) continue; const c = mem.chunks.find(x => !x.carried && m.turn! >= x.from && m.turn! <= x.to); spans.push(c ? [c.from, c.to] : [Math.max(0, m.turn - 1), Math.min(T - 1, m.turn + 1)]); if (spans.length >= 4) break; }
+      const used: [number, number][] = [];
+      for (const [from, to] of spans) {
+        if (cards.length >= cardMax) break;
+        if (to >= T - 2 || used.some(([a, b]) => from <= b && to >= a)) continue;
+        let onScreen = false; for (let i = from; i <= to; i++) if (shown.has(i)) { onScreen = true; break; }
+        if (onScreen) continue;
+        const picked = pickBeats(mem.turns.slice(from, to + 1).flatMap(t => Array.isArray(t.beats) ? t.beats : []), 8); if (picked.length < 2) continue;
+        const lines = beatLines(picked, { away: b => (cfg.guardSecrets !== false ? awayFrom(b.with) : []), quote: b => (cfg.recallQuotes !== false && b.q && !hasPhrase(b.q, banned) ? b.q : '') });
+        const first = mem.turns.slice(from, to + 1).find(t => t.when || t.where), where = [first?.when, first?.where].filter(Boolean).join(' · ');
+        used.push([from, to]); cards.push({ head: `## Recalled Scene${where ? ` — ${where}` : ''} (an earlier stretch of the story, beat by beat in the order it happened; lines are as they were really said — background only, never replay them)`, lines });
+      }
+    }
+    // 마음에 둔 것: 장면 속 인물마다 그 인물의 속마음 기억을 몇 줄 — 회상 순위 경쟁과 따로 자리를 준다 (지금 시점이 볼 수 있는 것만)
+    const mindMax = Math.max(0, Math.min(3, Math.round(Number(cfg.mindLines) || 0))), minds: NonNullable<PacketSections['minds']> = [];
+    if (mindMax && !opt.noDirection) {
+      const auth = this.authorizedEntities(chat, mem), taken = new Set(protectedRecall.map(m => m.id)), mute = list<string>(mem.recallMute).map(w => low(w)).filter(w => w.length >= 2);
+      for (const c of inSceneCast.slice(0, 4)) {
+        const keys = new Set([c.name, ...(c.aka || [])].map(ekey));
+        const own = mem.memories.filter(m => !m.disabled && !m.retired && m.kind === 'impression' && m.visibility !== 'public' && !!m.owner && keys.has(ekey(m.owner)) && !taken.has(m.id) && this.knowsMemory(m, auth) && !shown.has(m.turn ?? -1) && !(banned.length && hasPhrase(m.summary, banned)) && !mute.some(w => low(m.summary).includes(w)))
+          .map(m => ({ m, s: (m.pinned ? 10 : 0) + (r.trace.get(m.id)?.score || 0) * 2 + (m.importance || 0) + Math.max(0, 1 - (T - 1 - (m.turn ?? T)) / 120) * 0.5 })).sort((a, b) => b.s - a.s || String(a.m.id).localeCompare(String(b.m.id))).slice(0, mindMax);
+        if (own.length) minds.push({ name: c.name, lines: own.map(x => x.m.summary) });
+      }
+    }
+    const trackerLine = mem.trackers?.length ? this.trackerLine(mem, [...inSceneCast.map(c => c.name), personaNameOf(chat)].filter(Boolean)) : '';
+    return { absent, cards, minds, plans, trackerLine, voice: String(cfg.recallVoice || 'natural'), bonds, voices, banned, styleGuard: cfg.styleGuard !== false, recallQuotes: cfg.recallQuotes !== false, banTell: cfg.banTell === true,
       lag, publicRecall: publicRecallDeduped, protectedRecall, hiddenProtected: r.hidden, locks, rules, scene, states, characters, milestones, items, summaries, supervisorPlan, narratorMode, turnNow: T, storyAges, storyTotalDays,
-      sources: this.dossierPick(mem, query, recallContext), recallCandidates, trace: r.trace, notes, recent, unaware, deadlines, nowIds, address };
+      sources: this.dossierPick(mem, query, recallContext), recallCandidates, trace: r.trace, notes, recent, unaware, deadlines, nowIds, address, transcript };
   },
   parts(chat, mem, history, opt) { return this.buildPacketSections(chat, mem, history, opt); },
   /** 장부 맨 앞의 사용 규칙 — 출처 우선순위, 기록과 문체의 구분(styleGuard), 지식 경계 */
@@ -240,6 +299,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     lines.push('- Center the people in the scene now; anyone absent matters only if the scene brings them up.');
     lines.push(`- ${roleGuidance}`);
     // 기록은 "무슨 일이 있었나"이지 "어떻게 쓰나"가 아니다 — 서술자 말투의 요약과 옛 대사가 문체 견본으로 읽히면, 오래된 대화일수록 묵은 말투와 말버릇이 되살아난다
+    if (P.voice && VOICE_LINES[P.voice]) lines.push(VOICE_LINES[P.voice]);
     if (P.styleGuard !== false) lines.push('- These notes record WHAT happened, not HOW to write: take facts only, write in the current chat\'s voice, and never reuse their wording or replay an old line. Who a character is comes from their description and Cast entry — keep it constant, changing only as Cast or Bonds record, gradually. A relationship stands at the stage Bonds gives: neither jump ahead of it nor slide back unless the scene earns it.');
     // 지식 경계 지시 — 비밀 · 믿음 · 지식 격차가 실제로 걸려 있을 때만
     const hasAsymmetry = P.protectedRecall.length > 0 || P.hiddenProtected > 0 || P.locks.some(l => ['keep_secret', 'knowledge_gap'].includes(normLockKind(l.kind))) || P.states.some(s => s.claim === 'belief');
@@ -297,10 +357,11 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     if (P.locks.length) {
       // "지금 일어나는 일"이 아니라 "깔려 있는 압력"임을 밝힌다 — 모델이 서약 소재를 매 턴 억지로 무대에 올리거나 성급히 풀어 버리지 않게
       stable.push('## Pledges (the story must keep these true — standing pressure in the background, not events happening right now; never rush to stage or resolve them. A [foreshadow] entry is a setup waiting for its payoff: let it surface when the story is ready, not before)');
-      for (const l of P.locks) entry('Pledges', l.id || l.summary, `- [${normLockKind(l.kind)}] ${l.summary}${l.latest?.text ? ` — now: ${l.latest.text}` : ''}`);
+      for (const l of P.locks) entry('Pledges', l.id || l.summary, `- [${normLockKind(l.kind)}] ${l.summary}${normLockKind(l.kind) === 'feeling' && (l.cause || l.needs) ? ` (${[l.cause ? `from: ${l.cause}` : '', l.needs ? `would ease if: ${l.needs}` : ''].filter(Boolean).join('; ')})` : ''}${l.latest?.text ? ` — now: ${l.latest.text}` : ''}`);
     }
+    if (P.plans?.length) { stable.push(PLAN_HEAD); for (const p of P.plans) entry('Plan', p.id, `- ${p.veil}`); }
     // ── 여기부터는 매 턴 달라지는 구역 (캐시가 다시 쓰이는 구간은 여기서 끝난다)
-    const lines: string[] = [], quotesOn = withExcerpts && P.recallQuotes !== false, lineOpt = { ages: P.storyAges, T: P.turnNow, banned, notes: P.notes, unaware: P.unaware };
+    const lines: string[] = [], quotesOn = withExcerpts && P.recallQuotes !== false, lineOpt = { ages: P.storyAges, T: P.turnNow, banned, notes: P.notes, unaware: P.unaware, absent: P.absent };
     if (stableMode) { const recalled = P.summaries.find(s => s.recalled); if (recalled && summaryLimit > 0) lines.push(`## Recalled Chapter (a much earlier chapter — surfaced because it relates to now)\n-${summaryBody(recalled)}`); }
     if (P.recent?.length && recentLimit > 0) { lines.push('## Recent Turns (not yet folded into the story digest)'); for (const t of P.recent) lines.push('- ' + t); }
     const recall = takeFirst(P.publicRecall, recallLimit);
@@ -312,6 +373,14 @@ export const part4: Part4 & ThisType<MemoryApi> = {
       // 인용은 위쪽 회상부터 채운다 — 예산이 빠듯할 때 전부 떼는 대신 가장 잘 맞는 몇 줄만 남긴다
       recall.forEach((m, i) => lines.push(this.formatMemoryLine(m, quotesOn && i < excerptLimit, lineOpt)));
     }
+    // 원문 회상 — 숨긴 옛 대화의 그 대목 그대로. 매 턴 달라지는 것이라 여기(고정 장부 밖)에만 싣고, 인용을 떼는 단수에서는 함께 뗀다
+    if (P.transcript?.length && withExcerpts && recallLimit > 0) {
+      lines.push('## Original Lines (word for word from much earlier in this chat — surfaced because the user is looking back at it. Use it for what was actually said and done; it is the past, not the present scene, and its wording is not a model for the reply)');
+      for (const h of P.transcript) lines.push(`- [#${h.from + 1}${h.to > h.from ? `–#${h.to + 1}` : ''}] ${h.lines.map(l => `${l.who}: ${cleanMultiline(l.text, 700).replace(/\n+/g, ' ')}`).join(' / ')}`);
+    }
+    if (recall.some(m => P.absent?.has(m.id))) lines.push('("not witnessed by X": X is in this scene but was elsewhere when that happened — X knows of it only if the story has shown X being told.)');
+    // 장면 카드는 회상이 실릴 자리가 있을 때만 (예산이 빠듯해 회상을 줄인 단계에서는 싣지 않는다)
+    if (P.cards?.length && recallLimit > 4) for (const c of P.cards) { lines.push(c.head); lines.push(...c.lines); }
     const prot = takeFirst(P.protectedRecall, protectedLimit);
     if (prot.length) {
       // "not known to X" 가 붙은 줄이 있으면 그 뜻을 머리에 함께 적는다 — 고정 장부의 머리말은 비밀이 생기기 전에 얼려졌을 수 있다
@@ -365,6 +434,11 @@ export const part4: Part4 & ThisType<MemoryApi> = {
       for (const s of persistent) lines.push(fmtState(s));
       if (volatileStates.length) { if (persistent.length) lines.push('(scene-volatile — verify against the visible chat before relying on these:)'); for (const s of volatileStates) lines.push(fmtState(s)); }
     }
+    if (P.minds?.length && protectedLimit > 0 && stateLimit > 0) {
+      lines.push('## On Their Minds (what each one privately carries — it may color how they act and what they leave unsaid; no one else knows it, and it is never spoken as written)');
+      for (const m of P.minds) lines.push(`- ${m.name}: ${m.lines.join(' / ')}`);
+    }
+    if (P.trackerLine && stateLimit > 0) lines.push(P.trackerLine);
     if (P.address?.length && stateLimit > 0) {
       // 서로 부르는 말 — 대사에서 모은 것. 호칭이 흔들리면 관계가 흔들려 보인다
       lines.push('## How They Address Each Other (from their own dialogue — keep these forms unless the scene changes them)');
@@ -452,7 +526,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     if (!(mem.turns.length || mem.memories.length || mem.canon.length || mem.status.length || mem.cast.length || mem.bonds?.length || mem.pledges.length || mem.dossier.length || mem.arcs.length || mem.chunks.length)) return null;
     if (Array.isArray(opts.msgs) && opts.anchor === undefined) { const src = ((opts.type === 'regen' || opts.type === 'swipe') && opts.msgs[opts.msgs.length - 1]?.role === 'assistant' ? opts.msgs.slice(0, -1) : opts.msgs).filter(m => !m.hidden); opts = { ...opts, anchor: [...src].reverse().find(m => m.role === 'assistant')?.id || '' }; }
     const began = Date.now(), P = this.buildPacketSections(chat, mem, history, opts), budget = opts.budget || cfg.tokenBudget || 8000;
-    const empty = !P.publicRecall.length && !P.protectedRecall.length && !P.locks.length && !P.rules.length && !P.states.length && !P.characters.length && !P.scene?.any && !P.milestones.length && !P.items.length && !P.summaries.length && !(P.sources || []).length && !P.supervisorPlan && !P.recent.length;
+    const empty = !P.publicRecall.length && !P.protectedRecall.length && !P.locks.length && !P.rules.length && !P.states.length && !P.characters.length && !P.scene?.any && !P.milestones.length && !P.items.length && !P.summaries.length && !(P.sources || []).length && !P.supervisorPlan && !P.recent.length && !(P.transcript || []).length;
     if (empty && !P.narratorMode) return null;
     const splitMode = cfg.splitInjection === true && !opts.limits, placed = pos === 'split';
     // 예산이 모자라면 자료실 대목부터 줄인다 (배경 참고는 우선순위가 가장 낮다)
@@ -496,6 +570,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
       audits.set(chat.id, { ids: [...ids], at: now() }); lasts.set(chat.id, out);   // 실제 실린 기억만 학습한다
       const prep = preps.get(chat.id), fresh = prep && Date.now() - prep.at! < 60000 ? prep : null; preps.delete(chat.id);
       const took = ((Date.now() - began + (fresh?.took || 0)) / 1000).toFixed(1);
+      if (!fallback && P.transcript?.length && L.withExcerpts !== false && (L.recallLimit ?? 1) > 0) this.logActivity('recall', tr('memoria.engine.log.rawRecall', { at: P.transcript.map(h => `#${h.from + 1}`).join(' · ') }));
       this.logActivity('recall', fresh?.timedOut ? tr('memoria.engine.log.recallTimeout', { count: ids.size, sec: took, wait: fresh.waitSec }) : tr('memoria.engine.log.recall', { count: ids.size, tokens: used, sec: took }));
     }
     return out;
@@ -529,17 +604,22 @@ export const part4: Part4 & ThisType<MemoryApi> = {
    */
   visibleTurns(chat, mem, msgs) {
     const out = new Set<number>(); if (!Array.isArray(msgs) || !msgs.length || !mem.turns.length) return out;
+    const seen = this.visibleMsgIds(chat, msgs);
+    mem.turns.forEach((t, i) => { if (t.msgId && seen.has(t.msgId)) out.add(i); });
+    return out;
+  },
+  visibleMsgIds(chat, msgs) {
+    const seen = new Set<string>(); if (!Array.isArray(msgs) || !msgs.length) return seen;
     // 대화 창에 원문으로 들어갈 범위를 넉넉하지 않게(작게) 어림한다 — 작게 잡으면 겹치는 회상이 조금 남을 뿐이지만, 크게 잡으면 실제로 잘려 나간 일을 잊게 된다
     const P = chat ? S.presetFor(chat) : null, cfg = this.cfg();
     const room = Math.max(1500, ((Number(P?.contextSize) || 32000) - (Number(P?.maxTokens) || 2048)) * 0.5), cap = cfg.trim ? Math.max(1, Number(cfg.keepRecent) || 20) : Infinity;
-    const seen = new Set<string>(); let used = 0, n = 0;
+    let used = 0, n = 0;
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i]; if (!m || m.hidden || (m.role !== 'user' && m.role !== 'assistant')) continue;
       used += tokens(msgText(m)) + 4; if (used > room || n >= cap) break;
       n++; seen.add(m.id);
     }
-    mem.turns.forEach((t, i) => { if (t.msgId && seen.has(t.msgId)) out.add(i); });
-    return out;
+    return seen;
   },
   recordLag(mem, msgs) {
     if (!Array.isArray(msgs) || !mem.turns.length) return 0;

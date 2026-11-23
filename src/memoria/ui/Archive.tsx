@@ -7,6 +7,8 @@ import { Config } from './Config';
 import { Library } from './Library';
 import { Memories } from './Memories';
 import { Overview } from './Overview';
+import { People } from './People';
+import { ReaderScope, ReaderToggle } from './ReaderView';
 import { Story } from './Story';
 import { Tools, recordNow } from './Tools';
 import { World } from './World';
@@ -19,7 +21,7 @@ import { t, getLang, fmtDate } from '../../i18n';
 import * as core from '../../lib/core';
 
 /** [id, 이름 키, 아이콘] — 이름은 그릴 때 t() */
-export const TABS: [string, string, string][] = [['overview', 'memoria.archive.tab.overview', 'panel'], ['memories', 'memoria.archive.tab.memories', 'sparkle'], ['world', 'memoria.archive.tab.world', 'globe'], ['summaries', 'memoria.archive.tab.summaries', 'note'], ['config', 'memoria.archive.tab.config', 'sliders'], ['tools', 'memoria.archive.tab.tools', 'gear'], ['library', 'memoria.archive.tab.library', 'folder']];
+export const TABS: [string, string, string][] = [['overview', 'memoria.archive.tab.overview', 'panel'], ['memories', 'memoria.archive.tab.memories', 'sparkle'], ['people', 'memoria.archive.tab.people', 'users'], ['world', 'memoria.archive.tab.world', 'globe'], ['summaries', 'memoria.archive.tab.summaries', 'note'], ['config', 'memoria.archive.tab.config', 'sliders'], ['tools', 'memoria.archive.tab.tools', 'gear'], ['library', 'memoria.archive.tab.library', 'folder']];
 
 // ════════ 모듈 상태 ════════
 const mounted = new Set<St>();
@@ -64,7 +66,7 @@ function Head({ st }: { st: St }) {
     <span>{m ? t('memoria.archive.head.counts', { turns: m.turns.length, memories: m.memories.length, cast: m.cast.length, canon: m.canon.length, status: m.status.length, pledges: m.pledges.filter(p => p.status === 'active').length, summaries: m.chunks.length + m.arcs.length }) : t('memoria.archive.openChat')}{failed ? <em className="mm-fail">{t('memoria.archive.head.failed', { count: failed })}</em> : null}</span></div></div>
     <div className="mm-head-tools">{chats.length ? <RoomPick chats={chats} st={st} /> : null}
       {st.chat ? <Btn label={t('memoria.archive.record.label')} ic="feather" title={t('memoria.archive.record.title')} onClick={async () => { await recordNow(st.chat!); void st.reload(); }} /> : null}
-      {st.chat ? <Btn label={t('memoria.archive.refresh.label')} ic="refresh" cls="ghost" title={t('memoria.archive.refresh.title')} onClick={refresh} /> : null}</div></div>;
+      {st.chat ? <Btn label={t('memoria.archive.refresh.label')} ic="refresh" cls="ghost" title={t('memoria.archive.refresh.title')} onClick={refresh} /> : null}<ReaderToggle st={st} /></div></div>;
 }
 
 // ════════ 몸통: 탭에 따라 ════════
@@ -81,6 +83,7 @@ function View({ st }: { st: St }) {
   if (!open) return <div className="mm-view"><None text={t('memoria.archive.openChatLong')} /></div>;
   switch (st.tab) {
     case 'memories': return <Memories st={open} />;
+    case 'people': return <People st={open} />;
     case 'world': return <World st={open} />;
     case 'summaries': return <Story st={open} />;
     case 'tools': return <Tools st={open} />;
@@ -88,7 +91,7 @@ function View({ st }: { st: St }) {
   }
 }
 const Body = memo(function Body({ st, n }: { st: St; n: number }) {
-  return <div className="mm-body"><Guard key={n}><View st={st} /></Guard></div>;
+  return <div className="mm-body"><Guard key={n}><ReaderScope st={st}><View st={st} /></ReaderScope></Guard></div>;
 });
 
 /** 서고 한 벌 (머리 · 탭 줄 · 몸통). host 는 .mm 이 붙은 요소 */

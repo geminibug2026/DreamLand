@@ -16,8 +16,10 @@ export interface EngineState {
   chatGenerating: boolean; chatGeneratingSince: number; lastGenerationType: string;
   queue: Promise<unknown>; busy: number;
   bannedCache: { raw: string | null; list: string[] }; rebuildRunning: boolean;
+  /** 입력 칸에 마지막으로 글을 친 때 · 그때 입력 칸에 글이 있었는가 */
+  typingAt: number; typingText: boolean;
 }
-export const G: EngineState = { lastQuietPrompt: null, clockRecalBusy: false, chatGenerating: false, chatGeneratingSince: 0, lastGenerationType: '', queue: Promise.resolve(), busy: 0, bannedCache: { raw: null, list: [] }, rebuildRunning: false };
+export const G: EngineState = { lastQuietPrompt: null, clockRecalBusy: false, chatGenerating: false, chatGeneratingSince: 0, lastGenerationType: '', queue: Promise.resolve(), busy: 0, bannedCache: { raw: null, list: [] }, rebuildRunning: false, typingAt: 0, typingText: false };
 
 // ── 이 파일의 캐시 · 상태가 담는 꼴 (조각들이 함께 쓴다) ──
 /** 서고에서 목록인 칸 */
@@ -40,7 +42,7 @@ type Norm = (k?: unknown) => string;
 export type Unused<_T> = void;
 
 export const KINDS: Record<string, string> = { event: '사건', relationship: '관계', fact: '사실', preference: '취향', promise: '약속', goal: '목표', item: '물건', place: '장소', secret: '비밀', impression: '인상' };
-export const LOCKS: Record<string, string> = { keep_unresolved: '미해결 유지', keep_secret: '비밀 유지', knowledge_gap: '정보 격차', consent: '동의 경계', world_limit: '세계 제약', loose_end: '열린 떡밥', foreshadow: '복선' };
+export const LOCKS: Record<string, string> = { keep_unresolved: '미해결 유지', keep_secret: '비밀 유지', knowledge_gap: '정보 격차', consent: '동의 경계', world_limit: '세계 제약', loose_end: '열린 떡밥', foreshadow: '복선', feeling: '풀리지 않은 감정', author_plan: '작가 계획' };
 export const VIS: Record<string, string> = { public: '공개', private: '개인', secret: '비밀' };
 export const SCOPES: string[] = ['session', 'world', 'region', 'location', 'faction', 'system'];
 export const LIBRARIAN_PROMPT = MP.DEFAULT_ARCHIVIST_PROMPT;
@@ -75,7 +77,15 @@ export const MEMORY_DEFAULTS: Cfg = {
   dueDates: true,           // 약속 · 기한을 작중 시간으로 센다 ("D-2", "3일 지남") — 사서 지시에 한 줄이 붙을 뿐 호출은 늘지 않는다
   presentNow: true,         // 장면에 있는 인물의 위치 · 옷차림 · 다친 곳 · 가진 것 · 기분을 사람마다 한 줄로 (모델 호출 없음)
   addressTerms: true,       // 대사에서 누가 누구를 어떻게 부르는지 모아 장면에 함께 있는 둘 사이의 것만 싣는다 (모델 호출 없음)
+  sceneCards: 1,            // 떠올린 옛 묶음을 장면 카드(순서대로의 일 · 원문 대사)로 펼치는 수 — 묶음 요약 호출에 함께 받아 두므로 호출은 늘지 않는다 (0 = 끔)
+  mindLines: 2,             // 장면 속 인물마다 그 인물이 마음에 둔 것(속마음 기억)을 이 줄 수까지 따로 싣는다 (0 = 끔 · 모델 호출 없음)
+  recallVoice: 'natural',   // 지난 일을 꺼내는 정도: quiet 조용히 | natural 자연스럽게 | active 적극적으로
+  storyDates: true,         // 상태창의 달력 날짜를 턴에 적어 "며칠째 · D-3"을 실제 날짜로 센다 (모델 호출 없음)
   guardSecrets: true,       // 비밀을 아는 사람은 그 자리에 있던 사람만 · 장면에 있지만 모르는 사람을 이름으로 짚는다 (모델 호출 없음)
+  rawRecall: 'auto',        // 원문 회상 — 옛일을 되짚는 말일 때만 숨긴 옛 대화에서 그 대목을 한 곳 찾아 「지금」 쪽에 싣는다 (모델 호출 없음. 'off' = 끔)
+  checkConfirm: true,       // 연속성 검사가 경고를 냈을 때만 한 번 더 따져 확실한 것만 남긴다 (경고가 없으면 호출 없음, 있으면 1회)
+  forgetHidden: false,      // 기록한 뒤에 직접 숨긴 메시지의 기록을 걷어 낸다 (자동 숨김 · 일부러 색인한 숨긴 메시지는 그대로)
+  waitTyping: true,         // 입력 칸에 글을 쓰는 중이면 요약 · 서고 정리를 시작하지 않고 기다린다 (곧 올 답변과 겹치지 않게)
   recallCooldown: true,     // 회상 쉬어가기 — 앞선 답변들에 연달아 실린 기억은 순서를 미룬다 (직접 꺼내면 그대로 나온다)
   recallQuotes: true,       // 회상에 옛 원문 대사 인용을 싣는다 (옛 말투가 돌아오면 끈다)
   voiceSamples: 2,          // 장면 속 인물마다 실을 실제 남긴 말 수 (0 = 싣지 않음)
@@ -404,6 +414,8 @@ export const overrides = new Map<string, string>();   // chatId → 다음 답�
 export const audits = new Map<string, Audit>();      // chatId → 직전에 실린 회상 기억 (답변에 반영됐는지 채점)
 /** 최근 답변들에 실린 회상 이력 — 대화별, 메모리에만 둔다 (새로 고치면 처음부터: 깎임은 며칠 가는 사실이 아니다) */
 export const recallRuns = new Map<string, RecallRun[]>();
+/** chatId → 다시 기록할 답변 id (기록에 든 내 말 · 묶음 속 답장이 고쳐지거나 지워져 걷어낸 턴 — 다음 기록 때 새 내용으로 다시 적는다) */
+export const redoTurns = new Map<string, Set<string>>();
 /** 이야기가 흘러가면 더는 맞지 않게 될 수 있는 종류 — 일어난 일(event) · 속마음(impression)은 지나가도 사실이다 */
 export const STANDING_KINDS = new Set(['fact', 'preference', 'promise', 'goal', 'item', 'place', 'relationship']);
 /** 요약이 닫은 서약의 풀린 경위 자리에 적는 글 (저장된 값이라 바꾸지 않는다) */

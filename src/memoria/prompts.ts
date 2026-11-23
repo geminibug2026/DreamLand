@@ -193,6 +193,16 @@ Reply with ONE minified JSON object and nothing else:
 {"issues":[{"quote":"short exact quote from the new reply","evidence":"short exact quote, copied from the archive or a recent message, that states the conflicting fact","source":"#12 for a message number, or archive, or cast","problem":"what it contradicts and what the established fact is — written in Korean"}]}
 Use an empty array when nothing is wrong, which is the usual answer.`;
 
+export const CHECK_CONFIRM_PROMPT = `A first reader flagged possible continuity slips in the new reply of an ongoing roleplay. You are the second reader: go through each numbered warning and decide whether it holds.
+
+The first reader is often wrong in these ways: it trusts an older archive line over a newer message; it overlooks a recent message that already moved, changed, healed, handed over, or explained the thing; it treats a new detail the story never fixed as a contradiction; it quotes "evidence" that says something else.
+
+For each warning, find the latest place in the material where the fact in question is established — recent messages outrank the archive — and compare the new reply against THAT. Keep a warning only when the reply plainly disagrees with the latest established state and nothing in between accounts for it. A warning whose evidence was not found in the material stays only if you can point to the conflicting fact yourself. If you hesitate, drop it.
+
+Reply with ONE minified JSON object and nothing else:
+{"verdicts":[{"n":1,"keep":true,"why":"one short reason — written in Korean"}]}
+Give one verdict per warning.`;
+
 export const NOW_GUIDE = 'Live notes from Memoria, newer than the <memoria_ledger> block earlier in this prompt. Wherever the two differ, these notes are right.';
 
 export const CLOCK_RECAL_PROMPT = `You are rebuilding the in-story timeline of a roleplay archive. Below are consecutive turn digests, oldest first, each tagged like [t12]. Lines marked (context) are for continuity only — do not include them in your answer.

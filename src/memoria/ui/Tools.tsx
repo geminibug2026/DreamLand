@@ -10,11 +10,12 @@ import { Ico, None, Sec, busyBtn, chatTitle, confirmList, editBox, ensureCfg, is
 import { Memory } from '../../lib/memory';
 import { chatApi } from '../../chat/actions';
 import { t, locale, fmtNum, has as hasKey } from '../../i18n';
+import { WipeSec } from './Wipe';
 import * as memMod from '../../lib/memory';
 import * as core from '../../lib/core';
 
 /** 명령어 목록 [이름, 설명 키, 인자 키] — 도구 탭 맨 아래 안내가 쓴다 (설명 · 인자는 그릴 때 t()) */
-export const COMMANDS: [string, string, string?][] = [['/memoria', 'memoria.tools.cmd.toggle'], ['/memoria-autorecord', 'memoria.tools.cmd.autorecord'], ['/memoria-remember', 'memoria.tools.cmd.remember', 'memoria.tools.cmd.argContent'], ['/memoria-search', 'memoria.tools.cmd.search', 'memoria.tools.cmd.argQuery'], ['/memoria-ask', 'memoria.tools.cmd.ask', 'memoria.tools.cmd.argQuestion'], ['/memoria-index', 'memoria.tools.cmd.index'], ['/memoria-clock', 'memoria.tools.cmd.clock'], ['/memoria-reconcile', 'memoria.tools.cmd.reconcile'], ['/memoria-open', 'memoria.tools.cmd.open']];
+export const COMMANDS: [string, string, string?][] = [['/memoria', 'memoria.tools.cmd.toggle'], ['/memoria-autorecord', 'memoria.tools.cmd.autorecord'], ['/memoria-remember', 'memoria.tools.cmd.remember', 'memoria.tools.cmd.argContent'], ['/memoria-search', 'memoria.tools.cmd.search', 'memoria.tools.cmd.argQuery'], ['/memoria-ask', 'memoria.tools.cmd.ask', 'memoria.tools.cmd.argQuestion'], ['/memoria-index', 'memoria.tools.cmd.index'], ['/memoria-clock', 'memoria.tools.cmd.clock'], ['/memoria-reconcile', 'memoria.tools.cmd.reconcile'], ['/memoria-cut', 'memoria.tools.cmd.cut', 'memoria.tools.cmd.argCut'], ['/memoria-open', 'memoria.tools.cmd.open']];
 
 // ════════ 작업 ════════
 /** 「기록」 — 마지막 답변 턴을 지금 바로 기록한다 */
@@ -160,7 +161,17 @@ export function Tools({ st }: { st: StOpen }) {
         if (M.busy()) setProg(t('memoria.tools.clock.waiting'));
         const r = await M.recalClock(chat, mem, { onProgress: (d, tot) => { setProg(t('memoria.tools.clock.progress', { done: d, total: tot })); } }); if (!r) { setProg(''); return toast(t('memoria.tools.clock.none')); }
         toast(t('memoria.tools.clock.done', { after: fmt(r.after), before: fmt(r.before) }) + (r.failed ? t('memoria.tools.clock.failedPart', { count: r.failed }) : '') + t('memoria.tools.clock.doneEnd'), 'ok'); st.draw();
-      })} /><span className="mm-progress">{prog}</span></div></Sec>
+      })} /><span className="mm-progress">{prog}</span></div>
+      {/* 작중 날짜: 상태창에서 읽은 달력 날짜 · 직접 고침 (모델 호출 없음) */}
+      <div className="row wrap"><small>{t('memoria.tools.clock.today', { date: M.storyToday(mem) || t('memoria.tools.clock.todayNone') })}{mem.dateFix?.length ? t('memoria.tools.clock.fixCount', { n: mem.dateFix.length }) : ''}</small>
+        <DBtn label={t('memoria.tools.clock.fixBtn')} ic="edit" cls="ghost" title={t('memoria.tools.clock.fixTitle')} onClick={async () => {
+          const d = await editBox<{ no: string; date: string }>(t('memoria.tools.clock.fixTitle'), { no: '', date: '' }, [{ k: 'no', label: t('memoria.tools.clock.fixNo'), half: true, ph: '120' }, { k: 'date', label: t('memoria.tools.clock.fixDate'), half: true, ph: '2024-10-18', hint: t('memoria.tools.clock.fixHint') }]); if (!d) return;
+          const no = Math.round(Number(d.no)), date = String(d.date || '').trim();
+          if (!(no >= 1) || (date && !/^\d{4}-\d{2}-\d{2}$/.test(date))) return toast(t('memoria.tools.clock.fixBad'), 'err');
+          if (!M.setDateFix(mem, st.msgs, no - 1, date || null)) return toast(t('memoria.tools.clock.fixNoTurn'), 'err');
+          await M.save(mem); M.reinjectNow?.(chat); st.draw(); toast(t('memoria.tools.clock.fixDone'), 'ok');
+        }} />
+        <DBtn label={t('memoria.tools.clock.reread')} ic="refresh" cls="ghost" title={t('memoria.tools.clock.rereadTitle')} onClick={async () => { const n = M.restampDates(mem); await M.save(mem); st.draw(); toast(t('memoria.tools.clock.rereadDone', { n }), 'ok'); }} /></div></Sec>
     <Sec title={t('memoria.tools.consolidate.title')} desc={t('memoria.tools.consolidate.desc')}>
       <div className="row wrap"><DBtn label={t('memoria.tools.consolidate.btn')} ic="sparkle" cls="ghost" title={t('memoria.tools.consolidate.btnTitle')} onClick={e => busyBtn(e.currentTarget, async () => {
         if (M.busy()) return toast(t('memoria.tools.consolidate.busy'));
@@ -203,6 +214,7 @@ export function Tools({ st }: { st: StOpen }) {
           if (!(await guard('서고 초기화 전'))) return; st.mem = await M.reset(chat.id); st.draft = null; st.log = []; let shown = 0; for (const x of msgs) if (x.memHidden) { x.hidden = false; delete x.memHidden; shown++; } if (shown) await persistMsgs(chat, msgs);
           toast(t('memoria.tools.reset.done'), 'ok'); st.draw();
         }} /></div></Sec>
+    <WipeSec st={st} />
     <p className="mm-note"><b>{t('memoria.tools.note.commands')}</b>{' — '}{COMMANDS.map(([c, d, a], i) => <Fragment key={c}>{i ? ' · ' : null}<code>{a ? `${c} ${t(a)}` : c}</code>{' ' + t(d)}</Fragment>)}<br /><b>{t('memoria.tools.note.macros')}</b>{' — '}<code>{'{{memoria_story}}'}</code>{t('memoria.tools.note.macroStory')}<code>{'{{memoria_count}}'}</code>{t('memoria.tools.note.macroCount')}<br />
       <b>{t('memoria.tools.note.emptyTitle')}</b>{t('memoria.tools.note.emptyText')}</p>
   </div>;

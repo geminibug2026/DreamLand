@@ -397,7 +397,7 @@ export function findRivalExtensions(names: unknown[] | null | undefined, disable
  * 떡밥(미해결 서약) 관리 — 끝난 일이 "미해결"로 남아 계속 실리지 않게
  * ------------------------------------------------------------ */
 
-export const THREAD_KINDS = Object.freeze(['keep_unresolved', 'loose_end', 'foreshadow']);
+export const THREAD_KINDS = Object.freeze(['keep_unresolved', 'loose_end', 'foreshadow', 'feeling']);
 
 /**
  * 요약 응답 끝의 "CLOSED: o2, o5" 줄을 떼어 낸다.
@@ -762,4 +762,177 @@ export function findConflicts<C extends Claim>(claims: C[] | null | undefined, {
         }
     }
     return out;
+}
+
+/* ------------------------------------------------------------
+ * 거절 문구 — 기록 대신 돌아온 사과문은 기록이 아니다
+ *
+ * 요약 · 연대기를 맡긴 모델이 "도와드릴 수 없습니다" 같은 글로 답하면, 구조 없는 글이라도 그대로 요약 자리에 앉는다.
+ * 그 뒤로는 사과문이 "지금까지의 이야기"로 매 턴 실린다. 짧고, 사과하거나 못 한다고 말하는 글은 기록으로 받지 않는다.
+ * ------------------------------------------------------------ */
+
+const REFUSAL_RE = new RegExp([
+    "\\bi(?:'m| am)? (?:really |so |very )?sorry\\b", '\\bi apologi[sz]e\\b', "\\bi (?:can(?:'|no)?t|cannot|won'?t|will not|am unable to|am not able to|must decline to)\\b[^.\\n]{0,60}\\b(?:help|assist|continue|comply|provide|create|write|generate|summar|produce|fulfil|engage|process|do that|do this)",
+    '\\b(?:unable|not able) to (?:help|assist|continue|comply|provide|create|write|generate|summar|produce|process)', '\\bas an ai\\b', '\\b(?:content|usage|safety) (?:policy|policies|guidelines?)\\b', '\\bi (?:must|have to) (?:decline|refuse)\\b',
+    '죄송(?:하지만|합니다|해요|하나)', '(?:도와|요약해|작성해|생성해|제공해|진행해|계속해) ?(?:드릴|줄) ?수 ?(?:가 )?없', '(?:요청|내용)(?:을|은|에)[^.\\n]{0,24}(?:응할|처리할|수행할|따를) ?수 ?(?:가 )?없', '정책(?:상|에 따라|에 위배)',
+    '申し訳(?:ありません|ございません)', '(?:お手伝い|対応|お応え|作成|要約)(?:する|は)?(?:こと(?:が|は))?できません', '(?:抱歉|对不起|很遗憾)[^。\\n]{0,24}(?:无法|不能)', '我(?:无法|不能)(?:协助|帮助|继续|提供|完成|生成|总结)',
+].join('|'), 'i');
+/** 기록 대신 온 거절 · 사과문인가. 긴 글(max 자 넘음)은 본문에 그런 말이 섞였을 수 있으니 보지 않는다 */
+export function looksRefused(text: unknown, max = 1200): boolean {
+    const s = String(text ?? '').trim();
+    return !!s && s.length <= max && REFUSAL_RE.test(s);
+}
+const BLOCK_ERR_RE = /content[ _-]?(?:filter|policy|management|moderation)|safety|blocked|prohibited|recitation|refus|flagged|moderation|responsible ai|harm_category|finish_?reason[^a-z]{0,6}(?:safety|content|prohibited)/i;
+/** 연결 쪽이 내용을 문제 삼아 막은 오류인가 (인증 · 속도 제한 · 네트워크 오류는 아니다 — 그런 오류에 다른 연결로 돌려 보내면 진짜 원인이 가려진다) */
+export function looksBlocked(err: unknown): boolean {
+    const e = err as { message?: unknown; name?: unknown } | null | undefined;
+    if (!e || e.name === 'AbortError') return false;
+    const s = String(e.message ?? e);
+    return !/\b(?:401|403|429)\b|api[ _-]?key|unauthori|rate limit|quota|timeout|network|failed to fetch/i.test(s) && BLOCK_ERR_RE.test(s);
+}
+
+/* ------------------------------------------------------------
+ * 숨긴 원문 되돌리기 — 요약이 덮지 않는 메시지는 숨겨 두지 않는다
+ *
+ * 요약이 맡은 옛 메시지는 AI 에게서 숨긴다. 그런데 답변을 지우다 요약된 곳까지 내려가면(또는 그 앞에서 분기하면)
+ * 요약은 걷히는데 숨김은 남아, 대화 끝이 숨긴 메시지뿐이라 모델이 직전 대화를 하나도 보지 못한다.
+ * 숨김의 조건(요약이 덮은 자리이고, 끝에서 보존 수만큼은 남긴다)을 그대로 다시 재어 벗어난 것만 돌려 놓는다.
+ * ------------------------------------------------------------ */
+
+/**
+ * 다시 보여야 할 메시지의 자리들. flags: 메시지마다 장기기억이 숨긴 것인가. coveredTo: 요약이 덮은 마지막 메시지의 자리(-1 = 덮은 것 없음).
+ * preserve: 끝에서 원문으로 남길 수. 반환: 자리(0부터) 목록
+ */
+export function strayHidden(flags: boolean[], coveredTo: number, preserve: number): number[] {
+    const end = Math.min(coveredTo, flags.length - Math.max(1, Math.round(preserve) || 1) - 1), out: number[] = [];
+    for (let i = Math.max(0, end + 1); i < flags.length; i++) if (flags[i]) out.push(i);
+    return out;
+}
+
+/* ------------------------------------------------------------
+ * 원문 회상 — 숨긴 옛 대화에서 그 대목을 글자 그대로 찾는다
+ *
+ * 기억과 요약은 사서의 말로 적힌다. "그때 정확히 뭐라고 했더라"처럼 옛일을 되짚을 때는 요약이 아니라 그 말 자체가 필요한데,
+ * 요약된 원문은 숨겨져 모델이 볼 수 없다. 옛 메시지를 두셋씩 묶어 질의와 견주고(모델 호출 없음), 드문 낱말이 겹치는 대목만 고른다.
+ * 흔한 낱말만 겹치는 대목은 고르지 않는다 — 옛 대사는 한 줄이라도 잘못 실리면 말투와 장면을 뒤로 끌고 간다.
+ * ------------------------------------------------------------ */
+
+/** 견줄 메시지 한 줄 (i = 메시지 자리, 0부터) */
+export interface TranscriptLine { i: number; who: string; text: string }
+/** 고른 대목 — from ~ to 메시지 자리, score = 질의 낱말의 드문 정도로 잰 겹침(0~1) */
+export interface TranscriptHit { from: number; to: number; lines: TranscriptLine[]; score: number; matched: string[] }
+export interface TranscriptOptions { max?: number; size?: number; minScore?: number; minTerms?: number; names?: unknown[]; mute?: string[] }
+/** 메시지 한 줄의 낱말 (같은 글을 되풀이해 쪼개지 않게 부르는 쪽이 맡아 둘 수 있다) */
+export const transcriptTerms = (text: unknown): Set<string> => contentWords(text);
+
+/**
+ * 질의와 가장 맞닿은 옛 대목을 고른다. 이어진 size 개 메시지를 한 대목으로 보고, 질의 낱말마다 "몇 대목에만 나오는가"로 무게를 준다.
+ * 이름(names)은 어디에나 나오므로 뺀다. mute: 이 말이 든 대목은 고르지 않는다. terms: 줄마다 미리 쪼개 둔 낱말(없으면 여기서 쪼갠다)
+ */
+export function pickTranscript(lines: TranscriptLine[] | null | undefined, queries: unknown[], { max = 1, size = 2, minScore = 0.34, minTerms = 2, names = [], mute = [] }: TranscriptOptions = {}, terms?: (l: TranscriptLine) => Set<string>): TranscriptHit[] {
+    const rows = (lines || []).filter(l => l && String(l.text || '').trim());
+    if (!rows.length || max <= 0) return [];
+    const drop = new Set<string>();
+    for (const n of names) for (const w of contentWords(n)) drop.add(w);
+    const q = new Set<string>();
+    for (const text of queries) for (const w of contentWords(text)) if (!drop.has(w)) q.add(w);
+    if (q.size < minTerms) return [];
+    const of = terms || (l => transcriptTerms(l.text)), sets = rows.map(of);
+    const n = Math.max(1, Math.round(size)), wins: { a: number; b: number; has: Set<string> }[] = [];
+    for (let a = 0; a < rows.length; a += 1) {
+        // 대목은 대화에서 서로 붙어 있는 메시지끼리만 묶는다 (사이에 빠진 메시지가 있으면 다른 장면이다)
+        let b = a; while (b + 1 < rows.length && b - a + 1 < n && rows[b + 1].i - rows[b].i <= 2) b++;
+        const has = new Set<string>();
+        for (let k = a; k <= b; k++) for (const w of q) if (sets[k].has(w)) has.add(w);
+        if (has.size) wins.push({ a, b, has });
+    }
+    if (!wins.length) return [];
+    const df = new Map<string, number>();
+    for (const w of wins) for (const x of w.has) df.set(x, (df.get(x) || 0) + 1);
+    const total = Math.max(wins.length, rows.length / n), idf = (x: string) => Math.log(1 + total / (df.get(x) || total));
+    // 질의의 무게는 옛 대화 어딘가에 나오는 낱말로만 잰다 — "그때", "뭐라고" 같은 물음의 말은 어디에도 없어 견줄 것이 못 된다
+    let mass = 0; for (const x of q) if (df.has(x)) mass += idf(x);
+    // 드문 낱말(몇 대목에만 나오는 말)이 하나는 닿아야 한다 — 흔한 낱말만 겹치는 대목은 그 장면이 아니다
+    const rareMax = Math.max(2, Math.ceil(total * 0.06)), low = (s: unknown) => String(s ?? '').toLowerCase(), muted = mute.map(low).filter(w => w.length >= 2);
+    const scored = wins.map(w => {
+        let hit = 0, rare = 0; for (const x of w.has) { hit += idf(x); if ((df.get(x) || 0) <= rareMax) rare++; }
+        return { w, rare, score: mass ? hit / mass : 0 };
+    }).filter(x => x.rare >= 1 && x.w.has.size >= minTerms && x.score >= minScore).sort((x, y) => y.score - x.score || y.w.a - x.w.a);
+    const out: TranscriptHit[] = [];
+    for (const { w, score } of scored) {
+        if (out.length >= max) break;
+        const part = rows.slice(w.a, w.b + 1), from = part[0].i, to = part[part.length - 1].i;
+        if (out.some(o => from <= o.to + 1 && to >= o.from - 1)) continue;   // 겹치거나 맞붙은 대목은 한 번만
+        if (muted.length && muted.some(m => part.some(l => low(l.text).includes(m)))) continue;
+        out.push({ from, to, lines: part, score, matched: [...w.has] });
+    }
+    return out.sort((x, y) => x.from - y.from);
+}
+
+/* ------------------------------------------------------------
+ * 같은 이름의 다른 표기 — 한글 이름과 로마자 이름
+ *
+ * 요약 언어가 영어면 모델이 한글 이름을 로마자로 옮겨 적곤 한다("깡" → "Kkang"). 표기가 달라 다른 사람으로 갈라진다.
+ * 한글을 로마자로 옮긴 뒤 닿소리 뼈대와 홀소리 덩이 수만 견준다 — 로마자 표기는 홀소리(eo/u, oo/u)와 g/k · d/t · b/p · r/l 에서 주로 갈린다.
+ * 같은 글자 체계끼리는 견주지 않는다 (지우 / 지호는 다른 사람이다). 맞아도 "합칠까요"라고 권할 뿐 저절로 합치지 않는다.
+ * ------------------------------------------------------------ */
+
+const RR_LEAD = ['g', 'kk', 'n', 'd', 'tt', 'r', 'm', 'b', 'pp', 's', 'ss', '', 'j', 'jj', 'ch', 'k', 't', 'p', 'h'];
+const RR_MID = ['a', 'ae', 'ya', 'yae', 'eo', 'e', 'yeo', 'ye', 'o', 'wa', 'wae', 'oe', 'yo', 'u', 'wo', 'we', 'wi', 'yu', 'eu', 'ui', 'i'];
+const RR_TAIL = ['', 'k', 'k', 'k', 'n', 'n', 'n', 't', 'l', 'k', 'm', 'l', 'l', 'l', 'p', 'l', 'm', 'p', 'p', 't', 't', 'ng', 't', 't', 'k', 't', 'p', 't'];
+/** 한글 음절을 로마자로 (그 밖의 글자는 그대로) */
+export function romanize(text: unknown): string {
+    let out = '';
+    for (const ch of String(text ?? '')) {
+        const c = ch.codePointAt(0)! - 0xac00;
+        out += c < 0 || c > 11171 ? ch : RR_LEAD[Math.floor(c / 588)] + RR_MID[Math.floor((c % 588) / 28)] + RR_TAIL[c % 28];
+    }
+    return out;
+}
+const nameSkeleton = (name: unknown): string => {
+    const s = romanize(String(name ?? '').toLowerCase()).replace(/[^a-z]/g, '').replace(/ng/g, 'N').replace(/ch/g, 'j').replace(/sh/g, 's').replace(/[wy]/g, '')
+        .replace(/[gkq]/g, 'k').replace(/[dt]/g, 't').replace(/[bpf]/g, 'p').replace(/[rl]/g, 'l').replace(/(.)\1+/g, '$1');
+    const bones = s.replace(/[aeiou]+/g, '');
+    return bones.length >= 2 ? `${bones}:${(s.match(/[aeiou]+/g) || []).length}` : '';
+};
+const hasHangul = (s: string) => /[가-힣]/.test(s), plainLatin = (s: string) => /[a-z]/i.test(s) && !/[^\x00-\x7fÀ-ɏ]/.test(s);
+/** 한쪽은 한글, 한쪽은 로마자인 두 이름이 같은 이름의 다른 표기로 보이는가 */
+export function crossScriptSame(a: unknown, b: unknown): boolean {
+    const x = String(a ?? '').trim(), y = String(b ?? '').trim();
+    if (!x || !y || !((hasHangul(x) && plainLatin(y)) || (hasHangul(y) && plainLatin(x)))) return false;
+    const kx = nameSkeleton(x);
+    return !!kx && kx === nameSkeleton(y);
+}
+/** 인물 이름들 가운데 표기만 다른 같은 이름으로 보이는 쌍 — [[남길 쪽 자리, 접을 쪽 자리]] (자리는 names 의 순번) */
+export function crossScriptPairs(names: unknown[]): [number, number][] {
+    const out: [number, number][] = [];
+    for (let i = 0; i < names.length; i++) for (let j = i + 1; j < names.length; j++) if (crossScriptSame(names[i], names[j])) out.push([i, j]);
+    return out;
+}
+
+/* ------------------------------------------------------------
+ * 서약 점검 차례 — 사서에게 한 번에 보여 줄 수 있는 서약은 몇 개뿐이다
+ *
+ * 앞에서부터 잘라 보여 주면 뒤쪽 서약은 끝내 한 번도 점검받지 못한다. 이번 교환과 닿아 있는 것 · 방금 움직인 것을 먼저 올리고,
+ * 남는 자리는 가장 오래 살펴보지 않은 것부터 채운다 (checkedTurn — 보여 준 턴을 적어 차례를 돌린다).
+ * ------------------------------------------------------------ */
+export interface CheckLock { status?: string; summary?: string; turn?: number; seenTurn?: number | null; latest?: { text?: string; turn?: number } | null; checkedTurn?: number | null }
+export function pickPledgesToCheck<L extends CheckLock>(locks: L[] | null | undefined, { text = '', turnNow = 0, cap = 12, near = 6 }: { text?: string; turnNow?: number; cap?: number; near?: number } = {}): L[] {
+    const active = (locks || []).filter(l => l.status === 'active');
+    if (active.length <= cap) return active;
+    const touched = (l: L) => Math.max(l.turn ?? 0, l.seenTurn ?? 0, l.latest?.turn ?? 0);
+    const hot = active.filter(l => turnNow - touched(l) <= 8 || (!!text && mentionsThread(`${l.summary || ''} ${l.latest?.text || ''}`, text))).sort((a, b) => touched(b) - touched(a)).slice(0, Math.min(near, cap));
+    const rest = active.filter(l => !hot.includes(l)).sort((a, b) => (a.checkedTurn ?? -1) - (b.checkedTurn ?? -1) || touched(a) - touched(b)).slice(0, cap - hot.length);
+    return active.filter(l => hot.includes(l) || rest.includes(l));   // 서고에 적힌 순서 그대로
+}
+
+/**
+ * 여러 인물을 한 카드가 맡는 대화(다인 · 시뮬레이션 · 진행자 카드)인가 — 그렇다면 그 카드 이름. 카드 이름은 답변마다 붙는 말머리일 뿐 등장인물이 아니다.
+ * 캐릭터가 하나인 대화에서, 인물 명단에 사용자 말고 둘 이상이 있고 그 가운데 카드 이름이 없을 때만 그렇게 본다 (1:1 봇은 자기 카드가 명단에 있다). 아니면 ''
+ */
+export function ensembleLabel(cardName: unknown, userName: unknown, cast: { name: string; aka?: string[] }[], soloCard: boolean): string {
+    const card = String(cardName ?? '').trim(), key = (s: unknown) => String(s ?? '').toLowerCase().replace(/[\s._\-'"`]+/g, '');
+    if (!soloCard || !card) return '';
+    const others = cast.filter(c => key(c.name) && key(c.name) !== key(userName));
+    return others.length >= 2 && !others.some(c => [c.name, ...(c.aka || [])].some(n => key(n) === key(card))) ? card : '';
 }

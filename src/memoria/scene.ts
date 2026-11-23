@@ -366,3 +366,20 @@ export function verifyIssues(issues: unknown, reply: string, context: string): {
     }
     return { kept: kept.slice(0, 6), filtered: filtered.slice(0, 6) };
 }
+
+/**
+ * 재확인의 판정을 경고에 반영한다. kept: 근거를 확인한 경고 · filtered: 근거를 확인하지 못해 걸러 둔 경고. 번호(n)는 kept 다음에 filtered 를 이어 1부터 센다.
+ * 근거를 확인한 경고는 "아니다"(keep: false)라는 판정이 있어야 빠지고, 근거를 확인하지 못한 경고는 "맞다"(keep: true)는 판정이 있어야 살아난다 — 판정이 없으면 처음 자리 그대로다.
+ * 빠진 경고는 까닭(why)과 함께 걸러 둔 쪽에 남아 볼 수 있다
+ */
+export function applyVerdicts(kept: VerifiedIssue[], filtered: VerifiedIssue[], verdicts: unknown): { kept: VerifiedIssue[]; filtered: VerifiedIssue[] } {
+    const by = new Map<number, { keep: boolean; why: string }>();
+    for (const v of Array.isArray(verdicts) ? verdicts as ({ n?: unknown; keep?: unknown; why?: unknown } | null)[] : []) {
+        const n = Number(v?.n); if (!v || !Number.isInteger(n) || n < 1 || by.has(n)) continue;
+        by.set(n, { keep: v.keep === true || v.keep === 'true', why: String(v.why ?? '').trim().slice(0, 200) });
+    }
+    const outKept: VerifiedIssue[] = [], outFiltered: VerifiedIssue[] = [];
+    kept.forEach((x, i) => { const v = by.get(i + 1); if (v && !v.keep) outFiltered.push({ ...x, why: v.why || t('memoria.engine.check.overruled') }); else outKept.push(x); });
+    filtered.forEach((x, i) => { const v = by.get(kept.length + i + 1); if (v?.keep) { const { why: _w, ...rest } = x; outKept.push(rest); } else outFiltered.push(v?.why ? { ...x, why: v.why } : x); });
+    return { kept: outKept.slice(0, 6), filtered: outFiltered.slice(0, 8) };
+}

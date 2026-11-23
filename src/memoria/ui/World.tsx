@@ -10,12 +10,15 @@ import { dueLabel, storyDays } from '../stage';
 import { Chip, Del, Ib, Ico, Meter, None, SceneLine, Sec, editBox, mergeCast, safe, type StOpen, Revive } from './parts';
 import { GROWTH_MAX, Gi, HAND, LINES_MAX, Mx, bondNow, bondViewRows, cut, storyState } from './viewsShared';
 import * as memMod from '../../lib/memory';
+import { Memory } from '../../lib/memory';
 import * as core from '../../lib/core';
 import { t } from '../../i18n';
+import { Tr } from './ReaderView';
+import { TrackerSec } from './Trackers';
 
 /** 인물 편집 — 칸과 상한.
  *  달라진 점 · 남긴 말은 문구가 그대로면 원래 적힌 턴을 지키고, 새로 적은 것은 직접 적음으로 둔다 — 직접 적은 남긴 말은 고정이라 밀려나지 않는다. */
-async function editCard(st: StOpen, c?: CastCard) {
+export async function editCard(st: StOpen, c?: CastCard) {
   const mem = st.mem, M = Mx(), T = mem.turns.length, src: Partial<CastCard> = c || { name: '', role: '', age: '', occupation: '', appearance: '', voice: '', core: '' };
   const draft = { name: src.name || '', aka: [...(src.aka || [])], role: src.role || '', age: src.age || '', occupation: src.occupation || '', appearance: src.appearance || '', voice: src.voice || '', core: src.core || '', traits: [...(src.traits || [])],
     rel: (src.relationships || []).map(r => `${r.target} = ${r.relation}`), growthTexts: (src.growth || []).map(g => g.text), lineTexts: (src.lines || []).map(l => l.text), provisional: !!src.provisional };
@@ -44,7 +47,7 @@ async function editCard(st: StOpen, c?: CastCard) {
   if (c && c.locked && !wasLocked) toast(t('memoria.world.cast.lockedAuto', { name: c.name }));
 }
 /** 관계선 추가 · 지금 단계 고치기 — 방향(누가 → 누구에게)은 줄의 정체라 고칠 때는 바꾸지 않는다 */
-async function editBond(st: StOpen, b?: Bond) {
+export async function editBond(st: StOpen, b?: Bond) {
   const mem = st.mem, M = Mx(), cur = b ? bondNow(b) : null, names = mem.cast.map(c => c.name).join(', ');
   const d = await editBox(b ? t('memoria.world.bond.editTitle', { from: b.from, to: b.to }) : t('memoria.world.bond.addTitle'),
     { from: b?.from || '', to: b?.to || '', stage: cur?.stage || '', basis: cur?.basis || '', calls: cur?.calls || '', unsaid: cur?.unsaid || '' }, [
@@ -61,9 +64,41 @@ async function editBond(st: StOpen, b?: Bond) {
   } catch (e) { console.error(e); toast((e as Error).message || String(e), 'err'); }
 }
 
-const pledgeDefs = (): FormDefs => [{ k: 'kind', label: t('memoria.world.pledge.f.kind'), type: 'select', opts: [['loose_end', t('memoria.world.pledge.k.loose_end')], ['keep_unresolved', t('memoria.world.pledge.k.keep_unresolved')], ['keep_secret', t('memoria.world.pledge.k.keep_secret')], ['knowledge_gap', t('memoria.world.pledge.k.knowledge_gap')], ['consent', t('memoria.world.pledge.k.consent')], ['world_limit', t('memoria.world.pledge.k.world_limit')], ['foreshadow', t('memoria.world.pledge.k.foreshadow')]] },
+const pledgeDefs = (): FormDefs => [{ k: 'kind', label: t('memoria.world.pledge.f.kind'), type: 'select', opts: [['loose_end', t('memoria.world.pledge.k.loose_end')], ['keep_unresolved', t('memoria.world.pledge.k.keep_unresolved')], ['keep_secret', t('memoria.world.pledge.k.keep_secret')], ['knowledge_gap', t('memoria.world.pledge.k.knowledge_gap')], ['consent', t('memoria.world.pledge.k.consent')], ['world_limit', t('memoria.world.pledge.k.world_limit')], ['foreshadow', t('memoria.world.pledge.k.foreshadow')], ['feeling', t('memoria.world.pledge.k.feeling')], ['author_plan', t('memoria.world.pledge.k.author_plan')]] },
   { k: 'summary', label: t('memoria.world.content'), type: 'area', rows: 3, ph: t('memoria.world.pledge.f.summaryPh') }, { k: 'priority', label: t('memoria.world.pledge.f.priority'), type: 'select', opts: [[1, t('memoria.world.pledge.p1')], [2, t('memoria.world.pledge.p2')], [3, t('memoria.world.pledge.p3')]] }];
 const stDefs = (): FormDefs => [{ k: 'entity', label: t('memoria.world.status.f.entity'), half: true }, { k: 'slot', label: t('memoria.world.status.f.slot'), half: true, ph: 'location · outfit · condition · mood · activity …' }, { k: 'value', label: t('memoria.world.status.f.value'), type: 'area', rows: 2 }, { k: 'claim', label: t('memoria.world.status.f.claim'), type: 'select', opts: [['objective', t('memoria.world.status.objective')], ['belief', t('memoria.world.status.beliefOpt')]], half: true }, { k: 'owner', label: t('memoria.world.status.f.owner'), half: true }];
+/** 서약 추가 · 고치기 — 세계 탭과 인물 보기가 함께 쓴다.
+ *  기한은 "지금부터 작중 며칠 뒤"로 받는다 — 이미 있는 기한은 지금 남은 날로 보여 준다 (비우면 기한 없음) */
+export async function editPledgeBox(st: StOpen, p?: Pledge) {
+  const mem = st.mem, M = Mx(), cfg = M.cfg(), T = mem.turns.length;
+  const leftDays = (p?: Pledge) => { if (!p?.due) return ''; const at = storyDays(mem.turns.map(x => x.days)), now = at.length ? at[at.length - 1] : 0, start = p.due.turn >= 0 && p.due.turn < at.length ? at[p.due.turn] : p.due.turn < 0 ? 0 : now; return String(Math.max(0, Math.round((start + p.due.in - now) * 10) / 10)); };
+    const defs = [...pledgeDefs(), ...(cfg.dueDates !== false && cfg.storyClock !== false ? [{ k: 'dueIn', label: t('memoria.world.pledge.f.due'), half: true, ph: t('memoria.world.pledge.f.duePh') }] : [])];
+    // 풀리지 않은 감정의 원인 · 풀리려면 필요한 것, 작가 계획의 가린 줄 (그 종류일 때만 쓰인다)
+    defs.push({ k: 'cause', label: t('memoria.world.pledge.f.cause'), half: true, hint: t('memoria.world.pledge.f.feelingHint') }, { k: 'needs', label: t('memoria.world.pledge.f.needs'), half: true }, { k: 'veil', label: t('memoria.world.pledge.f.veil'), hint: t('memoria.world.pledge.f.veilHint') });
+    const d = await editBox<{ kind: string; summary: string; priority: number | string; dueIn: string; cause: string; needs: string; veil: string }>(p ? t('memoria.world.pledge.edit') : t('memoria.world.pledge.add'), p ? { kind: p.kind, summary: p.summary, priority: p.priority || 2, dueIn: leftDays(p), cause: p.cause || '', needs: p.needs || '', veil: p.veil || '' } : { kind: 'loose_end', summary: '', priority: 2, dueIn: '', cause: '', needs: '', veil: '' }, defs); if (!d) return;
+    const beforeSummary = p?.summary || '', summary = cut(d.summary, 200); if (!summary) return toast(t('memoria.world.contentEmpty'), 'err'); const rec = { kind: d.kind, summary, priority: +d.priority || 2 };
+    const dueIn = Number(String(d.dueIn ?? '').replace(',', '.').trim()), before = leftDays(p);
+    if (p) Object.assign(p, rec, { manual: true }); else mem.pledges.push({ id: 'p' + (mem.pledges.reduce((a, x) => Math.max(a, +String(x.id).replace(/\D/g, '') || 0), 0) + 1), ...rec, status: 'active', owner: null as unknown as undefined, manual: true, turn: T, createdTurn: T });   // 수기 서약은 스와이프 롤백에서 보호
+    const row = p || mem.pledges[mem.pledges.length - 1];
+    if (row.kind === 'feeling') { row.cause = cut(d.cause, 160); row.needs = cut(d.needs, 160); }
+    if (row.kind === 'author_plan') { if (row.veil && summary !== (p ? beforeSummary : summary)) delete row.veil; const r = Memory.setVeil(mem, row.id, String(d.veil || '')); if (r.leak) toast(t('memoria.world.pledge.veilLeak'), 'err'); } else delete row.veil;
+    if (String(d.dueIn ?? '').trim() !== before) row.due = String(d.dueIn ?? '').trim() && Number.isFinite(dueIn) && dueIn >= 0 ? { turn: T - 1, in: Math.max(1 / 24, dueIn) } : null;   // 직접 정한 기한은 답변에 묶이지 않는다 (스와이프로 사라지지 않게)
+    await M.save(mem); st.draw(); if (!p) toast(t('memoria.world.pledge.added'), 'ok');
+}
+/** 상태 줄 추가 · 고치기 — 세계 탭과 인물 보기가 함께 쓴다. seed: 새 줄에 미리 채울 칸 (누구의 상태인지 등) */
+export async function editStatusBox(st: StOpen, s?: StatusRow, seed?: Partial<StatusRow>) {
+  const mem = st.mem, M = Mx(), T = mem.turns.length;
+  const d = await editBox<Partial<StatusRow>>(s ? t('memoria.world.status.edit') : t('memoria.world.status.add'), s || { entity: '', slot: '', value: '', claim: 'objective', owner: '', ...seed }, stDefs()); if (!d?.entity?.trim() || !d.slot?.trim()) return; d.slot = d.slot.trim().toLowerCase().replace(/[\s-]+/g, '_'); if (s) { if (s.value !== d.value) d.prev = s.value; Object.assign(s, d, { manual: true, turn: T }); delete s.expired; } else mem.status.push({ id: core.uid(), ...d, prev: null, manual: true, turn: T } as StatusRow); await M.save(mem); st.draw();
+}
+/** 물건 추가 — 같은 이름이 있으면 그 줄을 고친다. 세계 탭과 인물 보기가 함께 쓴다 (seed: 미리 채울 칸) */
+export async function editItemBox(st: StOpen, seed?: Partial<Item>) {
+  const mem = st.mem, M = Mx(), T = mem.turns.length;
+    const d = await editBox(t('memoria.world.item.addTitle'), { name: seed?.name || '', meaning: seed?.meaning || '', holder: seed?.holder || '', status: seed?.status || '' }, [{ k: 'name', label: t('memoria.world.cast.f.name'), half: true }, { k: 'holder', label: t('memoria.world.item.f.holder'), half: true }, { k: 'meaning', label: t('memoria.world.item.f.meaning') }, { k: 'status', label: t('memoria.world.item.f.status') }]);
+    if (!d) return; const name = cut(d.name, 60); if (!name) return toast(t('memoria.world.item.nameEmpty'), 'err');
+    const old = mem.items.find(x => String(x.name).toLowerCase() === name.toLowerCase()), rec = { name, meaning: cut(d.meaning, 160), holder: cut(d.holder, 160), status: cut(d.status, 160), manual: true };   // 수기 항목은 스와이프 롤백에서 보호
+    if (old) { Object.assign(old, rec, { updated: T }); delete old.dormant; } else mem.items.push({ id: core.uid(), ...rec, turn: T });
+    await M.save(mem); st.draw(); toast(t('memoria.world.item.added', { name: cut(name, 40) }), 'ok');
+}
 const isScene = (n: unknown) => String(n).toLowerCase() === 'scene';
 /** 기한 꼬리표 (화면용) — 남은 날 · 오늘 · 지난 날 */
 function dueText(mem: { turns: { days?: number }[] }, p: Pledge): string {
@@ -98,10 +133,10 @@ export function World({ st }: { st: StOpen }) {
     <div className="mm-cast">{cast.map(c => <article key={c.id} className={`mm-person${c.disabled ? ' off' : ''}${c.locked ? ' locked' : ''}`}>
       <header><i className="mm-initial">{(c.name || '?').trim().slice(0, 1)}</i><div className="mm-person-name"><b>{c.name}</b><small>{[c.role, c.age, c.occupation].filter(Boolean).join(' · ')}</small></div>
         {c.provisional ? <em className="mm-tag dash" title={t('memoria.world.cast.provisionalTitle')}>{t('memoria.world.cast.provisional')}</em> : null}{c.locked ? <em className="mm-tag" title={t('memoria.world.cast.lockedTitle')}>{t('memoria.world.cast.locked')}</em> : null}</header>
-      {(c.aka || []).length ? <p className="mm-meta">{t('memoria.world.cast.aka', { names: c.aka!.join(', ') })}</p> : null}{c.appearance ? <p>{c.appearance}</p> : null}
-      {c.core ? pline(<Gi name="anchor" size={13} />, t('memoria.world.cast.coreTitle'), c.core) : null}
-      {c.voice ? <p className="mm-voice" title={t('memoria.world.cast.f.voice')}><Ico name="chat" size={13} />{c.voice}</p> : null}
-      {(c.growth || []).length ? pline(<Gi name="sprout" size={13} />, t('memoria.world.cast.growthTitle'), c.growth!.map(g => g.text).join(' · ')) : null}
+      {(c.aka || []).length ? <p className="mm-meta">{t('memoria.world.cast.aka', { names: c.aka!.join(', ') })}</p> : null}{c.appearance ? <p><Tr>{c.appearance}</Tr></p> : null}
+      {c.core ? pline(<Gi name="anchor" size={13} />, t('memoria.world.cast.coreTitle'), <Tr>{c.core}</Tr>) : null}
+      {c.voice ? <p className="mm-voice" title={t('memoria.world.cast.f.voice')}><Ico name="chat" size={13} /><Tr>{c.voice}</Tr></p> : null}
+      {(c.growth || []).length ? pline(<Gi name="sprout" size={13} />, t('memoria.world.cast.growthTitle'), <Tr>{c.growth!.map(g => g.text).join(' · ')}</Tr>) : null}
       {(c.lines || []).length ? <div className="mm-pline mm-said" title={t('memoria.world.cast.linesTitle')}><Gi name="quote" size={13} /><span>{c.lines!.map((l, i) => <q key={i} className={l.pinned ? 'pin' : undefined} title={(l.pinned ? t('memoria.world.cast.pinnedLine') : l.msgId != null && l.turn != null ? `t${l.turn + 1}` : '') || undefined}>{l.text}<button type="button" title={t('memoria.world.cast.dropLineBtn')} aria-label={t('memoria.world.cast.dropLineBtn')} onClick={() => void dropLine(c, l)}>×</button></q>)}</span></div> : null}
       {(c.traits || []).length ? <div className="mm-chips">{c.traits!.map((t, i) => <Chip key={i} text={t} />)}</div> : null}{(c.relationships || []).length ? <div className="mm-chips">{c.relationships!.map((r, i) => <span key={i} className="mm-chip rel"><Ico name="link" size={12} />{`${r.target}: ${r.relation}`}</span>)}</div> : null}
       <footer>{tog(c, 'locked', t('memoria.world.cast.lockOn'), t('memoria.world.cast.lockOff'), 'unlock', 'lock', x => toast(x.locked ? t('memoria.world.cast.lockedToast', { name: x.name }) : t('memoria.world.cast.unlockedToast', { name: x.name })))}
@@ -119,39 +154,22 @@ export function World({ st }: { st: StOpen }) {
     <div className="mm-bond-rows">{[...bonds].sort((a, b) => (bondNow(b)?.turn || 0) - (bondNow(a)?.turn || 0)).map(b => {
       const cur: Partial<BondStep> = bondNow(b) || {}, path: string[] = []; for (const e of b.log || []) if (path[path.length - 1] !== e.stage) path.push(e.stage);
       return <article key={b.id} className={`mm-bond-row${b.disabled ? ' off' : ''}`}>
-        <header><b>{b.from}<span className="mm-bond-arrow">→</span>{b.to}</b><em className="mm-bond-stage">{cur.stage || ''}</em><span className="mm-actions">{tog(b, 'disabled', t('memoria.world.bond.exclude'), t('memoria.world.include'))}<Ib name="edit" title={t('memoria.world.bond.editStage')} onClick={() => editBond(st, b)} /><Del st={st} arr="bonds" x={b} what={t('memoria.world.bond.what', { from: b.from, to: b.to })} /></span></header>
-        {cur.basis ? pline(<Ico name="search" size={13} />, t('memoria.world.bond.basis'), cur.basis) : null}{cur.calls ? pline(<Ico name="chat" size={13} />, t('memoria.world.bond.calls'), t('memoria.world.bond.callsPrefix'), cur.calls) : null}{cur.unsaid ? pline(<Ico name="more" size={13} />, t('memoria.world.bond.unsaid'), t('memoria.world.bond.unsaidPrefix'), cur.unsaid) : null}
+        <header><b>{b.from}<span className="mm-bond-arrow">→</span>{b.to}</b><em className="mm-bond-stage"><Tr>{cur.stage || ''}</Tr></em><span className="mm-actions">{tog(b, 'disabled', t('memoria.world.bond.exclude'), t('memoria.world.include'))}<Ib name="edit" title={t('memoria.world.bond.editStage')} onClick={() => editBond(st, b)} /><Del st={st} arr="bonds" x={b} what={t('memoria.world.bond.what', { from: b.from, to: b.to })} /></span></header>
+        {cur.basis ? pline(<Ico name="search" size={13} />, t('memoria.world.bond.basis'), <Tr>{cur.basis}</Tr>) : null}{cur.calls ? pline(<Ico name="chat" size={13} />, t('memoria.world.bond.calls'), t('memoria.world.bond.callsPrefix'), cur.calls) : null}{cur.unsaid ? pline(<Ico name="more" size={13} />, t('memoria.world.bond.unsaid'), t('memoria.world.bond.unsaidPrefix'), <Tr>{cur.unsaid}</Tr>) : null}
         {path.length > 1 ? <div className="mm-chips mm-bond-path" title={t('memoria.world.bond.path')}>{path.flatMap((p, i) => [i ? <span key={'a' + i} className="mm-bond-arrow">→</span> : null, <span key={'p' + i} className={`mm-chip${i === path.length - 1 ? ' ent' : ''}`}>{p}</span>])}</div> : null}
       </article>; })}
       {!bonds.length ? <None text={t('memoria.world.bond.empty')} /> : null}</div>
   </Sec>;
 
   // ── 아이템 도감
-  const addItem = async () => {
-    const d = await editBox(t('memoria.world.item.addTitle'), { name: '', meaning: '', holder: '', status: '' }, [{ k: 'name', label: t('memoria.world.cast.f.name'), half: true }, { k: 'holder', label: t('memoria.world.item.f.holder'), half: true }, { k: 'meaning', label: t('memoria.world.item.f.meaning') }, { k: 'status', label: t('memoria.world.item.f.status') }]);
-    if (!d) return; const name = cut(d.name, 60); if (!name) return toast(t('memoria.world.item.nameEmpty'), 'err');
-    const old = mem.items.find(x => String(x.name).toLowerCase() === name.toLowerCase()), rec = { name, meaning: cut(d.meaning, 160), holder: cut(d.holder, 160), status: cut(d.status, 160), manual: true };   // 수기 항목은 스와이프 롤백에서 보호
-    if (old) { Object.assign(old, rec, { updated: T }); delete old.dormant; } else mem.items.push({ id: uid(), ...rec, turn: T });
-    await M.save(mem); st.draw(); toast(t('memoria.world.item.added', { name: cut(name, 40) }), 'ok');
-  };
+  const addItem = () => editItemBox(st);
   const itemSec = <Sec title={t('memoria.world.item.title')} desc={t('memoria.world.item.desc')} tools={<Btn label={t('common.add')} ic="plus" cls="ghost" title={t('memoria.world.item.add')} onClick={() => void addItem()} />}>
     <div className="mm-rows">{[...mem.items].sort((a, b) => (b.updated ?? b.turn ?? 0) - (a.updated ?? a.turn ?? 0)).map((it: Item) => row(it.id, it.disabled ? 'off' : it.dormant != null ? 'mm-dormant' : '', <>{it.dormant != null ? <><Revive title={t('memoria.world.item.reviveTitle')} onClick={async () => { delete it.dormant; await M.save(mem); st.draw(); }} />{' '}</> : null}<b>{it.name}</b>{it.holder ? <small>{` (${it.holder})`}</small> : null}{it.meaning ? ` — ${it.meaning}` : null}{it.status ? <small>{` [${it.status}]`}</small> : null}</>, tog(it, 'disabled', t('memoria.world.excludeInj'), t('memoria.world.include')), <Del st={st} arr="items" x={it} what={t('memoria.world.item.what')} />))}
       {!mem.items.length ? <None text={cfg.items ? t('memoria.world.item.empty') : t('memoria.world.item.emptyOff')} /> : null}</div>
   </Sec>;
 
   // ── 서약
-  // 기한은 "지금부터 작중 며칠 뒤"로 받는다 — 이미 있는 기한은 지금 남은 날로 보여 준다 (비우면 기한 없음)
-  const leftDays = (p?: Pledge) => { if (!p?.due) return ''; const at = storyDays(mem.turns.map(x => x.days)), now = at.length ? at[at.length - 1] : 0, start = p.due.turn >= 0 && p.due.turn < at.length ? at[p.due.turn] : p.due.turn < 0 ? 0 : now; return String(Math.max(0, Math.round((start + p.due.in - now) * 10) / 10)); };
-  const editPledge = async (p?: Pledge) => {
-    const defs = [...pledgeDefs(), ...(cfg.dueDates !== false && cfg.storyClock !== false ? [{ k: 'dueIn', label: t('memoria.world.pledge.f.due'), half: true, ph: t('memoria.world.pledge.f.duePh') }] : [])];
-    const d = await editBox<{ kind: string; summary: string; priority: number | string; dueIn: string }>(p ? t('memoria.world.pledge.edit') : t('memoria.world.pledge.add'), p ? { kind: p.kind, summary: p.summary, priority: p.priority || 2, dueIn: leftDays(p) } : { kind: 'loose_end', summary: '', priority: 2, dueIn: '' }, defs); if (!d) return;
-    const summary = cut(d.summary, 200); if (!summary) return toast(t('memoria.world.contentEmpty'), 'err'); const rec = { kind: d.kind, summary, priority: +d.priority || 2 };
-    const dueIn = Number(String(d.dueIn ?? '').replace(',', '.').trim()), before = leftDays(p);
-    if (p) Object.assign(p, rec, { manual: true }); else mem.pledges.push({ id: 'p' + (mem.pledges.reduce((a, x) => Math.max(a, +String(x.id).replace(/\D/g, '') || 0), 0) + 1), ...rec, status: 'active', owner: null as unknown as undefined, manual: true, turn: T, createdTurn: T });   // 수기 서약은 스와이프 롤백에서 보호
-    const row = p || mem.pledges[mem.pledges.length - 1];
-    if (String(d.dueIn ?? '').trim() !== before) row.due = String(d.dueIn ?? '').trim() && Number.isFinite(dueIn) && dueIn >= 0 ? { turn: T - 1, in: Math.max(1 / 24, dueIn) } : null;   // 직접 정한 기한은 답변에 묶이지 않는다 (스와이프로 사라지지 않게)
-    await M.save(mem); st.draw(); if (!p) toast(t('memoria.world.pledge.added'), 'ok');
-  };
+  const editPledge = (p?: Pledge) => editPledgeBox(st, p);
   const flip = async (p: Pledge) => {
     p.status = p.status === 'active' ? 'resolved' : 'active';
     if (p.status === 'active') { p.turn = T; p.resolvedTurn = null; p.resolvedBy = null as unknown as undefined; p.resolution = null; p.sleptTurn = null; }   // 깨운 떡밥은 방금 다뤄진 것으로 친다 — 곧바로 다시 잠들지 않게
@@ -160,10 +178,18 @@ export function World({ st }: { st: StOpen }) {
     await M.save(mem); st.draw();
   };
   const rank = (p: Pledge) => p.status === 'resolved' ? 2 : p.status === 'dormant' ? 1 : 0;
-  const pledgeSec = <Sec title={t('memoria.world.pledge.title')} desc={t('memoria.world.pledge.desc')} tools={<Btn label={t('common.add')} ic="plus" cls="ghost" title={t('memoria.world.pledge.add')} onClick={() => void editPledge()} />}>
+  // 가린 줄이 없는 작가 계획 — 눌렀을 때만 모델을 한 번 불러 가린 줄을 받는다 (답을 흘리는 줄은 버린다)
+  const bare = mem.pledges.filter(p => p.kind === 'author_plan' && p.status === 'active' && !p.veil).length;
+  const makeVeils = async () => {
+    try { const r = await Memory.veilPlans(st.chat, mem); await M.save(mem); st.draw(); toast(t('memoria.world.pledge.veilDone', { made: r.made, rejected: r.rejected }), r.made ? 'ok' : 'err'); }
+    catch (e) { toast(t('memoria.world.pledge.veilFail', { error: (e as Error).message }), 'err'); }
+  };
+  const pledgeSec = <Sec title={t('memoria.world.pledge.title')} desc={t('memoria.world.pledge.desc')} tools={<>{bare ? <Btn label={t('memoria.world.pledge.veilBtn', { n: bare })} ic="sparkle" cls="ghost" title={t('memoria.world.pledge.veilBtnTitle')} onClick={() => void makeVeils()} /> : null}<Btn label={t('common.add')} ic="plus" cls="ghost" title={t('memoria.world.pledge.add')} onClick={() => void editPledge()} /></>}>
     <div className="mm-rows">{[...mem.pledges].sort((a, b) => rank(a) - rank(b) || (a.priority || 2) - (b.priority || 2)).map(p => row(p.id, p.status === 'resolved' ? 'done' : p.status === 'dormant' ? 'mm-dormant' : '', <><em className={`mm-lock l-${safe(p.kind)}`}>{LOCK_KO[p.kind] || p.kind}</em>
-      {p.status === 'dormant' ? <em className="mm-tag dash" title={t('memoria.world.pledge.dormantTitle')}>{t('memoria.world.pledge.dormant')}</em> : null} <span className="mm-pledge-text">{p.summary}</span><small>{` (P${p.priority || 2}${p.turn != null ? ` · t${p.turn + 1}` : ''}${p.manual ? t('memoria.world.pledge.manual') : ''})`}</small>
+      {p.status === 'dormant' ? <em className="mm-tag dash" title={t('memoria.world.pledge.dormantTitle')}>{t('memoria.world.pledge.dormant')}</em> : null} <span className="mm-pledge-text"><Tr>{p.summary}</Tr></span><small>{` (P${p.priority || 2}${p.turn != null ? ` · t${p.turn + 1}` : ''}${p.manual ? t('memoria.world.pledge.manual') : ''})`}</small>
       {p.status !== 'resolved' && dueText(mem, p) ? <em className="mm-tag mm-due" title={t('memoria.world.pledge.dueTitle')}>{dueText(mem, p)}</em> : null}
+      {p.kind === 'author_plan' && p.status === 'active' ? <small className="mm-lock-now" title={t('memoria.world.pledge.veilTitle')}>{` ${p.veil ? t('memoria.world.pledge.veilShown', { text: p.veil }) : t('memoria.world.pledge.veilNone')}`}</small> : null}
+      {p.kind === 'feeling' && (p.cause || p.needs) ? <small className="mm-lock-now">{` ${[p.cause, p.needs].filter(Boolean).join(' → ')}`}</small> : null}
       {p.latest?.text && p.status !== 'resolved' ? <small className="mm-lock-now" title={t('memoria.world.pledge.nowTitle')}>{` ${t('memoria.world.pledge.now', { text: p.latest.text })}`}</small> : null}
       {p.resolution && p.status === 'resolved' ? <small className="mm-resolution" title={t('memoria.world.pledge.resolution')}>{` — ${p.resolution}`}</small> : null}
       {p.suggestResolved && p.status === 'active' ? <em className="mm-suggest" title={p.suggestHow ? t('memoria.world.pledge.suggestHowTitle', { how: p.suggestHow }) : t('memoria.world.pledge.suggestTitle')}><Ico name="bell" size={12} />{t('memoria.world.pledge.suggest')}</em> : null}</>,
@@ -179,11 +205,11 @@ export function World({ st }: { st: StOpen }) {
   </Sec>;
 
   // ── 상태 보드
-  const editStatus = async (s?: StatusRow) => { const d = await editBox<Partial<StatusRow>>(s ? t('memoria.world.status.edit') : t('memoria.world.status.add'), s || { entity: '', slot: '', value: '', claim: 'objective', owner: '' }, stDefs()); if (!d?.entity?.trim() || !d.slot?.trim()) return; d.slot = d.slot.trim().toLowerCase().replace(/[\s-]+/g, '_'); if (s) { if (s.value !== d.value) d.prev = s.value; Object.assign(s, d, { manual: true, turn: T }); delete s.expired; } else mem.status.push({ id: uid(), ...d, prev: null, manual: true, turn: T } as StatusRow); await M.save(mem); st.draw(); };
+  const editStatus = (s?: StatusRow) => editStatusBox(st, s);
   const groups = new Map<string, StatusRow[]>(); for (const s of mem.status) { const k = s.entity; if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(s); }
   const statusSec = <Sec title={t('memoria.world.status.title')} desc={t('memoria.world.status.desc')} tools={<Btn label={t('common.add')} ic="plus" cls="ghost" title={t('memoria.world.status.add')} onClick={() => void editStatus()} />}><SceneLine m={mem} />
     <div className="mm-board">{[...groups].sort((a, b) => (isScene(a[0]) ? -1 : 0) - (isScene(b[0]) ? -1 : 0)).map(([name, rows], gi) => <div key={gi} className="mm-entity"><h4>{isScene(name) ? t('memoria.world.status.scene') : name}</h4>
-      {rows.map(s => <div key={s.id} className={`mm-slot${s.claim === 'belief' ? ' belief' : ''}${s.expired != null ? ' mm-dormant' : ''}`} title={`${s.claim === 'belief' ? `${t('memoria.world.status.belief')}${s.owner ? ':' + s.owner : ''}` : t('memoria.world.status.objective')}${s.turn != null ? ` · t${s.turn + 1}` : ''}`}><span className="mm-slot-k">{s.slot}</span><span className="mm-slot-v">{s.expired != null ? <><Revive title={t('memoria.world.status.reviveTitle')} onClick={async () => { delete s.expired; await M.save(mem); st.draw(); }} />{' '}</> : null}{s.value}{s.prev != null ? <s title={t('memoria.world.status.prev')}>{String(s.prev)}</s> : null}{s.claim === 'belief' ? <em className="mm-tag dash">{`${t('memoria.world.status.belief')}${s.owner ? ':' + s.owner : ''}`}</em> : null}</span><span className="mm-actions"><Ib name="edit" title={t('common.edit')} onClick={() => editStatus(s)} /><Del st={st} arr="status" x={s} what={t('memoria.world.status.what')} /></span></div>)}</div>)}</div>
+      {rows.map(s => <div key={s.id} className={`mm-slot${s.claim === 'belief' ? ' belief' : ''}${s.expired != null ? ' mm-dormant' : ''}`} title={`${s.claim === 'belief' ? `${t('memoria.world.status.belief')}${s.owner ? ':' + s.owner : ''}` : t('memoria.world.status.objective')}${s.turn != null ? ` · t${s.turn + 1}` : ''}`}><span className="mm-slot-k">{s.slot}</span><span className="mm-slot-v">{s.expired != null ? <><Revive title={t('memoria.world.status.reviveTitle')} onClick={async () => { delete s.expired; await M.save(mem); st.draw(); }} />{' '}</> : null}<Tr>{s.value}</Tr>{s.prev != null ? <s title={t('memoria.world.status.prev')}>{String(s.prev)}</s> : null}{s.claim === 'belief' ? <em className="mm-tag dash">{`${t('memoria.world.status.belief')}${s.owner ? ':' + s.owner : ''}`}</em> : null}</span><span className="mm-actions"><Ib name="edit" title={t('common.edit')} onClick={() => editStatus(s)} /><Del st={st} arr="status" x={s} what={t('memoria.world.status.what')} /></span></div>)}</div>)}</div>
     {!mem.status.length ? <None text={t('memoria.world.status.empty')} /> : null}
   </Sec>;
 
@@ -209,5 +235,5 @@ export function World({ st }: { st: StOpen }) {
       {(['a', 'b'] as const).map(side => { const c = x[side]; return <div key={side} className="mm-conflict-side"><small>{claimLabel(c)}{c.turn ? ` · t${c.turn + 1}` : ''}</small><span>{c.show}</span><Btn label={t('memoria.world.conflict.keep')} cls="ghost" onClick={() => void keepSide(x, side)} /></div>; })}
       <div className="row"><Btn label={t('memoria.world.conflict.both')} cls="ghost" title={t('memoria.world.conflict.bothTitle')} onClick={() => void bothRight(x.pair)} /></div></article>)}</div>
   </Sec> : null;
-  return <div className="mm-view">{conflictSec}{castSec}{bondSec}{itemSec}{pledgeSec}{canonSec}{statusSec}{dossierSec}</div>;
+  return <div className="mm-view">{conflictSec}{castSec}{bondSec}{itemSec}{pledgeSec}<TrackerSec st={st} />{canonSec}{statusSec}{dossierSec}</div>;
 }

@@ -87,6 +87,73 @@ function speakerAfter(after: string, people: AddressPerson[]): string {
     return '';
 }
 
+const SAY_EN = '(?:said|asked|says|asks|replied|whispered|shouted|murmured|muttered|answered|called|snapped|sighed|laughed)';
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** 대사 앞의 이름표 — 같은 줄 맨 앞의 '이름:' · '이름 |' · '**이름**:' */
+function speakerTag(before: string, people: AddressPerson[]): string {
+    const line = before.slice(before.lastIndexOf('\n') + 1).replace(/[*_`]/g, '').trim(), m = line.match(/^(.{1,30}?)\s*[:：|｜]$/u);
+    if (!m) return '';
+    const tag = lowc(m[1]);
+    for (const p of people) if ([p.name, ...p.forms].some(f => lowc(f).length >= 2 && lowc(f) === tag)) return p.name;
+    return '';
+}
+/** 대사 바로 앞의 서술에서 말한 사람을 찾는다 — '보라가 말했다. "…"' · 'Mina said, "…"'. 같은 문단, 대사 바로 앞 문장만 본다 (그 문장에 사람이 둘 이상이면 모른다) */
+function speakerBefore(before: string, people: AddressPerson[]): string {
+    const para = before.slice(before.lastIndexOf('\n') + 1), cut = Math.max(para.lastIndexOf('. ', para.length - 3), para.lastIndexOf('? '), para.lastIndexOf('! '), para.lastIndexOf('” '), para.lastIndexOf('" '));
+    const sent = para.slice(cut + 1).slice(-90), ls = lowc(sent);
+    if (!sent.trim() || !/[,:.…]\s*$|(?:다|요|며|고|서)\s*$/u.test(sent.trimEnd())) return '';
+    const found: string[] = [];
+    for (const p of people) for (const f of [p.name, ...p.forms]) {
+        const lf = lowc(f); if (lf.length < 2) continue;
+        const subj = new RegExp(`(?:^|[^\\p{L}\\p{N}])${esc(lf)}(?:이|가|은|는|께서|와|과|랑|하고)(?![\\p{L}\\p{N}])|(?:^|[^\\p{L}\\p{N}])${esc(lf)}\\s+and\\s|(?:^|[^\\p{L}\\p{N}])${esc(lf)}\\s+${SAY_EN}\\b`, 'iu');
+        if (subj.test(ls)) { if (!found.includes(p.name)) found.push(p.name); break; }
+    }
+    return found.length === 1 ? found[0] : '';
+}
+/**
+ * 한 대사를 누가 했는가 — 규칙으로만 가린다 (모델을 부르지 않는다). 확실하지 않으면 ''.
+ * 차례: 같은 줄의 이름표 → 대사 바로 뒤의 서술 → 바로 앞의 서술 → (서술에 다른 사람이 없을 때만) 메시지를 쓴 사람.
+ * author: 메시지를 쓴 사람, crowded: 서술에 글쓴이 · 상대 말고 다른 사람이 나온다
+ */
+export function speakerOfSpan(src: string, span: { start: number; end: number }, people: AddressPerson[], author = '', crowded = false): string {
+    const tag = speakerTag(src.slice(0, span.start), people); if (tag) return tag;
+    // 대사 뒤에 나온 사람이 그 대사가 부른 사람이면 말한 사람이 아니라 반응한 사람이다 ('"도윤아, 어디 가?" 도윤이 돌아봤다')
+    const after = speakerAfter(src.slice(span.end), people), called = after ? calledIn(src.slice(span.start + 1, span.end - 1), people) : '';
+    if (after && lowc(after) !== lowc(called)) return after;
+    const before = speakerBefore(src.slice(0, span.start), people);
+    if (before && !(after && lowc(before) === lowc(called))) return before;
+    return crowded || after ? '' : author;
+}
+/** 서술(대사를 뺀 글)에 글쓴이 · 상대 말고 다른 사람이 나오는가 */
+export function crowdedNarration(src: string, people: AddressPerson[], mine: string[]): boolean {
+    let narration = src; for (const d of [...dialogueSpans(src)].reverse()) narration = narration.slice(0, d.start) + ' ' + narration.slice(d.end);
+    const ln = lowc(narration), own = new Set(mine.map(lowc));
+    return people.some(p => !own.has(lowc(p.name)) && [p.name, ...p.forms].some(f => lowc(f).length >= 2 && ln.includes(lowc(f))));
+}
+/** 대사가 부른 사람 — 대사 맨 앞 · 맨 끝의 부름말이 가리키는 사람 (말한 사람 자신은 아니다) */
+export function calledIn(bit: string, people: AddressPerson[], speaker = '', partner = ''): string {
+    for (const re of [HEAD_RE, TAIL_RE]) {
+        const m = bit.match(re); if (!m) continue;
+        const to = resolveTerm(m[1].replace(/[\s,.!?…~]+$/u, '').trim(), people, partner);
+        if (to && lowc(to) !== lowc(speaker)) return to;
+    }
+    return '';
+}
+/**
+ * 인용한 말(quote)을 글에서 찾아 말한 사람 · 들은 사람을 규칙으로 가린다.
+ * 반환 { by, to, found } — found: 그 말이 글의 대사 안에 있다. by · to 는 규칙이 가린 것만 ('' = 모른다).
+ * 들은 사람: 대사가 이름으로 부른 사람, 없으면 둘만 있는 대화의 상대(partner — 글쓴이 본인이 한 말일 때만)
+ */
+export function attributeQuote(text: unknown, quote: unknown, { author = '', people, partner = '' }: { author?: string; people: AddressPerson[]; partner?: string }): { by: string; to: string; found: boolean } {
+    const src = String(text ?? ''), squash = (s: string) => s.replace(/\s+/g, ' ').trim(), q = squash(String(quote ?? '')).replace(/^["“”「」『』']+|["“”「」『』']+$/g, '');
+    if (!q || !src) return { by: '', to: '', found: false };
+    const span = dialogueSpans(src).find(d => { const b = squash(d.bit); return b.includes(q) || (q.length >= 8 && q.includes(b) && b.length >= q.length * 0.6); });
+    if (!span) return { by: '', to: '', found: false };
+    const crowded = crowdedNarration(src, people, [author, partner]), by = speakerOfSpan(src, span, people, author, crowded);
+    const to = by ? calledIn(span.bit, people, by, lowc(by) === lowc(author) ? partner : '') || (lowc(by) === lowc(author) && partner && !crowded ? partner : '') : '';
+    return { by, to, found: true };
+}
+
 const WORD = '[^\\s,.!?…~"“”「」『』]';
 const HEAD_RE = new RegExp(`^\\s*(${WORD}{1,12}(?:\\s${WORD}{1,10})?)\\s*[,!…~]`, 'u');
 const TAIL_RE = new RegExp(`[,…]\\s*(${WORD}{1,12}(?:\\s${WORD}{1,10})?)\\s*[.!?~…]*\\s*$`, 'u');
@@ -119,7 +186,7 @@ export function addressTermsIn(text: unknown, { speaker, people, partner = '' }:
     const ln = lowc(narration), mine = new Set([lowc(speaker), lowc(partner)]);
     const crowded = people.some(p => !mine.has(lowc(p.name)) && [p.name, ...p.forms].some(f => lowc(f).length >= 2 && ln.includes(lowc(f))));
     for (const d of spans) {
-        const named = speakerAfter(src.slice(d.end), people), who = named || (crowded ? '' : speaker);
+        const who = speakerOfSpan(src, d, people, speaker, crowded);
         if (!who) continue;
         // 호칭(오빠 · 선배님)이 상대를 가리키는 것은 글쓴이 본인이 말했을 때뿐이다 (다른 인물의 호칭은 누구를 부르는지 모른다)
         const pal = lowc(who) === lowc(speaker) ? partner : '', me = lowc(who);

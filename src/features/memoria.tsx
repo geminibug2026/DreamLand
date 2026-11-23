@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import { Btn, mountInto } from '../kit';
 import { t, tn } from '../i18n';
-import { openModal, promptBox, toast } from '../ui';
+import { confirmBox, openModal, promptBox, toast } from '../ui';
 import type { CmdApi, PromptPiece } from '../memoria/types';
 import type { ChatM, Mem, MemCheck, CheckIssue, Msg } from '../memoria/types';
 import { TABS, activityText, alive, mount, openArchive, setActivity, setFocus } from '../memoria/ui/Archive';
@@ -67,7 +67,7 @@ function decorateCheck(el: Element, msg?: Msg) {
 }
 function decorateAllChecks() {
   const { chat, msgs } = cur(), els = document.querySelectorAll<HTMLElement>('article.msg[data-id]'); if (!chat || !els.length) return;
-  const any = msgs.some(m => m.memCheck), byId = any ? new Map(msgs.map(m => [m.id, m])) : null;
+  const any = msgs.some(m => m.memCheck || m.memChecks), byId = any ? new Map(msgs.map(m => [m.id, m])) : null;
   for (const el of els) { if (byId) decorateCheck(el, byId.get(el.dataset.id || '')); else el.querySelector('.mm-check-badge')?.remove(); }
 }
 let decoWait = false;
@@ -82,13 +82,23 @@ function showCheckIssues(msg: Msg) {
   openModal({ title: t('memoria.feat.check.title'), wide: true,
     body: <div className="mm mm-review">{(c.issues || []).length ? <div className="mm-review-list">{c.issues!.map((i, n) => <Issue key={n} i={i} />)}</div> : <p className="hint">{t('memoria.feat.check.none')}</p>}
       {(c.filtered || []).length ? <details className="mm-details"><summary>{tn('memoria.feat.check.filtered', c.filtered!.length)}</summary><p className="hint">{t('memoria.feat.check.filteredHint')}</p><div className="mm-review-list">{c.filtered!.map((i, n) => <Issue key={n} i={i} />)}</div></details> : null}</div>,
-    actions: [{ label: t('common.close') }, { label: t('memoria.feat.check.clear'), cls: 'danger', onclick: async () => { delete msg.memCheck; if (cur().msgs.includes(msg)) await chatApi.save(); decorateAllChecks(); } }] });
+    actions: [{ label: t('common.close') },
+      // 고치기: 메시지 편집을 연다 — 고친 글을 저장하면 엔진이 그 글을 다시 점검한다 (호출 1회)
+      { label: t('memoria.feat.check.fix'), ic: 'edit', onclick: () => { const el = document.querySelector(`article.msg[data-id="${CSS.escape(msg.id)}"]`), btn = el?.querySelector<HTMLButtonElement>(`button[aria-label="${CSS.escape(t('chat.msg.edit'))}"]`); if (!btn) return void toast(t('memoria.feat.check.fixMissing')); el!.scrollIntoView({ block: 'center' }); btn.click(); toast(t('memoria.feat.check.fixHint')); } },
+      { label: t('memoria.feat.check.clear'), cls: 'danger', onclick: async () => { if (Memory.setCheck && c.h) Memory.setCheck(msg, c.h, null); else delete msg.memCheck; if (cur().msgs.includes(msg)) await chatApi.save(); decorateAllChecks(); } }] });
 }
 
 // ════════ 명령어용 기억 검색 창 ════════
 function SearchList({ mem, arg }: { mem: Mem; arg: string }) {
   const r = Memory.recallEx(cur().chat!, mem, [], { query: arg, topK: 10 }), all = [...r.pinned, ...r.triggered, ...r.selected].slice(0, 10);
   return <div className="mm mm-list">{all.map(m => { const s = r.trace.get(m.id)?.score; return <article key={m.id} className="mm-card"><header><KindBadge k={m.kind} /><span className="mm-turn">{turnTag(mem, m)}</span><span className="tokbadge">{s != null ? t('memoria.feat.search.score', { score: s.toFixed(2) }) : t('memoria.feat.search.pinned')}</span></header><p className="mm-sum">{m.summary}</p>{m.quote ? <blockquote>{`"${m.quote}"`}</blockquote> : null}</article>; })}{!all.length ? <None text={t('memoria.feat.search.none')} /> : null}</div>;
+}
+
+/** 이 메시지에서 나온 기록 (메시지 메뉴 「이 메시지의 기억」) — 그 답변의 턴 기록과 기억들. 묶음 기록이면 그 메시지를 함께 덮은 기록 */
+function MsgMemories({ mem, turnMsgId }: { mem: Mem; turnMsgId: string }) {
+  const at = mem.turns.findIndex(x => x.msgId === turnMsgId), turn = mem.turns[at], rows = mem.memories.filter(m => m.msgId === turnMsgId);
+  return <div className="mm mm-list">{turn?.digest ? <p className="mm-sum"><b>{`t${at + 1}${turn.star ? ' ★' : ''}`}</b>{' — '}{turn.digest}</p> : null}
+    {rows.map(m => <article key={m.id} className="mm-card"><header><KindBadge k={m.kind} /><span className="mm-turn">{turnTag(mem, m)}</span>{m.retired ? <span className="tokbadge">{t('memoria.memories.only.retired')}</span> : null}</header><p className="mm-sum">{m.summary}</p>{m.quote ? <blockquote>{`"${m.quote}"`}</blockquote> : null}</article>)}{!rows.length ? <None text={t('memoria.feat.act.memsNone')} /> : null}</div>;
 }
 
 function setup() {
@@ -146,6 +156,23 @@ function setup() {
     if (!side && msg.role === 'assistant' && cfg.enabled && cfg.auto) Promise.resolve(M.commit(chat!, msgs, msg)).catch(e => console.warn('[장기기억]', e));   // 기록 지연은 commit 이 스스로 따진다
   } });
 
+  /** 중요 장면 표시 — 기록할 때 그 턴의 무게를 올려 요약이 빠뜨리지 않게 하고, 거기서 나온 기억을 정리에서 지킨다 (모델 호출 없음. 누를 때마다 뒤집는다) */
+  x.actions.push({ owner: OWNER, id: 'memoria-star', get label() { return t('memoria.feat.act.star'); }, icon: 'star', run: async (msg, chat) => {
+    if (msg.role !== 'assistant') return toast(t('memoria.feat.act.onlyAssistant'));
+    const on = !msg.memStar, no = cur().msgs.indexOf(msg) + 1, mem = await M.load(chat!.id);
+    if (on) msg.memStar = true; else delete msg.memStar;
+    await chatApi.save(); const n = M.starTurn ? M.starTurn(mem, msg.id, on) : 0; if (n || M.turnOfMsg?.(mem, msg.id)) await M.save(mem);
+    toast(!on ? t('memoria.feat.act.starOff', { n: no }) : M.turnOfMsg?.(mem, msg.id) ? t('memoria.feat.act.starOn', { n: no }) : t('memoria.feat.act.starOnLater', { n: no }), 'ok');
+  } });
+  x.actions.push({ owner: OWNER, id: 'memoria-of', get label() { return t('memoria.feat.act.mems'); }, icon: 'book', run: async (msg, chat) => {
+    const mem = await M.load(chat!.id), turn = M.turnOfMsg?.(mem, msg.id), no = cur().msgs.indexOf(msg) + 1;
+    if (!turn) return toast(t('memoria.feat.act.memsNoTurn', { n: no }));
+    openModal({ title: t('memoria.feat.act.memsTitle', { n: no }), wide: true, body: <MsgMemories mem={mem} turnMsgId={turn.msgId} />, actions: [{ label: t('common.close') }, { label: t('memoria.feat.archive'), ic: 'book', onclick: () => openArchive(chat!, 'memories') }] });
+  } });
+
+  // ── 입력 칸에 글을 쓰는 중인지 엔진에 알린다 (요약 · 서고 정리가 곧 올 답변과 겹치지 않게 미룬다) ──
+  document.addEventListener('input', e => { const el = e.target; if (el instanceof HTMLTextAreaElement && el.classList.contains('composer-input')) M.noteTyping?.(!!el.value.trim()); }, true);
+
   // ── 연속성 배지: 대화 화면은 메시지를 통째로 다시 그린다 — 메시지 요소가 새로 붙을 때마다 배지를 다시 단다 ──
   new MutationObserver(list => { for (const r of list) for (const n of r.addedNodes) if (n instanceof Element && (n.classList.contains('msg') || n.querySelector('article.msg'))) return queueDecorate(); }).observe(document.body, { childList: true, subtree: true });
 
@@ -161,6 +188,19 @@ function setup() {
   cmd('/memoria-index', 'memoria.feat.cmd.index', (_arg, api) => backfill(need(api)));
   cmd('/memoria-clock', 'memoria.feat.cmd.clock', async (_arg, api) => { const chat = need(api), mem = await M.load(chat.id), fmt = (d: number) => d >= 1 ? fmtDays(d) : t('memoria.feat.cmd.lessDay'); api.setStatus(t('memoria.feat.cmd.clockBusy')); try { const r = await M.recalClock(chat, mem); toast(r ? t('memoria.feat.cmd.clockDone', { after: fmt(r.after), before: fmt(r.before) }) : t('memoria.feat.cmd.clockNone'), r ? 'ok' : ''); } finally { api.setStatus(''); } });
   cmd('/memoria-reconcile', 'memoria.feat.cmd.reconcile', async (_arg, api) => { const chat = need(api), mem = await M.load(chat.id), n = mem.turns.length, ch = M.reconcile(mem, api.current().msgs); if (ch) await M.save(mem); toast(ch ? t('memoria.feat.cmd.reconciled', { before: n, after: mem.turns.length }) : t('memoria.feat.cmd.inSync'), ch ? 'ok' : ''); chatApi.redraw(); });
+  // #N 뒤의 기록만 걷어 내고 그 앞 모습으로 되돌린다 — 메시지는 그대로라 걷어 낸 구간은 자동 기록 · 색인이 새로 기록한다
+  cmd('/memoria-cut', 'memoria.feat.cmd.cut', async (arg, api) => {
+    const chat = need(api), msgs = api.current().msgs, n = Number(String(arg || '').trim().replace(/^#/, ''));
+    if (!Number.isInteger(n) || n < 0 || !String(arg || '').trim()) throw new Error(t('memoria.feat.cmd.cutArg'));
+    if (M.busy()) throw new Error(t('memoria.tools.reset.busy'));
+    const mem = await M.load(chat.id), order = new Map(msgs.map((m, i) => [m.id, i])), count = mem.turns.filter(y => (order.get(y.msgId) ?? -1) >= n).length;
+    if (!count) return toast(t('memoria.feat.cmd.cutNone', { n }));
+    if (!(await confirmBox(t('memoria.feat.cmd.cutAsk', { n, count }), t('memoria.feat.cmd.cutOk'), true))) return;
+    await M.checkpoint(mem, t('memoria.feat.cmd.cutLabel', { n })).catch(() => null);
+    const gone = M.cutAfter ? M.cutAfter(mem, msgs, n) : 0; await M.save(mem);
+    if (M.restoreHidden?.(chat, mem, msgs)) await chatApi.save();
+    M.reinjectNow?.(chat); toast(t('memoria.feat.cmd.cutDone', { n, count: gone }), 'ok'); for (const st of alive()) st.draw(); chatApi.redraw();
+  });
   cmd('/memoria-open', 'memoria.feat.cmd.open', (arg, api) => openArchive(need(api), TABS.some(t => t[0] === String(arg).trim()) ? String(arg).trim() : undefined));
   x.macros.set('memoria_story', { owner: OWNER, fn: () => { const m = M.get(cur().chat?.id as string); return m ? [...m.arcs.filter(a => a.carried), ...[...m.arcs.filter(a => !a.carried), ...m.chunks].sort((a, b) => a.from - b.from)].map(s => s.text).join('\n') : ''; } });
   x.macros.set('memoria_count', { owner: OWNER, fn: () => String(M.get(cur().chat?.id as string)?.memories.length || 0) });

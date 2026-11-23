@@ -239,7 +239,7 @@ export const part5: Part5 & ThisType<MemoryApi> = {
   async ask(chat, question, signal, { msgs = null } = {}) {
     const q = String(question || '').trim(); if (!q) throw new Error(tr('memoria.engine.err.emptyQuestion')); if (!chat) throw new Error(tr('memoria.engine.err.noOpenChat'));
     const mem = await this.load(chat.id); if (!Array.isArray(msgs)) msgs = await Promise.resolve(S.msgs(chat.id)).catch(() => null);
-    const context = this.renderPacket(this.buildPacketSections(chat, mem, null, this.archiveQueryOpt(mem, q, msgs)), { recallLimit: 14, protectedLimit: 5 });
+    const context = this.renderPacket(this.buildPacketSections(chat, mem, null, { ...this.archiveQueryOpt(mem, q, msgs), rawRecall: true }), { recallLimit: 14, protectedLimit: 5 });   // 묻는 말에는 숨긴 옛 대화의 그 대목도 글자 그대로 찾아 보여 준다 (모델 호출은 늘지 않는다)
     const answer = cleanRecord(await this.call(chat, MP.ASK_LIBRARIAN_PROMPT, `Archive records:\n${context}\n\nPlayer's question: ${q}`, 4000, signal, 'light'));
     if (!answer) throw new Error(tr('memoria.engine.err.emptyReply'));
     return answer;
@@ -420,6 +420,10 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     for (const k of ['memories', 'canon', 'status', 'cast', 'bonds', 'items', 'milestones', 'dossier', 'chunks', 'arcs'] as const) for (const x of m[k]) { if (!x.id) x.id = uid(); delete x.av; delete x.acv; }
     m.memories = m.memories.filter(x => typeof x.summary === 'string'); m.cast = m.cast.filter(x => typeof x.name === 'string'); m.dossier = m.dossier.filter(x => Array.isArray(x.chunks));
     for (const x of m.memories) if (x.knowers != null && !Array.isArray(x.knowers)) x.knowers = [];
+    // 덧붙은 칸 — 모양이 어긋난 것만 걷어 낸다 (없으면 옛 기록 그대로)
+    for (const x of m.memories) { for (const k of ['witnesses', 'guessers', 'dim', 'learned'] as const) if (x[k] != null && !Array.isArray(x[k])) delete x[k]; }
+    for (const t of m.turns) { if (t.parts != null && !Array.isArray(t.parts)) delete t.parts; if (t.beats != null && !Array.isArray(t.beats)) delete t.beats; }
+    if (m.trackers != null && !Array.isArray(m.trackers)) delete m.trackers; if (m.dateFix != null && !Array.isArray(m.dateFix)) delete m.dateFix;
     if (m.conflictIgnore != null && !(Array.isArray(m.conflictIgnore) && m.conflictIgnore.every(x => typeof x === 'string'))) delete m.conflictIgnore;
     for (const c of m.cast) {   // 남긴 말 · 달라진 점 · 바탕 — 모양이 어긋난 것만 걷어 낸다
       c.lines = list(c.lines).filter(l => l && typeof l.text === 'string' && l.text.trim()).slice(-CHARACTER_LINES_MAX); c.growth = list(c.growth).filter(g => g && typeof g.text === 'string' && g.text.trim()).slice(-CHARACTER_GROWTH_MAX);

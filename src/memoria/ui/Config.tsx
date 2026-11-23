@@ -138,7 +138,10 @@ export function Config({ st }: { st: St }) {
       <Tog k="dueDates" label={t('memoria.config.aid.dueDates.label')} hint={t('memoria.config.aid.dueDates.hint')} after={re} />
       <Tog k="presentNow" label={t('memoria.config.aid.presentNow.label')} hint={t('memoria.config.aid.presentNow.hint')} after={re} />
       <Tog k="addressTerms" label={t('memoria.config.aid.addressTerms.label')} hint={t('memoria.config.aid.addressTerms.hint')} after={re} />
-      <Tog k="guardSecrets" label={t('memoria.config.aid.guardSecrets.label')} hint={t('memoria.config.aid.guardSecrets.hint')} after={re} /></Grid>
+      <Tog k="guardSecrets" label={t('memoria.config.aid.guardSecrets.label')} hint={t('memoria.config.aid.guardSecrets.hint')} after={re} />
+      <Tog k="storyDates" label={t('memoria.config.aid.storyDates.label')} hint={t('memoria.config.aid.storyDates.hint')} after={re} />
+      <Num k="sceneCards" label={t('memoria.config.aid.sceneCards.label')} title={t('memoria.config.aid.sceneCards.title')} min={0} max={2} step={1} after={re} />
+      <Num k="mindLines" label={t('memoria.config.aid.mindLines.label')} title={t('memoria.config.aid.mindLines.title')} min={0} max={3} step={1} after={re} /></Grid>
     </Sec>
 
     <Sec title={t('memoria.config.model.title')} desc={t('memoria.config.model.desc')}
@@ -154,6 +157,8 @@ export function Config({ st }: { st: St }) {
         <Sel k="@helpers.memory" label={t('memoria.config.model.conn.label')} title={t('memoria.config.model.conn.title')} opts={conns} />
         <Sel k="@helpers.memorySummary" label={t('memoria.config.model.connSummary.label')} title={t('memoria.config.model.connSummary.title')} opts={taskConns} />
         <Sel k="@helpers.memoryLight" label={t('memoria.config.model.connLight.label')} title={t('memoria.config.model.connLight.title')} opts={taskConns} />
+        <Sel k="@helpers.memoryCheck" label={t('memoria.config.model.connCheck.label')} title={t('memoria.config.model.connCheck.title')} opts={[['', t('memoria.config.model.connCheckSame')], ...conns.slice(1)]} />
+        <Sel k="@helpers.memoryFallback" label={t('memoria.config.model.connFallback.label')} title={t('memoria.config.model.connFallback.title')} opts={[['', t('memoria.config.model.connFallbackNone')], ...conns.slice(1)]} />
         <Num k="responseTokens" label={t('memoria.config.model.responseTokens.label')} title={t('memoria.config.model.responseTokens.title')} min={256} max={65536} step={512} />
         <Num k="reasoningHeadroom" label={t('memoria.config.model.reasoningHeadroom.label')} title={t('memoria.config.model.reasoningHeadroom.title')} min={0} max={32768} step={1000} /></Grid>
       <Note>{t('memoria.config.model.note.t1')}<b>{t('memoria.config.model.note.b1')}</b>{t('memoria.config.model.note.t2')}<code>finishReason: MAX_TOKENS</code>{t('memoria.config.model.note.t3')}</Note>
@@ -206,14 +211,18 @@ export function Config({ st }: { st: St }) {
       <Sel k="qrMode" label={t('memoria.config.status.qrMode.label')} title={t('memoria.config.status.qrMode.title')} opts={[['side', t('memoria.config.status.qrMode.side')], ['all', t('memoria.config.status.qrMode.all')], ['keep', t('memoria.config.status.qrMode.keep')]]} after={re} cls="half"
         extra={<Tb label={t('memoria.config.status.sorter.label')} name="shuffle" title={t('memoria.config.status.sorter.title')} onClick={e => { e.preventDefault(); openSideSorter(st); }} />} />
       <Tog k="statusInject" label={t('memoria.config.status.statusInject.label')} hint={t('memoria.config.status.statusInject.hint')} after={re} />
-      <Tog k="replyCheck" label={t('memoria.config.status.replyCheck.label')} hint={t('memoria.config.status.replyCheck.hint')} /></Grid>
+      <Tog k="replyCheck" label={t('memoria.config.status.replyCheck.label')} hint={t('memoria.config.status.replyCheck.hint')} />
+      <Tog k="checkConfirm" label={t('memoria.config.status.checkConfirm.label')} hint={t('memoria.config.status.checkConfirm.hint')} />
+      <Tog k="forgetHidden" label={t('memoria.config.status.forgetHidden.label')} hint={t('memoria.config.status.forgetHidden.hint')} /></Grid>
       <Note>{t('memoria.config.status.note')}</Note>
     </Sec>
 
     <Sec title={t('memoria.config.voice.title')} desc={t('memoria.config.voice.desc')}><Grid>
       <Tog k="styleGuard" label={t('memoria.config.voice.styleGuard.label')} hint={t('memoria.config.voice.styleGuard.hint')} after={re} />
       <Tog k="recallCooldown" label={t('memoria.config.voice.recallCooldown.label')} hint={t('memoria.config.voice.recallCooldown.hint')} after={re} />
+      <Sel k="recallVoice" label={t('memoria.config.voice.recallVoice.label')} title={t('memoria.config.voice.recallVoice.title')} opts={[['quiet', t('memoria.config.voice.recallVoice.quiet')], ['natural', t('memoria.config.voice.recallVoice.natural')], ['active', t('memoria.config.voice.recallVoice.active')]]} after={re} />
       <Tog k="recallQuotes" label={t('memoria.config.voice.recallQuotes.label')} hint={t('memoria.config.voice.recallQuotes.hint')} after={re} />
+      <Sel k="rawRecall" label={t('memoria.config.voice.rawRecall.label')} title={t('memoria.config.voice.rawRecall.title')} opts={[['auto', t('memoria.config.voice.rawRecall.auto')], ['off', t('memoria.config.voice.rawRecall.off')]]} after={re} />
       <Num k="voiceSamples" label={t('memoria.config.voice.voiceSamples.label')} title={t('memoria.config.voice.voiceSamples.title')} min={0} max={4} step={1} after={re} />
       <div className="mm-block mm-optset"><b>{t('memoria.config.voice.banned.title')}</b>
         <textarea className="inp" rows={3} placeholder={t('memoria.config.voice.banned.ph')} ref={banned} />
@@ -227,6 +236,7 @@ export function Config({ st }: { st: St }) {
       <Num k="recallWaitSec" label={t('memoria.config.speed.recallWaitSec.label')} title={t('memoria.config.speed.recallWaitSec.title')} min={0} max={60} step={1} cls="half" />
       <Num k="stableRefreshTurns" label={t('memoria.config.speed.stableRefreshTurns.label')} title={t('memoria.config.speed.stableRefreshTurns.title')} min={0} max={200} step={1} cls="half" />
       <Tog k="yieldToChat" label={t('memoria.config.speed.yieldToChat.label')} hint={t('memoria.config.speed.yieldToChat.hint')} />
+      <Tog k="waitTyping" label={t('memoria.config.speed.waitTyping.label')} hint={t('memoria.config.speed.waitTyping.hint')} />
       <Tog k="watchUpdates" label={t('memoria.config.speed.watchUpdates.label')} hint={t('memoria.config.speed.watchUpdates.hint')} />
       <Tog k="splitInjection" label={t('memoria.config.speed.splitInjection.label')} hint={<>{t('memoria.config.speed.splitInjection.hintBefore')}<b>{t('memoria.config.speed.splitInjection.hintBold')}</b>{t('memoria.config.speed.splitInjection.hintAfter')}</>} after={re} />
       <Tog k="lowThink" label={t('memoria.config.speed.lowThink.label')} hint={t('memoria.config.speed.lowThink.hint')} /></Grid>

@@ -4,10 +4,11 @@ import { quickCall, tokens } from '../../lib/engine';
 import type { MemoryApi } from './api';
 import type { CommitOpts } from './part2';
 import type { Mem, Msg, ChatM, Cfg, MemCheck, Summary, Pledge, CanonRow, StatusRow } from '../types';
-import { BATCH_TOKENS, G, PROMPTS, NARRATOR, PUBLIC_ONLY, LANG_DIRECTIVES, MEMORY_DEFAULTS, SHELVES, PROMPT_KEYS, empty, cache, mesHashOf, mesHashLegacySet, turnMatches, cleanStr, getStringHash, untouchedPrompt, transformTags, visibleProse, sanitizeRecord, cleanMultiline, FOSSIL, fossilShape, parseLoose, rollbackOrDrop, statusCache, updateTimers, BUNDLE_SKIP, activityLog, CHAT_IDLE_MAX_WAIT_MS, overrides, audits, lasts, freezes, recallRuns, SETTLED_AT_SUMMARY, PACKET_HEADER, PACKET_FOOTER } from './base';
+import { BATCH_TOKENS, G, PROMPTS, NARRATOR, PUBLIC_ONLY, LANG_DIRECTIVES, MEMORY_DEFAULTS, SHELVES, PROMPT_KEYS, empty, cache, mesHashOf, mesHashLegacySet, turnMatches, cleanStr, getStringHash, untouchedPrompt, transformTags, redoTurns, ekey, visibleProse, sanitizeRecord, cleanMultiline, FOSSIL, fossilShape, parseLoose, rollbackOrDrop, statusCache, updateTimers, BUNDLE_SKIP, activityLog, CHAT_IDLE_MAX_WAIT_MS, overrides, audits, lasts, freezes, recallRuns, SETTLED_AT_SUMMARY, PACKET_HEADER, PACKET_FOOTER } from './base';
 import * as MP from '../prompts';
-import { findStatusBars, statusOneLine, isPauseDirective, isPauseMessage, verifyIssues } from '../scene';
-import { withDeadline, parsePhraseList, BUNDLE_EXCLUDED, resolveBundleName, switchBundle, noteUsage } from '../craft';
+import { findStatusBars, statusOneLine, isPauseDirective, isPauseMessage, verifyIssues, applyVerdicts } from '../scene';
+import { withDeadline, parsePhraseList, BUNDLE_EXCLUDED, resolveBundleName, switchBundle, noteUsage, looksRefused, looksBlocked } from '../craft';
+import { REC_ANY } from './base';
 import { isOocText, looksOocReply } from '../stage';
 import type { Usage } from '../craft';
 import { t } from '../../i18n';
@@ -24,8 +25,9 @@ type KnownKeys<T> = { [K in keyof T as string extends K ? never : number extends
  * 사서 호출의 작업 묶음 — 'record' 턴 기록(사서) · 'summary' 요약 · 연대기 · 서고 정리 · 'light' 연속성 검사 · 장면 연출 · 서고에 묻기 · 말로 고치기 같은 가벼운 판단.
  * 받아 적기와 가벼운 판단에 같은 값의 모델을 쓸 이유가 없다 — 작업별로 연결을 달리 둘 수 있다 (S.settings.helpers.memorySummary · memoryLight, 비우면 사서 연결)
  */
-export type CallTask = 'record' | 'summary' | 'light';
-const TASK_HELPER: Record<string, string> = { summary: 'memorySummary', light: 'memoryLight' };
+export type CallTask = 'record' | 'summary' | 'light' | 'check';
+/** 'check'(연속성 검사 · 그 재확인)는 따로 고른 연결이 없으면 가벼운 작업용 연결을 따른다 */
+const TASK_HELPER: Record<string, string> = { summary: 'memorySummary', light: 'memoryLight', check: 'memoryCheck' };
 /** 오늘 쓴 양 — 브라우저에 남겨 새로 고쳐도 이어 센다 (어림값이라 서고 · 설정에는 넣지 않는다) */
 const USAGE_KEY = 'dreamland.memoria.usage';
 let usageToday: Usage | null | undefined;
@@ -64,6 +66,8 @@ export interface Part1 {
   resetPrompt(key: string): void;
   getStringHash: typeof getStringHash;
   conn(chat?: ChatM | null, task?: CallTask): ReturnType<typeof S.helperConn>;
+  fallbackConn(used?: { id?: string } | null): ReturnType<typeof S.helperConn> | null;
+  refusedReply(text: unknown): boolean;
   recordUsage(task: string, input: string, output: string): void;
   usage(): Usage | null;
   busy(): number;
@@ -102,6 +106,9 @@ export interface Part1 {
   tagSideMessage(chat: ChatM | null | undefined, msgs: Msg[] | null | undefined, msg: Msg | null | undefined, type?: string): boolean;
   saveMsgMarks(chat: ChatM, marked?: (Msg | null | undefined)[] | null): Promise<number>;
   checkOf(msg?: Msg | null): MemCheck | null;
+  setCheck(msg: Msg, h: string, check: MemCheck | null): void;
+  hadCheck(msg?: Msg | null): boolean;
+  noteTyping(hasText: boolean): void;
   checkReply(chat: ChatM | null | undefined, msgs: Msg[], msg: Msg | null | undefined, opt?: CheckOpts): Promise<MemCheck | null>;
   queueCheck(chat: ChatM | null | undefined, msgs: Msg[], msg: Msg | null | undefined, opt?: CheckOpts): Promise<MemCheck | null>;
   checkReplyNow(chat: ChatM | null | undefined, msgs: Msg[], msg: Msg | null | undefined, signal?: AbortSignal): Promise<MemCheck | null>;
@@ -127,6 +134,7 @@ export interface Part1 {
   batchEnds(mem: Mem, msgs: Msg[], i0: number, i1: number, K: number, includeHidden?: boolean): number[];
   commit(chat: ChatM, msgs: Msg[], ai: Msg, opts?: CommitOpts): Promise<Mem>;
   queueCommit(chat: ChatM, msgs: Msg[], ai: Msg, opts?: CommitOpts): Promise<Mem>;
+  redoChanged(chat: ChatM, msgs: Msg[]): Promise<number>;
   post(chat: ChatM, msgs: Msg[], signal?: AbortSignal): Promise<void>;
 }
 
@@ -187,7 +195,14 @@ export const part1: Part1 & ThisType<MemoryApi> = {
   },
   getStringHash,
   /** 이 작업에 쓸 연결 — 작업별로 따로 골랐고 그 연결이 아직 있으면 그것, 아니면 사서 연결(→ 보조 연결 → 대화 연결) */
-  conn(chat, task) { const own = task && TASK_HELPER[task] ? S.settings.helpers?.[TASK_HELPER[task]] : ''; return (own && S.get('conns', own)) || S.helperConn('memory', chat); },
+  conn(chat, task) {
+    const pick = (t?: string) => { const own = t && TASK_HELPER[t] ? S.settings.helpers?.[TASK_HELPER[t]] : ''; return (own && S.get('conns', own)) || null; };
+    return pick(task) || (task === 'check' ? pick('light') : null) || S.helperConn('memory', chat);
+  },
+  /** 막혔을 때 대신 쓸 연결 (S.settings.helpers.memoryFallback) — 고르지 않았거나, 지워졌거나, 방금 쓴 연결과 같으면 null */
+  fallbackConn(used) { const id = S.settings.helpers?.memoryFallback, c = id ? S.get('conns', id) : null; return c && c.id !== used?.id ? c : null; },
+  /** 기록 대신 돌아온 거절 · 사과문인가 — JSON 이나 기록 구조(WHEN/PLOT…)가 있으면 기록 안에 그런 말이 든 것이다 */
+  refusedReply(text) { const s = String(text ?? ''); return looksRefused(s) && !s.includes('{') && !REC_ANY.test(s); },
   /** 사서 호출 한 번을 오늘 쓴 양에 더한다 (글자 수로 어림 — 실패한 호출도 읽은 만큼은 나갔다) */
   recordUsage(task, input, output) {
     usageToday = noteUsage(loadUsage(), task, input, output, usageDay());
@@ -203,9 +218,17 @@ export const part1: Part1 & ThisType<MemoryApi> = {
   tok(want) { const c = this.cfg(), head = Math.max(0, +c.reasoningHeadroom || 0); return Math.max(want, Math.min(+c.responseTokens || want, want + head)); },
   /** 사서 호출. task 로 연결을 고르고(기본 'record'), 생각 적게(lowThink)는 모든 작업에 같은 설정을 쓴다 */
   async call(chat, system, user, maxTokens, signal, task = 'record') {
-    let reply = '';
-    try { reply = await quickCall(system, user, { maxTokens: this.tok(maxTokens || 1500), signal, conn: this.conn(chat, task), lowThink: this.cfg().lowThink !== false }); return reply; }
-    finally { try { this.recordUsage(task, `${system}\n${user}`, reply); } catch { /* 세지 못해도 호출 결과는 그대로 */ } }
+    let reply = ''; const conn = this.conn(chat, task), send = (c: typeof conn) => quickCall(system, user, { maxTokens: this.tok(maxTokens || 1500), signal, conn: c, lowThink: this.cfg().lowThink !== false });
+    const count = (out: string) => { try { this.recordUsage(task, `${system}\n${user}`, out); } catch { /* 세지 못해도 호출 결과는 그대로 */ } };
+    // 대체 연결: 연결이 내용을 문제 삼아 막았거나, 기록 · 요약 대신 거절문이 돌아왔을 때만 한 번 다른 연결로 다시 보낸다 (고르지 않았으면 아무 일도 없다)
+    const fb = this.fallbackConn(conn), swap = (why: string) => { count(reply); this.logActivity('defer', t('memoria.engine.log.fallback', { from: conn?.name || conn?.model || '?', to: fb!.name || fb!.model || '?', why })); return send(fb || undefined); };
+    try {
+      try { reply = await send(conn); }
+      catch (e: any) { if (!fb || signal?.aborted || e?.name === 'AbortError' || !looksBlocked(e)) throw e; reply = await swap(t('memoria.engine.why.blocked')); return reply; }
+      if (fb && (task === 'record' || task === 'summary') && this.refusedReply(reply)) { const first = reply; reply = ''; try { reply = await swap(t('memoria.engine.why.refused')); } catch (e: any) { if (e?.name === 'AbortError' || signal?.aborted) throw e; reply = first; } }
+      return reply;
+    }
+    finally { count(reply); }
   },
   /** note.replied: 모델이 답은 했는가 (연결 오류와 "읽을 수 없는 답"을 가른다) */
   async callJson(chat, system, user, maxTokens, signal, task = 'record', note) {
@@ -271,22 +294,27 @@ export const part1: Part1 & ThisType<MemoryApi> = {
    * 턴은 메시지 id 로 묶여 있어, 앞쪽 삭제로 번호가 밀려도 내용으로 자리를 다시 찾을 필요가 없다. 반환: 바뀐 것이 있는지 (저장은 부른 쪽이)
    */
   reconcile(mem, msgs) {
-    const byId = new Map((msgs || []).map(m => [m.id, m])), gone = [], inPlace = []; let changed = false;
+    const byId = new Map((msgs || []).map(m => [m.id, m])), gone = [], inPlace = [], partHit: typeof mem.turns = []; let changed = false;
+    // 기록한 뒤에 직접 숨긴 메시지 (설정 forgetHidden) — 자동 숨김(memHidden)과 일부러 색인한 숨긴 메시지(turn.hid)는 숨겨져 있어도 기록이 살아 있어야 한다
+    const forget = this.cfg().forgetHidden === true;
     for (const t of mem.turns) {
       const m = byId.get(t.msgId);
-      if (!m || m.role === 'user' || this.isSideMessage(m)) { gone.push(t); continue; }   // 이미 기록된 막간은 그 턴의 기억째 걷어낸다
-      const h = mesHashOf(m); if (t.hash === h) continue;
+      if (!m || m.role === 'user' || this.isSideMessage(m) || (forget && m.hidden && !m.memHidden && !t.hid && !t.failed)) { gone.push(t); continue; }   // 이미 기록된 막간은 그 턴의 기억째 걷어낸다
+      const h = mesHashOf(m);
+      // 기록에 함께 든 다른 메시지(내 말 · 묶음의 앞 답장)가 고쳐지거나 지워졌으면 이 기록은 옛 내용이다 — 걷어내고 다시 기록한다 (parts 가 없는 옛 기록은 보지 않는다)
+      if (t.hash === h) { if (Array.isArray(t.parts) && t.parts.some(([id, ph]) => { const p = byId.get(id); return !p || mesHashOf(p) !== ph; })) { inPlace.push(t); partHit.push(t); } continue; }
       if (mesHashLegacySet(m).has(t.hash!)) { t.hash = h; changed = true; continue; }   // 옛 방식 해시 → 새 해시로 옮긴다
       inPlace.push(t);
     }
     // 안전장치 — 여러 턴이 한꺼번에 "사라졌다"고 나왔는데 그 자리의 메시지가 멀쩡히 남아 있다면, 메시지를 고친 게 아니라 해시 계산 방식이 바뀐 것이다 (기록을 지우지 않고 해시만 새로 잰다)
     let orphans = [...gone, ...inPlace];
     if (inPlace.length >= 3 && inPlace.length >= orphans.length * 0.8) {
-      for (const t of inPlace) t.hash = mesHashOf(byId.get(t.msgId));
+      for (const t of inPlace) { t.hash = mesHashOf(byId.get(t.msgId)); if (Array.isArray(t.parts)) t.parts = t.parts.filter(([id]) => byId.has(id)).map(([id]) => [id, mesHashOf(byId.get(id))]); }
       console.warn(`[장기기억] 턴 ${inPlace.length}개의 해시가 맞지 않지만 메시지는 그대로 있어 기록을 유지했습니다 (해시 방식 변경으로 판단)`);
       orphans = gone; changed = true;
     }
     if (orphans.length) {
+      for (const t of partHit) if (orphans.includes(t)) { let set = redoTurns.get(mem.id); if (!set) redoTurns.set(mem.id, set = new Set()); set.add(t.msgId); }
       const dead = new Set<string | undefined>(orphans.map(t => t.msgId)), idx = orphans.map(t => mem.turns.indexOf(t)), lost = new Set(idx), alive: (n: number) => boolean = n => Number.isInteger(n) && n >= 0 && n < mem.turns.length && !lost.has(n);
       // 끝자락이 잘려 나간 경우(분기 · 스와이프 · 마지막 답변 삭제)는 턴마다 적어 둔 이전 모습으로 거꾸로 되돌린다 — 미래에 고친 인물 · 상태 · 물건이 남지 않게
       const undone = applyUndo(mem, new Set(orphans));
@@ -364,6 +392,12 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     mem.memories = mem.memories.filter(m => m.msgId !== msgId || m.manual || m.pinned);
     // 이 턴이 "지나간 일"로 물렸던 기억 · 상태 · 물건은 다시 살아난다 (사서가 기록하며 물린 것은 답변으로, 요약이 물린 것은 턴 번호로 묶여 있다. 직접 물린 것은 그대로)
     for (const m of mem.memories) { const r = m.retired; if (r && !r.manual && (r.msgId ? r.msgId === msgId : at >= 0 && r.turn === at)) delete m.retired; }
+    // 이 답변에서 누가 알게 됐다 · 짐작하게 됐다고 적은 것은 답변과 함께 물린다 (그 전에 짐작만 하던 사람은 다시 짐작으로)
+    for (const m of mem.memories) {
+      const mine = Array.isArray(m.learned) ? m.learned.filter(x => x.msgId === msgId) : []; if (!mine.length) continue;
+      for (const x of mine) { const not = (n: string) => ekey(n) !== ekey(x.who); if (x.guess) m.guessers = (m.guessers || []).filter(not); else { m.knowers = (m.knowers || []).filter(not); if (x.wasGuess) m.guessers = [...(m.guessers || []), x.who]; } }
+      m.learned = m.learned!.filter(x => x.msgId !== msgId); if (!m.learned.length) delete m.learned; if (m.guessers && !m.guessers.length) delete m.guessers;
+    }
     if (at >= 0) { for (const it of mem.items) if (it.dormant === at) delete it.dormant; for (const s of mem.status) if (s.expired === at) delete s.expired; }
     for (const key of ['canon', 'status']) mem[key] = rollbackOrDrop(mem[key] as (CanonRow | StatusRow)[], msgId);
     // 그 턴에 처음 생긴 서약만 지운다 — 옛 서약이 이 턴에 다시 적혀 턴만 옮겨진 경우까지 지우면 오래 지켜 온 서약이 통째로 사라진다
@@ -520,7 +554,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     let n = 0;
     await S.patchMsgs(chat.id, [...by.keys()], row => {
       const m = by.get(row.id); if (!m || row === m) return false; let changed = false;
-      for (const k of ['memSide', 'memCheck', 'memOoc']) { if (m[k] === undefined) { if (k in row) { delete row[k]; n++; changed = true; } } else { row[k] = m[k]; n++; changed = true; } }
+      for (const k of ['memSide', 'memCheck', 'memChecks', 'memOoc', 'memStar']) { if (m[k] === undefined) { if (k in row) { delete row[k]; n++; changed = true; } } else { row[k] = m[k]; n++; changed = true; } }
       return changed;
     });
     return n;
@@ -528,7 +562,16 @@ export const part1: Part1 & ThisType<MemoryApi> = {
 
   // ════════ 연속성 검사 — 새 답변이 기록 · 최근 대화와 어긋나는지 ════════
   /** 메시지에 붙은 점검 결과 — 그 글에 대한 것일 때만 (스와이프 · 수정으로 글이 바뀌면 옛 경고는 무효) */
-  checkOf(msg) { const c = msg?.memCheck; return c && c.h === mesHashOf(msg) ? c : null; },
+  checkOf(msg) { if (!msg) return null; const h = mesHashOf(msg), c = msg.memCheck; return c && c.h === h ? c : msg.memChecks?.[h] || null; },
+  /** 점검 결과를 그 글(해시)의 것으로 붙인다 — 다른 답변으로 넘겼다 돌아와도 그 글의 경고가 남게 글마다 맡아 둔다 (최근 6개). check 가 null 이면 그 글의 결과를 지운다 */
+  setCheck(msg, h, check) {
+    const all = { ...(msg.memChecks || {}) }; delete all[h];
+    if (check) { all[h] = check; msg.memCheck = check; } else if (msg.memCheck?.h === h) delete msg.memCheck;
+    const keys = Object.keys(all); for (const k of keys.slice(0, Math.max(0, keys.length - 6))) delete all[k];
+    if (Object.keys(all).length) msg.memChecks = all; else delete msg.memChecks;
+  },
+  /** 이 메시지에 (어느 글에 대해서든) 점검 결과가 붙은 적이 있는가 */
+  hadCheck(msg) { return !!msg && (!!msg.memCheck || !!Object.keys(msg.memChecks || {}).length); },
   /**
    * 새 답변 하나를 서고 · 직전 대화와 견주어 어긋난 곳을 찾고, 결과를 메시지에 붙인다: msg.memCheck = { h, issues: [{ quote, evidence, source, problem }], filtered: [{ …, why }] }. 답변을 고쳐 쓰지는 않는다.
    * 점검은 기록과 같은 줄에 세운다 — 보조 모델을 동시에 두 번 부르지 않는다 (opt.queued === false 면 줄 세우지 않고 바로). 설정 replyCheck 가 꺼져 있으면 하지 않는다. 반환: 붙인 결과 또는 null
@@ -555,17 +598,27 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     const userPrompt = `${context}\n\n<new_reply number="#${no}" by="${msg.name || char?.name || 'Character'}">\n${reply.slice(0, 8000)}\n</new_reply>`;
     let result = null;
     try {
-      const { value, timedOut } = await withDeadline(this.call(chat, MP.REPLY_CHECK_PROMPT, userPrompt, 1500, signal, 'light'), 120000, null);
+      const { value, timedOut } = await withDeadline(this.call(chat, MP.REPLY_CHECK_PROMPT, userPrompt, 1500, signal, 'check'), 120000, null);
       if (timedOut) this.logActivity('error', t('memoria.engine.log.checkTimeout', { n: no })); else result = parseLoose(value);
     } catch (e: any) { if (e?.name === 'AbortError' || signal?.aborted) throw e; this.logActivity('error', t('memoria.engine.log.checkFailed', { n: no, why: e?.message || e })); }
     // 점검하는 사이 다른 답변으로 넘겼거나 고쳤으면 결과를 붙이지 않는다
     if (!result || (this.get(chat.id) || mem) !== mem || !msgs.includes(msg) || mesHashOf(msg) !== h) return null;
-    const found = Array.isArray(result) ? result : result.issues, { kept, filtered } = verifyIssues(found, reply, context);
-    if (kept.length || filtered.length) msg.memCheck = { h, issues: kept, filtered }; else delete msg.memCheck;
+    const found = Array.isArray(result) ? result : result.issues; let { kept, filtered } = verifyIssues(found, reply, context), confirmed = false;
+    // 재확인: 경고가 나왔을 때만 한 번 더 따진다 — 점검은 옛 요약을 최근 대화보다 믿거나, 최근 대화가 이미 바꿔 놓은 것을 모순으로 짚곤 한다.
+    // 근거를 확인한 경고는 재확인이 "아니다"라고 해야 빠지고, 근거를 확인하지 못한 경고는 "맞다"고 해야 살아난다. 재확인이 실패하면 처음 결과 그대로 둔다
+    if (cfg.checkConfirm !== false && (kept.length || filtered.length)) {
+      const all = [...kept, ...filtered], listed = all.map((x, n) => `${n + 1}. reply: "${x.quote}" — conflicts with: "${x.evidence || '(no evidence quoted)'}"${x.source ? ` (${x.source})` : ''} — ${x.problem}${n >= kept.length ? ' [the quoted evidence was not found in the material]' : ''}`).join('\n');
+      try {
+        const second = await withDeadline(this.call(chat, MP.CHECK_CONFIRM_PROMPT, `${userPrompt}\n\n<warnings>\n${listed}\n</warnings>`, 900, signal, 'check'), 120000, null), verdicts = second.timedOut ? null : parseLoose<{ verdicts?: unknown }>(second.value);
+        if (verdicts && Array.isArray(verdicts.verdicts)) { ({ kept, filtered } = applyVerdicts(kept, filtered, verdicts.verdicts)); confirmed = true; }
+      } catch (e: any) { if (e?.name === 'AbortError' || signal?.aborted) throw e; console.debug('[장기기억] 경고 재확인 실패 — 처음 결과를 둡니다', e); }
+      if ((this.get(chat.id) || mem) !== mem || !msgs.includes(msg) || mesHashOf(msg) !== h) return null;
+    }
+    this.setCheck(msg, h, kept.length || filtered.length ? { h, issues: kept, filtered, ...(confirmed ? { confirmed } : {}) } : null);
     await this.saveMsgMarks(chat, [msg]).catch(e => console.warn('[장기기억] 점검 결과 저장', e));
     emit('memory:check', { chatId: chat.id, msgId: msg.id, check: msg.memCheck || null });
     const total = Array.isArray(found) ? found.length : 0;
-    this.logActivity('check', total ? t('memoria.engine.log.checkFound', { n: no, total, filtered: filtered.length, kept: kept.length }) : t('memoria.engine.log.checkClean', { n: no }));
+    this.logActivity('check', total ? t('memoria.engine.log.checkFound', { n: no, total, filtered: filtered.length, kept: kept.length }) + (confirmed ? t('memoria.engine.log.checkConfirmed') : '') : t('memoria.engine.log.checkClean', { n: no }));
     return msg.memCheck || null;
   },
   /** 서고에 묻기 · 말로 고치기 · 연속성 검사가 장부 재료를 모을 때의 옵션 — 질의는 직접 주고, 장면(지금 자리에 있는 인물 · 상태창)은 대화에서 읽는다. 연출은 싣지 않는다 */
@@ -597,6 +650,8 @@ export const part1: Part1 & ThisType<MemoryApi> = {
   /** 메시지를 직접 고쳤을 때: 답변이면 그 턴을 걷어내고, 이미 확정된 응답이면 새 내용으로 다시 기록한다 — 아직 확정 전인 응답(기록 지연 · 첫 인사)은 확정되면 그때 기록된다. 답변이 아니면 맞추기만 */
   async onMessageEdited(chat, msgs, msg) {
     const cfg = this.cfg(); if (!cfg.enabled || !chat || !msg) return;
+    // 경고가 붙어 있던 답변을 고쳤으면 고친 글을 다시 점검한다 (호출 1회 — 경고가 없던 답변은 다시 보지 않는다). 기록과 같은 줄에 세워 보조 모델을 동시에 두 번 부르지 않는다
+    if (cfg.replyCheck && msg.role === 'assistant' && !msg.hidden && this.hadCheck(msg) && !this.checkOf(msg)) Promise.resolve().then(() => this.checkReply(chat, msgs, msg)).catch(e => console.warn('[장기기억] 고친 답변 점검', e));
     const mem = await this.load(chat.id), i = (msgs || []).indexOf(msg);
     if (msg.role === 'assistant' && !msg.hidden && cfg.auto) {
       // 대화 모드 묶음: 기록이 없는 답장이면 그 답장을 덮고 있는 묶음 기록(뒤의 첫 기록)을 새 내용으로 다시 만든다
@@ -607,19 +662,23 @@ export const part1: Part1 & ThisType<MemoryApi> = {
       }
       if (mem.turns.some(t => t.msgId === msg.id)) { this.dropTurn(mem, msg.id); await this.save(mem); }
       if (i >= 0 && this.isSettledForRecord(msgs, i)) await this.queueCommit(chat, msgs, msg);
-    } else if (this.reconcile(mem, msgs)) await this.save(mem);
+    } else if (this.reconcile(mem, msgs)) { await this.save(mem); if (redoTurns.get(chat.id)?.size) await this.enqueue(() => this.redoChanged(chat, msgs)); }
   },
   /** 답변을 생성하는 중이면 끝날 때까지 기다린다 (설정 yieldToChat). 끝 신호를 놓쳐도 영영 멈추지 않게 3분 상한 */
   async waitForChatIdle(what = '기록') {
-    if (!G.chatGenerating || !this.cfg().yieldToChat) return;
+    // 입력 칸에 글을 쓰는 중이면 요약 · 서고 정리는 시작하지 않는다 (설정 waitTyping) — 시작하자마자 새 답변과 겹친다. 20초 동안 더 치지 않으면 쓰다 만 것으로 본다
+    const typing = () => what === '요약·서고 정리' && this.cfg().waitTyping !== false && G.typingText && Date.now() - G.typingAt < 20000, busy = () => G.chatGenerating && this.cfg().yieldToChat;
+    if (!busy() && !typing()) return;
     const began = Date.now(); this.logActivity('defer', t('memoria.engine.log.defer', { what: WAIT_WHAT[what] ? t('memoria.engine.task.' + WAIT_WHAT[what]) : what }));
-    while (G.chatGenerating && this.cfg().yieldToChat) {
+    while (busy() || typing()) {
       if (Date.now() - G.chatGeneratingSince > CHAT_IDLE_MAX_WAIT_MS) { G.chatGenerating = false; G.chatGeneratingSince = 0; break; }
       if (Date.now() - began > CHAT_IDLE_MAX_WAIT_MS) break;
       await new Promise(r => setTimeout(r, 400));
     }
   },
   chatGenerating: () => G.chatGenerating,
+  /** 입력 칸에 글을 쓰고 있다고 알려 둔다 (대화 화면이 부른다). hasText: 입력 칸에 글이 있는가 */
+  noteTyping(hasText) { G.typingText = !!hasText; G.typingAt = Date.now(); },
   /** 사서 일지 — 회상 · 기록 · 요약처럼 저절로 일어난 일을 남긴다 */
   activityLog,
   /** extra: 줄에 덧붙일 값 (예: { chatId }) — kind · text · at · count 는 덮지 않는다 */
@@ -714,12 +773,26 @@ export const part1: Part1 & ThisType<MemoryApi> = {
       this.reconcile(mem, msgs);
       if (i >= 0 && (this.tagSideMessage(chat, msgs, ai) || this.isSideMessage(ai))) return mem;   // 막간은 기록도 뒷정리도 하지 않는다
       if (i >= 0 && this.batchSize(chat) <= 1 && this.requiredStepsFor(msgs, i) === 0) await this.commitOne(chat, msgs, ai, {});   // (묶음 기록은 아래에서 묶음이 찼을 때)   // 지연 0 이면 응답이 도착하자마자
+      await this.redoChanged(chat, msgs);
       for (const m of this.commitSettledTurns(chat, mem, msgs)) await this.commitOne(chat, msgs, m, {});   // 이야기가 필요한 만큼 더 나아간 응답 (첫 인사 포함)
       await this.post(chat, msgs);
       return mem;
     });
   },
   queueCommit(chat, msgs, ai, opts = {}) { return this.commit(chat, msgs, ai, opts); },
+  /** 맞추기가 걷어낸 턴(기록에 든 내 말 · 묶음 속 답장이 바뀜)을 새 내용으로 다시 기록한다. 아직 확정 전이거나 사라진 답변은 건너뛴다 (그 답변은 평소 흐름이 기록한다) */
+  async redoChanged(chat, msgs) {
+    const set = redoTurns.get(chat.id); if (!set?.size) return 0;
+    redoTurns.delete(chat.id); const cfg = this.cfg(); if (!cfg.enabled || !cfg.auto) return 0;
+    let n = 0;
+    for (const id of set) {
+      const i = msgs.findIndex(m => m?.id === id), m = msgs[i]; if (i < 0 || m.role !== 'assistant' || this.isSideMessage(m) || !msgText(m).trim() || !this.isSettledForRecord(msgs, i)) continue;
+      const mem = await this.load(chat.id); if (mem.turns.some(t => t.msgId === id)) continue;
+      this.logActivity('update', t('memoria.engine.log.updated', { n: i + 1 }));
+      await this.commitOne(chat, msgs, m, { force: !!m.hidden }); n++;   // 요약되어 숨겨진 구간의 기록도 새 내용으로 다시 적는다
+    }
+    return n;
+  },
   /** 답변 뒤 뒷정리: 자동 숨김 · 질의 임베딩 · 장면 연출 (다음 답변을 위해 미리 계산해 둔다) */
   async post(chat, msgs, signal) {
     const cfg = this.cfg();

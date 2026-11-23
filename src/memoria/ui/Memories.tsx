@@ -7,6 +7,7 @@ import { parsePhraseList } from '../craft';
 import { MANUAL_MAX, Mx, cut, noMap, onJump } from './viewsShared';
 import { toast } from '../../ui';
 import { t } from '../../i18n';
+import { Tr } from './ReaderView';
 import * as memMod from '../../lib/memory';
 
 const memDefs = (owners: string[]): FormDefs => {
@@ -14,17 +15,23 @@ const memDefs = (owners: string[]): FormDefs => {
   return [
     { k: 'summary', label: t('memoria.memories.f.summary'), type: 'area', rows: 3 }, { k: 'kind', label: t('memoria.memories.f.kind'), type: 'select', opts: Object.entries(KINDS), third: true }, { k: 'visibility', label: t('memoria.memories.f.visibility'), type: 'select', opts: Object.entries(VIS), third: true }, { k: 'owner', label: t('memoria.memories.f.owner'), third: true, ph: owners.join(', ') },
     { k: 'knowers', label: t('memoria.memories.f.knowers'), type: 'tags', hint: t('memoria.memories.f.knowersHint') },
+    { k: 'guessers', label: t('memoria.memories.f.guessers'), type: 'tags', hint: t('memoria.memories.f.guessersHint') },
     { k: 'importance', label: t('memoria.memories.f.importance'), type: 'range', min: 0, max: 1, step: 0.05 }, { k: 'quote', label: t('memoria.memories.f.quote') },
     { k: 'entities', label: t('memoria.memories.f.entities'), type: 'tags', half: true }, { k: 'hints', label: t('memoria.memories.f.hints'), type: 'tags', half: true }, { k: 'tags', label: t('memoria.memories.f.tags'), type: 'tags', half: true }, { k: 'trigger', label: t('memoria.memories.f.trigger'), half: true, ph: t('memoria.memories.f.triggerPh') },
     { k: 'pinned', label: t('memoria.memories.f.pinned'), type: 'check' }, { k: 'disabled', label: t('memoria.memories.f.disabled'), type: 'check' }];
 };
-async function editMem(st: StOpen, m?: MemItem) {
+export async function editMem(st: StOpen, m?: MemItem) {
   const mem = st.mem, M = Mx(), owners = [...new Set([...mem.cast.map(c => c.name), ...mem.memories.map(x => x.owner).filter(Boolean)])] as string[];
-  const d = await editBox<Partial<MemItem>>(m ? t('memoria.memories.editTitle') : t('memoria.memories.addTitle'), m ? { knowers: [], ...m } : { kind: 'fact', summary: '', quote: '', importance: 0.8, entities: [], tags: ['manual'], hints: [], visibility: 'public', owner: '', knowers: [], trigger: '', pinned: false, disabled: false }, memDefs(owners), { wide: true });
+  const d = await editBox<Partial<MemItem>>(m ? t('memoria.memories.editTitle') : t('memoria.memories.addTitle'), m ? { knowers: [], guessers: [], ...m } : { kind: 'fact', summary: '', quote: '', importance: 0.8, entities: [], tags: ['manual'], hints: [], visibility: 'public', owner: '', knowers: [], trigger: '', pinned: false, disabled: false }, memDefs(owners), { wide: true });
   if (!d || !d.summary?.trim()) return;
   d.summary = cut(d.summary, MANUAL_MAX);
   // 아는 사람은 비공개 기억에만 남긴다 — 이름은 인물 카드의 표기로 맞춘다
   d.knowers = (d.visibility || 'public') === 'public' ? [] : [...new Set((d.knowers || []).map(e => M.canonName(mem, cut(e, 60))).filter(Boolean))].slice(0, 6);
+  d.guessers = (d.visibility || 'public') === 'public' ? [] : [...new Set((d.guessers || []).map(e => M.canonName(mem, cut(e, 60))).filter(Boolean))].filter(n => n !== d.owner && !(d.knowers || []).includes(n)).slice(0, 4);
+  // 아는 사람 · 짐작하는 사람을 손으로 고쳤으면 잠근다 — 사서가 "나중에 알게 됐다"로 덮어쓰지 않는다
+  const same = (a?: string[], b?: string[]) => [...(a || [])].sort().join('\u0001') === [...(b || [])].sort().join('\u0001');
+  if (m && (!same(m.knowers, d.knowers) || !same(m.guessers, d.guessers))) { d.knowLock = true; d.learned = undefined; }
+  if (!d.guessers.length) d.guessers = undefined;
   if (m) { if (d.summary !== m.summary) { d.manual = true; delete m.av; } Object.assign(m, d); delete m.av; await M.save(mem); }   // 직접 다듬은 기억은 스와이프 롤백 · 상한 정리 · 서고 정리에서 보호한다
   else { await M.add(st.chat.id, d); toast(t('memoria.memories.added'), 'ok'); }
   st.draw();
@@ -50,7 +57,7 @@ export function Memories({ st }: { st: StOpen }) {
         {m.retired ? <Revive title={t('memoria.memories.reviveTitle') + (m.retired.now ? t('memoria.memories.retiredNow', { now: m.retired.now }) : '')} onClick={() => { delete m.retired; void save(); }} /> : null}
         <span className="mm-actions"><Ib name="book" title={t('memoria.memories.source')} onClick={() => showSource(st, m)} />{m.retired ? null : <Ib name="glass" title={t('memoria.memories.retire')} onClick={() => { m.retired = { turn: -1, now: '', manual: true }; void save(); }} />}<Ib name="pin" title={m.pinned ? t('memoria.memories.unpin') : t('memoria.memories.pin')} onClick={() => { m.pinned = !m.pinned; void save(); }} cls={m.pinned ? 'on' : ''} />
           <Ib name={m.disabled ? 'eyeoff' : 'eye'} title={m.disabled ? t('memoria.memories.enable') : t('memoria.memories.disable')} onClick={() => { m.disabled = !m.disabled; void save(); }} /><Ib name="edit" title={t('common.edit')} onClick={() => editMem(st, m)} /><Del st={st} arr="memories" x={m} what={t('memoria.memories.thisMemory')} /></span></header>
-      <p className="mm-sum">{m.summary}</p>{m.quote ? <blockquote>{`"${m.quote}"`}</blockquote> : null}
+      <p className="mm-sum"><Tr>{m.summary}</Tr></p>{m.quote ? <blockquote>{`"${m.quote}"`}</blockquote> : null}
       {(m.entities || []).length || (m.tags || []).length || (m.hints || []).length || m.trigger || (hidden && others.length) ? <div className="mm-chips">{hidden && others.length ? <span className="mm-chip know" title={t('memoria.memories.knowChipTitle')}><Ico name={VIS_IC[vis] || 'lock'} size={11} />{t('memoria.memories.knowChip', { names: others.join(', ') })}</span> : null}
         {(m.entities || []).map((e, i) => <Chip key={'e' + i} text={'@' + e} cls="ent" />)}{(m.tags || []).map((t, i) => <Chip key={'t' + i} text={'#' + t} />)}{(m.hints || []).map((t, i) => <Chip key={'h' + i} text={'?' + t} cls="hint" />)}{m.trigger ? <Chip text={'⚑ ' + m.trigger} cls="trig" /> : null}</div> : null}
     </article>;

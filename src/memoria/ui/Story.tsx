@@ -13,6 +13,8 @@ import * as memMod from '../../lib/memory';
 import { chunkTurnsOf } from '../engine/base';
 import * as core from '../../lib/core';
 import { t } from '../../i18n';
+import { useReaderFlow } from './ReaderView';
+import type { FlowNode } from '../story';
 
 const JumpBtn = ({ n }: { n: number }) => <button className="mm-st-jump" type="button" data-mes={n}>{`#${n}`}</button>;
 interface Slot { el: Element; s: Summary; chunk: boolean }
@@ -81,11 +83,11 @@ export function Story({ st }: { st: StOpen }) {
       : <><button className="btn ghost mm-st-export" type="button" title={t('memoria.story.copyMd')} onClick={() => void copyMd(shownRows())}>MD</button><button className="btn ghost mm-st-export" type="button" title={t('memoria.story.saveCsv')} onClick={() => download('memoria-timeline.csv', timelineCsv(shownRows()), 'text/csv')}>CSV</button></>}</div>;
   const html = (cls: string | undefined, s: string, key: string) => <div key={key} className={cls} dangerouslySetInnerHTML={{ __html: s }} />;
   const rows = v.tab === 'line' || v.tab === 'table' ? buildTimelineRows(storeOf(st, no)) : [];
-  let kids: ReactNode, flow = '';
+  let kids: ReactNode, flow = '', flowNodes: FlowNode[] = [];
   if (v.tab === 'flow') {
     const all = [...mem.arcs.map(s => ({ ...s, level: 'arc' })), ...mem.chunks.map(s => ({ ...s, level: 'chunk' }))].sort((a, b) => (a.carried ? -1 : 0) - (b.carried ? -1 : 0) || a.from - b.from);
     const marksIn = (s: Summary) => (s.carried ? [] : mem.milestones.filter(m => (m.turn as number) >= s.from && (m.turn as number) <= s.to));
-    if (all.length) flow = flowHtml(all.map((s, i) => ({ id: s.id, level: s.level, fromTurn: s.from + 1, toTurn: s.to + 1, text: s.text, carried: s.carried, carriedFrom: s.carriedFrom, marks: marksIn(s), open: i >= all.length - 2, unverified: s.carried ? undefined : s.unverified })));
+    if (all.length) { flowNodes = all.map((s, i) => ({ id: s.id, level: s.level, fromTurn: s.from + 1, toTurn: s.to + 1, text: s.text, carried: s.carried, carriedFrom: s.carriedFrom, marks: marksIn(s), open: i >= all.length - 2, unverified: s.carried ? undefined : s.unverified })); flow = flowHtml(flowNodes); }
     kids = all.length ? html(undefined, flow, 'flow') : <None text={t('memoria.story.emptyFlow')} />;
   } else if (v.tab === 'line') {
     const shown = new Set(filterTimelineRows(rows, v).map(r => r.id)), dim = new Set(rows.filter(r => !shown.has(r.id)).map(r => r.id));
@@ -98,6 +100,7 @@ export function Story({ st }: { st: StOpen }) {
     kids = [tools(), html('mm-st-results', `${tableHtml(filterTimelineRows(rows, v), v)}${history.length ? `<details class="mm-details"><summary>${t('memoria.story.statusLog', { n: history.length })}</summary>${statusListHtml(history)}</details>` : ''}`, 'res')];
   }
   // 흐름 카드 머리의 버튼 자리 — 눌러도 카드가 접히지 않게
+  useReaderFlow(viewRef, flow, flowNodes, flowHtml);   // 읽는 말로 보기: 펼쳐져 보이는 카드의 요약만 옮겨 그 카드 안에 갈아 끼운다
   const [slots, setSlots] = useState<Slot[]>([]);
   useLayoutEffect(() => {
     const list: Slot[] = [];

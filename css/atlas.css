@@ -152,7 +152,7 @@
 .at-mfoot { font-size: 12.5px; }
 
 /* ── 별이 켜지는 카드 ── 화면 오른쪽 아래 구석. 알림 줄(#toasts)과 겹치지 않게 옆으로 */
-.at-toasts { position: fixed; z-index: 95; right: 18px; top: 72px; display: grid; gap: 8px; width: min(340px, calc(100vw - 24px)); pointer-events: none; }
+.at-toasts { position: fixed; z-index: 55; right: 18px; top: 72px; display: grid; gap: 8px; width: min(340px, calc(100vw - 24px)); pointer-events: none; }
 .at-card { pointer-events: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; padding: 8px 6px 8px 8px; animation: at-rise .42s var(--fx-out) both; }
 @keyframes at-rise { from { opacity: 0; transform: translateY(8px); } }
 .at-cmain { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; align-items: center; text-align: left; min-height: 92px; }

@@ -8,9 +8,10 @@ import { toast } from '../../ui';
 import { tokens } from '../../lib/engine';
 import * as memMod from '../../lib/memory';
 import { t } from '../../i18n';
+import type { RecallTest } from '../engine/part6';
 
 // 장부 절 이름(엔진의 영어 이름) → 화면 이름 키
-const SEC_KEY: Record<string, string> = { Canon: 'canon', Cast: 'cast', Bonds: 'bonds', 'Notable Items': 'items', 'Turning Points': 'turningPoints', 'Story So Far': 'storySoFar', Pledges: 'pledges', 'Recent Turns': 'recentTurns', 'Recalled Moments': 'recalled', 'Hidden Knowledge': 'hidden', 'Source Excerpts': 'sources', 'Scene Now': 'sceneNow', 'Status Board': 'status', Direction: 'direction', 'People in the Scene Now': 'peopleNow', 'Promises with a Date': 'promises', 'How They Address Each Other': 'address' };
+const SEC_KEY: Record<string, string> = { Canon: 'canon', Cast: 'cast', Bonds: 'bonds', 'Notable Items': 'items', 'Turning Points': 'turningPoints', 'Story So Far': 'storySoFar', Pledges: 'pledges', 'Recent Turns': 'recentTurns', 'Recalled Moments': 'recalled', 'Hidden Knowledge': 'hidden', 'Source Excerpts': 'sources', 'Scene Now': 'sceneNow', 'Status Board': 'status', Direction: 'direction', 'People in the Scene Now': 'peopleNow', 'Promises with a Date': 'promises', 'How They Address Each Other': 'address', 'Recalled Scene': 'sceneCard', 'On Their Minds': 'minds', 'Where the Story Is Heading': 'plans' };
 const secName = (n: string) => SEC_KEY[n] ? t('memoria.overview.sec.' + SEC_KEY[n]) : n;
 const PLEDGE_ST: Record<string, string> = { active: 'memoria.overview.pledge.active', resolved: 'memoria.overview.pledge.resolved', dormant: 'memoria.overview.pledge.dormant' };
 /** 사서가 제안한 정정 한 건을 사람이 읽는 글로 */
@@ -36,6 +37,9 @@ export function Overview({ st }: { st: StOpen }) {
   if (seen !== init) { setSeen(init); setText(init); }
   const taRef = useRef<HTMLTextAreaElement>(null), qRef = useRef<HTMLInputElement>(null), eqRef = useRef<HTMLInputElement>(null), askRef = useRef<HTMLButtonElement>(null), sendRef = useRef<HTMLButtonElement>(null), logRef = useRef<HTMLDivElement>(null);
   const [ans, setAns] = useState<string>(st.answer || '');
+  // 회상 시험: 이 말을 보내면 무엇이 떠오르는지 (모델을 부르지 않고, 회상 학습 · 쉬어가기에 남지 않는다)
+  const pRef = useRef<HTMLInputElement>(null), [probe, setProbe] = useState<RecallTest | null>(null);
+  const runProbe = () => { const q = (pRef.current?.value || '').trim(); if (!q) return; try { setProbe(M.recallTest(chat, q, msgs)); } catch (e) { console.warn('[장기기억] 회상 시험', e); } };
   useLayoutEffect(() => { const l = logRef.current; if (l) l.scrollTop = l.scrollHeight; });
   const tk = tokens(text), mark = st.draft != null ? t('memoria.overview.mark.draft') : once ? t('memoria.overview.mark.once') : pin ? t('memoria.overview.mark.pinned') : '';
   const live = p && !p.fixed && st.draft == null;
@@ -127,6 +131,15 @@ export function Overview({ st }: { st: StOpen }) {
       <details className="mm-details" open={!!st.openDiag} onToggle={e => { st.openDiag = e.currentTarget.open; }}><summary>{t('memoria.overview.diagSummary')}</summary>{diag}</details>
     </Sec>
     {direction}
+    <Sec title={t('memoria.overview.probe.title')} desc={t('memoria.overview.probe.desc')}>
+      <div className="row"><input ref={pRef} className="inp" placeholder={t('memoria.overview.probe.ph')} onKeyDown={enter(runProbe)} /><Btn label={t('memoria.overview.probe.btn')} ic="search" cls="ghost" onClick={runProbe} /></div>
+      {probe ? <div className="mm-rows mm-probe">
+        {probe.rows.map(r => <div className="mm-row" key={r.id}><span className="mm-row-text">{r.hidden ? <em className="mm-tag">{t('memoria.overview.sec.hidden')}</em> : null}{r.summary}<small>{` — ${r.reason || t('memoria.engine.why.score')}${r.score ? ` (${r.score.toFixed(2)})` : ''}`}</small></span></div>)}
+        {probe.chapter ? <div className="mm-row"><span className="mm-row-text"><em className="mm-tag">{t('memoria.overview.sec.storySoFar')}</em>{probe.chapter.slice(0, 400)}</span></div> : null}
+        {probe.cards.map((c, i) => <pre className="mm-pre" key={`c${i}`}>{c}</pre>)}
+        {probe.transcript.map((c, i) => <pre className="mm-pre" key={`t${i}`}>{c}</pre>)}
+        {!probe.rows.length && !probe.chapter && !probe.cards.length && !probe.transcript.length ? <None text={t('memoria.overview.probe.none')} /> : null}</div> : null}
+    </Sec>
     <Sec title={t('memoria.overview.ask.title')} desc={<span>{t('memoria.overview.ask.descBefore')}<code>/memoria-ask</code>{t('memoria.overview.ask.descAfter')}</span>}>
       <div className="row"><input ref={qRef} className="inp" placeholder={t('memoria.overview.ask.ph')} defaultValue={st.question || ''} onChange={e => { st.question = e.target.value; }} onKeyDown={enter(() => void ask(askRef.current))} />{btnEl(t('memoria.overview.ask.btn'), 'search', 'primary', askRef, () => void ask(askRef.current))}</div>
       <div className="mm-answer" hidden={!ans}>{ans}</div>
