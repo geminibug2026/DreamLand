@@ -35,11 +35,13 @@ export function Figure({ fig, m, sw, it }: { fig: HTMLElement; m: Msg; sw: Swipe
   </>;
 }
 
+/** 삽화 한 장이 차지하는 너비 — 그리는 중인 자리도 같은 너비로 잡아, 다 그려졌을 때 화면이 밀리지 않게 한다 */
+const figWidth = (c: { compact?: boolean; displayWidth?: number }) => c.compact ? Math.min(360, c.displayWidth || 400) : (c.displayWidth || 400);
 /** 답변 아래 덧붙이는 것: 그리는 중 · 실패 · 준비된 초안 · 숨긴 삽화 · 지시 없음 */
 function Extras({ m, sw, pending, failed, drafts, hidden, note }: { m: Msg; sw: Swipe; pending: Job[]; failed: Job[]; drafts: Scene[]; hidden: number; note: PlanRecord | null }) {
   const cfg = Illust.cfg();
   return <>
-    {pending.length ? <div className="sb-pendings">{pending.map(j => <div key={j.id} className={`sb-pending ${j.state}`} style={{ aspectRatio: `${j.config.width} / ${j.config.height}`, maxWidth: `min(100%, ${Math.min(cfg.displayWidth || 400, 260)}px)` }}><Icon name="image" size={22} /><b>{j.state === 'running' ? t('scenebook.job.running') : t('scenebook.fig.waitingTurn')}</b><span>{j.label}</span></div>)}</div> : null}
+    {pending.length ? <div className="sb-pendings">{pending.map(j => <div key={j.id} className={`sb-pending ${j.state}`} style={{ aspectRatio: `${j.config.width} / ${j.config.height}`, maxWidth: `min(100%, ${figWidth(cfg)}px)` }}><Icon name="image" size={22} /><b>{j.state === 'running' ? t('scenebook.job.running') : t('scenebook.fig.waitingTurn')}</b><span>{j.label}</span></div>)}</div> : null}
     {failed.map(j => <div key={j.id} className="sb-note bad"><Icon name="x" size={15} /><span>{`${j.label} · ${j.error}`}</span><Btn label={t('scenebook.retry')} cls="ghost" onClick={guard(() => { j.seen = true; draw(m, [j.scene], j.config, j.slot, true); })} /><IBtn ic="x" title={t('common.close')} cls="tiny" onClick={() => { j.seen = true; schedule(); }} /></div>)}
     {drafts.length ? <div className="sb-note draft"><Icon name="sparkle" size={15} /><span><b>{tn('scenebook.fig.draftsReady', drafts.length)}</b>{' '}{drafts.map(d => shownTitle(d.title)).filter(Boolean).join(' · ')}</span>
       <Btn label={t('scenebook.draw')} ic="image" cls="primary" onClick={guard(() => quickDraw(m))} /><Btn label={t('scenebook.compose')} ic="edit" cls="ghost" onClick={guard(() => compose(m))} />
@@ -50,11 +52,13 @@ function Extras({ m, sw, pending, failed, drafts, hidden, note }: { m: Msg; sw: 
 }
 
 let timer = 0;
-export function schedule() { if (timer) return; timer = window.setTimeout(() => { timer = 0; try { decorate(); } catch (e) { console.warn('[삽화]', e); } }, cur().busy ? 400 : 30); }
+// 답변을 받는 중이 아니면 다음 화면을 그리기 전에 꾸민다 (꾸미기 전 모습이 한 번 비쳤다가 바뀌며 흔들리지 않게)
+export function schedule() { if (timer) return; const run = () => { timer = 0; try { decorate(); } catch (e) { console.warn('[삽화]', e); } }; timer = cur().busy ? window.setTimeout(run, 400) : requestAnimationFrame(run); }
 function decorate() {
   sweep();
   const { chat, msgs } = cur(); if (!chat || !msgs) return;
   const c = Illust.cfg(), jobs = Illust.queue();
+  document.documentElement.style.setProperty('--sb-w', figWidth(c) + 'px');   // 꾸미기 전의 그림 칸도 같은 너비로 시작한다
   let byId: Map<string, (typeof msgs)[number]> | null = null;   // 메시지가 수천 개여도 칸마다 처음부터 찾지 않게 (꾸밀 칸이 있을 때만 만든다)
   for (const art of document.querySelectorAll<HTMLElement>('.msgs article.msg[data-id]')) {
     const m = (byId ||= new Map(msgs.map(x => [x.id, x]))).get(art.dataset.id || ''), sw = m?.swipes?.[m.sw], main = art.querySelector<HTMLElement>('.msg-main');
@@ -71,7 +75,7 @@ function decorate() {
 function decorateFigure(fig: HTMLElement, art: HTMLElement, m: Msg, sw: Swipe, it: Slot, c: { compact?: boolean; displayWidth?: number; placement?: string }) {
   Illust.slot(it); fig.dataset.sb = it.slotId;
   if (it.hidden) { fig.classList.add('sb-off'); return; }
-  const w = c.compact ? Math.min(360, c.displayWidth || 400) : (c.displayWidth || 400);
+  const w = figWidth(c);
   fig.style.maxWidth = `min(100%, ${w}px)`; fig.classList.toggle('sb-compact', !!c.compact);
   // 대화 화면이 넣어 둔 그림 · 단추는 지우지 않고 가려 두고(data-sbr), 그 옆에 우리 것을 올린다 — 대화 화면이 제 요소를 계속 관리할 수 있게
   const holder = make('span'); holder.style.display = 'contents'; fig.dataset.sbr = '1'; fig.append(holder);

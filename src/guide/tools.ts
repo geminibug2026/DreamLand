@@ -407,7 +407,7 @@ function diagnose() {
 // ── 쓰기 (전부 변경 카드로 보류된다) ──
 const COLORS = COLOR_FIELDS.map(c => c[0]);
 const W: ToolDef[] = [
-  { name: 'create_character', write: true, sig: '{name, description, personality?, scenario?, firstMes, mesExample?, systemPrompt?, creatorNotes?, tags?, altGreetings?}', desc: 'Propose a new character card.',
+  { name: 'create_character', write: true, sig: '{name, description, personality?, scenario?, firstMes, mesExample?, systemPrompt?, creatorNotes?, tags?, altGreetings?}', desc: 'Propose a new character card. Put the whole character into description; personality, scenario and mesExample are older boxes that current cards leave empty — omit them unless the user asks.',
     run: a => { const o = fields('chars', a.fields ?? a, ['name']); return { ...created('chars', str(o.name), o), notes: cardNotes({}, o), warn: dupWarn(S.chars, str(o.name), 'character', 'update_character') }; } },
   { name: 'update_character', write: true, sig: '{id, fields: {<field>: <new value>}}', desc: 'Propose edits to a character. Fields: name, description, personality, scenario, firstMes, mesExample, systemPrompt, postHistory, creatorNotes, tags, altGreetings, talk, depthPrompt.prompt, depthPrompt.depth. Send the complete new text of each field you change.',
     run: a => { const c = find(S.chars, a.id, 'character'), f = fields('chars', a.fields); mustHaveRead('chars', c.id); return { ...propose('update', 'chars', c.name, { type: 'set', coll: 'chars', id: c.id, fields: f }, diffs(c, f)), notes: cardNotes(c as unknown as Obj, f) }; } },
