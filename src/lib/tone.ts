@@ -1,5 +1,7 @@
 // 초상 색 — 그림 가장자리(틀과 맞닿는 곳)에서 대표 색을 뽑아 이름·그림자·바탕을 물들인다. (옛 js/tone.js 그대로)
 // 결과는 요소의 --tone-d(밝은 바탕용 짙은 색) · --tone-l(어두운 바탕용 옅은 색)로 들어가고, CSS 가 .toned 에서 --tk 로 받아 쓴다.
+import { isAvTok, tokParts } from './avkey';
+import { thumbUrlReady } from './blobUrl';
 /** [짙은 색, 옅은 색] 또는 0(색 없음) */
 export type Tone = [string, string] | 0;
 type Rgb = [number, number, number];
@@ -9,7 +11,8 @@ let store: Record<string, Tone> = {}, busy = false, saveTimer: ReturnType<typeof
 try { store = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch { store = {}; }
 
 /** 긴 data URL 을 그대로 열쇠로 쓰지 않도록 줄인 표식 */
-const sig = (src: string) => src.length < 160 ? src : `${src.length}:${src.substr(src.length >> 1, 24)}:${src.slice(-40)}`;
+// 초상을 꼬리표로만 들고 있을 때(src/lib/avatars.ts)는 꼬리표의 그림 열쇠가 표식이다 (캐릭터 id 는 뺀다 — 같은 그림이면 같은 색)
+const sig = (src: string) => isAvTok(src) ? 'av:' + (tokParts(src)?.key || src) : src.length < 160 ? src : `${src.length}:${src.substr(src.length >> 1, 24)}:${src.slice(-40)}`;
 
 const toHsl = (r: number, g: number, b: number): Rgb => {
   r /= 255; g /= 255; b /= 255;
@@ -68,7 +71,11 @@ function read(img: CanvasImageSource): Tone {
   return shades([hue, s]);
 }
 
-const load = (src: string) => new Promise<Tone>(done => {
+const load = async (from: string) => {
+  const src = isAvTok(from) ? await thumbUrlReady(from) : from;   // 꼬리표: 일꾼이 만든 작은 그림에서 색을 읽는다 (원본을 화면 쪽에서 풀지 않는다)
+  return src ? loadUrl(src) : 0 as Tone;
+};
+const loadUrl = (src: string) => new Promise<Tone>(done => {
   const im = new Image(); if (!/^(data|blob):/.test(src)) im.crossOrigin = 'anonymous';
   im.onload = () => { try { done(read(im)); } catch { done(0); } };
   im.onerror = () => done(0); im.src = src;

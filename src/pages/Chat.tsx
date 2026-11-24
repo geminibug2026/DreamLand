@@ -51,7 +51,8 @@ function ChatPage({ arg }: { arg?: unknown }) {
       const chat = S.get('chats', id) || [...S.chats].sort((a, b) => b.updatedAt - a.updatedAt)[0];
       if (!live) return;
       if (!chat) { setSt('none'); return; }
-      const list = cur.gen?.chat === chat ? cur.gen.msgs : await S.msgsFast(chat.id);
+      // 등장인물의 초상은 통째로 올려 둔다 (상태창 · 확장처럼 그림 글자를 바로 쓰는 곳이 있다). 메시지와 나란히 읽는다
+      const [list] = await Promise.all([cur.gen?.chat === chat ? cur.gen.msgs : S.msgsFast(chat.id), S.holdAvatars(chat.charIds).catch(e => console.warn(e))]);
       if (!live) return;   // 읽는 사이 다른 화면으로 넘어갔다
       cur.chat = chat; cur.msgs = list; cur.shown = truncation(); cur.lastPrompt = null; cur.openedAt = Date.now(); cur.chimeRun = 0;
       cur.head = list.length; cur.from = 0; cur.revs.clear(); cur.fresh.clear();

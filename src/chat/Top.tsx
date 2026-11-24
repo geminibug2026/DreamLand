@@ -1,6 +1,6 @@
 // 대화 화면 상단 줄(휴대폰에서는 제목 · 상태 한 줄 + 메뉴 · 패널만 남는다)과 옆 프로필 한 장
 import { memo, useEffect } from 'react';
-import { Avatar, Emblem, Icon, IconBtn, InkName, Moon, artStyle, tintRef } from '../kit';
+import { Art, Avatar, Emblem, Icon, IconBtn, InkName, Moon, tintRef, useArt } from '../kit';
 import { menu, openModal, toast } from '../ui';
 import { cur, ui, useCh } from './store';
 import { armAuto, charsOf, daysOf, drawMain, generate, modeOf, presenceOf, renameRoom, roomName, setDrawer, setSide, titleOf } from './actions';
@@ -63,6 +63,7 @@ export const Top = memo(function Top() {
 });
 
 const p2 = (n: number) => String(n).padStart(2, '0');
+const FullImg = ({ src }: { src: string }) => { const u = useArt(src); return u ? <img className="full-img" src={u} /> : null; };
 /** 옆 프로필: 초상과 정보가 한 장. 턴 수는 초상 색 책갈피에, 맨 밑 띠에는 대화를 시작한 날의 달 · 날짜와 며칠째인지 */
 export const Dossier = memo(function Dossier() {
   useCh('dossier');
@@ -71,7 +72,7 @@ export const Dossier = memo(function Dossier() {
   const turns = cur.msgs.filter(m => m.role === 'assistant').length;
   if (chars.length > 1) return <div className="dream-card">
     <div className="cast-grid">{chars.map(x => <button key={x.id} ref={tintRef(x)} className={'cast' + ((c.muted || []).includes(x.id) ? ' muted' : '')} title={t('chat.composer.speakerTurn', { name: x.name })} onClick={() => void generate('normal', { speaker: x })}>
-      <div className="arch" style={artStyle(x)}>{!x.avatar && <Emblem o={x} />}</div><b>{x.name}</b></button>)}</div>
+      <Art o={x} className="arch">{!x.avatar && <Emblem o={x} />}</Art><b>{x.name}</b></button>)}</div>
     <div className="dream-rows"><div><span>{t('chat.top.cast')}</span><b>{t('chat.top.people', { count: chars.length })}</b></div><div><span>{t('chat.top.talk')}</span><b>{t('chat.top.turns', { count: turns })}</b></div></div>
   </div>;
   const mem = Memory.get(c.id), tr = Object.entries(c.tracker || {});
@@ -80,7 +81,7 @@ export const Dossier = memo(function Dossier() {
   const born = new Date(c.createdAt || Date.now());
   return <div className="dream-card leaf">
     <div className="sheet-window"><i className="orbit" />
-      <button className="arch lg" title={t('chat.top.portrait')} style={artStyle(ch)} onClick={() => { if (ch.avatar) openModal({ title: ch.name, wide: true, body: <img className="full-img" src={ch.avatar} /> }); }}>{!ch.avatar && <Emblem o={ch} />}</button>
+      <Art o={ch} tag="button" className="arch lg" title={t('chat.top.portrait')} onClick={() => { if (ch.avatar) openModal({ title: ch.name, wide: true, body: <FullImg src={ch.avatar} /> }); }}>{!ch.avatar && <Emblem o={ch} />}</Art>
       <span className="leaf-mark"><b>{String(turns)}</b><span>{t('chat.top.turn')}</span></span></div>
     <div className="leaf-head"><b className="dream-card-name"><InkName name={titleOf(c)} /></b>{ch.tags.length ? <small>{ch.tags.slice(0, 3).map(t => '#' + t).join(' ')}</small> : null}<AboutLine ch={ch} /></div>
     {rows.length ? <div className="dream-rows">{rows.map(([k, v], i) => <div key={i}><span>{k}</span><b>{v}</b></div>)}</div> : null}

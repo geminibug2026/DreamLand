@@ -8,6 +8,7 @@ import { flushSync } from 'react-dom';
 import { ux } from '../features/usersettings';
 import type { Cast, CmdItem, GenOpt, GenType, Motive, Msg, Room, SceneSpec, Swipe } from './types';
 import { DB, S, emit, on, fmtTime, msgText, newChat, newMsg, uid } from '../lib/core';
+import { isAvTok } from '../lib/avkey';
 import { go, route } from '../lib/router';
 import { applyRegex, macro, makeCtx, roll, tpl } from '../lib/engine';
 import { Live, cdHours, inQuietHours, mo, newLater, quietLeft } from '../lib/live';
@@ -171,6 +172,8 @@ export function pinBottom(ms = 1400) {
   const timer = setTimeout(off, ms); evs.forEach(ev => sc.addEventListener(ev, off, { passive: true })); ro.observe(box); unpin = off;
 }
 export function drawMain({ lazy = false } = {}) {
+  // 등장인물이 바뀌었으면(초대 등) 새로 온 사람의 초상도 통째로 올려 둔다
+  const c0 = cur.chat; if (c0 && c0.charIds.some(id => isAvTok(S.get('chars', id)?.avatar))) void S.holdAvatars(c0.charIds).then(() => { if (cur.chat === c0) bump('top', 'dossier'); }).catch(() => { });
   bump('main', 'top', 'hud', 'composer', 'dossier');
   drawMsgs({ lazy });
   const sc = ui.scroll; requestAnimationFrame(() => { if (sc) sc.scrollTop = sc.scrollHeight; });

@@ -1,5 +1,5 @@
 // 기본 부품: 아이콘 · 달 · 엠블럼 · 버튼 · 초상 + 화면을 다시 그리게 하는 훅
-import { useEffect, useReducer, useSyncExternalStore, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useReducer, useSyncExternalStore, type CSSProperties, type HTMLAttributes, type MouseEvent, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { on } from './lib/core';
@@ -22,26 +22,41 @@ export function Moon({ size = 22, date }: { size?: number; date?: Date }) {
   return <svg viewBox="0 0 24 24" width={size} height={size} className="ic moon"><title>{name}</title><circle cx="12" cy="12" r="10" fill="currentColor" opacity=".22" /><path d={lit} fill="currentColor" /></svg>;
 }
 
+const fitBox = new Map<string, string>();
 /** 그림이 없는 캐릭터의 초상 칸에 들어가는 문양 */
 export function Emblem({ o, mini = false, center = false }: { o?: Pick<Char, 'tags' | 'name'> | null; mini?: boolean; center?: boolean }) {
   const E = Emblems;
   // center: 둥근 자리에 놓을 때. 그림마다 무게 중심이 달라(찻잔의 김, 등불의 고리 …) 격자 한가운데에 두면 치우쳐 보인다.
   // 실제로 그려진 범위를 재서 그 한가운데가 원의 중심에 오도록 보는 창(viewBox)을 다시 잡는다
+  const kind = E.pick(Array.isArray(o?.tags) ? o.tags : [], o?.name || ''), key = kind + (mini ? '.m' : '');
+  // 같은 그림은 한 번만 잰다 — 재는 일(getBBox)은 그때마다 화면 배치를 다시 계산하게 해서, 그릴 때마다 재면 목록이 버벅인다
   const fit = (el: HTMLSpanElement | null) => {
     const svg = center ? el?.querySelector('svg') : null; if (!svg) return;
-    try { const b = (svg as SVGSVGElement).getBBox(); if (!b.width || !b.height) return; const side = Math.max(b.width, b.height) * 1.2; svg.setAttribute('viewBox', `${b.x + b.width / 2 - side / 2} ${b.y + b.height / 2 - side / 2} ${side} ${side}`); } catch { /* 아직 그려지지 않은 그림 */ }
+    const known = fitBox.get(key); if (known) { if (svg.getAttribute('viewBox') !== known) svg.setAttribute('viewBox', known); return; }
+    try { const b = (svg as SVGSVGElement).getBBox(); if (!b.width || !b.height) return; const side = Math.max(b.width, b.height) * 1.2, vb = `${b.x + b.width / 2 - side / 2} ${b.y + b.height / 2 - side / 2} ${side} ${side}`; fitBox.set(key, vb); svg.setAttribute('viewBox', vb); } catch { /* 아직 그려지지 않은 그림 */ }
   };
-  return <span ref={fit} style={{ display: 'contents' }} dangerouslySetInnerHTML={{ __html: E.svg(E.pick(Array.isArray(o?.tags) ? o.tags : [], o?.name || ''), mini ? 'mini' : '') }} />;
+  return <span ref={fit} style={{ display: 'contents' }} dangerouslySetInnerHTML={{ __html: E.svg(kind, mini ? 'mini' : '') }} />;
 }
 
 const EMO = /(\p{Extended_Pictographic}(?:️|‍\p{Extended_Pictographic}️?)*)/u;
 /** 색이 흐르는 이름: 그림 문자는 따로 감싸 제 색으로 둔다 */
 export const InkName = ({ name }: { name?: string }) => <>{String(name ?? '').split(EMO).map((s, i) => i % 2 ? <span className="emo" key={i}>{s}</span> : s)}</>;
 
-export const artStyle = (c?: { avatar?: string } | null): CSSProperties => c?.avatar ? { backgroundImage: `url("${shownUrl(c.avatar)}")` } : {};
+export const artStyle = (c?: { avatar?: string } | null): CSSProperties => { const u = c?.avatar ? shownUrl(c.avatar) : ''; return u ? { backgroundImage: `url("${u}")` } : {}; };
+/** 원본 초상 그림 (img). 준비되기 전에는 그리지 않는다 */
+export function ArtImg({ src, className }: { src?: string | null; className?: string }) { const u = useArt(src); return u ? <img className={className} src={u} alt="" /> : null; }
+/** 원본 초상을 바탕으로 건 칸. 초상을 꼬리표로만 들고 있으면(src/lib/avatars.ts) 꺼내 오는 대로 다시 그린다 */
+export function Art({ o, tag = 'div', children, ...rest }: { o?: { avatar?: string } | null; tag?: 'div' | 'button' | 'i' | 'span'; children?: ReactNode } & Omit<HTMLAttributes<HTMLElement>, 'style'>) {
+  const u = useArt(o?.avatar), Tag = tag as 'div';
+  return <Tag {...(rest as HTMLAttributes<HTMLDivElement>)} style={u ? { backgroundImage: `url("${u}")` } : undefined}>{children}</Tag>;
+}
 /** 작게 그리는 자리(목록 · 동그라미)용: 큰 초상은 줄인 그림으로. 쓰는 컴포넌트는 useThumbs() 를 불러 준비되면 다시 그린다 */
 export const thumbStyle = (c?: { avatar?: string } | null): CSSProperties => { if (!c?.avatar) return {}; const u = thumbUrl(c.avatar); return u ? { backgroundImage: `url("${u}")` } : {}; };
 export const useThumbs = () => useSyncExternalStore(thumbSub, thumbVer);
+/** 이 그림 하나의 작은 그림 주소. 그 그림이 준비됐을 때만 다시 그린다 (목록의 칸마다 쓴다 — 다른 칸의 그림이 올 때마다 목록 전체를 다시 그리지 않게) */
+export const useThumb = (src?: string | null): string => useSyncExternalStore(thumbSub, () => thumbUrl(src));
+/** 크게 거는 그림 주소 (원본). 꼬리표로만 들고 있는 초상은 꺼내 오는 대로 다시 그린다 */
+export const useArt = (src?: string | null): string => useSyncExternalStore(thumbSub, () => shownUrl(src));
 
 export function Btn({ label, ic, cls = '', title, onClick }: { label?: string; ic?: string; cls?: string; title?: string; onClick?: (e: MouseEvent<HTMLButtonElement>) => void }) {
   return <button type="button" className={`btn ${cls}`.trim()} title={title ?? (label ? undefined : '')} onClick={onClick}>{ic && <Icon name={ic} />}{label && <span>{label}</span>}</button>;
@@ -55,8 +70,8 @@ export const tintRef = (o?: Char | null) => (el: HTMLElement | null) => { if (el
 
 /** 작은 동그란 초상 */
 export function Avatar({ o, cls = '' }: { o?: { avatar?: string; name?: string; tags?: string[] } | null; cls?: string }) {
-  useThumbs();
-  if (o?.avatar) return <div className={`avatar ${cls}`.trim()} style={thumbStyle(o)} />;
+  const u = useThumb(o?.avatar);
+  if (o?.avatar) return <div className={`avatar ${cls}`.trim()} style={u ? { backgroundImage: `url("${u}")` } : undefined} />;
   if (Array.isArray(o?.tags) && cls !== 'xs') return <div className={`avatar ${cls} blank`.replace(/\s+/g, ' ')}><Emblem o={{ tags: o.tags, name: o.name || '' }} mini /></div>;
   return <div className={`avatar ${cls} blank`.replace(/\s+/g, ' ')}>{(o?.name || '?').trim().slice(0, 1)}</div>;
 }

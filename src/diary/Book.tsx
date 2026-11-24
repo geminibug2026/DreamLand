@@ -1,7 +1,7 @@
 // 꿈 일기장 책: 캐릭터가 자기 목소리로 그날의 이야기를 적어 두는 책. 일기 · 꿈 · 장면 기념품 · 이달의 편지가 시간 순으로 꽂힌다
 import { useEffect, useReducer, useRef, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
-import { Btn, Icon, IconBtn, Moon, mountInto } from '../kit';
+import { ArtImg, Btn, Icon, IconBtn, Moon, mountInto } from '../kit';
 import { confirmBox, menu, promptBox } from '../ui';
 import { bindDialog, editPrompts, fontDialog, memoDialog } from './dialogs';
 import { DIARY_DEF, MEMO_DEF, TYPE, fontLabel, monthLabel, answerNote, book, charOf, dreamOf, fontOf, fontStyle, jumpTo, loadChat, pagesOf, save, syncChat, tellErr, titleOf, writeDiary } from './logic';
@@ -124,7 +124,7 @@ function Book({ chat, msgs, at, close }: { chat: DChat; msgs: Msg[]; at?: string
           {msgs.some(m => m.id === e.id) ? <button className="bk-btn ink" onClick={() => { close(); void jumpTo(chat.id, e.openId && msgs.some(m => m.id === e.openId) ? e.openId : e.id); }}>{tr('diary.goScene')}</button> : null}</div></div>
       <div className="book-foot"><span className="book-no">{`${page + 1} / ${pages.length}`}</span><span className="bk-stamp">{tr('diary.book.keepStamp')}</span></div></>;
   };
-  const blankMid = () => ch.avatar ? <div className="book-photo small"><img src={ch.avatar} alt="" /></div> : <div className="book-moon"><Moon size={96} date={when} /></div>;
+  const blankMid = () => ch.avatar ? <div className="book-photo small"><ArtImg src={ch.avatar} /></div> : <div className="book-moon"><Moon size={96} date={when} /></div>;
   const leftMid = (pg: Page) => {
     if (pg.type === 'keepsake') return <Ticket k={pg.ref} />;
     if (pg.type === 'dream') return <div className="book-moon"><Moon size={96} date={when} /></div>;

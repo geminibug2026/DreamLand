@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import type { Chat, Msg } from '../lib/types';
 import type { ChatX } from '../addons/types';
 import { S, on as listenTo } from '../lib/core';
+import { Art } from '../kit';
 import { t } from '../i18n';
 import { cur } from '../chat/store';
 import { chatApi, generate, running, shownText, stopAll } from '../chat/actions';
@@ -191,11 +192,11 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
       {moodTier(sheet.morale) !== 2 ? <button type="button" className="g2 g2-gs-mood" title={t('game.mood.hint')} onClick={() => openSheet(chat)}><MoodFlag v={sheet.morale} size={26} /><small>{t('game.mood.title')}</small><b>{t('game.mood.' + moodTier(sheet.morale))}</b></button> : null}
       {sheet.meters.map(m => <div key={m.name} className="gs-clock gs-mbar"><small>{m.name}</small><span className="gs-meter"><i style={{ width: `${m.v / m.max * 100}%` }} /></span><em>{m.v}/{m.max}</em></div>)}
       {sheet.clocks.map(c => <div key={c.name} className={`gs-clock${c.v >= c.max ? ' is-full' : ''}`}><ClockDial v={c.v} max={c.max} /><small>{c.name}</small><em>{c.v}/{c.max}</em></div>)}
-      {sheet.party.length ? <div className="gs-party">{sheet.party.map(n => { const c = S.chars.find(x => x.name.toLowerCase() === n.toLowerCase()); return <span key={n} title={n} style={c?.avatar ? { backgroundImage: `url("${c.avatar}")` } : undefined}>{c?.avatar ? '' : n.slice(0, 1)}</span>; })}</div> : null}
+      {sheet.party.length ? <div className="gs-party">{sheet.party.map(n => { const c = S.chars.find(x => x.name.toLowerCase() === n.toLowerCase()); return <Art key={n} o={c} tag="span" title={n}>{c?.avatar ? '' : n.slice(0, 1)}</Art>; })}</div> : null}
     </aside>
     </div>
     <div className={`gs-figure${sprite?.data ? ' is-sprite' : ''}`} onClick={() => step(1)}>
-      {sprite?.data ? <img className="gs-sprite" src={sprite.data} alt="" /> : stand?.avatar ? <div className="gs-arch"><Keystone /><i style={{ backgroundImage: `url("${stand.avatar}")` }} /></div> : null}
+      {sprite?.data ? <img className="gs-sprite" src={sprite.data} alt="" /> : stand?.avatar ? <div className="gs-arch"><Keystone /><Art o={stand} tag="i" /></div> : null}
     </div>
     <section className="gs-panel" onClick={e => { if (!(e.target as HTMLElement).closest('button, textarea, .gs-acts, .gs-ctl')) step(1); }}>
       <Rule />

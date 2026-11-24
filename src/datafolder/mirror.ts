@@ -4,6 +4,7 @@
 import { decode, keepSecrets, pack, packSync, timeOf, type Json } from './codec';
 import { t, tn } from '../i18n';
 import { Server, SERVER_HEADERS } from '../lib/server';
+import { isAvTok } from '../lib/avkey';
 
 type Fn = (...a: never[]) => unknown;
 export interface MirrorDb {
@@ -255,7 +256,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
   // 무거운 저장소(삽화 · 메시지 · 캐릭터 · 대화방 · 로어 · 기억)는 켤 때마다 통째로 읽어 해시를 다시 내지 않는다:
   // 이 브라우저의 쓰기는 모두 줄(q)에 남으므로, 줄에 없고 지난번 서버와 같았던(base) 것은 그대로라고 본다. 열쇠만 읽어 지운 것은 알아챈다.
   // 그래도 혹시 모를 어긋남을 위해 사흘에 한 번, 그리고 사용자가 '지금 맞추기'를 누르면 전부 읽는다.
-  const HEAVY = new Set(['assets', 'msgs', 'chars', 'chats', 'lore', 'mem']), FULL_EVERY = 3 * 864e5;
+  const HEAVY = new Set(['assets', 'msgs', 'chars', 'chats', 'lore', 'mem', 'personas']), FULL_EVERY = 3 * 864e5;   // 페르소나도 초상이 들어 있어 무겁다
   let wantFull = false;
   function reconcile(full = false): Promise<void> { if (full) wantFull = true; return syncing ||= locked(reconcileOnce).finally(() => { syncing = null; }); }
   async function reconcileOnce() {
@@ -276,6 +277,8 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
       const lastFull = Number(lsGet('dl-datafolder-full')) || 0, quick = !wantFull && !!raw.keys && base.size > 0 && Date.now() - lastFull < FULL_EVERY;
       wantFull = false;
       const inQueue = new Set([...queued.map(e => e.k), ...live.keys()]);
+      // 여기부터는 저장소를 읽어 해시를 내는 일: 첫 화면을 그리는 것과 겹치지 않게 화면이 한가해진 뒤에 한다
+      await new Promise<void>(r => { const w = window as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }; if (w.requestIdleCallback) w.requestIdleCallback(() => r(), { timeout: 1500 }); else setTimeout(r, 0); });
       for (const s of stores) {
         if (quick && HEAVY.has(s)) {
           let ids: unknown[] | null = null; try { ids = await raw.keys!(s); } catch { ids = null; }
@@ -391,6 +394,8 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
       try {
         const b = baseMem.get(keyOf(l.store, l.id)); const base = b === undefined ? {} : { base: b };
         if (l.del) { ops.push({ op: 'del', store: l.store, id: l.id, ...base }); size += 100; continue; }
+        // 캐릭터의 초상 꼬리표(메모리에만 있는 꼴 — src/lib/avatars.ts)가 든 값은 보내지 않는다: 서버에 그림 대신 꼬리표가 남는다 (줄에 남아 있으니 다음에 저장소에서 읽어 보낸다)
+        if (l.store === 'chars' && isAvTok((l.val as { avatar?: unknown } | undefined)?.avatar)) continue;
         const p = packSync(l.store, l.val); if (size + p.str.length > 60000) { if (l.store === 'msgs') msgsLeft = true; continue; } ops.push({ op: 'put', store: l.store, id: l.id, value: p.json, ...base }); size += p.str.length;
       } catch { if (l.store === 'msgs') msgsLeft = true; /* Blob 등: 다음에 */ }
     }

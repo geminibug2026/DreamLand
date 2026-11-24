@@ -46,6 +46,7 @@ interface CStore {
   get(coll: 'lore', id?: string): LoreBook | undefined;
   save<T>(coll: Coll, obj: T, silent?: boolean): Promise<T>;
   saveMsgs(chat: DChat, msgs: DMsg[]): Promise<unknown>;
+  avatarData(o: { avatar?: unknown } | null | undefined): Promise<string>;
   set(patch: O): void;
   importAll(data: unknown, replace: boolean): Promise<unknown>;
 }
@@ -386,7 +387,8 @@ export async function exportCharPng(ch: DChar): Promise<Uint8Array> {
 export async function avatarPng(ch: DChar): Promise<Uint8Array> {
   const img = new Image();
   const c = document.createElement('canvas');
-  await new Promise(res => { img.onload = res; img.onerror = res; img.src = ch.avatar || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600"><rect width="400" height="600" fill="#8b7fd6"/></svg>'); });
+  const pic = await St.avatarData(ch);   // 메모리에는 꼬리표만 있을 수 있다: 저장된 그림을 읽어 온다
+  await new Promise(res => { img.onload = res; img.onerror = res; img.src = pic || 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600"><rect width="400" height="600" fill="#8b7fd6"/></svg>'); });
   c.width = img.width || 400; c.height = img.height || 600;
   (c.getContext('2d') as CanvasRenderingContext2D).drawImage(img, 0, 0);
   return K.dataURLToBytes(c.toDataURL('image/png'));

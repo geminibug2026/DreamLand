@@ -133,7 +133,8 @@ export async function bindDialog(chat: DChat) {
   const msgs = await loadChat(chat); await syncChat(chat, msgs, { quiet: true });
   const k = K, w = who(chat), o: BookOpt = { title: tr('diary.bind.defaultTitle', { name: w.char }), sub: roomOf(chat), mode: (chat.diary || []).some(e => e.to > 0) ? 'diary' : (chat.keepsakes || []).some(x => !x.gone) ? 'scene' : 'day', size: 40, page: 'A5', cover: 'avatar', talk: true, diary: true, dreams: true, letters: true, keepsakes: true, photos: true, almanac: true, hand: true };
   const count = msgs.filter(m => !m.hidden && m.role !== 'system').length, nPics = msgs.flatMap(m => m.hidden ? [] : k.photosOf(m)).length;
-  const make = () => makeBook(chat, msgs, o);
+  const coverPic = await S.avatarData(charOf(chat));
+  const make = () => makeBook(chat, msgs, o, coverPic);
   const defs: FieldDef[] = [{ k: 'title', label: tr('diary.bind.bookTitle'), half: true }, { k: 'sub', label: tr('diary.bind.sub'), half: true },
     { k: 'mode', label: tr('diary.bind.mode'), type: 'select', opts: [['diary', tr('diary.bind.mode.diary')], ['day', tr('diary.bind.mode.day')], ['scene', tr('diary.bind.mode.scene')], ['count', tr('diary.bind.mode.count')]], third: true }, { k: 'size', label: tr('diary.bind.size'), type: 'num', min: 5, step: 1, third: true },
     { k: 'page', label: tr('diary.bind.page'), type: 'select', opts: [['A5', tr('diary.bind.a5')], ['A4', 'A4']], third: true },

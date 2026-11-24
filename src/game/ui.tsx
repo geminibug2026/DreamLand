@@ -4,6 +4,7 @@ import { setSfx, sfx } from './sfx';
 import type { Chat, Msg } from '../lib/types';
 import { Icon } from '../kit';
 import { S, emit, newMsg } from '../lib/core';
+import { plainUrl } from '../lib/blobUrl';
 import { openModal } from '../addons/parts';
 import { confirmBox, promptBox, toast } from '../ui';
 import { t } from '../i18n';
@@ -87,7 +88,7 @@ export function resolveAsk(chat: Chat, ask: Ask) {
   const names = [...new Set(foes.map(f => f.name.replace(/ \d+$/, '')))].join(', ');
   // 보스의 각본: 켜 두었고 우두머리가 있으면 창을 열어 둔 채로 한 번 받아 온다 (못 받아도 싸움은 그대로 한다)
   const boss = foes.find(f => f.boss), script = g.bossScript && boss ? bossScript(chat, boss.name, names) : undefined;
-  const faces: Record<string, string> = {}; { const me = S.persona(chat).avatar; if (me) faces.me = me; for (const n of sheet.party) { const c = S.chars.find(x => x.name.toLowerCase() === n.toLowerCase()); if (c?.avatar) faces[n.toLowerCase()] = c.avatar; } }
+  const faces: Record<string, string> = {}; { const me = S.persona(chat).avatar; if (me) faces.me = me; for (const n of sheet.party) { const c = S.chars.find(x => x.name.toLowerCase() === n.toLowerCase()); const u = plainUrl(c?.avatar); if (u) faces[n.toLowerCase()] = u; } }
   openModal({ title: t('game.fight.title', { name: names }), spec: 'div.gm' }, close => <Combat g={statCfg(g, sheet)} sheet={sheet} foes={foes} faces={faces} air={{ weather: weatherOf(sheet), indoor: indoorAt(sheet) }} edge={moodEdge(sheet.morale)} canRewind={lastCheckpoint(chat) >= 0} script={script} onDone={r => {
     close();
     // 졌을 때 체크포인트로 돌아가기를 골랐으면 기록을 남기지 않고 그 지점으로 되감는다 (지금 상태는 갈래로 남는다)

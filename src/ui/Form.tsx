@@ -1,7 +1,7 @@
 // 폼: 정의 배열로 입력 칸을 그린다 (옛 ui.js 의 form · tipBtn)
 import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { pickFiles, readDataURL, shrinkImage } from '../lib/core';
-import { Btn, Dom, Icon } from '../kit';
+import { Btn, Dom, Icon, useArt } from '../kit';
 import { t } from '../i18n';
 
 type Opt = string | number | readonly [value: string | number, label: string];
@@ -79,13 +79,13 @@ function ColorCtl({ v, set }: { v: unknown; set: Setter }) {
 }
 
 function ImageCtl({ d, v, set }: { d: FieldDef; v: unknown; set: Setter }) {
-  const [url, setUrl] = useState(str(v));
+  const [url, setUrl] = useState(str(v)), shown = useArt(url);   // 캐릭터 초상은 메모리에 꼬리표로만 있을 수 있다: 걸 주소는 따로 받는다
   const pick = async () => {
     const [f] = await pickFiles({ accept: 'image/*' }); if (!f) return;
     const u = await shrinkImage(await readDataURL(f), d.max || 720); setUrl(u); set(u);
   };
   return <div className="img-row">
-    <div className="img-pick" style={url ? { backgroundImage: `url("${url}")` } : undefined}>{url ? null : <Icon name="image" size={26} />}</div>
+    <div className="img-pick" style={shown ? { backgroundImage: `url("${shown}")` } : undefined}>{url ? null : <Icon name="image" size={26} />}</div>
     <div className="col"><Btn label={t('ui.form.pickImage')} ic="upload" onClick={() => void pick()} /><Btn label={t('ui.form.clear')} cls="ghost" onClick={() => { setUrl(''); set(''); }} /></div>
   </div>;
 }

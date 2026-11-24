@@ -1,6 +1,6 @@
 // 캐릭터 프로필 창
 import { useRef, useState } from 'react';
-import { Btn, Emblem, Icon, IconBtn, InkName, artStyle, tintRef } from '../kit';
+import { Art, Btn, Emblem, Icon, IconBtn, InkName, tintRef } from '../kit';
 import type { Char, Folder } from '../types';
 import type { XChar } from './types';
 import { confirmBox, menu, openModal, promptBox, type ModalHandle } from '../ui';
@@ -78,7 +78,7 @@ function Sheet({ c, close }: { c: XChar; close: () => void }) {
 export function charSheet(ch: Char) {
   const c = ch as XChar;
   const m: ModalHandle = openModal({ title: '', wide: true, body: <div className="sheet" ref={tintRef(c)}>
-    <div className="sheet-window"><i className="orbit" /><div className="arch lg" style={artStyle(c)}>{!c.avatar && <Emblem o={c} />}</div></div>
+    <div className="sheet-window"><i className="orbit" /><Art o={c} className="arch lg">{!c.avatar && <Emblem o={c} />}</Art></div>
     <Sheet c={c} close={() => m.close()} />
   </div> });
 }

@@ -4,6 +4,7 @@ import { openPicker } from './Picker';
 import { Sprites, bus, cfg, charIdOf, currentOf, exprOf, lastReply, live, nameOf, pickSprite, toggleStanding, type ExprState, type Sprite } from './store';
 import { I } from '../lib/icons';
 import { S, on } from '../lib/core';
+import { plainUrl } from '../lib/blobUrl';
 import { toast } from '../ui';
 import { modal } from '../ui/dom';
 import { chatApi } from '../chat/actions';
@@ -85,7 +86,7 @@ function measureStage(stage: HTMLElement, layout: Element) {
 function applyStanding(layout: Element, chat: ChatX, chars: CharX[], state: Map<string, ExprState>, speakerId?: string) {
   const c = cfg(); let stage = layout.querySelector<HTMLElement>(':scope > .exs-stage');
   const muted = new Set(chat.muted || []);
-  const figs = c.show && c.standing ? chars.filter(ch => chars.length === 1 || !muted.has(ch.id)).map(ch => ({ ch, sp: (state.get(ch.id)?.sprite || (ch.avatar ? { id: 'av:' + ch.id, data: ch.avatar } : null)) as Pic | null })).filter((f): f is { ch: CharX; sp: Pic } => !!f.sp) : [];
+  const figs = c.show && c.standing ? chars.filter(ch => chars.length === 1 || !muted.has(ch.id)).map(ch => ({ ch, sp: (state.get(ch.id)?.sprite || (plainUrl(ch.avatar) ? { id: 'av:' + ch.id, data: plainUrl(ch.avatar) } : null)) as Pic | null })).filter((f): f is { ch: CharX; sp: Pic } => !!f.sp) : [];
   if (!figs.length) { stage?.remove(); return; }
   if (!stage) {
     stage = el('div', 'exs-stage');

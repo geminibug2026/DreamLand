@@ -33,7 +33,8 @@ export function waitingItems(now = Date.now()): Item[] {
   for (const c of rooms) if (c.unread) out.push({ k: 'unread', id: 'u' + c.id, main: whoOf(c) || t('home.deletedChar'), sub: t('desk.wait.unread', { n: c.unread }), meta: fmtTime(c.updatedAt), rank: 10, open: open(c) });
   for (const ch of S.chars) {   // 앞으로 두 주 안의 기념일 가운데 가장 가까운 것 하나
     if (!firstMet(ch.id)) continue;
-    for (let d = 0; d <= 14; d++) { const at = now + d * DAY, mark = milestone(daysTogether(ch.id, at), ch.id, at); if (!mark) continue;
+    const n0 = daysTogether(ch.id, now);   // 하루 지나면 하루 는다: 날마다 다시 세지 않는다
+    for (let d = 0; d <= 14; d++) { const at = now + d * DAY, mark = milestone(n0 + d, ch.id, at); if (!mark) continue;
       const room = rooms.find(c => c.charIds.includes(ch.id)); out.push({ k: 'anniv', id: 'a' + ch.id, main: ch.name, sub: markLabel(mark), meta: dMinus(d), rank: d ? 40 + d : 1, open: () => room && go('chat', room.id) }); break; }
   }
   // 지금 상태: 일정이 있거나 상태를 바꿔 둔 캐릭터만, 최근 방 순으로 셋까지

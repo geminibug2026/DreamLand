@@ -1,5 +1,5 @@
 // 캐릭터 고르기: 많아져도 찾을 수 있게 검색 + 목록 (옛 ui.js 의 charPicker)
-import { useReducer, useState } from 'react';
+import { useDeferredValue, useMemo, useReducer, useState } from 'react';
 import { Avatar, Icon } from '../kit';
 import type { Char } from '../types';
 import { openModal, type ModalHandle } from './Modal';
@@ -17,8 +17,9 @@ export interface CharPickerOptions {
 
 function Picker({ picked, multi, note, one }: { picked: Set<string>; multi: boolean; note: (c: Char) => string; one: (id: string) => void }) {
   const [q, setQ] = useState(''), [, bump] = useReducer((x: number) => x + 1, 0);
-  const chars = S.chars, t = q.trim().toLowerCase();
-  const rows = chars.filter(c => !t || (c.name + ' ' + (c.tags || []).join(' ')).toLowerCase().includes(t)).sort((a, b) => +picked.has(b.id) - +picked.has(a.id) || a.name.localeCompare(b.name, locale()));
+  const chars = S.chars, t = useDeferredValue(q).trim().toLowerCase();   // 글자는 바로 찍고 목록은 한 박자 뒤에 (캐릭터가 많아도 타자가 밀리지 않게)
+  const coll = useMemo(() => new Intl.Collator(locale()), []);   // 비교기는 한 번만 만든다 (localeCompare 는 부를 때마다 새로 만들어, 캐릭터가 많으면 글자를 칠 때마다 느려진다)
+  const rows = chars.filter(c => !t || (c.name + ' ' + (c.tags || []).join(' ')).toLowerCase().includes(t)).sort((a, b) => +picked.has(b.id) - +picked.has(a.id) || coll.compare(a.name, b.name));
   return <div className="col">
     <input className="inp search" placeholder={tr('ui.picker.searchPh')} value={q} onChange={e => setQ(e.target.value)} />
     <small className="hint">{multi ? tr('ui.picker.countMulti', { picked: picked.size, total: chars.length }) : tn('ui.picker.count', chars.length)}</small>

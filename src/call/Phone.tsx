@@ -2,10 +2,9 @@
 // 위에서부터: 상대(둥근 얼굴 · 이름 · 통화 시간) · 지금 하는 말 한 장(읽는 자리를 짚음) · 주고받은 말(모두 같은 말풍선) · 말하기 · 단추.
 // 가로로 눕힌 휴대폰은 두 단(왼쪽 상대 · 지금의 말 · 단추, 오른쪽 주고받은 말 · 말하기) — CSS 만으로 나눈다
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { shownUrl } from '../lib/blobUrl';
 import { createRoot } from 'react-dom/client';
 import { S } from '../lib/core';
-import { Emblem, Icon } from '../kit';
+import { Emblem, Icon, useArt } from '../kit';
 import { I } from '../lib/icons';
 import { t } from '../i18n';
 import { tt } from './strings';
@@ -33,7 +32,8 @@ const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.g
 function Key({ ic, label, on, onClick, cls = '', disabled }: { ic: string; label: string; on?: boolean; onClick: () => void; cls?: string; disabled?: boolean }) {
   return <button type="button" className={`call-key ${cls} ${on ? 'on' : ''}`.trim()} aria-pressed={on} disabled={disabled} onClick={onClick}><i><Icon name={ic} size={22} /></i><span>{label}</span></button>;
 }
-const Ava = ({ c }: { c: { avatar?: string; name?: string; tags?: string[] } }) => <span className="call-ava">{c.avatar ? <img src={shownUrl(c.avatar)} alt="" /> : <Emblem o={c as never} />}</span>;
+const Face = ({ src }: { src: string }) => { const u = useArt(src); return u ? <img src={u} alt="" /> : null; };
+const Ava = ({ c }: { c: { avatar?: string; name?: string; tags?: string[] } }) => <span className="call-ava">{c.avatar ? <Face src={c.avatar} /> : <Emblem o={c as never} />}</span>;
 /** PC 의 휴대폰 몸체 장식: 옆 버튼 · 카메라 구멍 · 홈 막대 (휴대폰 화면에서는 CSS 가 숨긴다) */
 const SideKeys = () => <><i className="call-side vol-up" aria-hidden /><i className="call-side vol-down" aria-hidden /><i className="call-side power" aria-hidden /></>;
 const StatusBar = ({ now }: { now: number }) => <div className="call-bar"><span>{hhmm(new Date(now))}</span><span className="call-bar-r"><i className="call-sig"><b /><b /><b /><b /></i><i className="call-bat"><b /></i></span></div>;
@@ -174,7 +174,7 @@ function Phone() {
         {group
           ? <div className="call-party">{party.map(c => <button key={c.id} type="button" className={`call-member${speakingId === c.id ? ' talking' : ''}`} title={live ? tt('call.do.kick', { name: c.name }) : c.name} disabled={!live} onClick={() => C.kick(c.id)}>
               <Ava c={c} /><small>{c.name}</small>{live ? <i className="call-x"><Icon name="x" size={10} /></i> : null}</button>)}</div>
-          : <div className={`call-portrait${s.talking || speakingId ? ' talking' : ''}`}><span className="call-face">{ch.avatar ? <img src={shownUrl(ch.avatar)} alt="" /> : <Emblem o={ch} />}</span>{ringing || dialing ? <><i className="call-frame f1" aria-hidden /><i className="call-frame f2" aria-hidden /></> : null}</div>}
+          : <div className={`call-portrait${s.talking || speakingId ? ' talking' : ''}`}><span className="call-face">{ch.avatar ? <Face src={ch.avatar} /> : <Emblem o={ch} />}</span>{ringing || dialing ? <><i className="call-frame f1" aria-hidden /><i className="call-frame f2" aria-hidden /></> : null}</div>}
         <div className="call-id">
           <b className="call-name">{group ? tt('call.group.title', { count: party.length }) : ch.name}</b>
           <span className="call-state">{live ? <i className={`call-live${s.rec ? ' rec' : ''}${s.hold ? ' hold' : ''}`} title={s.rec ? tt('call.do.record') : undefined} /> : null}{state}{live && (s.talking || callReading) ? <i className="call-wave"><b /><b /><b /><b /></i> : null}</span>

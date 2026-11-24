@@ -111,7 +111,7 @@ export const chars: Record<string, F> = {
   },
   // ── raw_character ──
   getCharData: (_c, ref) => { const ch = findChar(ref ?? 'current'); return ch ? cardData(ch) : null; },
-  getCharAvatarPath: (_c, ref) => findChar(ref ?? 'current')?.avatar || null,
+  getCharAvatarPath: (_c, ref) => S.avatarNow(findChar(ref ?? 'current')) || null,
   rawCharIndex: (_c, ref) => { const ch = findChar(ref ?? 'current'); return ch ? S.chars.indexOf(ch) : -1; },
   getChatHistoryBrief: (_c, ref) => {
     const ch = findChar(ref ?? 'current'); if (!ch) return [];

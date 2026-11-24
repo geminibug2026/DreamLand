@@ -3,6 +3,7 @@ import { fmtDate, getLang, t as tr } from '../i18n';
 import { Server } from './server';
 import type { Char, Chat, Colls, CollName, Conn, KvRow, Lore, LoreEntry, Msg, MsgsRow, Persona, Preset, PresetBlock, Regex, Role, Settings, StoreName, Asset } from './types';
 import * as MS from './msgstore';
+import { Av } from './avatars';
 
 // replaceChildren / append 에 null·false·undefined 가 섞여 들어가면 글자로 찍히므로 걸러 낸다
 type Kid = Node | string;
@@ -161,8 +162,10 @@ async function tx<T>(store: string, mode: IDBTransactionMode, fn: (o: IDBObjectS
 const msgCache = new Map<string, Msg[]>(); let msgVer = 0, msgBus: BroadcastChannel | null = null; const extVer = new Map<string, number>();
 // own: 메시지 저장소(msgstore)가 메모리의 목록을 쓴 것 — 들고 있는 사본은 그대로 맞으므로 버리지 않는다
 const msgDrop = (id?: string | null, own = false) => {
-  msgVer++; if (own) return;
+  msgVer++;
   const c = id == null ? null : MS.chatOfId(id);
+  emit('msgs:wrote', c);   // 그 방(null = 전부)의 메시지가 쓰였다 — 메시지를 세어 둔 캐시(책상 위젯)가 듣는다
+  if (own) return;
   if (c == null) { msgCache.clear(); extVer.clear(); MS.forget(null); }
   else { msgCache.delete(c); MS.forget(c); extVer.set(c, (extVer.get(c) || 0) + 1); }
 };
@@ -180,20 +183,21 @@ export interface Rows extends Colls { msgs: MsgsRow; kv: KvRow; assets: Asset; m
 export const DB = {
   all: <K extends StoreName>(s: K) => tx<Rows[K][]>(s, 'readonly', o => o.getAll()),
   get: <K extends StoreName>(s: K, id: IDBValidKey) => tx<Rows[K] | undefined>(s, 'readonly', o => o.get(id)),
-  put: <K extends StoreName>(s: K, v: Rows[K] | object) => { wrote(s, (v as { id?: unknown })?.id); return tx<IDBValidKey>(s, 'readwrite', o => o.put(v)); },
-  del: (s: StoreName, id: IDBValidKey) => { wrote(s, id); return tx<undefined>(s, 'readwrite', o => o.delete(id)); },
-  clear: (s: StoreName) => { wrote(s); return tx<undefined>(s, 'readwrite', o => o.clear()); },
+  // 캐릭터(chars)는 Av 를 거친다: 메모리의 초상 꼬리표를 저장된 그림으로 바꿔 넣고, 그림을 뺀 사본도 맞춘다 (src/lib/avatars.ts)
+  put: <K extends StoreName>(s: K, v: Rows[K] | object) => { wrote(s, (v as { id?: unknown })?.id); return s === 'chars' ? Av.put(v as Parameters<typeof Av.put>[0]) as Promise<IDBValidKey> : tx<IDBValidKey>(s, 'readwrite', o => o.put(v)); },
+  del: (s: StoreName, id: IDBValidKey) => { wrote(s, id); return tx<undefined>(s, 'readwrite', o => o.delete(id)).then(r => { if (s === 'chars') Av.dropped([String(id)]); return r; }); },
+  clear: (s: StoreName) => { wrote(s); return tx<undefined>(s, 'readwrite', o => o.clear()).then(r => { if (s === 'chars') Av.cleared(); return r; }); },
   /** 열쇠(id)만 */
   keys: (s: StoreName) => tx<IDBValidKey[]>(s, 'readonly', o => o.getAllKeys()),
   /** 여러 줄을 한 번의 읽기로 → 없는 것은 undefined */
   many: <K extends StoreName>(s: K, ids: IDBValidKey[]) => { const out: (Rows[K] | undefined)[] = []; return tx<unknown>(s, 'readonly', o => { ids.forEach((id, i) => { const q = o.get(id); q.onsuccess = () => { out[i] = q.result as Rows[K]; }; }); }).then(() => out); },
   byOwner: (owner: string) => tx<Asset[]>('assets', 'readonly', o => o.index('owner').getAll(owner)),
-  bulk: (s: StoreName, list: object[]) => { wrote(s); return tx<undefined>(s, 'readwrite', o => { list.forEach(v => o.put(v)); }); },
+  bulk: (s: StoreName, list: object[]) => { wrote(s); return s === 'chars' ? Av.bulk(list as Parameters<typeof Av.bulk>[0]) as Promise<undefined> : tx<undefined>(s, 'readwrite', o => { list.forEach(v => o.put(v)); }); },
   /** 한 트랜잭션 안에서 여러 줄을 쓰고 지운다 (fn 이 그 자리에서 읽어 보고 정할 수 있다). 다 되면 쓴 줄 · 지운 id 를 돌려준다 */
   batch: (s: StoreName, fn: (o: IDBObjectStore, log: { put(v: object): void; del(id: IDBValidKey): void }) => void) => {
     const put: object[] = [], del: IDBValidKey[] = [];
     return tx<unknown>(s, 'readwrite', o => { fn(o, { put: v => { o.put(v); put.push(v); }, del: id => { o.delete(id); del.push(id); } }); })
-      .then(() => { const ids = new Set([...put.map(v => (v as { id?: unknown }).id), ...del].map(id => s === 'msgs' ? MS.chatOfId(id) : id)); for (const id of ids) wrote(s, id, true); return { put, del }; });
+      .then(() => { const ids = new Set([...put.map(v => (v as { id?: unknown }).id), ...del].map(id => s === 'msgs' ? MS.chatOfId(id) : id)); for (const id of ids) wrote(s, id, true); if (s === 'chars') Av.dropped([...ids].map(String)); return { put, del }; });
   },
 };
 
@@ -402,6 +406,11 @@ export const Vault = {
 };
 
 // ── 스토어 (메모리 캐시 + IndexedDB) ──
+Av.init({
+  tx: (mode, fn) => tx<unknown>('chars', mode, o => { fn(o); }),
+  all: () => tx<Char[]>('chars', 'readonly', o => o.getAll()), keys: () => tx<IDBValidKey[]>('chars', 'readonly', o => o.getAllKeys()), get: id => tx<Char | undefined>('chars', 'readonly', o => o.get(id)),
+  find: id => S.get('chars', id), list: () => S.chars, changed: () => emit('chars', null),
+});
 type Plain = Record<string, unknown>;
 const LISTS: CollName[] = ['chars', 'chats', 'personas', 'lore', 'presets', 'conns', 'regex'];
 export interface Store {
@@ -413,6 +422,12 @@ export interface Store {
   remove(coll: CollName, id: string): Promise<void>;
   saveSettings: () => void;
   set(patch: { [K in keyof Settings]?: unknown }): void;
+  /** 이 캐릭터들의 초상을 메모리에 통째로 올려 둔다 (지금 대화의 등장인물 — 나머지는 꼬리표로 되돌린다. src/lib/avatars.ts) */
+  holdAvatars(ids: string[]): Promise<void>;
+  /** 초상 그림 글자(data URL). 메모리에 꼬리표로만 있으면 저장소에서 읽어 온다 */
+  avatarData(o: { avatar?: unknown } | null | undefined): Promise<string>;
+  /** 지금 바로 줄 수 있는 초상 그림 글자 (꼬리표인데 아직 읽지 않았으면 '' — 읽어 두니 다음에는 준다) */
+  avatarNow(o: { avatar?: unknown } | null | undefined): string;
   msgs(chatId: string): Promise<Msg[]>;
   msgsFast(chatId: string): Promise<Msg[]>;
   /** 메모리에 들고 있는 그 방의 목록 (없으면 undefined) — 읽기만 할 때 */
@@ -436,12 +451,14 @@ export interface Store {
   exportAll(): Promise<Record<string, unknown>>;
   importAll(data: unknown, replace?: boolean): Promise<void>;
 }
+const ixOf: Record<string, { arr: unknown; len: number; last?: string } | undefined> = {};
 export const S: Store = {
   chars: [], chats: [], personas: [], lore: [], presets: [], conns: [], regex: [], settings: defaultSettings(),
   async load() {
     const self = this as unknown as Record<CollName, unknown[]>;
-    for (const c of LISTS) self[c] = await DB.all(c);
-    const s = await DB.get('kv', 'settings') as Plain | undefined;
+    // 저장소들을 나란히 읽는다. 캐릭터는 초상을 빼고 읽는다 (Av) — 초상까지 통째로 읽으면 캐릭터가 많을 때 켜는 데만 몇 초가 걸린다
+    const [rows, s] = await Promise.all([Promise.all(LISTS.map(c => c === 'chars' ? Av.loadChars() : DB.all(c))), DB.get('kv', 'settings') as Promise<Plain | undefined>]);
+    LISTS.forEach((c, i) => { self[c] = rows[i] as unknown[]; }); this._ix = {};
     const d = defaultSettings() as unknown as Plain;
     this.settings = { ...d, ...(s || {}) } as unknown as Settings;
     const set = this.settings as unknown as Plain;
@@ -466,8 +483,8 @@ export const S: Store = {
   get<K extends CollName>(coll: K, id: string | null | undefined): Colls[K] | undefined {
     const arr = (this as unknown as Record<string, Colls[K][] | undefined>)[coll]; if (!arr || id == null || id === '') return undefined;
     if (arr.length < 24) return arr.find(x => x.id === id);
-    let ix = this._ix?.[coll]; if (ix) { const p = ix.get(id); if (p !== undefined && arr[p]?.id === id) return arr[p]; }
-    ix = new Map(); for (let i = 0; i < arr.length; i++) ix.set(arr[i].id, i); (this._ix ||= {})[coll] = ix;
+    let ix = this._ix?.[coll]; if (ix) { const p = ix.get(id); if (p !== undefined && arr[p]?.id === id) return arr[p]; const m = ixOf[coll]; if (p === undefined && m && m.arr === arr && m.len === arr.length && m.last === arr[arr.length - 1]?.id) return undefined; }   // 없는 id 를 찾을 때마다 목록을 다시 훑지 않는다 (목록이 그대로일 때만)
+    ix = new Map(); for (let i = 0; i < arr.length; i++) ix.set(arr[i].id, i); (this._ix ||= {})[coll] = ix; ixOf[coll] = { arr, len: arr.length, last: arr[arr.length - 1]?.id };
     const p = ix.get(id); return p === undefined ? undefined : arr[p];
   },
   async save<K extends CollName>(coll: K, obj: Colls[K], silent?: boolean) {
@@ -475,7 +492,9 @@ export const S: Store = {
     const list = (this as unknown as Record<string, Colls[K][]>)[coll];
     const i = list.findIndex(x => x.id === obj.id);
     if (i >= 0) list[i] = obj; else list.push(obj);
-    if (coll === 'conns') { const packed = await Vault.packConn(obj as Conn); if (packed.sec) (obj as Conn).sec = packed.sec; await DB.put(coll, packed); } else await DB.put(coll, obj);
+    if (coll === 'conns') { const packed = await Vault.packConn(obj as Conn); if (packed.sec) (obj as Conn).sec = packed.sec; await DB.put(coll, packed); }
+    else if (coll === 'chars') { const before = (obj as Char).avatar; await DB.put(coll, obj); Av.settle(obj as Char, before); }
+    else await DB.put(coll, obj);
     if (!silent) emit(coll, obj);
     if (coll === 'conns') emit('conns:saved', obj);
     return obj;
@@ -490,6 +509,9 @@ export const S: Store = {
   },
   saveSettings: debounce(async () => DB.put('kv', await Vault.packSettings()), 200),
   set(patch) { Object.assign(this.settings, patch); this.saveSettings(); emit('settings', patch); },
+  holdAvatars: ids => Av.hold(ids),
+  avatarData: o => Av.data(o?.avatar),
+  avatarNow: o => Av.peek(o?.avatar),
   async msgs(chatId) { return (await MS.read(msgIo, chatId, false)).list; },
   /** 대화 화면용: 방금까지 열어 둔 방이면 메모리의 목록을 바로 돌려준다 (저장된 것과 같은 내용) */
   async msgsFast(chatId) {

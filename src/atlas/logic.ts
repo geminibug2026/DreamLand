@@ -49,8 +49,8 @@ export async function rescan(force = false) {
 // ── 숫자판 ──
 const rowsOf = (list: Chat[]) => list.map(c => ({ s: A.rec.scan[c.id]?.s || emptyStat(), b: roomBits(c, byId) }));
 /** 한 사람과의 숫자판: 그 사람이 있는 방만 */
-export function charTally(charId: string): Tally {
-  const T = tally(rowsOf(rooms().filter(c => c.charIds?.includes(charId))));
+export function charTally(charId: string, mine?: Chat[]): Tally {
+  const T = tally(rowsOf(mine || rooms().filter(c => c.charIds?.includes(charId))));
   T.days = T.turns ? daysTogether(charId) : 0; return T;
 }
 /** 전체 숫자판 */
@@ -86,9 +86,13 @@ export function evaluate({ quiet = false, chat, all = false }: { quiet?: boolean
     if (hit && !was && conDone(c.id)) lit[lit.length - 1].done = true;
   }
   const who = chat ? chat.charIds || [] : all ? S.chars.map(c => c.id) : [];
+  // 모든 사람을 볼 때는 방을 사람별로 한 번만 나눠 둔다 (사람마다 방 전체를 다시 훑으면 캐릭터 · 방이 많을 때 앱을 연 직후 화면이 멈춘다)
+  let roomsBy: Map<string, Chat[]> | null = null;
+  if (all && !chat) { roomsBy = new Map(); for (const c of rooms()) for (const id of c.charIds || []) { const l = roomsBy.get(id); if (l) { if (l[l.length - 1] !== c) l.push(c); } else roomsBy.set(id, [c]); } }
   for (const id of who) {
     if (!S.get('chars', id)) continue;
-    const T = charTally(id); if (!T.turns) continue; const mine = r.per[id] ||= {};
+    if (roomsBy && !roomsBy.has(id)) continue;   // 방이 없으면 셀 것이 없다
+    const T = charTally(id, roomsBy?.get(id)); if (!T.turns) continue; const mine = r.per[id] ||= {};
     for (const m of MILES) {
       if (mine[m.id] || (T[m.m] || 0) < m.at) continue;
       mine[m.id] = now; lit.push({ kind: 'mile', id: m.id, tier: 1, charId: id });

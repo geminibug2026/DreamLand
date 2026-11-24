@@ -413,7 +413,7 @@ export const sampleOf = (ch: DChar) => {
 // ════════ 한 권으로 묶기 ════════
 export interface BookOpt { title: string; sub: string; mode: string; size: number; page: string; cover: string; talk: boolean; diary: boolean; dreams: boolean; letters: boolean; keepsakes: boolean; photos: boolean; almanac: boolean; hand: boolean }
 /** 대화 한 편을 f-bind.js 가 받는 모양으로 모은다 */
-export function gatherBook(chat: DChat, msgs: Msg[], o: Partial<BookOpt> = {}) {
+export function gatherBook(chat: DChat, msgs: Msg[], o: Partial<BookOpt> = {}, cover?: string) {
   const opt: BookOpt = { title: '', sub: '', mode: 'day', size: 40, page: 'A5', cover: 'avatar', talk: true, diary: true, dreams: true, letters: true, keepsakes: true, photos: true, almanac: true, hand: true, ...o };
   const k = K, ch = charOf(chat), w = who(chat), a = A(), today = k.dayKey(core.now()), days = k.collectDays(chat, msgs);
   const hm = (t: number) => { const d = new Date(t); return t ? `${k.pad(d.getMonth() + 1)}.${k.pad(d.getDate())} ${k.pad(d.getHours())}:${k.pad(d.getMinutes())}` : ''; };
@@ -443,9 +443,10 @@ export function gatherBook(chat: DChat, msgs: Msg[], o: Partial<BookOpt> = {}) {
   const firstPic = opt.cover === 'photo' ? msgs.flatMap(m => m && !m.hidden ? k.photosOf(m) : []).map(photoSrc).find(Boolean) : '';
   const f = fontOf(ch);
   return { title: opt.title.trim() || tr('diary.bind.defaultTitle', { name: w.char }), sub: opt.sub.trim(), charName: w.char, userName: w.user, page: opt.page, accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(), madeKey: today, hand: opt.hand ? { family: f.name, q: f.q || '', scale: +(f.k * f.size).toFixed(3), lh: f.lh, color: f.color } : null,
-    avatar: opt.cover === 'avatar' ? ch?.avatar || '' : '', cover: firstPic || '', moonFill: months.length ? months[months.length - 1].fill : 0.18,
+    avatar: opt.cover === 'avatar' ? cover ?? S.avatarNow(ch) : '', cover: firstPic || '', moonFill: months.length ? months[months.length - 1].fill : 0.18,
     stats: { msgs: [...days.values()].reduce((n, d) => n + d.n, 0), days: keys.length, from: first || '', to: last || '' }, chapters, loose,
     letters: opt.letters ? (chat.letters || []).map(l => ({ t: 'letter', label: monthLabel(l.month, true), title: l.title, text: l.text, ps: l.ps, sign: S.get('chars', l.by)?.name || w.char })) : [],
     months, promises: opt.almanac ? (chat.promises || []).filter(p => k.validKey(p.date)).sort((x, y) => x.date.localeCompare(y.date)).map(p => ({ date: p.date, time: p.time, what: p.what, state: k.promiseState(p, today) })) : [] };
 }
-export const makeBook = (chat: DChat, msgs: Msg[], o: Partial<BookOpt>) => buildBook(gatherBook(chat, msgs, o));
+/** cover: 표지에 쓸 초상 그림 글자 (메모리에 꼬리표로만 있을 수 있어, 부르는 쪽이 미리 읽어 넘긴다) */
+export const makeBook = (chat: DChat, msgs: Msg[], o: Partial<BookOpt>, cover?: string) => buildBook(gatherBook(chat, msgs, o, cover));

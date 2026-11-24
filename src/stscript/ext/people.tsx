@@ -53,7 +53,7 @@ async function resolveAvatar(c: Ctx, v: string | undefined): Promise<string | nu
   if (s === 'prompt') { const [f] = await pickFiles({ accept: 'image/*' }); if (!f) return null; return (await shrinkImage(await readDataURL(f))) || null; }
   if (/^(data:image\/|blob:)/i.test(s)) return (await shrinkImage(s)) || s;
   const own = S.get('chars', s) || S.get('personas', s) || S.chars.find(x => x.name === s) || S.personas.find(x => x.name === s);
-  if (own?.avatar) return own.avatar;
+  if (own?.avatar) return (await S.avatarData(own)) || null;
   if (/^\/(?!\/)/.test(s) || /^(characters|backgrounds|assets|user|User Avatars)\//.test(s)) return (await shrinkImage(s.startsWith('/') ? s : '/' + s)) || (warn(c, 'badAvatar'), null);
   warn(c, 'badAvatar'); return null;
 }
@@ -169,7 +169,7 @@ def('char-get', {
     const data = charData(ch) as Record<string, unknown>;
     const field = arg(a, 'field');
     if (field) {
-      let v = field === 'image' ? ch.avatar : field in data ? data[field] : (ch as Record<string, unknown>)[field];
+      let v = field === 'image' ? await S.avatarData(ch) : field in data ? data[field] : (ch as Record<string, unknown>)[field];
       if (field === 'avatar') v = ch.id;
       if (field === 'tags' && Array.isArray(v)) v = v.join(', ');
       if (v === undefined) return '';

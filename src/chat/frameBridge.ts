@@ -113,7 +113,7 @@ frameHooks.init = async f => {
   const sid = f.dataset.script || '', src = sid ? '' : frameSource(f.dataset.frame || '');
   const more = !!sid || MORE.test(src), thx = more && src && HEAVY.test(src) ? (await thMod()).heavy(src) : undefined;
   if (thx) heavyFrames.set(f, src);
-  return { ls, msgId: msgIndexOf(f), lastId: cur.msgs.length - 1, messages: st.messages, ver: st.ver, vars: vars(), user: chat ? S.persona(chat)?.name : '', char: ch?.name || '', charId: ch?.id || '', charAvatar: ch?.avatar || '', userAvatar: chat ? S.persona(chat)?.avatar || '' : '', viewH: innerHeight, mvuExtra: isDuringExtra(), mvuNotify: !!(S.settings as { mvu?: { notifyErr?: boolean } }).mvu?.notifyErr, mvuText: mvuText(),
+  return { ls, msgId: msgIndexOf(f), lastId: cur.msgs.length - 1, messages: st.messages, ver: st.ver, vars: vars(), user: chat ? S.persona(chat)?.name : '', char: ch?.name || '', charId: ch?.id || '', charAvatar: S.avatarNow(ch), userAvatar: chat ? S.persona(chat)?.avatar || '' : '', viewH: innerHeight, mvuExtra: isDuringExtra(), mvuNotify: !!(S.settings as { mvu?: { notifyErr?: boolean } }).mvu?.notifyErr, mvuText: mvuText(),
     ...(more ? { more: true, th: thMeta() } : {}), chatId: chat?.id || '', busy: cur.busy, ...(thx ? { thx } : {}), ...(sid ? { scriptId: sid, scriptName: TH.scriptMeta(sid)?.name || '', scriptVars: TH.scriptVars(sid) } : {}) };
 };
 

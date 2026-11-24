@@ -1,11 +1,11 @@
 // 홈: 오늘 밤의 창 · 이어서 · 캐릭터 목록(폴더 · 정렬 · 검색 · 카드 크기)
-import { useRef, useState, type DragEvent, type ReactNode } from 'react';
-import { Btn, Emblem, Icon, IconBtn, InkName, thumbStyle, useEvents, useThumbs } from '../kit';
+import { memo, useDeferredValue, useEffect, useMemo, useReducer, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { Btn, Emblem, Icon, IconBtn, InkName, useThumb } from '../kit';
 import type { Char, Folder } from '../types';
 import { charPicker, confirmBox, menu, promptBox, usePaged } from '../ui';
 import { moonPhase } from '../lib/moon';
 import { go } from '../lib/router';
-import { S, fmtTime, newChar, uid } from '../lib/core';
+import { S, fmtTime, newChar, on, uid } from '../lib/core';
 import { startMenu } from '../chat/start';
 import { charEditor, charSheet, importDialog } from '../editors';
 import { locale, t, tn } from '../i18n';
@@ -62,7 +62,7 @@ const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', '
 const polar = (r: number, deg: number): [number, number] => [200 + Math.sin(deg * Math.PI / 180) * r, 200 - Math.cos(deg * Math.PI / 180) * r];
 const seeded = (seed: number) => { let z = seed; return () => (z = (z * 16807) % 2147483647) / 2147483647; };
 /** 성도의 선: 날짜 눈금 · 달 이름 · 달의 여덟 위상 · 별 먼지. 달과 위상만 날마다 바뀐다 */
-function WheelArt({ month, phase }: { month: number; phase: number }) {
+const WheelArt = memo(function WheelArt({ month, phase }: { month: number; phase: number }) {
   const rnd = seeded(11), f = (n: number) => n.toFixed(1);
   // 눈금은 깊이 세 단계(달 · 닷새 · 하루)로 나눠, 굵기와 옅기를 같이 내린다
   const ticks = ['', '', '']; for (let d = 0; d < 365; d++) { const a = d / 365 * 360, k = d % 30 === 0 ? 0 : d % 5 === 0 ? 1 : 2, [x1, y1] = polar(192, a), [x2, y2] = polar(192 - [10, 6, 3][k], a); ticks[k] += `M${f(x1)} ${f(y1)}L${f(x2)} ${f(y2)}`; }
@@ -75,28 +75,32 @@ function WheelArt({ month, phase }: { month: number; phase: number }) {
     {Array.from({ length: 80 }, (_, i) => { const [x, y] = polar(96 + rnd() * 38, rnd() * 360); return <circle key={i} cx={f(x)} cy={f(y)} r={(.4 + rnd() * .8).toFixed(2)} opacity={(.3 + rnd() * .6).toFixed(2)} className="w-dust" />; })}
     <circle cx="200" cy="200" r="128" className="w-link" />
   </svg>;
-}
+});
 /** 성도 칸의 먼지 별 두 겹: 타일 크기가 서로소라 무늬가 되풀이되어 보이지 않고, 주기가 달라 따로 반짝인다 */
 const Twinkle = () => <><i className="hm-tw a" aria-hidden="true" /><i className="hm-tw b" aria-hidden="true" /></>;
-const Dust = ({ n, seed }: { n: number; seed: number }) => { const rnd = seeded(seed); return <svg className="hm-dust" aria-hidden="true">{Array.from({ length: n }, (_, i) => <circle key={i} cx={(rnd() * 100).toFixed(1) + '%'} cy={(rnd() * 100).toFixed(1) + '%'} r={(.4 + rnd() * .8).toFixed(2)} opacity={(.15 + rnd() * .45).toFixed(2)} />)}</svg>; };
+const Dust = memo(function Dust({ n, seed }: { n: number; seed: number }) { const rnd = seeded(seed); return <svg className="hm-dust" aria-hidden="true">{Array.from({ length: n }, (_, i) => <circle key={i} cx={(rnd() * 100).toFixed(1) + '%'} cy={(rnd() * 100).toFixed(1) + '%'} r={(.4 + rnd() * .8).toFixed(2)} opacity={(.15 + rnd() * .45).toFixed(2)} />)}</svg>; });
+/** 작은 초상을 바탕으로 건 칸 (그 그림이 준비되면 이 칸만 다시 그린다) */
+function Pic({ c, tag = 'div', children, ...rest }: { c?: Char | null; tag?: 'div' | 'button' | 'i'; children?: ReactNode; className?: string; title?: string; onClick?: () => void }) {
+  const u = useThumb(c?.avatar), Tag = tag as 'div';
+  return <Tag {...rest} style={u ? { backgroundImage: `url("${u}")` } : undefined}>{children}</Tag>;
+}
 
 /** 성도: 가운데에 최근에 만난 캐릭터, 둘레에 그다음 넷. 둘레의 별을 누르면 가운데로 온다 */
-function Stage({ picks, redraw }: { picks: Char[]; redraw: () => void }) {
-  useThumbs();
+const Stage = memo(function Stage({ picks, pick, setPick }: { picks: Char[]; pick: number; setPick: (i: number) => void; ver: number }) {
   const now = new Date(), moon = moonPhase(now), cur = Math.round(moon.p * 8) % 8;
-  const at = view.pick % Math.max(1, picks.length), c: Char | undefined = picks[at];
+  const at = pick % Math.max(1, picks.length), c: Char | undefined = picks[at];
   const day = <div className="hm-day"><i className="hm-star" />{`${DAYS[now.getDay()]} ${now.getDate()} ${MONTHS[now.getMonth()]}`}<b>{moon.name}</b></div>;
   const others = picks.map((p, i) => ({ p, i })).filter(x => x.i !== at).slice(0, 4);
   const wheel = <div className="hm-wheel"><WheelArt month={now.getMonth()} phase={cur} />
-    {c ? <button className="hm-core" style={thumbStyle(c)} title={c.name} onClick={() => charSheet(c)}>{!c.avatar && <Emblem o={c} center />}</button> : <i className="hm-core"><Emblem o={{ tags: [], name: '' }} center /></i>}
-    {others.map(({ p, i }, n) => { const [x, y] = polar(128, [45, 135, 225, 315][n]); return <button key={p.id} className="hm-sat" style={{ left: x / 4 + '%', top: y / 4 + '%' }} title={p.name} onClick={() => { view.pick = i; redraw(); }}>
-      <i style={thumbStyle(p)}>{!p.avatar && <Emblem o={p} mini center />}</i><span>{p.name}</span></button>; })}
+    {c ? <Pic c={c} tag="button" className="hm-core" title={c.name} onClick={() => charSheet(c)}>{!c.avatar && <Emblem o={c} center />}</Pic> : <i className="hm-core"><Emblem o={{ tags: [], name: '' }} center /></i>}
+    {others.map(({ p, i }, n) => { const [x, y] = polar(128, [45, 135, 225, 315][n]); return <button key={p.id} className="hm-sat" style={{ left: x / 4 + '%', top: y / 4 + '%' }} title={p.name} onClick={() => setPick(i)}>
+      <Pic c={p} tag="i">{!p.avatar && <Emblem o={p} mini center />}</Pic><span>{p.name}</span></button>; })}
     <i className="hm-ptr" /></div>;
   if (!c) return <div className="hm-hero"><Dust n={90} seed={5} /><Twinkle />{wheel}
     <div className="hm-tx">{day}<h1 className="hm-name">{t('home.empty.title')}</h1>
       <div className="hm-acts"><Btn label={t('home.empty.migrate')} ic="folder" cls="hm-p" onClick={() => go('import')} /><Btn label={t('home.empty.importCard')} ic="import" cls="hm-o" onClick={() => void importDialog()} /><Btn label={t('home.empty.conns')} ic="plug" cls="hm-g" onClick={() => go('conns')} /></div></div>
   </div>;
-  const last = S.chats.filter(x => x.charIds.includes(c.id)).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  let last: (typeof S.chats)[number] | undefined; for (const x of S.chats) if (x.charIds.includes(c.id) && (!last || x.updatedAt > last.updatedAt)) last = x;
   const days = daysTogether(c.id);
   return <div className="hm-hero"><Dust n={90} seed={5} /><Twinkle />{wheel}
     <div className="hm-tx">{day}
@@ -110,38 +114,76 @@ function Stage({ picks, redraw }: { picks: Char[]; redraw: () => void }) {
       </div>
     </div>
   </div>;
-}
+}, (a, b) => a.ver === b.ver && a.pick === b.pick);
 
 const SecHead = ({ title, sub, children }: { title: string; sub: string; children?: ReactNode }) => <header className="hm-sh"><h2>{title}<i>{sub}</i></h2>{children}</header>;
 
 export const page = { name: 'home', Component: Home };
 
+/** 이어서: 최근 대화 여덟 */
+const Recent = memo(function Recent({ recent }: { recent: (typeof S.chats)[number][]; ver: number }) {
+  return <div><SecHead title={t('home.recent')} sub="recently"><em>{recent.length}</em><span className="hm-sp" /></SecHead>
+    <div className="hm-tl">{recent.map((c, i) => {
+      const chars = c.charIds.map(id => S.get('chars', id)).filter((x): x is Char => !!x), first = chars[0];
+      return <button key={c.id} className={'hm-th' + (i ? '' : ' on')} onClick={() => go('chat', c.id)}>
+        <time>{fmtTime(c.updatedAt)}</time>
+        <Pic c={first} className="hm-pt">{first ? !first.avatar && <Emblem o={first} mini /> : <span>?</span>}</Pic>
+        <div className="hm-tt"><b>{chars.map(x => x.name).join(', ') || t('home.deletedChar')}</b><span>{c.name}</span><p>{tidy(c.preview) || t('home.newChat')}</p></div>
+      </button>;
+    })}</div></div>;
+}, (a, b) => a.ver === b.ver);
+const DeskSec = memo(Desk);
+
+/** 캐릭터 한 칸. 보이는 값이 그대로면 다시 그리지 않는다 (검색 · 정렬 · 그림 하나가 준비될 때마다 쪽 전체를 다시 그리지 않게) */
+const Card = memo(function Card({ c, name, sub, fav, noPic, sel, drag, folder, redraw }: { c: Char; name: string; sub: string; fav: boolean; noPic: boolean; sel: boolean; drag: boolean; folder: string; redraw: () => void; av: string }) {
+  const u = useThumb(c.avatar);
+  return <button className={'hm-c' + (sel ? ' sel' : '')} draggable={drag}
+    onDragStart={e => { e.dataTransfer.setData('text/dreamland-char', c.id); e.dataTransfer.effectAllowed = 'move'; }}
+    onClick={() => charSheet(c)} onContextMenu={e => { e.preventDefault(); folderMenu(e.currentTarget, c, redraw); }}>
+    <div className="hm-im" style={u ? { backgroundImage: `url("${u}")` } : undefined}>{noPic && <><Dust n={30} seed={name.length * 97 + 13} /><Emblem o={c} /></>}{fav && <i className="fav"><Icon name="star" size={12} /></i>}{folder ? <i className="in-folder"><Icon name="folder" size={11} />{folder}</i> : null}</div>
+    <b>{name}</b><small>{sub || '\u00a0'}</small>
+  </button>;
+});
+
 function Home() {
-  const redraw = useEvents('chars', 'chats'); useThumbs();
-  const [q, setQ] = useState(view.q);
+  // ver: 캐릭터 · 대화방이 바뀌었거나 보기(정렬 · 폴더 …)를 바꿨을 때 오른다. 아래 셈은 ver 가 같으면 다시 하지 않는다
+  const [ver, redraw] = useReducer((x: number) => x + 1, 0);
+  useEffect(() => { const offs = [on('chars', redraw), on('chats', redraw)]; return () => offs.forEach(f => f()); }, []);
+  const [q, setQ] = useState(view.q), dq = useDeferredValue(q);   // 글자는 바로 찍고, 목록은 한 박자 뒤에 따라온다 (타자가 밀리지 않게)
+  const [pick, setPickRaw] = useState(view.pick), setPick = (i: number) => { view.pick = i; setPickRaw(i); };
   const fs = folders();
   if (view.folder && view.folder !== '-' && !fs.some(f => f.id === view.folder)) view.folder = '';
 
-  const lastUse = new Map<string, number>(); for (const c of S.chats) for (const id of c.charIds) lastUse.set(id, Math.max(lastUse.get(id) || 0, c.updatedAt));
-  const used = (c: Char) => lastUse.get(c.id) || c.createdAt;
-  const picks = [...S.chars].sort((a, b) => used(b) - used(a)).slice(0, 5);
-  const recent = [...S.chats].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 8);
-  const tags = [...new Set(S.chars.flatMap(c => c.tags))].slice(0, 12);
+  const base = useMemo(() => {
+    const lastUse = new Map<string, number>(); for (const c of S.chats) for (const id of c.charIds) { const v = lastUse.get(id); if (v === undefined || c.updatedAt > v) lastUse.set(id, c.updatedAt); }
+    const used = (c: Char) => lastUse.get(c.id) || c.createdAt;
+    // 가장 최근 다섯 · 여덟만 고른다 (전체를 정렬하지 않는다). 같은 값이면 앞에 있던 것이 먼저 — 전체를 정렬할 때와 같은 차례
+    const top = <T,>(arr: T[], n: number, key: (x: T) => number) => { const out: T[] = []; for (const x of arr) { const k = key(x); if (out.length < n || k > key(out[out.length - 1])) { let i = out.length; while (i > 0 && key(out[i - 1]) < k) i--; out.splice(i, 0, x); if (out.length > n) out.pop(); } } return out; };
+    const tags: string[] = [], seen = new Set<string>(); for (const c of S.chars) { for (const x of c.tags) if (!seen.has(x)) { seen.add(x); tags.push(x); } if (tags.length >= 12) break; }
+    const fid = new Set(folders().map(f => f.id)), inF = new Map<string, number>(); let none = 0;
+    for (const c of S.chars) { const f = c.folder && fid.has(c.folder) ? c.folder : ''; if (f) inF.set(f, (inF.get(f) || 0) + 1); else none++; }
+    return { used, picks: top(S.chars, 5, used), recent: top(S.chats, 8, c => c.updatedAt), tags: tags.slice(0, 12), fid, inF, none };
+  }, [ver]);
+  const { used, picks, recent, tags } = base;
 
-  const inFolder = (c: Char) => !view.folder || (view.folder === '-' ? !folderOf(c) : folderOf(c) === view.folder);
-  const term = q.toLowerCase();
-  const list = S.chars.filter(c => inFolder(c) && (!term || (c.name + ' ' + c.tags.join(' ') + ' ' + (c.creator ?? '')).toLowerCase().includes(term)) && (!view.tag || c.tags.includes(view.tag)) && (!view.fav || c.fav))
-    .sort((a, b) => view.sort === 'name' ? a.name.localeCompare(b.name, locale()) : view.sort === 'new' ? b.createdAt - a.createdAt : used(b) - used(a));
+  const term = dq.toLowerCase();
+  const list = useMemo(() => {
+    const fo1 = (c: Char) => c.folder && base.fid.has(c.folder) ? c.folder : '';
+    const inFolder = (c: Char) => !view.folder || (view.folder === '-' ? !fo1(c) : fo1(c) === view.folder);
+    const coll = view.sort === 'name' ? new Intl.Collator(locale()) : null;   // 이름순: 비교기를 한 번만 만든다 (localeCompare 는 부를 때마다 새로 만든다)
+    return S.chars.filter(c => inFolder(c) && (!term || (c.name + ' ' + c.tags.join(' ') + ' ' + (c.creator ?? '')).toLowerCase().includes(term)) && (!view.tag || c.tags.includes(view.tag)) && (!view.fav || c.fav))
+      .sort((a, b) => coll ? coll.compare(a.name, b.name) : view.sort === 'new' ? b.createdAt - a.createdAt : used(b) - used(a));
+  }, [base, used, term]);
 
   const size = Math.min(SIZES.length - 1, S.settings.homeCols ?? 1);
   // 캐릭터 격자 쪽 나누기: 한 쪽 개수는 사용자가 고른다 (실리태번처럼 10 ~ 1000, 기본 50)
   const grid = useRef<HTMLDivElement | null>(null);
-  const pg = usePaged(list, { id: 'home-v2', perPage: 50, sizes: [10, 25, 50, 100, 250, 500, 1000], resetKey: [q, view.sort, view.tag, view.fav, view.folder].join('|') });
+  const pg = usePaged(list, { id: 'home-v2', perPage: 50, sizes: [10, 25, 50, 100, 250, 500, 1000], resetKey: [dq, view.sort, view.tag, view.fav, view.folder].join('|') });
   const set = (patch: Partial<typeof view>) => { Object.assign(view, patch); redraw(); };
   const addFolder = async () => { const fo = await newFolder(); if (fo) set({ folder: fo.id }); };
 
   // 폴더 탭: 누르면 그 폴더만, 카드를 끌어다 놓으면 담긴다
-  const count = (id: string) => S.chars.filter(c => (id === '-' ? !folderOf(c) : folderOf(c) === id)).length;
+  const count = (id: string) => id === '-' ? base.none : base.inF.get(id) || 0;
   const drop = (id: string) => ({
     onDragOver: (e: DragEvent<HTMLButtonElement>) => { e.preventDefault(); e.currentTarget.classList.add('over'); },
     onDragLeave: (e: DragEvent<HTMLButtonElement>) => e.currentTarget.classList.remove('over'),
@@ -171,21 +213,14 @@ function Home() {
       } }])} />
   </div>;
 
-  const folderTag = (c: Char) => { const o = !view.folder && fs.find(f => f.id === folderOf(c)); return o ? <i className="in-folder"><Icon name="folder" size={11} />{o.name}</i> : null; };
+  const folderName = (c: Char) => (!view.folder && c.folder && fs.find(f => f.id === c.folder)?.name) || '';
+  const selId = picks[pick % Math.max(1, picks.length)]?.id;
   const addChar = async () => { const c = await S.save('chars', newChar({ folder: view.folder && view.folder !== '-' ? view.folder : '' }), true); charEditor(c); };
 
   return <section className="home hm">
-    <Stage picks={picks} redraw={redraw} />
-    {recent.length ? <div><SecHead title={t('home.recent')} sub="recently"><em>{recent.length}</em><span className="hm-sp" /></SecHead>
-      <div className="hm-tl">{recent.map((c, i) => {
-        const chars = c.charIds.map(id => S.get('chars', id)).filter((x): x is Char => !!x), first = chars[0];
-        return <button key={c.id} className={'hm-th' + (i ? '' : ' on')} onClick={() => go('chat', c.id)}>
-          <time>{fmtTime(c.updatedAt)}</time>
-          <div className="hm-pt" style={thumbStyle(first)}>{first ? !first.avatar && <Emblem o={first} mini /> : <span>?</span>}</div>
-          <div className="hm-tt"><b>{chars.map(x => x.name).join(', ') || t('home.deletedChar')}</b><span>{c.name}</span><p>{tidy(c.preview) || t('home.newChat')}</p></div>
-        </button>;
-      })}</div></div> : null}
-    <Desk />
+    <Stage picks={picks} pick={pick} setPick={setPick} ver={ver} />
+    {recent.length ? <Recent recent={recent} ver={ver} /> : null}
+    <DeskSec />
     <div>
       <SecHead title={t('home.chars')} sub="characters"><em>{tn('home.charCount', list.length)}</em><span className="hm-sp" />
         <Btn label={t('common.import')} ic="import" cls="hm-line hm-wide" onClick={() => void importDialog()} />
@@ -212,12 +247,7 @@ function Home() {
       {tags.length ? <div className="hm-tags">{tags.map(x => <button key={x} className={view.tag === x ? 'on' : undefined} onClick={() => set({ tag: view.tag === x ? '' : x })}>#{x}</button>)}</div> : null}
       {folderBar}
       <div className={'hm-grid ' + SIZES[size][0]} ref={el => { grid.current = el; pg.listRef(el); }}>
-        {pg.rows.map(c => <button key={c.id} className={'hm-c' + (c.id === picks[view.pick % Math.max(1, picks.length)]?.id ? ' sel' : '')} draggable={fs.length > 0}
-          onDragStart={e => { e.dataTransfer.setData('text/dreamland-char', c.id); e.dataTransfer.effectAllowed = 'move'; }}
-          onClick={() => charSheet(c)} onContextMenu={e => { e.preventDefault(); folderMenu(e.currentTarget, c, redraw); }}>
-          <div className="hm-im" style={thumbStyle(c)}>{!c.avatar && <><Dust n={30} seed={c.name.length * 97 + 13} /><Emblem o={c} /></>}{c.fav && <i className="fav"><Icon name="star" size={12} /></i>}{folderTag(c)}</div>
-          <b>{c.name}</b><small>{c.tags.slice(0, 2).join(' · ') || '\u00a0'}</small>
-        </button>)}
+        {pg.rows.map(c => <Card key={c.id} c={c} name={c.name} sub={c.tags.slice(0, 2).join(' · ')} fav={!!c.fav} noPic={!c.avatar} av={c.avatar} sel={c.id === selId} drag={fs.length > 0} folder={folderName(c)} redraw={redraw} />)}
         {list.length ? null : term || view.tag || view.fav ? <div className="fx-empty hm-none"><SearchNone /><p>{t('home.none.search')}</p></div>
           : view.folder && view.folder !== '-' ? <div className="fx-empty hm-none folder-empty"><FolderNone /><p>{t('home.folder.empty')}</p></div>
           : !S.chars.length ? <div className="fx-empty hm-none"><ArchEmpty /><p>{t('home.none.chars')}</p></div> : null}

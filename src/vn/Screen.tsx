@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { Chat, Msg } from '../lib/types';
 import type { ChatX } from '../addons/types';
-import { Icon } from '../kit';
+import { Art, Icon } from '../kit';
 import { S } from '../lib/core';
 import { t } from '../i18n';
 import { cur } from '../chat/store';
@@ -112,7 +112,7 @@ function Screen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
       <button type="button" title={t('vn.close')} onClick={onClose}><Icon name="x" size={16} /></button>
     </div>
     <div className="vn-stage" onClick={e => { if (!bare) { e.stopPropagation(); next(); } }}>
-      {art ? <img className="vn-sprite" src={art} alt="" /> : stand?.avatar ? <div className="vn-frame" style={{ backgroundImage: `url("${stand.avatar}")` }} /> : null}
+      {art ? <img className="vn-sprite" src={art} alt="" /> : stand?.avatar ? <Art o={stand} className="vn-frame" /> : null}
     </div>
     <div className="vn-box" onClick={e => { if (!(e.target as HTMLElement).closest('button, textarea, .vn-write')) next(); }}>
       {page?.name ? <b className="vn-name">{page.name}</b> : null}
