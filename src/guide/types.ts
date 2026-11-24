@@ -8,7 +8,8 @@ export interface Parsed { text: string; call?: ToolCall; /** 한 답에 적은 �
 export interface FieldChange { name: string; before: string; after: string }
 /** 쓰기 도구가 남기는 일거리. 적용을 누를 때 지금 자료에 다시 대 본다 (그 사이 사람이 고친 것을 덮지 않게 칸 단위로만 쓴다) */
 export type Op =
-  | { type: 'create'; coll: Kind; obj: Record<string, unknown> }
+  /** link.char: 이 자료가 딸릴 캐릭터의 이름이나 id. 적용할 때(또는 그 캐릭터가 나중에 만들어질 때) 이어 붙인다 */
+  | { type: 'create'; coll: Kind; obj: Record<string, unknown>; link?: { char: string } }
   | { type: 'set'; coll: Kind; id: string; fields: Record<string, unknown> }
   | { type: 'entry'; loreId: string; entryId: string; fields: Record<string, unknown> }
   | { type: 'block'; presetId: string; blockId: string; after: string; fields: Record<string, unknown> }

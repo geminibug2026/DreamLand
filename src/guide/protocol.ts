@@ -56,7 +56,7 @@ const TICK_ONLY = /^\{\s*"(tick|done|end)"\s*:[^{}]*\}$/;
 /** 호출 덩이로 받는 울타리 이름. 그 밖의 이름(yaml · js 따위)은 본문의 예시로 둔다 */
 const CALL_LANGS = new Set(['', 'json', 'json5', 'jsonc', 'tool', 'tools', 'tool_code', 'tool_call', 'tool_calls']);
 /** 한 답에서 한꺼번에 돌리는 호출 수의 한도 */
-export const MAX_BATCH = 8;
+export const MAX_BATCH = 12;
 /** 글 끝에 남은, 닫히지 않은 울타리 머리(```json 따위)와 배열 머리([)를 걷어 낸다 — 남겨 두면 빈 코드 상자로 그려진다 */
 export function tidyText(s: string): string {
   let out = s.replace(/\n{3,}/g, '\n\n').trimEnd();

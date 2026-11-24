@@ -42,6 +42,25 @@ function build(kind: Kind, o: Obj): Obj {
   throw new Error('cannot create ' + kind);
 }
 
+// ── 새로 만든 자료를 캐릭터에 이어 붙이기 ──
+// 조수가 캐릭터 · 로어북 · 정규식 · 퀵 리플라이를 한 번에 제안하면, 서로의 id 는 적용해야 생긴다.
+// 그래서 "어느 캐릭터의 것인지"를 이름으로 적어 두고, 무엇을 먼저 적용하든 둘 다 생긴 순간에 잇는다.
+const LINKS = 'guide:links';
+interface LinkRow { kind: Kind; id: string; char: string; at: number }
+const linkRows = async () => ((await DB.get('kv', LINKS)) as { list?: LinkRow[] } | undefined)?.list || [];
+export async function linkUp(add?: LinkRow): Promise<void> {
+  const rows = [...(await linkRows()), ...(add ? [add] : [])], left: LinkRow[] = [];
+  for (const r of rows) {
+    const item = current(r.kind, r.id); if (!item) continue;   // 그 자료가 지워졌다
+    const key = r.char.trim().toLowerCase(), c = S.get('chars', r.char) || [...S.chars].reverse().find(x => (x.name || '').trim().toLowerCase() === key);
+    if (!c) { if (now() - r.at < KEEP_DAYS * 864e5) left.push(r); continue; }
+    if (r.kind === 'lore') { if (!(c.loreIds ||= []).includes(r.id)) { c.loreIds.push(r.id); await S.save('chars', c); } }
+    else if (r.kind === 'regex') { if (item.scope !== c.id) { item.scope = c.id; await put('regex', item); } }
+    else if (r.kind === 'qr') { const ids = Array.isArray(item.charIds) ? item.charIds as string[] : []; if (item.scope !== 'char' || !ids.includes(c.id)) { item.scope = 'char'; item.charIds = [...new Set([...ids, c.id])]; await put('qr', item); } }
+  }
+  if (left.length || (await linkRows()).length) await DB.put('kv', { id: LINKS, list: left });
+}
+
 async function ledger(): Promise<UndoRow[]> { return ((await DB.get('kv', LEDGER)) as { list?: UndoRow[] } | undefined)?.list || []; }
 async function saveLedger(list: UndoRow[]) {
   // 스크립트가 적은 줄(src: 'th')은 따로 세어 조수의 되돌리기 기록을 밀어내지 않게 한다
@@ -108,7 +127,7 @@ export async function applyChange(ch: Change): Promise<void> {
     const row: UndoRow = { id, at: now(), kind, targetId, target: ch.target, created: !before, stamp: Number(after.updatedAt) || 0 };
     await saveLedger([...(await ledger()), row]);
     ch.state = 'applied'; ch.undoId = id; ch.at = now(); delete ch.err;
-    if (op.type === 'create') ch.op = { ...op, obj: { ...op.obj, id: targetId } };
+    if (op.type === 'create') { ch.op = { ...op, obj: { ...op.obj, id: targetId } }; await linkUp(op.link?.char && kind !== 'chars' ? { kind, id: targetId, char: op.link.char, at: now() } : undefined).catch(e => console.warn('[등불지기] 이어 붙이기', e)); }
   } catch (e) { ch.state = 'failed'; ch.err = e instanceof Error ? e.message : String(e); throw e; }
 }
 
