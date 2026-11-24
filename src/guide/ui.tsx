@@ -11,7 +11,7 @@ import { G, apply, applyAll, branchAt, closeGuide, discard, editFrom, newTalk, o
 import { ACCEPT, MAX_FILES, sizeText } from './attach';
 import { AttachError, readAttach } from './upload';
 import { targetOf, touchedSince } from './changes';
-import { diffWords, fold, tally } from './diff';
+import { diffLines, diffWords, fold, foldLines, looksCode, tally } from './diff';
 import { Mark, startTour } from './Tour';
 import type { Attach, Change, FieldChange, Item, Plan, Ref } from './types';
 
@@ -62,9 +62,19 @@ const redoField = (ch: Change, f: FieldChange) => { G.redo = { card: ch.id, fiel
 function FieldView({ f, ch }: { f: FieldChange; ch?: Change }) {
   const [open, setOpen] = useState(false);
   const short = f.before.length + f.after.length < 90 && !/\n/.test(f.before + f.after);
-  const segs = useMemo(() => f.before && !short ? diffWords(f.before, f.after) : null, [f, short]);
-  const n = segs ? tally(segs) : { add: f.after.length, del: f.before.length }, long = (segs ? f.before.length + f.after.length : f.after.length) > 420;
+  // 코드(스크립트 · 정규식 · JSON · HTML)는 줄마다 − / + 로, 보통 글은 바뀐 낱말만 색으로
+  const code = !short && looksCode(ch?.kind, f.name, f.after || f.before);
+  const rows = useMemo(() => code ? diffLines(f.before, f.after) : null, [f, code]);
+  const segs = useMemo(() => f.before && !short && !code ? diffWords(f.before, f.after) : null, [f, short, code]);
+  const n = rows ? (f.before ? { add: rows.filter(r => r.t === '+').length, del: rows.filter(r => r.t === '-').length } : { add: rows.length, del: 0 }) : segs ? tally(segs) : { add: f.after.length, del: f.before.length };
+  const long = rows ? rows.length > 12 : (segs ? f.before.length + f.after.length : f.after.length) > 420;
   let body: ReactNode;
+  if (rows) {
+    const fresh = !f.before, list = fresh ? rows.map(r => ({ ...r, t: '=' as const })) : open ? rows : foldLines(rows);
+    body = <div className={'gd-code' + (open ? ' open' : long ? ' long' : '')} role="table">{list.map((r, i) => r.t === '…'
+      ? <div key={i} className="gd-ln t-gap"><i /><i /><span>{t('guide.card.sameLines', { n: r.s })}</span></div>
+      : <div key={i} className={'gd-ln' + (r.t === '+' ? ' t-add' : r.t === '-' ? ' t-del' : '')}><i>{fresh ? r.b ?? r.a : r.a ?? ''}</i><i>{fresh ? '' : r.b ?? ''}</i><b>{r.t === '+' ? '+' : r.t === '-' ? '−' : ''}</b><span>{r.s || ' '}</span></div>)}</div>;
+  } else
   if (isHex(f.after)) body = <span className="gd-sw"><i style={{ background: f.after }} /><code>{f.after}</code></span>;
   else if (short) body = <span className="gd-short">{f.before ? <><del>{f.before}</del><svg className="fx-art gd-arrow" viewBox="0 0 16 8" width="16" height="8" aria-hidden="true"><path d="M1 4h13M11 1l3 3-3 3" /></svg></> : null}<ins>{f.after || '∅'}</ins></span>;
   else if (segs) body = <div className={'gd-diff' + (open ? ' open' : long ? ' long' : '')}>{(open ? segs : fold(segs)).map((s, i) => s.t === '=' ? <span key={i}>{s.s}</span> : s.t === '+' ? <ins key={i}>{s.s}</ins> : <del key={i}>{s.s}</del>)}</div>;

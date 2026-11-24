@@ -9370,6 +9370,7 @@
   "guide.card.gone": "The item no longer exists",
   "guide.card.locked": "The entry is locked",
   "guide.card.waiting": "{n} cards waiting",
+  "guide.card.sameLines": "{n} unchanged lines",
   "guide.card.applyAll": "Apply all",
   "guide.f.name": "Name",
   "guide.f.description": "Description",

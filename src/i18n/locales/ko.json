@@ -9290,6 +9290,7 @@
   "guide.card.gone": "대상이 이미 지워졌어요",
   "guide.card.locked": "잠긴 항목이라 고칠 수 없어요",
   "guide.card.waiting": "적용을 기다리는 카드 {n}장",
+  "guide.card.sameLines": "같은 줄 {n}개",
   "guide.card.applyAll": "모두 적용",
   "guide.f.name": "이름",
   "guide.f.description": "설명",

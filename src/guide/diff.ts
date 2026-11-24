@@ -55,3 +55,47 @@ export function fold(segs: Seg[], keep = 60): Seg[] {
 }
 /** 더한 글자 · 지운 글자 수 */
 export const tally = (segs: Seg[]) => segs.reduce((o, s) => { if (s.t === '+') o.add += s.s.length; else if (s.t === '-') o.del += s.s.length; return o; }, { add: 0, del: 0 });
+
+// ── 줄 단위 비교 (코드용): 스크립트 · 정규식 · JSON · HTML 은 줄마다 − / + 로 보인다 ──
+export interface Row { t: '=' | '+' | '-' | '…'; s: string; a?: number; b?: number }
+export function diffLines(a: string, b: string, limit = 4_000_000): Row[] {
+  const A = a.split('\n'), B = b.split('\n'); let lo = 0, ea = A.length, eb = B.length;
+  while (lo < ea && lo < eb && A[lo] === B[lo]) lo++;
+  while (ea > lo && eb > lo && A[ea - 1] === B[eb - 1]) { ea--; eb--; }
+  const out: Row[] = []; for (let i = 0; i < lo; i++) out.push({ t: '=', s: A[i], a: i + 1, b: i + 1 });
+  const n = ea - lo, m = eb - lo;
+  if (!n || !m || n * m > limit) { for (let i = lo; i < ea; i++) out.push({ t: '-', s: A[i], a: i + 1 }); for (let j = lo; j < eb; j++) out.push({ t: '+', s: B[j], b: j + 1 }); }
+  else {
+    const W = m + 1, T = new Uint32Array((n + 1) * W);
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) T[i * W + j] = A[lo + i] === B[lo + j] ? T[(i + 1) * W + j + 1] + 1 : Math.max(T[(i + 1) * W + j], T[i * W + j + 1]);
+    let i = 0, j = 0; const dels: Row[] = [], adds: Row[] = [], flush = () => { out.push(...dels, ...adds); dels.length = adds.length = 0; };
+    while (i < n || j < m) {
+      if (i < n && j < m && A[lo + i] === B[lo + j]) { flush(); out.push({ t: '=', s: A[lo + i], a: lo + i + 1, b: lo + j + 1 }); i++; j++; }
+      else if (j >= m || (i < n && T[(i + 1) * W + j] >= T[i * W + j + 1])) { dels.push({ t: '-', s: A[lo + i], a: lo + i + 1 }); i++; }
+      else { adds.push({ t: '+', s: B[lo + j], b: lo + j + 1 }); j++; }
+    }
+    flush();
+  }
+  for (let i = ea, j = eb; i < A.length; i++, j++) out.push({ t: '=', s: A[i], a: i + 1, b: j + 1 });
+  return out;
+}
+/** 바뀐 줄 둘레 ctx 줄만 남기고 나머지는 '…' 한 줄로 줄인다 */
+export function foldLines(rows: Row[], ctx = 2): Row[] {
+  const keep = new Uint8Array(rows.length); rows.forEach((r, i) => { if (r.t !== '=') for (let k = Math.max(0, i - ctx); k <= Math.min(rows.length - 1, i + ctx); k++) keep[k] = 1; });
+  const out: Row[] = []; let gap = 0;
+  rows.forEach((r, i) => { if (keep[i]) { if (gap) { out.push({ t: '…', s: String(gap) }); gap = 0; } out.push(r); } else gap++; });
+  if (gap) out.push({ t: '…', s: String(gap) });
+  return out;
+}
+/** 코드로 보일 글인지: 스크립트 · 정규식 · CSS 칸이거나, 글이 JSON · HTML · STscript · MVU 명령처럼 생겼다 */
+export function looksCode(kind: string | undefined, field: string, text: string): boolean {
+  if (kind === 'regex' && /^(find|replace)\b/.test(field)) return true;
+  if (kind === 'theme' && /^css\b/.test(field)) return true;
+  const t = text.trim(); if (!t) return false;
+  if (/^[[{][\s\S]*[\]}]$/.test(t) && /["']?[\w가-힣$]+["']?\s*:/.test(t)) return true;   // JSON · YAML 풍
+  const lines = t.split('\n'), cmd = lines.filter(l => /^\s*(\/[a-z#:=-]|\{:|:\}|\|)/i.test(l)).length;
+  if (cmd >= Math.max(1, lines.length * .4)) return true;   // STscript
+  if (/<\/?(div|span|style|table|details|section|p|b|i|img|svg)\b[^>]*>/i.test(t) && (t.match(/<[a-z/][^>]*>/gi) || []).length >= 3) return true;   // HTML
+  if (/_\.(set|add|insert|remove|assign)\(/.test(t) || /^\s*(function|const|let|import)\b/m.test(t)) return true;
+  return false;
+}

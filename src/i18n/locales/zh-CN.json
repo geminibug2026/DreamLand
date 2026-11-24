@@ -9290,6 +9290,7 @@
   "guide.card.gone": "目标已被删除",
   "guide.card.locked": "条目已锁定，无法修改",
   "guide.card.waiting": "{n} 张卡片待应用",
+  "guide.card.sameLines": "{n} 行未变",
   "guide.card.applyAll": "全部应用",
   "guide.f.name": "名称",
   "guide.f.description": "描述",
