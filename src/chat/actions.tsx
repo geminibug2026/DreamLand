@@ -146,7 +146,7 @@ function followBottom(on: boolean) {
  *  기준은 고친 메시지(id), 없으면 화면 맨 위에 걸친 메시지. 맨 아래를 보고 있었으면 맨 아래에 남는다 */
 export function holdView(id?: string): () => void {
   const sc = ui.scroll, box = ui.msgs; if (!sc || !box) return () => { };
-  if (nearBottom() && !id) return () => { if (sc.isConnected) sc.scrollTop = sc.scrollHeight; };
+  if ((nearBottom() && !id) || pinned) return () => { if (sc.isConnected) sc.scrollTop = sc.scrollHeight; };   // 맨 아래에 붙어 있는 동안에는 고친 메시지의 자리를 지키지 않는다
   const top = sc.getBoundingClientRect().top, all = () => [...box.querySelectorAll<HTMLElement>('article.msg[data-id]')];
   let el = id ? all().find(a => a.dataset.id === id) : undefined;
   if (!el) el = all().find(a => a.getBoundingClientRect().bottom > top);
@@ -164,12 +164,15 @@ export function redraw(m: Msg, quiet = false) {
 function appendMsg(m: Msg) { cur.fresh.add(m.id); flush('msgs'); }
 
 /** 방을 연 직후 잠깐은 그림이 늦게 떠서 밀려도 맨 아래에 머문다. 손을 대거나 다른 메시지로 건너뛰면 바로 푼다 */
-let unpin = () => { };
+let unpin = () => { }, pinned = false;
 export function pinBottom(ms = 1400) {
   unpin(); const sc = ui.scroll, box = ui.msgs; if (!sc || !box || !window.ResizeObserver) return;
   const ro = new ResizeObserver(() => { if (sc.isConnected) sc.scrollTop = sc.scrollHeight; }), evs = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
-  const off = () => { ro.disconnect(); clearTimeout(timer); evs.forEach(ev => sc.removeEventListener(ev, off)); if (unpin === off) unpin = () => { }; };
-  const timer = setTimeout(off, ms); evs.forEach(ev => sc.addEventListener(ev, off, { passive: true })); ro.observe(box); unpin = off;
+  const down = () => { if (pinned && unpin === off && sc.isConnected) sc.scrollTop = sc.scrollHeight; };
+  const off = () => { pinned = false; ro.disconnect(); clearTimeout(timer); evs.forEach(ev => sc.removeEventListener(ev, off)); if (unpin === off) unpin = () => { }; };
+  const timer = setTimeout(off, ms); evs.forEach(ev => sc.addEventListener(ev, off, { passive: true })); ro.observe(box); unpin = off; pinned = true;
+  // 바로 앞에서 '고친 메시지의 자리 지키기'가 예약해 둔 되돌림(다음 프레임 · 80ms 뒤)보다 나중에 한 번 더 내려간다
+  requestAnimationFrame(down); setTimeout(down, 120); setTimeout(down, 300);
 }
 export function drawMain({ lazy = false } = {}) {
   // 등장인물이 바뀌었으면(초대 등) 새로 온 사람의 초상도 통째로 올려 둔다
@@ -454,7 +457,9 @@ async function revealLines(target: Msg) {
     if (nearBottom()) toBottom();
     if (i < lines.length) await new Promise(r => setTimeout(r, Math.min(1800, 500 + lines[i].length * 28)));
   }
+  const stick = nearBottom();
   if (cur.paint.delete(target.id)) bump('m:' + target.id);
+  if (stick) pinBottom(600);   // 다 뜬 뒤 붙는 버튼 줄 · 넘기기까지 보이게
 }
 
 // ── 먼저 오는 연락: 답하지 못한 말 → 약속 → 조용할 때, 한 흐름으로 ──
@@ -656,6 +661,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
   if (target && type !== 'continue' && tail?.prefill && E.prefillOk(conn)) base = tail.content;
   if (stick) toBottom();
   atBottom = stick || nearBottom();
+  const startTop = ui.scroll?.scrollTop ?? 0;   // 답변을 받는 동안 위로 올려 봤는지 가리는 기준
 
   let acc = '', raf = 0, apiThink = false, bodyEl: Element | null = null, reasonLen = -1;
   const talkStagger = !!built.talk && S.settings.modes.stagger !== false && type !== 'continue';
@@ -695,6 +701,10 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
     if (!(e instanceof Error && e.name === 'AbortError')) { console.error(e); toast(errMsg(e), 'err'); }
   } finally {
     if (raf) cancelAnimationFrame(raf);
+    // 답변이 끝날 때 맨 아래를 보고 있었는지 (끝난 뒤 붙는 버튼 줄 · 한 줄씩 뜨는 말풍선까지 따라 내려간다).
+    // 자동 스크롤을 꺼 두었어도, 맨 아래에서 시작했고 위로 올려 보지 않았으며 답변이 한 화면에 다 들어오면 끝까지 내려간다 (넘기기가 화면 밖에 걸리지 않게)
+    const scEnd = ui.scroll, elEnd = target && ui.msgs?.querySelector<HTMLElement>(`article.msg[data-id="${CSS.escape(target.id)}"]`);
+    const endStick = nearBottom() || (stick && !!scEnd && scEnd.scrollTop >= startTop - 4 && !!elEnd && elEnd.offsetHeight < scEnd.clientHeight * .8);
     follow.on = false;
     setBusy(false); cur.abort = null; if (varsNote) { varsNote = false; setStatus(''); }
     const alive = S.get('chats', chat.id) === chat;   // 답변이 나오는 동안 지워진 방은 되살리지 않는다
@@ -734,6 +744,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
         if (lv.sceneEnd && chat.scene?.on) await closeScene(lv.sceneEnd.summary || '', true);
         else if (sc && modeOf(chat) === 'talk' && !chat.scene?.on && S.settings.modes.scenes !== false) setTimeout(() => { if (cur.chat === chat && !cur.busy) void openScene(sc, true); }, talked ? 1400 : 0);
       }
+      if (endStick && cur.chat === chat) { toBottom(); pinBottom(talked ? 8000 : 1500); }   // 손을 대면 바로 풀린다
       if (talked && final && cur.chat === chat && S.settings.modes.stagger !== false && type !== 'continue') void revealLines(target);
       if (cur.chat === chat) { drawSide(); drawDossier(); if (cur.drawer) drawDrawer(); if (final) void afterReply(chat, msgs); }
     } else if (ui.input) { ui.input.value = (impersonateBase + acc).trim(); ui.input.dispatchEvent(new Event('input')); ui.input.focus(); }
