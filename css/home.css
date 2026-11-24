@@ -120,3 +120,14 @@
 }
 /* 둥근 자리의 문양은 원 한가운데에: 왼쪽으로 붙어 그려지던 것을 가운데로 민다 (그림 자체의 무게 중심은 kit 의 Emblem center 가 맞춘다) */
 .hm-core .emb, .hm-sat i .emb { margin: auto; justify-self: center; align-self: center; }
+
+/* ── 다듬기: 최근 대화는 책상과 같은 두 겹 액자, 초상은 바깥 고리 · 캐릭터 창에는 차례 번호 ── */
+.hm .hm-th { border: 1px solid var(--h-hair2); border-radius: 3px; padding: 14px; gap: 14px; box-shadow: inset 0 0 0 3px var(--surface), inset 0 0 0 3.5px var(--h-hair); }
+.hm-th .hm-pt { margin: 4px 0 0 4px; box-shadow: 0 0 0 3px var(--surface), 0 0 0 4px var(--h-hair2); }
+.hm-tt > b { font: 500 15.5px var(--h-serif); letter-spacing: .06em; }
+.hm-tt .fx-kv { margin-top: 2px; font-size: 12px; } .hm-tt .fx-kv > span { display: block; min-width: 0; flex: 0 1 auto; color: var(--accent); } .hm-tt .fx-kv > span:empty { display: none; }
+.hm-tt .fx-kv > b { font-size: 11px; color: var(--dim); white-space: nowrap; }
+.hm-grid { counter-reset: hmno; }
+.hm-c:not(.add) .hm-im::after { counter-increment: hmno; content: "N\00b0" counter(hmno, decimal-leading-zero); position: absolute; left: 0; right: 0; top: 13px; z-index: 3; text-align: center; font: 400 8.5px var(--h-mono); letter-spacing: .2em; color: rgba(236, 231, 218, .72); text-shadow: 0 0 4px rgba(10, 10, 9, .8); pointer-events: none; }
+.hm-grid.sm .hm-c:not(.add) .hm-im::after { content: none; counter-increment: hmno; }
+.hm-q { width: min(100%, 340px); box-sizing: border-box; text-align: left; font-size: 14.5px; -webkit-line-clamp: 2; }

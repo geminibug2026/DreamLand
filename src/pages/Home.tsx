@@ -101,11 +101,12 @@ const Stage = memo(function Stage({ picks, pick, setPick }: { picks: Char[]; pic
       <div className="hm-acts"><Btn label={t('home.empty.migrate')} ic="folder" cls="hm-p" onClick={() => go('import')} /><Btn label={t('home.empty.importCard')} ic="import" cls="hm-o" onClick={() => void importDialog()} /><Btn label={t('home.empty.conns')} ic="plug" cls="hm-g" onClick={() => go('conns')} /></div></div>
   </div>;
   let last: (typeof S.chats)[number] | undefined; for (const x of S.chats) if (x.charIds.includes(c.id) && (!last || x.updatedAt > last.updatedAt)) last = x;
-  const days = daysTogether(c.id);
+  const days = daysTogether(c.id), quote = last ? tidy(last.preview).slice(0, 120) : '';
   return <div className="hm-hero"><Dust n={90} seed={5} /><Twinkle />{wheel}
     <div className="hm-tx">{day}
       <div className="hm-lb">{t('home.lastMet')}</div><h1 className="hm-name"><InkName name={c.name} /></h1>
       {c.tags.length ? <div className="hm-tg">{c.tags.slice(0, 4).map(x => <span key={x}>#{x}</span>)}</div> : null}
+      {quote ? <p className="hm-q">{quote}</p> : null}
       <div className="hm-mt">{last && <div className="fx-kv"><span>{t('home.lastTalk')}</span><i /><b>{fmtTime(last.updatedAt)}</b></div>}{days ? <div className="fx-kv"><span>{t('desk.bond.together')}</span><i /><b>{t('together.badge', { days })}</b></div> : null}</div>
       <div className="hm-acts">
         {last && <Btn label={t('home.continue')} ic="play" cls="hm-p" onClick={() => go('chat', last.id)} />}
@@ -128,7 +129,7 @@ const Recent = memo(function Recent({ recent }: { recent: (typeof S.chats)[numbe
       return <button key={c.id} className={'hm-th' + (i ? '' : ' on')} onClick={() => go('chat', c.id)}>
         <time>{fmtTime(c.updatedAt)}</time>
         <Pic c={first} className="hm-pt">{first ? !first.avatar && <Emblem o={first} mini /> : <span>?</span>}</Pic>
-        <div className="hm-tt"><b>{chars.map(x => x.name).join(', ') || t('home.deletedChar')}</b><span>{c.name}</span><p>{tidy(c.preview) || t('home.newChat')}</p></div>
+        <div className="hm-tt"><b>{chars.map(x => x.name).join(', ') || t('home.deletedChar')}</b><div className="fx-kv"><span>{c.name}</span><i /><b>{fmtTime(c.updatedAt)}</b></div><p>{tidy(c.preview) || t('home.newChat')}</p></div>
       </button>;
     })}</div></div>;
 }, (a, b) => a.ver === b.ver);
