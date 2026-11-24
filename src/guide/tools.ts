@@ -1,12 +1,12 @@
 // 등불지기의 도구: 앱 자료를 읽는 것과, 변경 카드를 남기는 것. 셸도 파일도 없다 — 여기 적힌 것이 조수가 할 수 있는 전부다
 // 연결 · API 키 · 서버 설정 · 확장 코드는 읽기 도구에도 쓰기 도구에도 없다. 지우는 도구도 없다
-import { S, chatConns, msgText, uid } from '../lib/core';
+import { S, chatConns, msgText, newRegex, uid } from '../lib/core';
 import { tokens } from '../lib/engine';
 import { allThemes, COLOR_FIELDS } from '../lib/theme';
 import { qrStore, type QrItem, type QrSet } from '../lib/qr-data';
 import { isMvu, runtime as mvuRuntime, type Obj as MvuObj } from '../mvu/engine';
 import { initBooks as mvuBooks, initOf as mvuInitOf } from '../mvu/app';
-import { activeBooks, regexScripts } from '../lib/engine';
+import { activeBooks, regexScripts, runRegexScript, scanLore, type LoreDiag } from '../lib/engine';
 import { route } from '../lib/router';
 import { t } from '../i18n';
 import { varsOf } from '../chat/msgVars';
@@ -379,6 +379,29 @@ const R: ToolDef[] = [
       if (!Object.keys(out).length) fail('Give update= and/or initvar=.');
       return out;
     } },
+  { name: 'regex_test', sig: '{text? | message?: <number>|"last", id? | find+replace}', desc: 'Run one regex script on real text without saving anything. Give id= of an existing script, or find= and replace= to try a new one. The input is text= (a sample you write) or message= (a message of the open chat: its number, or "last"). Returns how many times the pattern matched and the text before and after. Use it before proposing a status panel or a clean-up script, and to see why an existing script does nothing.',
+    run: a => {
+      const r = a.id != null ? find(S.regex, a.id, 'regex script') : newRegex({ name: 'test', find: str(a.find) || fail('Give id= of a script, or find= (and replace=).'), replace: str(a.replace) });
+      let text = str(a.text);
+      if (!text) { const list = cur.msgs || []; if (!list.length) fail('Give text=, or open a chat and use message=.'); const m = a.message == null || a.message === 'last' ? list[list.length - 1] : list[Number(a.message) - 1]; if (!m) fail(`No message ${str(a.message)} in the open chat (it has ${list.length}).`); text = msgText(m); }
+      const m = /^\/([\s\S]+)\/([a-z]*)$/.exec(r.find); let n = 0, err = '';
+      try { const re = new RegExp(m ? m[1] : r.find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), m ? (m[2].includes('g') ? m[2] : m[2] + 'g') : 'g'); n = (text.match(re) || []).length; } catch (e) { err = (e as Error).message; }
+      if (err) fail(`"find" is not a valid regular expression: ${err}`);
+      const out = runRegexScript(r, text, null), cut = (v: string) => v.length > 2400 ? v.slice(0, 1200) + '\n… [cut] …\n' + v.slice(-1000) : v;
+      return { script: a.id != null ? { id: r.id, name: r.name, enabled: r.enabled !== false, mode: r.mode, scope: r.scope || 'global' } : 'not saved (trial)', matches: n, changed: out !== text, before: cut(text), after: cut(out), ...(n === 0 ? { hint: 'The pattern matched nothing in this text. Check exact spelling, line breaks (use [\\s\\S] instead of . across lines) and flags.' } : {}) };
+    } },
+  { name: 'lore_test', sig: '{text, character?: <name or id>}', desc: 'Which lorebook entries would wake up for this text? Scans the lorebooks of the open chat (or of character=, plus the always-on books) exactly like a real request does, without sending anything. Returns the entries that fire (book, name, keys, always-on or keyed, tokens) and, for entries that did not, the reason when the engine gives one. Use it to check keywords after writing lore, or to find out why an entry never shows up.',
+    run: a => {
+      const text = str(a.text).trim() || fail('"text" is required: the words a player would type.');
+      const chat = cur.chat, who = a.character != null ? find(S.chars, a.character, 'character') : chat ? (chat.charIds.map(i => S.get('chars', i)).filter(Boolean) as Char[])[0] : fail('Give character=, or open a chat first.');
+      const chars = a.character != null || !chat ? [who] : (chat.charIds.map(i => S.get('chars', i)).filter(Boolean) as Char[]), persona = chat ? S.persona(chat) : null;
+      const books = activeBooks((a.character != null || !chat ? { loreIds: [] } : chat) as Chat, chars, persona);
+      if (!books.length) return { fired: [], note: `No lorebook is linked to ${who.name} (and none is always on). Link one with link_lorebook, or check the character's lorebook list.` };
+      const diag: LoreDiag = { hit: {}, skip: {}, used: {} };
+      const hits = scanLore(books as never, [{ content: text }], { char: who.name, user: persona?.name || 'User' }, { char: who, persona, commit: false, diag });
+      const name = (id: string) => { for (const b of books) { const e = b.entries.find(x => x.id === id); if (e) return `${b.name} › ${e.name || show(e.keys)}`; } return id; };
+      return { books: books.map(b => ({ id: b.id, name: b.name, entries: b.entries.length })), fired: hits.map(h => ({ book: h.book || h.bookId, entry: h.name || show(h.keys), why: h.constant ? 'always on' : 'keyword: ' + (diag.hit[h.id] || show(h.keys)), tokens: h.tok })), skipped: Object.entries(diag.skip).slice(0, 30).map(([id, why]) => ({ entry: name(id), why })), totalTokens: hits.reduce((n, h) => n + (h.tok || 0), 0) };
+    } },
   { name: 'diagnose_reply', sig: '{}', desc: 'Why did the last reply come out this way? Reads the last prompt actually built for the open chat: sizes by source, what was dropped, which lore entries fired, sampler settings, the tail of the prompt, and the reply itself.',
     run: () => diagnose() },
 ];
@@ -429,6 +452,11 @@ const W: ToolDef[] = [
       }
       const who = forChar(a.character);
       return { ...created('lore', name, { name, description: str(a.description), entries: es }, es.map((e, i) => ({ name: `entry ${i + 1} · ${str(e.name) || show(e.keys)}${e.enabled === false ? ' (off)' : ''}`, before: '', after: (e.constant ? '∞\n' : `# ${show(e.keys)}\n`) + str(e.content) })), who.link), ...(Object.keys(notes).length ? { notes } : {}), warn: dupWarn(S.lore, name, 'lorebook', 'add_lore_entry / update_lore_entry / update_lorebook') }; } },
+  { name: 'link_lorebook', write: true, sig: '{character, book, unlink?: true}', desc: 'Propose linking an existing lorebook to an existing character, so its entries are used in that character\'s chats (unlink=true removes the link). A book made with create_lorebook character= is linked by itself; use this for books that already exist, or when lore "does nothing" because the book was never linked.',
+    run: a => { const c = find(S.chars, a.character, 'character'), b = find(S.lore, a.book, 'lorebook'), has = (c.loreIds || []).includes(b.id);
+      if (a.unlink ? !has : has) fail(a.unlink ? `"${b.name}" is not linked to ${c.name}.` : `"${b.name}" is already linked to ${c.name}. If its entries still do not show up, test the keywords with lore_test.`);
+      const ids = a.unlink ? (c.loreIds || []).filter(i => i !== b.id) : [...(c.loreIds || []), b.id], names = (l: string[]) => l.map(i => S.get('lore', i)?.name || i).join(', ');
+      return propose('update', 'chars', `${c.name} › ${t('nav.lore')}`, { type: 'set', coll: 'chars', id: c.id, fields: { loreIds: ids } }, [{ name: 'lorebooks', before: names(c.loreIds || []), after: names(ids) }]); } },
   { name: 'update_lorebook', write: true, sig: '{id, fields}', desc: 'Propose edits to lorebook settings (name, description, scanDepth, tokenBudget, recursive).',
     run: a => { const b = find(S.lore, a.id, 'lorebook'), f = fields('lore', a.fields); mustHaveRead('lore', b.id, 'book'); return propose('update', 'lore', b.name, { type: 'set', coll: 'lore', id: b.id, fields: f }, diffs(b, f)); } },
   { name: 'add_lore_entry', write: true, sig: '{book, name, keys: [..], content, constant?, position?: "before"|"after"|"depth", depth?, order?}', desc: 'Propose a new entry in an existing lorebook. keys are the words that wake it; constant=true means always on.',
