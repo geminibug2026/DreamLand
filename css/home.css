@@ -131,3 +131,7 @@
 .hm-c:not(.add) .hm-im::after { counter-increment: hmno; content: "N\00b0" counter(hmno, decimal-leading-zero); position: absolute; left: 0; right: 0; top: 13px; z-index: 3; text-align: center; font: 400 8.5px var(--h-mono); letter-spacing: .2em; color: rgba(236, 231, 218, .72); text-shadow: 0 0 4px rgba(10, 10, 9, .8); pointer-events: none; }
 .hm-grid.sm .hm-c:not(.add) .hm-im::after { content: none; counter-increment: hmno; }
 .hm-q { width: min(100%, 340px); box-sizing: border-box; text-align: left; font-size: 14.5px; -webkit-line-clamp: 2; }
+/* 휴대폰: 최근 대화는 시간 줄 없이 카드만 (시각은 카드 안 점선 줄에 있다) */
+@media (max-width: 700px) {
+  .hm-tl { padding-top: 2px; gap: 10px; } .hm-tl::before, .hm-th::before, .hm-th time { display: none; }
+}
