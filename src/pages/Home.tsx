@@ -93,7 +93,7 @@ const Stage = memo(function Stage({ picks, pick, setPick }: { picks: Char[]; pic
   const others = picks.map((p, i) => ({ p, i })).filter(x => x.i !== at).slice(0, 4);
   const wheel = <div className="hm-wheel"><WheelArt month={now.getMonth()} phase={cur} />
     {c ? <Pic c={c} tag="button" className="hm-core" title={c.name} onClick={() => charSheet(c)}>{!c.avatar && <Emblem o={c} center />}</Pic> : <i className="hm-core"><Emblem o={{ tags: [], name: '' }} center /></i>}
-    {others.map(({ p, i }, n) => { const [x, y] = polar(128, [45, 135, 225, 315][n]); return <button key={p.id} className="hm-sat" style={{ left: x / 4 + '%', top: y / 4 + '%' }} title={p.name} onClick={() => setPick(i)}>
+    {others.map(({ p, i }, n) => { const [x, y] = polar(128, [45, 135, 225, 315][n]); return <button key={p.id} className={'hm-sat' + [' up', '', '', ' up l'][n]} style={{ left: x / 4 + '%', top: y / 4 + '%' }} title={p.name} onClick={() => setPick(i)}>
       <Pic c={p} tag="i">{!p.avatar && <Emblem o={p} mini center />}</Pic><span>{p.name}</span></button>; })}
     <i className="hm-ptr" /></div>;
   if (!c) return <div className="hm-hero"><Dust n={90} seed={5} /><Twinkle />{wheel}
@@ -106,7 +106,7 @@ const Stage = memo(function Stage({ picks, pick, setPick }: { picks: Char[]; pic
     <div className="hm-tx">{day}
       <div className="hm-lb">{t('home.lastMet')}</div><h1 className="hm-name"><InkName name={c.name} /></h1>
       {c.tags.length ? <div className="hm-tg">{c.tags.slice(0, 4).map(x => <span key={x}>#{x}</span>)}</div> : null}
-      <div className="hm-mt">{[last && fmtTime(last.updatedAt), days ? t('together.badge', { days }) : ''].filter(Boolean).join(' · ')}</div>
+      <div className="hm-mt">{last && <div className="fx-kv"><span>{t('home.lastTalk')}</span><i /><b>{fmtTime(last.updatedAt)}</b></div>}{days ? <div className="fx-kv"><span>{t('desk.bond.together')}</span><i /><b>{t('together.badge', { days })}</b></div> : null}</div>
       <div className="hm-acts">
         {last && <Btn label={t('home.continue')} ic="play" cls="hm-p" onClick={() => go('chat', last.id)} />}
         <Btn label={t('home.newChat')} ic="chat" cls="hm-o" onClick={e => startMenu(e.currentTarget, [c.id])} />

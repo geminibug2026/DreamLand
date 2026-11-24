@@ -1,1 +1,0 @@
-export{r as cfg,u as translate}from"./logic-CZGF-Rp3.js";

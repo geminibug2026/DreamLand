@@ -7947,6 +7947,7 @@
   "chat.rename.ph": "留空则使用默认名称",
   "chat.side.branchVia": "自「{name}」第 {n} 条分支",
   "chat.side.branches": "{count} 个分支",
+  "home.lastTalk": "上次聊天",
   "home.lastMet": "最近见到的人",
   "home.recent": "最近的对话",
   "nav.atlas": "星图",

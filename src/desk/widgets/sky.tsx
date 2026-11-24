@@ -9,7 +9,8 @@ import { p2, useScan } from '../data';
 export function Sky() {
   const { days } = useScan(), now = new Date(), p = phaseAt(now), today = dayKey(now), mk = monthKey(now);
   // 반올림해서 30 이 되면 오늘이다 (한 바퀴는 29.5일)
-  const left = (to: number) => Math.round((((to - p) % 1 + 1) % 1) * SYNODIC) % 30, full = left(.5), dark = left(0);
+  // 달 이름이 이미 보름 · 삭인데 하루 지나 29일로 나오면 어긋나 보이므로 그날도 오늘로 적는다
+  const idx = Math.round(p * 8) % 8, left = (to: number, at: number) => { const n = Math.round((((to - p) % 1 + 1) % 1) * SYNODIC) % 30; return idx === at && n >= 29 ? 0 : n; }, full = left(.5, 4), dark = left(0, 0);
   const ws = Math.min(6, Math.max(0, +(S.settings.almanac?.weekStart ?? 0) || 0)), weeks = monthGrid(mk, ws), met = weeks.flat().filter(c => c.inMonth && days.has(c.key)).length;
   return <div className="dk-sky fx-night">
     <div className="dk-sky-a">

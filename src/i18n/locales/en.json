@@ -8027,6 +8027,7 @@
   "chat.rename.ph": "Leave empty for the default name",
   "chat.side.branchVia": "From “{name}” at #{n}",
   "chat.side.branches": "{count} branches",
+  "home.lastTalk": "Last talked",
   "home.lastMet": "Last met",
   "home.recent": "Recent chats",
   "nav.atlas": "Star Atlas",
