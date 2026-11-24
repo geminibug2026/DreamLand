@@ -323,14 +323,20 @@ setInterval(watchUser, 30000);
 // ════════ 프롬프트 조각: 오늘 일정 · 상태 · 말 거는 이유 · 장면 · 상태창 ════════
 const fill = (t: string, map: Record<string, unknown>) => Object.entries(map).reduce((s, [k, v]) => s.split(`{{${k}}}`).join(String(v ?? '')), t);
 interface Piece { where: 'end' | 'depth'; depth?: number; order?: number; src: string; content: string }
-interface PromptInfo { chat: LiveChat; char?: LiveChar; chars?: LiveChar[]; ctx?: { char?: string; user?: string }; type?: string }
+/** 장면 중에 내가 아무것도 적지 않고 보냈을 때: 방금 쓴 대목을 다시 쓰지 말고 그다음 순간으로 잇게 한다 */
+export const SCENE_GO_ON = `{{user}} sent nothing this turn — they are simply waiting to see what happens next. Pick up at the exact moment the last reply ended and move forward from there. Do not re-enter, re-arrive or re-describe anything already written above, and do not repeat lines that were already said; the next thing happens now. {{user}} stays where they are and does not speak unless the scene truly cannot go on without them.`;
+interface PromptInfo { chat: LiveChat; char?: LiveChar; chars?: LiveChar[]; ctx?: { char?: string; user?: string }; type?: string; msgs?: { role: string; hidden?: boolean }[] }
 /** 옛 X.prompt 에 거는 함수 (밖에서 시험할 수 있게 이름을 붙여 둔다) */
-const promptFn = ({ chat, char, chars = [], ctx, type }: PromptInfo): Piece[] => {
+const promptFn = ({ chat, char, chars = [], ctx, type, msgs = [] }: PromptInfo): Piece[] => {
   const M = SS().settings.modes || {}, T = SS().settings.tracker || {}, out: Piece[] = [];
   const mx = (t: string) => String(t).replace(/\{\{char\}\}/g, ctx?.char || 'the character').replace(/\{\{user\}\}/g, ctx?.user || 'the user');
   const talk = chat.mode === 'talk', scene = chat.scene?.on && (talk || chat.sceneLive);   // 장면 안내는 대화 모드에서 연 장면에만 (RP 로 바꿔 보는 동안에는 싣지 않는다)
   if (type === 'impersonate') return out;
-  if (scene) out.push({ where: 'end', src: '장면 안내', content: mx(get('modes.sceneRules', SCENE_RULES)).replace('{{title}}', chat.scene!.title || 'untitled').replace('{{place}}', chat.scene!.place ? ` at ${chat.scene!.place}` : '') });
+  if (scene) {
+    out.push({ where: 'end', src: '장면 안내', content: mx(get('modes.sceneRules', SCENE_RULES)).replace('{{title}}', chat.scene!.title || 'untitled').replace('{{place}}', chat.scene!.place ? ` at ${chat.scene!.place}` : '') });
+    const lastSaid = [...msgs].reverse().find(m => !m.hidden && (m.role === 'user' || m.role === 'assistant'));
+    if (type === 'normal' && lastSaid?.role === 'assistant') out.push({ where: 'end', src: '장면 잇기', content: mx(SCENE_GO_ON) });
+  }
   else if (talk) {
     // 오늘 일정과 서로의 상태
     const lines: string[] = [], sched = scheduleOf(char), date = Clock.now(chat);
