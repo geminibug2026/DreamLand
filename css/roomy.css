@@ -17,14 +17,24 @@
 }
 
 /* ── 메시지 도구의 자리 ──
-   넓은 화면: 그대로 (메시지 아래 한 줄). 이름 줄의 묶음(.mt-top)은 쓰지 않는다.
-   좁은 화면: 메시지 아래 한 줄 — 왼쪽 끝에 답변 넘기기, 오른쪽에 도구. */
+   넓은 화면: 그대로 (메시지 아래 한 줄). 이름 줄의 묶음(.mt-top)은 숨긴다.
+   좁은 화면: 도구는 이름 줄 오른쪽에 작고 옅게, 메시지 아래에는 답변 넘기기만 — 왼쪽 끝에 ◀, 오른쪽 끝에 번호와 ▶. */
 .msg-tools.mt-top { display: none !important; }
 @media (max-width: 820px) {
-  .msg:not(.sys) .msg-main > .msg-tools { flex-wrap: nowrap !important; justify-content: flex-end; gap: 0; margin: 2px -6px 0; }
-  .msg:not(.sys) .msg-main > .msg-tools .swipe { order: -1; margin: 0 auto 0 0; padding: 0; background: none; font: 400 11.5px var(--fx-mono); }
-  .msg:not(.sys) .msg-main > .msg-tools .ibtn { width: 28px; height: 32px; background: none; } .msg:not(.sys) .msg-main > .msg-tools .ibtn .ic { width: 16px; height: 16px; }
-  .msg:not(.sys) .msg-main > .msg-tools .ibtn:active { color: var(--accent); }
+  .msg-head { flex-wrap: wrap; row-gap: 0; }
+  .msg:last-child .msg-head .msg-tools.mt-top, .msg.picked .msg-head .msg-tools.mt-top { display: flex !important; }
+  .msg-head .msg-tools.mt-top { order: 20; margin: 0 -4px 0 auto !important; padding: 0; border: 0; background: none; position: static !important; flex: none; flex-wrap: nowrap; gap: 0; opacity: 1; pointer-events: auto; }
+  .msg-head .msg-tools.mt-top .ibtn { width: 27px; height: 27px; opacity: .5; background: none; }
+  .msg-head .msg-tools.mt-top .ibtn:active { opacity: 1; }
+  .msg-head .msg-tools.mt-top .ibtn .ic { width: 13px; height: 13px; }
+  .msg.user .msg-head .msg-tools.mt-top { margin: 0 auto 0 -4px !important; }
+  .mode-rp .msg.user .msg-head .msg-tools.mt-top { margin: 0 -4px 0 auto !important; }
+  /* 아래 줄에는 넘기기만 */
+  .msg:not(.sys) .msg-main > .msg-tools > :not(.swipe) { display: none !important; }
+  .msg:not(.sys) .msg-main > .msg-tools:not(:has(.swipe)) { display: none !important; }
+  .msg:not(.sys) .msg-main > .msg-tools .swipe { display: flex; align-items: center; width: 100%; background: none; }
+  .msg:not(.sys) .msg-main > .msg-tools .swipe span { margin-left: auto; font-size: 12px; color: var(--dim); }
+  .msg:not(.sys) .msg-main > .msg-tools .swipe .ibtn { width: 34px; height: 30px; }
 }
 
 /* ── 모델 고르기 창: 좁은 화면 ──
@@ -47,6 +57,10 @@
    "뒤에 시스템 카드만 있는 메시지"도 마지막으로 친다. (다시 생성 · 이어 쓰기는 정말 마지막 답변일 때만 있다) */
 @media (max-width: 820px), (hover: none) {
   .msg:not(.sys):not(:last-child):not(:has(~ .msg:not(.sys))) .msg-main > .msg-tools { display: flex; opacity: 1; }
+  .msg:not(.sys):not(:has(~ .msg:not(.sys))) .msg-head .msg-tools.mt-top { display: flex !important; }
+}
+@media (max-width: 820px) {
+  .msg:not(.sys):not(:last-child):not(:has(~ .msg:not(.sys))) .msg-main > .msg-tools:not(:has(.swipe)) { display: none; }
 }
 
 /* ── 장면 패널의 탭 ── 칸을 네 묶음으로 나눠 보인다 */
