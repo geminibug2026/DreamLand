@@ -9267,6 +9267,8 @@
   "guide.kind.presets": "프리셋",
   "guide.kind.regex": "정규식",
   "guide.kind.theme": "테마",
+  "guide.kind.vars": "대화 변수",
+  "guide.kind.settings": "앱 설정",
   "guide.kind.qr": "퀵 리플라이",
   "guide.card.create": "만들기",
   "guide.card.update": "고치기",

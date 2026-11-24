@@ -9347,6 +9347,8 @@
   "guide.kind.presets": "Preset",
   "guide.kind.regex": "Regex",
   "guide.kind.theme": "Theme",
+  "guide.kind.vars": "Chat variables",
+  "guide.kind.settings": "App settings",
   "guide.kind.qr": "Quick reply",
   "guide.card.create": "Create",
   "guide.card.update": "Edit",

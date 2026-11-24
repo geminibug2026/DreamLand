@@ -74,12 +74,24 @@ export function tidyText(s: string): string {
 export function parseReply(raw: string): Parsed {
   const src = raw.replace(/<think>[\s\S]*?<\/think>/g, '');
   const found: { at: number; end: number; body: string }[] = [];
-  const fence = /```[ \t]*([a-zA-Z0-9_-]*)[ \t]*\r?\n?([\s\S]*?)(?:```|$)/g;
+  const fence = /```[ \t]*([a-zA-Z0-9_-]*)[ \t]*\r?\n?/g, isCall = (body: string) => /^\{[\s\S]*["“](tool|name)["”]\s*:/.test(body) || /^\[\s*\{[\s\S]*["“]tool["”]\s*:/.test(body) || TICK_ONLY.test(body);
   let m: RegExpExecArray | null;
   while ((m = fence.exec(src))) {
-    const lang = m[1].toLowerCase(), body = m[2].trim();
-    if (CALL_LANGS.has(lang) && (/^\{[\s\S]*["“](tool|name)["”]\s*:/.test(body) || /^\[\s*\{[\s\S]*["“]tool["”]\s*:/.test(body) || TICK_ONLY.test(body))) found.push({ at: m.index, end: fence.lastIndex, body });
-    if (!m[0].endsWith('```')) break;
+    const lang = m[1].toLowerCase(), from = fence.lastIndex, open = from + (/^\s*/.exec(src.slice(from)) as RegExpExecArray)[0].length;
+    // 호출 덩이는 여는 괄호에서 짝이 맞는 닫는 괄호까지를 문자열을 헤아려 찾는다 — 값 안에 ``` 가 들어 있어도(정규식에 넣는 ```html 화면 등) 거기서 끊기지 않게
+    if (CALL_LANGS.has(lang) && (src[open] === '{' || src[open] === '[')) {
+      const e = matchBrace(src, open);
+      if (e >= 0) {
+        const body = src.slice(open, e + 1), shut = /^\s*```/.exec(src.slice(e + 1)), end = e + 1 + (shut ? shut[0].length : 0);
+        if (isCall(body)) found.push({ at: m.index, end, body });
+        fence.lastIndex = end; continue;
+      }
+    }
+    // 그 밖의 울타리(예시 · 다른 언어 · 괄호가 맞지 않는 것): 다음 ``` 까지
+    const close = src.indexOf('```', from), body = src.slice(from, close < 0 ? undefined : close).trim();
+    if (CALL_LANGS.has(lang) && isCall(body)) found.push({ at: m.index, end: close < 0 ? src.length : close + 3, body });
+    if (close < 0) break;
+    fence.lastIndex = close + 3;
   }
   if (!found.length) {
     // 울타리 없이(또는 모르는 울타리 안에) 적은 경우: 줄 머리에서 시작하는 {"tool": · [{"tool": 을 찾는다

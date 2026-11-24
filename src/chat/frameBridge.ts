@@ -106,6 +106,11 @@ function msgIndexOf(f: HTMLIFrameElement) {
 frameHooks.msg = onFrameMessage;
 /** zod 스키마 카드 도우미(vendor/mvu_zod.js)가 띄우는 말 */
 const mvuText = () => ({ path: t('mvu.zod.path'), input: t('mvu.zod.input'), cmdErr: t('mvu.zod.cmdErr', { cmd: '{cmd}' }), initErr: t('mvu.zod.initErr', { n: '{n}' }), notNumber: t('mvu.zod.notNumber', { type: '{type}' }), moveMissing: t('mvu.zod.moveMissing', { path: '{path}' }), ok: t('mvu.zod.ok') });
+/** 화면(iframe)은 앱의 CSS 변수를 물려받지 못한다. 지금 테마의 색 · 글꼴을 넘겨, 화면 안에서 var(--dl-text) 처럼 쓰게 한다 */
+function themeForFrames() {
+  const cs = getComputedStyle(document.documentElement), g = (n: string) => cs.getPropertyValue(n).trim();
+  return { bg: g('--bg'), surface: g('--surface'), text: g('--text'), dim: g('--dim'), accent: g('--accent'), onAccent: g('--on-accent'), ok: g('--ok'), bad: g('--bad'), font: g('--font'), fontChat: g('--font-chat') || g('--font'), fs: g('--fs'), tone: document.documentElement.dataset.tone || 'light' };
+}
 frameHooks.init = async f => {
   await lsReady;
   const chat = cur.chat, ch = chat ? S.get('chars', chat.charIds[0]) : undefined;
@@ -113,7 +118,7 @@ frameHooks.init = async f => {
   const sid = f.dataset.script || '', src = sid ? '' : frameSource(f.dataset.frame || '');
   const more = !!sid || MORE.test(src), thx = more && src && HEAVY.test(src) ? (await thMod()).heavy(src) : undefined;
   if (thx) heavyFrames.set(f, src);
-  return { ls, msgId: msgIndexOf(f), lastId: cur.msgs.length - 1, messages: st.messages, ver: st.ver, vars: vars(), user: chat ? S.persona(chat)?.name : '', char: ch?.name || '', charId: ch?.id || '', charAvatar: S.avatarNow(ch), userAvatar: chat ? S.persona(chat)?.avatar || '' : '', viewH: innerHeight, mvuExtra: isDuringExtra(), mvuNotify: !!(S.settings as { mvu?: { notifyErr?: boolean } }).mvu?.notifyErr, mvuText: mvuText(),
+  return { ls, msgId: msgIndexOf(f), lastId: cur.msgs.length - 1, messages: st.messages, ver: st.ver, vars: vars(), user: chat ? S.persona(chat)?.name : '', char: ch?.name || '', charId: ch?.id || '', charAvatar: S.avatarNow(ch), userAvatar: chat ? S.persona(chat)?.avatar || '' : '', viewH: innerHeight, theme: themeForFrames(), mvuExtra: isDuringExtra(), mvuNotify: !!(S.settings as { mvu?: { notifyErr?: boolean } }).mvu?.notifyErr, mvuText: mvuText(),
     ...(more ? { more: true, th: thMeta() } : {}), chatId: chat?.id || '', busy: cur.busy, ...(thx ? { thx } : {}), ...(sid ? { scriptId: sid, scriptName: TH.scriptMeta(sid)?.name || '', scriptVars: TH.scriptVars(sid) } : {}) };
 };
 

@@ -20,9 +20,14 @@ export type Op =
   /** 로어북 항목 하나 지우기 */
   | { type: 'entrydel'; loreId: string; entryId: string }
   /** 퀵 리플라이 버튼 하나 지우기 */
-  | { type: 'qrdel'; setId: string; itemId: string };
+  | { type: 'qrdel'; setId: string; itemId: string }
+  /** 열린 대화의 변수 고치기: MVU 갱신 명령(commands)을 그 메시지 위에 돌리고, 채팅 변수(set: 값이 null 이면 지운다)를 적는다 */
+  | { type: 'vars'; chatId: string; msgId: string; commands: string; set: Record<string, string | null> }
+  /** 앱 설정 바꾸기 (점으로 이은 길 → 값) */
+  | { type: 'settings'; fields: Record<string, unknown> };
 /** 조수가 손댈 수 있는 자료 종류. theme · qr 은 설정 안에 산다 */
-export type Kind = 'chars' | 'personas' | 'lore' | 'presets' | 'regex' | 'theme' | 'qr';
+/** vars: 열린 대화의 변수 · settings: 앱 설정 (둘은 서재의 자료가 아니라 따로 적용 · 되돌린다) */
+export type Kind = 'chars' | 'personas' | 'lore' | 'presets' | 'regex' | 'theme' | 'qr' | 'vars' | 'settings';
 export type ChangeState = 'pending' | 'applied' | 'dropped' | 'undone' | 'failed';
 export interface Change {
   id: string; verb: 'create' | 'update' | 'delete'; kind: Kind; target: string; op: Op; fields: FieldChange[];

@@ -2,7 +2,7 @@
 // 연결 · API 키 · 서버 설정 · 확장 코드는 읽기 도구에도 쓰기 도구에도 없다. 지우는 도구도 없다
 import { S, chatConns, msgText, newRegex, uid } from '../lib/core';
 import { tokens } from '../lib/engine';
-import { allThemes, COLOR_FIELDS } from '../lib/theme';
+import { allThemes, COLOR_FIELDS, FONTS } from '../lib/theme';
 import { qrStore, type QrItem, type QrSet } from '../lib/qr-data';
 import { isMvu, runtime as mvuRuntime, type Obj as MvuObj } from '../mvu/engine';
 import { initBooks as mvuBooks, initOf as mvuInitOf } from '../mvu/app';
@@ -17,6 +17,7 @@ import type { Char, Chat, Msg, Persona, Preset } from '../lib/types';
 import { checkChar, checkPersona, checkPreset, type Finding } from './check';
 import { current, getPath } from './changes';
 import { searchHelp, topicText } from './handbook';
+import { syntaxOf } from './syntax';
 import type { Change, FieldChange, Item, Kind, Op, Plan, ToolDef } from './types';
 
 /** 도구가 지금 대화를 들여다보는 자리 (agent 가 채운다): 앞서 읽은 것 · 할 일 목록 · 기다리는 변경 카드 */
@@ -116,6 +117,43 @@ function mustHaveRead(kind: keyof typeof READERS, id: string, ...refKeys: string
   if (!ok) fail(`Read it first: call ${READERS[kind][0]} on this item in this conversation before proposing changes, so you edit what is really there.`);
 }
 
+/** 조수가 바꿔도 되는 앱 설정 (점으로 이은 길 → 꼴). 키 · 연결 · 서버 · 보안 · 저장 위치는 넣지 않는다 */
+const SETTINGS: Record<string, 'b' | 's' | [number, number] | string[]> = {
+  theme: 's', font: 's', chatFont: 's', fontSize: [12, 24], lineHeight: [1.2, 2.4], chatWidth: [480, 1600], bubbles: 'b', rpBubbles: 'b', motion: 'b', autoScroll: 'b', showMeta: 'b', enterSend: ['true', 'false', 'auto'], defaultMode: ['rp', 'talk'],
+  'translate.auto': 'b', 'translate.autoInput': 'b', 'translate.lang': 's', 'translate.inputLang': 's',
+  'memory.enabled': 'b', 'memory.auto': 'b', 'tracker.enabled': 'b', 'tracker.hud': 'b',
+  'illust.auto': 'b', 'illust.every': [1, 20], 'illust.maxScenes': [1, 4],
+  'modes.choices': 'b', 'modes.choiceCount': [2, 5], 'modes.stagger': 'b', 'modes.together': 'b', 'modes.scenes': 'b', 'modes.presenceDelay': 'b', 'modes.talkTokens': [100, 4000],
+};
+/** 정규식의 바꿀 글(replace)에 든 HTML 을 살핀다: 화면(```html 로 감싼 한 장의 문서)의 스크립트 문법, 인라인 HTML 에서 지워지는 것, 테마를 따르는지.
+ *  errors 가 있으면 제안을 거절한다 (모델이 읽고 고친다). notes 는 결과에 함께 돌려준다 */
+async function panelLint(replace: string, mode: string): Promise<{ errors: string[]; notes: string[] }> {
+  const errors: string[] = [], notes: string[] = [];
+  if (!replace || mode === 'prompt' || mode === 'store') return { errors, notes };
+  const pages: string[] = [];
+  const outside = replace.replace(/(^|\n)[ \t]*(```+|~~~+)[^\n]*\n([\s\S]*?)\n[ \t]*\2[ \t]*(?=\n|$)/g, (_m, a: string, _f: string, code: string) => { if (/html>|<head>|<body|<script\b|<!doctype/i.test(code) || (/<style[\s>]/i.test(code) && /<(div|section|main|table)\b/i.test(code))) { pages.push(code); return a; } return a + code; });
+  const scripts: { tag: string; no: number; code: string }[] = [];
+  pages.forEach((pg, pi) => {
+    const tag = pages.length > 1 ? `screen ${pi + 1}` : 'the screen'; let si = 0;
+    for (const m of pg.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)) {
+      si++; const attrs = m[1], code = m[2];
+      if (/\bsrc\s*=/.test(attrs)) { if (/\bsrc\s*=\s*["']?https?:/i.test(attrs)) notes.push(`${tag} loads a remote script (${(/src\s*=\s*["']?([^"'\s>]+)/i.exec(attrs) || [])[1]}). It fails offline and slows every message; jQuery is already there, and Tailwind, Font Awesome and Vue load by themselves when the page uses them.`); continue; }
+      if (/\btype\s*=\s*["']?(module|text\/template|application\/json)/i.test(attrs) || !code.trim()) continue;
+      scripts.push({ tag, no: si, code });
+    }
+    if (!/<body/i.test(pg) && !/html>|<head>/i.test(pg)) notes.push(`${tag} has no <body>: wrap the page in <body>…</body> so it is always drawn as a screen.`);
+    if (/url\(\s*["']?https?:|@import|<link\b[^>]*https?:/i.test(pg)) notes.push(`${tag} pulls remote styles, fonts or images. Prefer none: they fail offline.`);
+    if (!/--dl-/.test(pg) && /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i.test(pg)) notes.push(`${tag} uses fixed colours only. Use the theme variables (--dl-bg, --dl-surface, --dl-surface2, --dl-text, --dl-dim, --dl-accent, --dl-on-accent, --dl-line, --dl-ok, --dl-bad) so it fits both light and dark themes.`);
+    if (/position\s*:\s*fixed|\b\d+(\.\d+)?vh\b/i.test(pg)) notes.push(`${tag} uses position: fixed or vh heights. The frame sizes itself to the content; lay out in normal flow.`);
+    if (/<script\b/i.test(pg) && !/triggerSlash|getVariables|Mvu\.|eventOn/.test(pg)) notes.push(`${tag} has a script but never reads variables or acts (getVariables / triggerSlash). If it only decorates, inline HTML would be lighter.`);
+  });
+  // 스크립트 문법은 격리된 틀에서 살핀다 (앱 화면에서는 글로 된 코드를 풀 수 없다)
+  (await syntaxOf(scripts.map(x => x.code))).forEach((err, i) => { if (err) errors.push(`${scripts[i].tag}, script ${scripts[i].no}: ${err}. Fix the JavaScript (a classic script: no top-level await or import) and send the call again.`); });
+  const gone = [/<script\b/i.test(outside) && '<script>', /<button\b/i.test(outside) && '<button>', /<(input|select|textarea)\b/i.test(outside) && 'form fields', /<[a-z][^>]*\son[a-z]+\s*=/i.test(outside) && 'on…= handlers'].filter(Boolean);
+  if (gone.length) errors.push(`${gone.join(', ')} outside a screen ${gone.length > 1 ? 'are' : 'is'} removed when the message is drawn, so this would not work. To make it interactive, put the whole panel in one fenced block — three backticks + html, then a page with <body>…</body>, then three backticks — or, for a readout that only folds and animates, use <details> and CSS and drop ${gone.length > 1 ? 'them' : 'it'}.`);
+  if (!pages.length && /<(div|table|section|details)\b/i.test(outside) && !/var\(--/.test(outside) && /#[0-9a-f]{3,8}\b|rgba?\(/i.test(outside)) notes.push('The inline HTML uses fixed colours only. Use var(--text), var(--dim), var(--surface), var(--accent), var(--line) so it follows the theme.');
+  return { errors, notes };
+}
 /** 카드 · 페르소나 글을 점검해 모델에 돌려줄 짧은 줄들 (토큰 수는 빼고) */
 const brief = (fs: Finding[]) => fs.filter(f => !['heavyish'].includes(f.code)).map(f => `${f.level} ${f.code} @${f.where}${f.n != null ? ` (${f.n})` : ''}${f.detail ? ': ' + f.detail : ''}`);
 function cardNotes(base: Obj, fields: Obj) {
@@ -471,10 +509,11 @@ const W: ToolDef[] = [
   { name: 'update_preset_block', write: true, sig: '{preset, block, fields}', desc: 'Propose edits to one preset block (name, role, content, enabled, depth, when).',
     run: a => { const p = find(S.presets, a.preset, 'preset'), b = find(p.blocks, a.block, 'block'), f = fields('block', a.fields); mustHaveRead('presets', p.id, 'preset'); return propose('update', 'presets', `${p.name} › ${b.name || b.kind}`, { type: 'block', presetId: p.id, blockId: b.id, after: '', fields: f }, diffs(b, f)); } },
   { name: 'create_regex', write: true, sig: '{name, find, replace, onAI?, onUser?, mode?: "display"|"prompt"|"both"|"store", scope?: "global"|<character id>, character?: <character name or id>}', desc: 'Propose a regex script. find is /pattern/flags (JavaScript). display = only how it looks; prompt = only what is sent; store = rewrites the saved text. character= makes it run only for that character; it may be a character you are creating in this same message (give its exact name).',
-    run: a => { const { character, ...ra } = a, who = forChar(character); const f = fields('regex', a.fields ?? ra, ['name', 'find']); if (who.link) f.scope = who.id || '~' + who.link;   // 아직 없는 캐릭터: 아무에게도 맞지 않는 자리표를 두었다가 적용할 때 그 캐릭터 id 로 바꾼다 const m = /^\/([\s\S]+)\/([a-z]*)$/.exec(str(f.find)); try { new RegExp(m ? m[1] : str(f.find), m ? m[2] : 'g'); } catch (e) { fail(`"find" is not a valid regular expression: ${(e as Error).message}`); }
+    run: async a => { const { character, ...ra } = a, who = forChar(character); const f = fields('regex', a.fields ?? ra, ['name', 'find']); if (who.link) f.scope = who.id || '~' + who.link;   // 아직 없는 캐릭터: 아무에게도 맞지 않는 자리표를 두었다가 적용할 때 그 캐릭터 id 로 바꾼다 const m = /^\/([\s\S]+)\/([a-z]*)$/.exec(str(f.find)); try { new RegExp(m ? m[1] : str(f.find), m ? m[2] : 'g'); } catch (e) { fail(`"find" is not a valid regular expression: ${(e as Error).message}`); }
       if (f.scope && f.scope !== 'global' && !who.link) f.scope = find(S.chars, f.scope, 'character').id;
-      const sc = str(f.scope || 'global');
-      return { ...created('regex', str(f.name), f, [], who.id ? '' : who.link), warn: dupWarn(S.regex.filter(r => (r.scope || 'global') === sc), str(f.name), sc === 'global' ? 'global regex script' : 'regex script for this character', 'update_regex') }; } },
+      const sc = str(f.scope || 'global'), pl = await panelLint(str(f.replace), str(f.mode || 'display'));
+      if (pl.errors.length) fail(pl.errors.join(' '));
+      return { ...created('regex', str(f.name), f, [], who.id ? '' : who.link), ...(pl.notes.length ? { notes: { panel: pl.notes } } : {}), warn: dupWarn(S.regex.filter(r => (r.scope || 'global') === sc), str(f.name), sc === 'global' ? 'global regex script' : 'regex script for this character', 'update_regex') }; } },
   { name: 'create_theme', write: true, sig: `{name, tone: "light"|"dark", colors: {${COLORS.join(', ')}}, css?}`, desc: 'Propose a custom theme. All 13 colours as #rrggbb. Keep text/surface contrast readable. css is optional extra CSS (no @import, no remote url()).',
     run: a => { const name = str(a.name).trim() || fail('"name" is required.'), tone = a.tone === 'dark' ? 'dark' : a.tone === 'light' ? 'light' : fail('"tone" must be "light" or "dark".'); const cs = (a.colors && typeof a.colors === 'object' ? a.colors : fail('"colors" is required.')) as Obj, c: Record<string, string> = {};
       for (const k of COLORS) { const v = str(cs[k]).trim(); if (!/^#[0-9a-f]{6}$/i.test(v)) fail(`colors.${k} must be #rrggbb (got "${v || 'nothing'}"). All 13 are required: ${COLORS.join(', ')}.`); c[k] = v.toLowerCase(); }
@@ -512,6 +551,45 @@ const W: ToolDef[] = [
       (call![1].fields as Obj)[field!] = text;
       skipRead = true; try { return await toolDef(call![0])!.run(call![1]); } finally { skipRead = false; }
     } },
+  { name: 'update_settings', write: true, sig: `{fields: {<setting>: <value>}}`, desc: `Propose changing app settings (a change card the user approves; it can be undone). Settings: ${Object.entries(SETTINGS).map(([k, v]) => k + (v === 'b' ? ' (true/false)' : v === 's' ? '' : Array.isArray(v) && typeof v[0] === 'number' ? ` (${v[0]}–${v[1]})` : ` (${(v as string[]).join('|')})`)).join(', ')}. theme= takes a theme id or name (list kind="themes"); font= and chatFont= take a font key (${Object.keys(FONTS).slice(0, 6).join(', ')} …; chatFont "" follows the interface font). Read the current values with get_settings first when you are not sure. Connections, keys, server and security settings are out of reach.`,
+    run: a => {
+      const raw = (a.fields && typeof a.fields === 'object' && !Array.isArray(a.fields) ? a.fields : fail('"fields" must be an object of setting → value.')) as Obj, out: Obj = {}, fs: FieldChange[] = [];
+      for (const [k, v0] of Object.entries(raw)) {
+        const spec = SETTINGS[k]; if (!spec) fail(`"${k}" cannot be changed here. Settings you can change: ${Object.keys(SETTINGS).join(', ')}.`);
+        let v: unknown = v0;
+        if (spec === 'b') { if (typeof v !== 'boolean') fail(`"${k}" must be true or false.`); }
+        else if (spec === 's') {
+          if (typeof v !== 'string') fail(`"${k}" must be a string.`);
+          if (k === 'theme') { const th = allThemes().find(x => x.id === v || str(x.name).toLowerCase() === str(v).toLowerCase()); if (!th) fail(`No theme "${str(v)}". Use list kind="themes" for ids.`); v = th!.id; }
+          if (k === 'font' || (k === 'chatFont' && v !== '')) { const key = Object.keys(FONTS).find(x => x === v || FONTS[x].name === v); if (!key) fail(`No font "${str(v)}". Font keys: ${Object.keys(FONTS).join(', ')}.`); v = key; }
+        }
+        else if (typeof spec[0] === 'number') { const n = Number(v); if (!Number.isFinite(n) || typeof v === 'boolean' || v === '') fail(`"${k}" must be a number.`); const [lo, hi] = spec as [number, number]; if (n < lo || n > hi) fail(`"${k}" must be between ${lo} and ${hi}.`); v = n; }
+        else { if (!(spec as string[]).includes(str(v))) fail(`"${k}" must be one of: ${(spec as string[]).join(', ')}.`); v = k === 'enterSend' ? (str(v) === 'auto' ? 'auto' : str(v) === 'true') : str(v); }
+        const before = getPath(S.settings, k); if (JSON.stringify(before ?? null) === JSON.stringify(v)) continue;
+        out[k] = v; fs.push({ name: k, before: show(before), after: show(v) });
+      }
+      return propose('update', 'settings', t('nav.settings'), { type: 'settings', fields: out }, fs);
+    } },
+  { name: 'set_variables', write: true, sig: '{mvu?: "<update commands>", set?: {<chat variable>: <value>|null}}', desc: 'Propose fixing the variables of the OPEN chat (a change card; it can be undone). mvu= is MVU update text run on top of the latest variables — the same commands a reply would carry: _.set(\'path\', old, new);//reason, _.add(\'path\', delta);, _.insert(\'path\', key, value);, _.remove(\'path\'); — use it to repair a wrong number, restore a lost item, unstick a flag. set= writes plain chat variables (the /setvar kind; null deletes one). Read the current state with get_mvu first. The commands are tested before the card is made: one that would fail (unknown path, wrong type) refuses the proposal with the reason.',
+    run: async a => {
+      const chat = (cur.chat as Chat | null) || fail('Open the chat whose variables you want to fix, then try again.');
+      const set: Record<string, string | null> = {}, fs: FieldChange[] = []; let commands = '', msgId = '';
+      if (a.set != null) { if (typeof a.set !== 'object' || Array.isArray(a.set)) fail('"set" must be an object of variable → value.'); for (const [k, v] of Object.entries(a.set as Obj)) { const nv = v === null ? null : typeof v === 'object' ? JSON.stringify(v) : str(v), old = (chat.vars as unknown as Obj | undefined)?.[k]; if ((old ?? null) === nv) continue; set[k] = nv; fs.push({ name: k, before: show(old), after: nv === null ? '' : nv }); } }
+      if (str(a.mvu).trim()) {
+        commands = str(a.mvu); const r = await mvuOf(''), base = r.data?.stat_data;
+        if (!base || !Object.keys(base).length) fail('This chat has no MVU variables yet (get_mvu shows why). There is nothing to update; fix the [InitVar] link first, or use set= for plain chat variables.');
+        const list = cur.msgs || []; let at = -1; for (let i = list.length - 1; i >= 0; i--) if (isMvu(varsOf(list[i]))) { at = i; break; }
+        if (at < 0) fail('No message in this chat carries MVU variables yet. Send or receive one message first.');
+        msgId = list[at].id;
+        const { checkUpdate } = await mvuRuntime(), rep = await checkUpdate(commands, base!, r.data?.schema);
+        if (!rep.commands.length) fail('No update commands were found in mvu=. Write them like _.set(\'hero.hp\', 3, 20);//restore');
+        const bad = rep.commands.filter(c => c.result === 'failed');
+        if (bad.length) fail(`${bad.length} command(s) would fail: ${bad.map(c => `${c.command} — ${c.why || 'failed'}`).join(' | ')}. Fix them (get_mvu lists the real paths) and send again.`);
+        for (const c of rep.commands) if (c.result === 'applied') fs.push({ name: c.path, before: show(c.before), after: show(c.after) });
+      }
+      if (!commands && !Object.keys(set).length) fail('Give mvu= (update commands) and/or set= (chat variables).');
+      return propose('update', 'vars', chatTitle(chat), { type: 'vars', chatId: chat.id, msgId, commands, set }, fs);
+    } },
   { name: 'update_qr_set', write: true, sig: '{set, fields: {name?, on?, scope?, nosend?, before?, inject?}}', desc: 'Propose set options: on (shown or not), scope, nosend (put text in the box instead of sending — this also stops scripts from running), before/inject (merge with typed text). Read it with get_qr_set first.',
     run: a => { const q = qrRef(a.set ?? a.id); mustHaveRead('qr', q.id); const raw = (a.fields && typeof a.fields === 'object' ? a.fields : fail('"fields" is required.')) as Obj, f: Obj = {};
       for (const [k, v] of Object.entries(raw)) { if (k === 'name') { if (!str(v).trim()) fail('"name" cannot be empty.'); f.name = str(v); } else if (['on', 'nosend', 'before', 'inject'].includes(k)) { if (typeof v !== 'boolean') fail(`"${k}" must be true or false.`); f[k] = v; } else if (k === 'scope') { if (!['global', 'char', 'chat'].includes(str(v))) fail('"scope" must be global, char or chat.'); f.scope = v; } else fail(`"${k}" cannot be written. Writable: name, on, scope, nosend, before, inject.`); }
@@ -528,10 +606,12 @@ const W: ToolDef[] = [
       const view = (o: Obj) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, k === 'auto' ? autoOn(v as QrItem['auto']).join(', ') || 'none' : v]));
       return { ...propose('update', 'qr', `${q.name} › ${it.label}`, { type: 'qritem', setId: q.id, itemId: it.id, fields: f }, diffs(view(it as unknown as Obj), view(f))), ...(notes ? { notes } : {}) }; } },
   { name: 'update_regex', write: true, sig: '{id, fields: {name?, find?, replace?, onUser?, onAI?, onSlash?, onLore?, onReason?, mode?: "display"|"prompt"|"both"|"store", enabled?, scope?: "global"|<character id>, minDepth?, maxDepth?, trim?: [string], runOnEdit?}}', desc: 'Propose edits to an existing regex script (read it with get_regex first). Use this instead of creating a second script with the same name.',
-    run: a => { const r = find(S.regex, a.id ?? a.name, 'regex script'), f = fields('regex', a.fields); mustHaveRead('regex', r.id);
+    run: async a => { const r = find(S.regex, a.id ?? a.name, 'regex script'), f = fields('regex', a.fields); mustHaveRead('regex', r.id);
       if (f.find !== undefined) { const m = /^\/([\s\S]+)\/([a-z]*)$/.exec(str(f.find)); try { new RegExp(m ? m[1] : str(f.find), m ? m[2] : 'g'); } catch (e) { fail(`"find" is not a valid regular expression: ${(e as Error).message}`); } }
       if (f.scope && f.scope !== 'global') f.scope = find(S.chars, f.scope, 'character').id;
-      return propose('update', 'regex', r.name, { type: 'set', coll: 'regex', id: r.id, fields: f }, diffs(r, f)); } },
+      const pl = f.replace !== undefined ? await panelLint(str(f.replace), str(f.mode ?? r.mode ?? 'display')) : { errors: [], notes: [] };
+      if (pl.errors.length) fail(pl.errors.join(' '));
+      return { ...propose('update', 'regex', r.name, { type: 'set', coll: 'regex', id: r.id, fields: f }, diffs(r, f)), ...(pl.notes.length ? { notes: { panel: pl.notes } } : {}) }; } },
   { name: 'update_theme', write: true, sig: `{id, fields: {name?, tone?: "light"|"dark", colors?: {${COLORS.join(', ')}} (any of them), css?}}`, desc: 'Propose edits to one of the user\'s own themes (read it with get_theme first). Built-in themes cannot be changed; make a new one with create_theme.',
     run: a => { const t = find(allThemes(), a.id ?? a.name, 'theme'); if (t.builtin) fail('Built-in themes cannot be changed. Propose create_theme with a new name instead.'); mustHaveRead('theme', t.id);
       const raw = (a.fields && typeof a.fields === 'object' ? a.fields : fail('"fields" is required.')) as Obj; return propose('update', 'theme', t.name, { type: 'set', coll: 'theme', id: t.id, fields: themeFields(raw) }, diffs(t, themeFields(raw))); } },

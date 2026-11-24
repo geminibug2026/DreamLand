@@ -16,6 +16,7 @@ export function getPath(o: unknown, path: string): unknown { let t = o; for (con
 
 /** 지금 그 자료 (없으면 undefined) */
 export function current(kind: Kind, id: string): Obj | undefined {
+  if (kind === 'vars' || kind === 'settings') return undefined;   // 서재의 자료가 아니다 (아래에서 따로 다룬다)
   if (kind === 'theme') return themes().find(t => t.id === id) as Obj | undefined;
   if (kind === 'qr') return qrStore().sets.find(s => s.id === id) as unknown as Obj | undefined;
   return S.get(kind, id) as Obj | undefined;
@@ -23,12 +24,12 @@ export function current(kind: Kind, id: string): Obj | undefined {
 async function put(kind: Kind, obj: Obj) {
   if (kind === 'theme') { const l = themes(), i = l.findIndex(t => t.id === obj.id); if (i < 0) l.push(obj as Theme); else l[i] = obj as Theme; S.set({ customThemes: l }); if (S.settings.theme === obj.id) applyTheme(); }
   else if (kind === 'qr') { const q = qrStore(), i = q.sets.findIndex(s => s.id === obj.id); if (i < 0) q.sets.push(obj as unknown as QrSet); else q.sets[i] = obj as unknown as QrSet; qrSave(); }
-  else await S.save(kind, obj as never);
+  else if (kind !== 'vars' && kind !== 'settings') await S.save(kind, obj as never);
 }
 async function drop(kind: Kind, id: string) {
   if (kind === 'theme') { S.set({ customThemes: themes().filter(t => t.id !== id), ...(S.settings.theme === id ? { theme: BUILTIN[0].id } : {}) }); applyTheme(); }
   else if (kind === 'qr') { const q = qrStore(); q.sets = q.sets.filter(s => s.id !== id); qrSave(); }
-  else await S.remove(kind, id);
+  else if (kind !== 'vars' && kind !== 'settings') await S.remove(kind, id);
 }
 
 /** 새 자료를 그 종류의 기본 꼴 위에 만든다 */
@@ -71,12 +72,50 @@ async function saveLedger(list: UndoRow[]) {
 }
 export const undoList = async () => (await ledger()).filter(r => r.at >= now() - KEEP_DAYS * 864e5).reverse();
 
+// ── 앱 설정 · 대화 변수: 서재의 자료가 아니어서 따로 적용하고 따로 되돌린다 ──
+/** 점으로 이은 길들을 설정에 적는다. 맨 위 칸 단위로 사본을 떠서 S.set 으로 넣는다 (테마 · 글꼴 같은 것은 그 알림을 듣고 바로 반영된다) */
+function writeSettings(fields: Obj) {
+  const patch: Obj = {};
+  for (const [k, v] of Object.entries(fields)) { const top = k.split('.')[0]; if (!(top in patch)) patch[top] = structuredClone((S.settings as unknown as Obj)[top]); if (k === top) patch[top] = structuredClone(v); else setPath(patch, k, structuredClone(v)); }
+  S.set(patch as never);
+  if ('theme' in patch || 'font' in patch || 'chatFont' in patch || 'fontSize' in patch || 'lineHeight' in patch || 'chatWidth' in patch) applyTheme();
+}
+interface VarsBefore { chatId: string; msgId: string; thData: unknown; vars: unknown }
+/** 대화 변수를 적용 전으로 되돌린다 (그 대화가 열려 있어야 한다) */
+async function restoreVars(b: VarsBefore) {
+  const [{ cur }, { setVarsOf }, { chatApi }, A] = await Promise.all([import('../chat/store'), import('../chat/msgVars'), import('../chat/actions'), import('../mvu/app')]);
+  const chat = cur.chat; if (!chat || chat.id !== b.chatId) throw new Error('open the chat first');
+  const m = cur.msgs.find(x => x.id === b.msgId); if (m) setVarsOf(m, b.thData === undefined || b.thData === null ? undefined : structuredClone(b.thData) as Obj);
+  chat.vars = structuredClone(b.vars || {}) as typeof chat.vars;
+  await chatApi.save(); chatApi.redraw?.(); A.pushFrames();
+}
+
 /** 변경 하나를 지금 자료에 적용한다. 적용 전 사본을 남기고 change 를 고쳐 적는다 */
 export async function applyChange(ch: Change): Promise<void> {
   if (ch.state !== 'pending') return;
   const op: Op = ch.op, id = uid();
   let kind: Kind, targetId: string, before: Obj | null = null, after: Obj;
   try {
+    if (op.type === 'settings') {   // 앱 설정: 바뀌는 칸의 옛 값만 남긴다
+      const before: Obj = {}; for (const k of Object.keys(op.fields)) before[k] = structuredClone(getPath(S.settings, k) ?? null);
+      await DB.put('kv', { id: 'gdundo:' + id, before });
+      writeSettings(op.fields);
+      await saveLedger([...(await ledger()), { id, at: now(), kind: 'settings', targetId: 'settings', target: ch.target, created: false, stamp: 0 }]);
+      ch.state = 'applied'; ch.undoId = id; ch.at = now(); delete ch.err;
+      return;
+    }
+    if (op.type === 'vars') {   // 대화 변수: 그 대화가 열려 있을 때만 (메시지에 적힌 변수와 화면이 함께 바뀌어야 한다)
+      const [{ cur }, { varsOf }, { chatApi }, A] = await Promise.all([import('../chat/store'), import('../chat/msgVars'), import('../chat/actions'), import('../mvu/app')]);
+      const chat = cur.chat; if (!chat || chat.id !== op.chatId) throw new Error('open the chat first');
+      const m = cur.msgs.find(x => x.id === op.msgId); if (op.commands && !m) throw new Error('gone');
+      const before: VarsBefore = { chatId: chat.id, msgId: op.msgId, thData: m ? structuredClone(varsOf(m) ?? null) : null, vars: structuredClone(chat.vars || {}) };
+      await DB.put('kv', { id: 'gdundo:' + id, before });
+      if (op.commands && m) { const ok = await A.applyTo(chat, m, () => op.commands, true); if (!ok) throw new Error('no MVU variables in this chat'); }
+      if (Object.keys(op.set).length) { const vs = (chat.vars ||= {}) as unknown as Obj; for (const [k, v] of Object.entries(op.set)) { if (v === null) delete vs[k]; else vs[k] = v; } await chatApi.save(); chatApi.redraw?.(); A.pushFrames(); }
+      await saveLedger([...(await ledger()), { id, at: now(), kind: 'vars', targetId: chat.id, target: ch.target, created: false, stamp: 0 }]);
+      ch.state = 'applied'; ch.undoId = id; ch.at = now(); delete ch.err;
+      return;
+    }
     if (op.type === 'create') { kind = op.coll; after = build(kind, structuredClone(op.obj)); targetId = String(after.id); }
     else if (op.type === 'delete') {   // 통째로 지우기: 사본을 남기고 치운다 (되돌리면 사본을 다시 넣는다)
       kind = op.coll; targetId = op.id;
@@ -150,11 +189,13 @@ export async function touchedSince(undoId: string): Promise<boolean> {
 export async function undoChange(undoId: string): Promise<boolean> {
   const list = await ledger(), r = list.find(x => x.id === undoId); if (!r) return false;
   const row = await DB.get('kv', 'gdundo:' + undoId) as { before?: Obj | null } | undefined;
-  if (r.created) { if (current(r.kind, r.targetId)) await drop(r.kind, r.targetId); }
+  if (r.kind === 'settings') { if (!row?.before) return false; writeSettings(row.before); }
+  else if (r.kind === 'vars') { if (!row?.before) return false; await restoreVars(row.before as unknown as VarsBefore); }
+  else if (r.created) { if (current(r.kind, r.targetId)) await drop(r.kind, r.targetId); }
   else { if (!row?.before) return false; await put(r.kind, row.before); }
   await DB.del('kv', 'gdundo:' + undoId).catch(() => { });
   await saveLedger(list.filter(x => x.id !== undoId));
   return true;
 }
 /** 만든 자료의 id (적용된 만들기 카드에서 "열기"에 쓴다) */
-export const targetOf = (ch: Change): string => ch.op.type === 'create' ? String(ch.op.obj.id || '') : ch.op.type === 'entry' || ch.op.type === 'entrydel' ? ch.op.loreId : ch.op.type === 'block' ? ch.op.presetId : ch.op.type === 'qritem' || ch.op.type === 'qrdel' ? ch.op.setId : ch.op.id;
+export const targetOf = (ch: Change): string => ch.op.type === 'vars' ? ch.op.chatId : ch.op.type === 'settings' ? 'settings' : ch.op.type === 'create' ? String(ch.op.obj.id || '') : ch.op.type === 'entry' || ch.op.type === 'entrydel' ? ch.op.loreId : ch.op.type === 'block' ? ch.op.presetId : ch.op.type === 'qritem' || ch.op.type === 'qrdel' ? ch.op.setId : ch.op.id;

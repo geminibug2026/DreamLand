@@ -51,8 +51,8 @@ export function Md({ text }: { text: string }) {
 }
 
 // ── 변경 카드 ──
-const KIND_KEY: Record<string, string> = { chars: 'guide.kind.chars', personas: 'guide.kind.personas', lore: 'guide.kind.lore', presets: 'guide.kind.presets', regex: 'guide.kind.regex', theme: 'guide.kind.theme', qr: 'guide.kind.qr' };
-const PAGE_OF: Record<string, string> = { chars: 'home', personas: 'personas', lore: 'lore', presets: 'presets', regex: 'regex', theme: 'themes', qr: 'qr' };
+const KIND_KEY: Record<string, string> = { chars: 'guide.kind.chars', personas: 'guide.kind.personas', lore: 'guide.kind.lore', presets: 'guide.kind.presets', regex: 'guide.kind.regex', theme: 'guide.kind.theme', qr: 'guide.kind.qr', vars: 'guide.kind.vars', settings: 'guide.kind.settings' };
+const PAGE_OF: Record<string, string> = { chars: 'home', personas: 'personas', lore: 'lore', presets: 'presets', regex: 'regex', theme: 'themes', qr: 'qr', vars: 'chat', settings: 'settings' };
 /** 칸 이름을 사람 말로 (모르는 칸은 그대로) */
 const fieldName = (n: string) => { const m = /^([\w.]+)(.*)$/.exec(n), k = m ? m[1].replace(/\./g, '_') : ''; return k && has('guide.f.' + k) ? t('guide.f.' + k) + (m![2] || '') : n; };
 const isHex = (s: string) => /^#[0-9a-f]{6}$/i.test(s);
@@ -92,7 +92,7 @@ function ChangeCard({ ch }: { ch: Change }) {
   const [busy, setBusy] = useState(false);
   const run = (fn: () => Promise<unknown>) => async () => { if (busy) return; setBusy(true); try { await fn(); } catch (e) { toast(t('guide.card.failToast', { err: e instanceof Error && e.message === 'gone' ? t('guide.card.gone') : e instanceof Error && e.message === 'locked' ? t('guide.card.locked') : String(e instanceof Error ? e.message : e) }), 'err'); } finally { setBusy(false); } };
   const doUndo = run(async () => { if (ch.undoId && await touchedSince(ch.undoId) && !(await confirmBox(t('guide.card.undoTouched'), t('guide.card.undo')))) return; await undo(ch); toast(t('guide.card.undoneToast'), 'ok'); });
-  const open = () => { const p = PAGE_OF[ch.kind], id = targetOf(ch); if (ch.kind === 'chars') go('home'); else if (ch.kind === 'qr') go('qr', id ? { set: id } : undefined); else go(p, id || undefined); };
+  const open = () => { const p = PAGE_OF[ch.kind], id = targetOf(ch); if (ch.kind === 'chars') go('home'); else if (ch.kind === 'settings') go('settings'); else if (ch.kind === 'qr') go('qr', id ? { set: id } : undefined); else go(p, id || undefined); };
   const colors = ch.kind === 'theme' ? ch.fields.filter(f => isHex(f.after)) : [];
   return <article className={'gd-card fx-frame is-' + ch.state + (ch.verb === 'delete' ? ' is-del' : '')} aria-label={t('guide.card.aria', { target: ch.target })}>
     <header className="gd-ch">

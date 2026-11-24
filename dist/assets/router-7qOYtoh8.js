@@ -1,1 +1,0 @@
-export{t as go}from"./router-ki0-XroU.js";

@@ -9267,6 +9267,8 @@
   "guide.kind.presets": "预设",
   "guide.kind.regex": "正则",
   "guide.kind.theme": "主题",
+  "guide.kind.vars": "聊天变量",
+  "guide.kind.settings": "应用设置",
   "guide.kind.qr": "快速回复",
   "guide.card.create": "新建",
   "guide.card.update": "修改",

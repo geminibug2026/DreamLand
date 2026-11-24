@@ -56,6 +56,19 @@
   window.__VUE_PROD_DEVTOOLS__ = true; window.__VUE_OPTIONS_API__ = true; window.__VUE_PROD_HYDRATION_MISMATCH_DETAILS__ = false;
   function setVh(h) { try { document.documentElement.style.setProperty("--TH-viewport-height", h + "px"); } catch (e) { } }
   setVh(I.viewH || innerHeight);
+  // ── 앱 테마의 색 · 글꼴을 CSS 변수로 깐다 (--dl-bg · --dl-surface · --dl-text · --dl-dim · --dl-accent · --dl-on-accent · --dl-line · --dl-ok · --dl-bad · --dl-font).
+  //    변수만 깔고 모양은 건드리지 않는다: 쓰는 화면만 테마를 따르고, 예전 카드의 화면은 그대로다 ──
+  (function (T) {
+    if (!T) return;
+    try {
+      var r = document.documentElement.style, m = { bg: "--dl-bg", surface: "--dl-surface", text: "--dl-text", dim: "--dl-dim", accent: "--dl-accent", onAccent: "--dl-on-accent", ok: "--dl-ok", bad: "--dl-bad", font: "--dl-font", fontChat: "--dl-font-chat", fs: "--dl-fs" };
+      for (var k in m) if (T[k]) r.setProperty(m[k], T[k]);
+      r.setProperty("--dl-line", "color-mix(in srgb, var(--dl-text) 14%, transparent)");
+      r.setProperty("--dl-surface2", "color-mix(in srgb, var(--dl-text) 6%, var(--dl-surface))");
+      r.setProperty("--dl-soft", "color-mix(in srgb, var(--dl-accent) 14%, var(--dl-surface))");
+      document.documentElement.setAttribute("data-dl-tone", T.tone || "light");
+    } catch (e) { }
+  })(I.theme);
   // ── 저장소: 격리된 화면이라 진짜 localStorage 를 못 쓴다. 앱이 대신 보관한다 ──
   function store(kind) {
     var m = kind === "local" ? (I.ls || {}) : {};
