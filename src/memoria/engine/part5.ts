@@ -1,4 +1,5 @@
 // memory.js 2299–2693 줄을 그대로 옮긴 것. 본문은 고치지 않고 타입(Part5)만 붙인다
+import { syncDaysToDates } from '../calendar';
 import { S, DB, uid, now, msgText, emit } from '../../lib/core';
 import type { MemoryApi } from './api';
 import type { HistoryMsg } from './part3';
@@ -322,7 +323,7 @@ export const part5: Part5 & ThisType<MemoryApi> = {
             const span = mem.turns.slice(fromTurn - 1, toTurn); if (!span.length) break;
             const currentTotal = span.reduce((a, t) => a + (t.days || 0), 0);
             if (currentTotal > 0) { const scale = totalDays / currentTotal; for (const t of span) t.days = (t.days || 0) * scale; } else span[span.length - 1].days = totalDays;
-            mem.clockDays = mem.turns.reduce((a, t) => a + (t.days || 0), 0);
+            syncDaysToDates(mem.turns); mem.clockDays = mem.turns.reduce((a, t) => a + (t.days || 0), 0);
             applied++; break;
           }
           case 'addMemory': {
@@ -432,7 +433,7 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     for (const b of m.bonds) b.log = list(b.log).filter(e => e && typeof e.stage === 'string' && e.stage.trim());
     m.bonds = m.bonds.filter(b => typeof b.from === 'string' && typeof b.to === 'string' && b.from.trim() && b.to.trim() && b.log.length && ekey(b.from) !== ekey(b.to));
     if (!data.bondRev) { for (const b of m.bonds) this.compactBondLog(b); } m.bondRev = 1;
-    m.chunked = Math.min(+m.chunked || 0, m.turns.length); m.clockDays = m.turns.reduce((a, t) => a + (t.days || 0), 0);
+    m.chunked = Math.min(+m.chunked || 0, m.turns.length); syncDaysToDates(m.turns); m.clockDays = m.turns.reduce((a, t) => a + (t.days || 0), 0);
     return m;
   },
   /** 서고를 통째로 바꿔 끼운다 (복구 · 파일 복원) */

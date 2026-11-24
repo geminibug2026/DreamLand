@@ -11,6 +11,7 @@ import { statusOneLine } from '../scene';
 import { hasPhrase, stripPhrases, diffStableEntries, shouldRefreeze, pickPledges, stripOpenLines, isEndedValue, threadTouched } from '../craft';
 import { addressTermsIn, tallyAddress, pickAddressLines, pickDeadlines, storyDays, personNowLine } from '../stage';
 import type { AddressHit, AddressPerson, AddressRow } from '../stage';
+import { dayOnFile } from './part2';
 import { pickBeats, beatLines } from '../calendar';
 import { VOICE_LINES, PLAN_HEAD } from '../directives';
 import { personaNameOf } from './part6';
@@ -50,7 +51,7 @@ export interface PacketSections {
   bonds: Bond[]; voices: PacketVoice[]; banned: string[]; styleGuard: boolean; recallQuotes: boolean; banTell: boolean;
   publicRecall: MemItem[]; protectedRecall: MemItem[]; hiddenProtected: number; locks: PacketLock[]; rules: CanonRow[]; scene: PacketScene; states: StatusRow[];
   characters: PacketCast[]; milestones: Milestone[]; items: Item[]; summaries: PacketSummary[]; supervisorPlan: Plan | null; narratorMode: boolean; turnNow: number;
-  storyAges: Map<number, number> | null; storyTotalDays: number; lag?: number; sources: DossierExcerpt[]; recallCandidates: MemItem[]; trace: Map<string, RecallTrace>;
+  storyAges: Map<number, number> | null; storyTotalDays: number; storyDay?: number; storyNow?: string; lag?: number; sources: DossierExcerpt[]; recallCandidates: MemItem[]; trace: Map<string, RecallTrace>;
   notes: Map<string, string>; recent: string[];
   /** 기억 id → 지금 장면에 있지만 그 비밀을 모르는 사람 */
   unaware?: Map<string, string[]>;
@@ -240,6 +241,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     const recalledChapter = this.pickRecalledChapter(mem, query, lastAssistantText);
     if (recalledChapter) summaries.unshift({ ...recalledChapter, level: 'chunk', recalled: true });
     const storyAges = cfg.storyClock !== false ? this.storyAges(mem) : null, storyTotalDays = storyAges ? mem.turns.reduce((a, t) => a + (t.days || 0), 0) : 0;
+    const storyDay = storyAges ? dayOnFile(mem.turns) : 0, storyNow = storyAges ? ([...mem.turns].reverse().find(t => t.now)?.now || '') : '';
     // 전환점 중복 제거: 이미 Turning Points 에 실린 사건과 사실상 같은 회상은 뺀다. 단, 인용이 있는 기억은 전환점에 없는 정보(원문 대사)를 담고 있으므로 남긴다
     const milestoneTexts = milestones.map(m => `${m.title || ''} ${m.summary || ''}`);
     // 요약 중복 제거: 함께 실리는 묶음 요약(연대기보다 자세한 층)이 이미 그 턴을 다루고 내용도 담고 있으면 같은 일을 회상으로 한 번 더 싣지 않는다 — 두 번 실린 일은 모델이 "특별히 중요한 일"로 읽고 자꾸 꺼낸다
@@ -285,7 +287,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     }
     const trackerLine = mem.trackers?.length ? this.trackerLine(mem, [...inSceneCast.map(c => c.name), personaNameOf(chat)].filter(Boolean)) : '';
     return { absent, cards, minds, plans, trackerLine, voice: String(cfg.recallVoice || 'natural'), bonds, voices, banned, styleGuard: cfg.styleGuard !== false, recallQuotes: cfg.recallQuotes !== false, banTell: cfg.banTell === true,
-      lag, publicRecall: publicRecallDeduped, protectedRecall, hiddenProtected: r.hidden, locks, rules, scene, states, characters, milestones, items, summaries, supervisorPlan, narratorMode, turnNow: T, storyAges, storyTotalDays,
+      lag, publicRecall: publicRecallDeduped, protectedRecall, hiddenProtected: r.hidden, locks, rules, scene, states, characters, milestones, items, summaries, supervisorPlan, narratorMode, turnNow: T, storyAges, storyTotalDays, storyDay, storyNow,
       sources: this.dossierPick(mem, query, recallContext), recallCandidates, trace: r.trace, notes, recent, unaware, deadlines, nowIds, address, transcript };
   },
   parts(chat, mem, history, opt) { return this.buildPacketSections(chat, mem, history, opt); },
@@ -391,8 +393,8 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     if (P.hiddenProtected > 0) lines.push(`(The archive holds ${P.hiddenProtected} more entries sealed from this scene. Do not guess what they contain.)`);
     const sources = takeFirst(P.sources || [], sourceLimit);
     if (sources.length) { lines.push('## Source Excerpts (background reference from imported documents — everything above outranks these; never force them into the scene)'); for (const s of sources) lines.push(`- [${s.title}] ${cleanMultiline(s.text, 900)}`); }
-    if (P.scene?.any) {
-      const bits: string[] = [], bar = P.scene.status;
+    if (P.scene?.any || P.storyNow || (P.storyDay || 0) > 1) {   // 장면 정보가 없어도 "지금이 언제인지 · 며칠째"는 싣는다
+      const bits: string[] = [], bar = P.scene?.status;
       // 대화 속 상태창은 장부의 시간 · 장소보다 새롭고 정확하다 — 있으면 그것을 기준으로 삼는다
       if (bar) bits.push(`latest status bar: ${statusOneLine(bar)} (carry the in-story time, date and place on from here; move them forward only as the story does)`);
       if (P.scene.location && !bar?.place) bits.push(`place: ${P.scene.location}`);
@@ -400,9 +402,13 @@ export const part4: Part4 & ThisType<MemoryApi> = {
       if (P.scene.time && !bar?.when) bits.push(`time: ${P.scene.time}`);
       if (P.scene.present) bits.push(`present: ${P.scene.present}`);
       if (P.scene.mood) bits.push(`mood: ${P.scene.mood}`);
+      if (P.storyNow) bits.push(`now: ${P.storyNow}`);
+      if (P.storyDay) bits.push(`day ${P.storyDay} of the story`);
       if ((P.storyTotalDays || 0) >= 1) bits.push(`story clock: ~${ago(P.storyTotalDays)} since the story began`);
       if ((P.lag || 0) >= 1) bits.push(`recorded ${P.lag} ${P.lag === 1 ? 'reply' : 'replies'} ago — the latest replies in the chat are newer and win where they differ`);
       lines.push(`## Scene Now — ${bits.join(' · ')}`);
+      // 시간이 흐른 이야기: 옛 메시지의 "사흘 전" 같은 말은 그때 기준이다 — 지금 기준으로 다시 세게 한다
+      if ((P.storyTotalDays || 0) >= 1) lines.push('(Time has moved on: the "~N ago in-story" marks in this archive are counted back from NOW. Phrases like "yesterday" or "three days ago" in older chat messages were true when written — when you mention those events, say how long ago they are now, and let people, outfits and situations reflect the time that has passed.)');
     }
     if (stableMode) { const looks = chars.filter(c => c.sceneNow && c.appearance && !c.provisional); if (looks.length) lines.push(`(Looks of those in the scene — ${looks.map(c => `${c.name}: ${c.appearance}`).join(' | ')})`); }   // 안정 구간에서 뺀 "지금 장면에 있는 인물의 외형"
     const states = takeFirst(P.states, stateLimit);   // 장면에 닿는 것 · 최근 것이 앞에 온다 — 예산이 모자라면 뒤쪽(덜 급한 것)부터 뺀다

@@ -1,4 +1,5 @@
 // memory.js 1336–1950 줄을 그대로 옮긴 것. 본문은 고치지 않고 타입(Part3)만 붙인다
+import { syncDaysToDates } from '../calendar';
 import { S, DB, uid, msgText } from '../../lib/core';
 import { embedTexts, embedKind, embedModel } from '../../lib/embed';
 import type { MemoryApi } from './api';
@@ -447,13 +448,13 @@ export const part3: Part3 & ThisType<MemoryApi> = {
       for (let i = 0; i < turns.length; i += B) {
         onProgress?.(Math.min(i + B, turns.length), turns.length);
         // 배치 경계에서 시간이 끊기지 않게 직전 턴 기록 몇 개를 문맥으로 붙인다
-        const lines = [...turns.slice(Math.max(0, i - 3), i).map(x => `(context) [t${x.i + 1}] ${x.t.digest}`), ...turns.slice(i, i + B).map(x => `[t${x.i + 1}] ${x.t.digest}`)].join('\n');
+        const lines = [...turns.slice(Math.max(0, i - 3), i).map(x => `(context) [t${x.i + 1}] ${x.t.digest}`), ...turns.slice(i, i + B).map(x => `[t${x.i + 1}]${x.t.when ? ` (when: ${String(x.t.when).slice(0, 80)})` : ''} ${x.t.digest}`)].join('\n');
         try { const j = parseLoose(await this.call(chat, MP.CLOCK_RECAL_PROMPT, lines, 4000, signal, 'summary')); if (!j) { failed++; continue; } for (const [k, v] of Object.entries(j)) { const m = /^t(\d+)$/.exec(str(k)); if (m) up.set(+m[1] - 1, toDays(v)); } }
         catch (e: any) { if (e.name === 'AbortError' || signal?.aborted) throw e; failed++; console.error('[장기기억] 서사 시계 재계산 배치 실패:', e); }
       }
       if (!up.size) throw new Error(tr('memoria.engine.err.clockFailed'));
       mem.turns.forEach((t, i) => { if (up.has(i)) t.days = up.get(i); });   // 응답에 없는 턴은 기존 값을 유지한다 (0 으로 밀어 버리지 않는다)
-      mem.clockDays = mem.turns.reduce((a, t) => a + (t.days || 0), 0);
+      syncDaysToDates(mem.turns); mem.clockDays = mem.turns.reduce((a, t) => a + (t.days || 0), 0);
       await this.save(mem);
       return { before, after: mem.clockDays, failed };
     } finally { G.clockRecalBusy = false; }

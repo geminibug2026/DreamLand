@@ -340,12 +340,22 @@ export function repairTruncatedJson(s: string): unknown {
   return null;
 }
 /** "6h", "2d", "3개월" 같은 압축 기간 표기를 일수로. 읽지 못하거나 0 이면 0 (100년 상한) */
+const DUR_WORDS: [RegExp, string][] = [
+  [/하루/g, '1일'], [/이틀/g, '2일'], [/사흘/g, '3일'], [/나흘/g, '4일'], [/닷새/g, '5일'], [/엿새/g, '6일'], [/이레/g, '7일'], [/여드레/g, '8일'], [/아흐레/g, '9일'], [/열흘/g, '10일'], [/보름/g, '15일'],
+  [/반나절/g, '6시간'], [/한나절/g, '12시간'], [/반\s*년/g, '6개월'], [/반\s*달/g, '15일'],
+  [/(^|[^가-힣])(한|두|세|석|네|넉|다섯|여섯|일곱|여덟|아홉|열)\s*(달|주|해|시간)/g, ''],
+  [/\b(an?|one)\b/g, '1'], [/\b(two|couple of|a couple)\b/g, '2'], [/\b(three|a few|few|several)\b/g, '3'], [/\bfour\b/g, '4'], [/\bfive\b/g, '5'], [/\bsix\b/g, '6'], [/\bseven\b/g, '7'], [/\beight\b/g, '8'], [/\bnine\b/g, '9'], [/\bten\b/g, '10'], [/\bhalf\b/g, '0.5'],
+];
+const KO_NUM: Record<string, number> = { 한: 1, 두: 2, 세: 3, 석: 3, 네: 4, 넉: 4, 다섯: 5, 여섯: 6, 일곱: 7, 여덟: 8, 아홉: 9, 열: 10 };
+const DUR_UNIT: [string, number][] = [['years|year|yrs|yr|y|년|해', 365], ['months|month|mos|mo|개월|달', 30], ['weeks|week|wks|wk|w|주일|주', 7], ['days|day|d|일', 1], ['hours|hour|hrs|hr|h|시간', 1 / 24], ['minutes|minute|mins|min|m|분', 1 / 1440], ['seconds|second|secs|sec|s|초', 1 / 86400]];
+const DUR_RX = new RegExp(`(\\d+(?:\\.\\d+)?)\\s*(${DUR_UNIT.map(u => u[0]).join('|')})(?![a-z])`, 'gi');
+/** "6h", "2d", "3개월", "2 months", "1d 12h", "두 달", "a week" 같은 기간 표기를 일수로 (여러 마디는 더한다). 읽지 못하거나 0 이면 0 (100년 상한) */
 export function parseDurationDays(raw: unknown): number {
-  const t = String(raw ?? '').trim().toLowerCase(); if (!t || t === '0' || t === 'null' || t === 'none') return 0;
-  const m = t.match(/^~?\s*(\d+(?:\.\d+)?)\s*(s|sec|m|min|h|hr|d|w|mo|y|초|분|시간|일|주|개월|달|년|해)\.?s?$/i); if (!m) return 0;
-  const n = parseFloat(m[1]); if (!Number.isFinite(n) || n <= 0) return 0;
-  const PER_DAY: Record<string, number> = { s: 86400, sec: 86400, 초: 86400, m: 1440, min: 1440, 분: 1440, h: 24, hr: 24, 시간: 24, d: 1, 일: 1, w: 1 / 7, 주: 1 / 7, mo: 1 / 30, 개월: 1 / 30, 달: 1 / 30, y: 1 / 365, 년: 1 / 365, 해: 1 / 365 };
-  return Math.min(n / (PER_DAY[m[2]] ?? 1), 36500);
+  let t = String(raw ?? '').trim().toLowerCase(); if (!t || /^(0|null|none|no|n\/a|없음)$/.test(t)) return 0;
+  for (const [rx, to] of DUR_WORDS) t = to ? t.replace(rx, to) : t.replace(rx, (_m, pre: string, n: string, u: string) => `${pre}${KO_NUM[n]}${u}`);
+  let days = 0; DUR_RX.lastIndex = 0;
+  for (const m of t.matchAll(DUR_RX)) { const n = parseFloat(m[1]), u = DUR_UNIT.find(x => x[0].split('|').includes(m[2].toLowerCase())); if (u && Number.isFinite(n) && n > 0) days += n * u[1]; }
+  return Math.min(days, 36500);
 }
 export const toDays = parseDurationDays;
 export const fmtDays: (d: number) => string = d => d >= 365 ? `${(d / 365).toFixed(1)}년` : d >= 30 ? `${Math.round(d / 30)}개월` : d >= 1 ? `${Math.round(d)}일` : d > 0 ? `${Math.max(1, Math.round(d * 24))}시간` : '0';

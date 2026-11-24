@@ -1,4 +1,5 @@
 // memory.js 374–864 줄을 그대로 옮긴 것. 본문은 고치지 않고 타입(Part1)만 붙인다
+import { syncDaysToDates } from '../calendar';
 import { S, DB, uid, msgText, emit } from '../../lib/core';
 import { quickCall, tokens } from '../../lib/engine';
 import type { MemoryApi } from './api';
@@ -328,7 +329,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
       mem.cast = mem.cast.filter(c => c.manual || c.locked || !dead.has(born.get(c)) || alive(c.updated!));
       mem.items = mem.items.filter(i => i.manual || !dead.has(i.msgId) || alive(i.updated!));
       for (const at of [...idx].sort((a, b) => b - a)) { mem.turns.splice(at, 1); this.shiftTurns(mem, at, -1); }   // 뒤에서부터 걷어내며 번호를 빈틈없이 다시 매긴다
-      mem.clockDays = mem.turns.reduce((a, t) => a + (t.days || 0), 0);
+      syncDaysToDates(mem.turns); mem.clockDays = mem.turns.reduce((a, t) => a + (t.days || 0), 0);
       changed = true;
     }
     // 이야기 이어쓰기 · 확장 태그가 섞인 요약을 정리하고, 별칭이 있는데도 다른 표기로 남아 있는 상태 · 기억을 정식 이름으로 접는다 (접을 게 없으면 순회만 하고 끝난다)

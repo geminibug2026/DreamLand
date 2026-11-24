@@ -36,6 +36,23 @@ export const dayDiff = (a: string, b: string) => Math.round((toUtc(b) - toUtc(a)
 export function addDays(iso: string, days: number): string { const t = new Date(toUtc(iso) + Math.round(days) * 86400000); return `${String(t.getUTCFullYear()).padStart(4, '0')}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`; }
 
 /**
+ * 달력 날짜가 적힌 두 턴 사이의 날짜 차이가 그 사이에 센 날(days)보다 크면, 모자란 만큼을 뒤쪽 턴에 더한다 — 이야기 시계가 달력을 따라가게.
+ * ("두 달 뒤"를 사서가 놓쳐 시계가 사흘에 머무는 일을 막는다. 날짜가 거꾸로 간 턴(회상 · 오타)은 건너뛴다.) 여러 번 불러도 같다. 고친 턴 수를 돌려준다
+ */
+export function syncDaysToDates(turns: { date?: string; days?: number }[] | null | undefined): number {
+    let prev = '', sum = 0, changed = 0;
+    for (const t of turns || []) {
+        sum += Math.max(0, Number(t.days) || 0);
+        if (!isIsoDate(t.date)) continue;
+        if (!prev) { prev = t.date; sum = 0; continue; }
+        const gap = dayDiff(prev, t.date); if (gap < 0) continue;
+        if (gap <= 36500 && gap - sum >= 1) { t.days = (Number(t.days) || 0) + (gap - sum); changed++; }
+        prev = t.date; sum = 0;
+    }
+    return changed;
+}
+
+/**
  * 턴마다의 작중 날짜. turns: { msgId, date(상태창에서 읽은 날짜), days(그 턴에서 흐른 날) }, fixes: 직접 고친 날짜 (msgId → 날짜).
  * 고친 날짜가 있으면 그 턴부터 그 날짜로 잇는다 — 그 뒤에 읽힌 날짜는 같은 만큼 옮기고, 날짜가 없는 턴은 흐른 날만큼 넘긴다. 날짜를 모르는 앞부분은 ''
  */
