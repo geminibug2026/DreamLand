@@ -71,7 +71,9 @@ const SEG1 = new RegExp(SEG.source);
 const isSay = (t: string) => /^["“「『]/.test(t[0]) && /["”」』]$/.test(t), isThink = (t: string) => /^['‘]/.test(t[0]) && /['’]$/.test(t);
 /** style: bubbles(지문 + 대사 말풍선) · chat(메신저: 줄마다 말풍선) · novel(소설: 말풍선 없이 대사만 강조) · plain */
 /** 소설처럼 쓴 줄인지: 아주 길거나, '~다.' 로 끝나는 문장이 이어진다 (메신저 글은 짧고 마침표가 드물다) */
-const isProse = (s: string) => s.length >= 140 || (s.match(/[가-힣]다\.(?=\s|$|["”’'])/g) || []).length >= 2 || (s.length >= 60 && /[가-힣]다\.["”’']?$/.test(s));
+/** '~았다. ~었다. ~였다.' 처럼 지난 일을 적는 끝맺음인지 (받침 ㅆ + 다.) — 짧아도 지문이다. "알았다." 같은 한마디 문자는 길이로 가른다 */
+const pastEnd = (s: string) => { const m = /([가-힣])다\.["”’']?$/.exec(s); return !!m && s.length >= 12 && (m[1].charCodeAt(0) - 0xac00) % 28 === 20; };
+const isProse = (s: string) => s.length >= 140 || (s.match(/[가-힣]다\.(?=\s|$|["”’'])/g) || []).length >= 2 || (s.length >= 60 && /[가-힣]다\.["”’']?$/.test(s)) || pastEnd(s);
 let chatProse = true;   // 긴 줄을 지문으로 볼지 (내가 쓴 글에는 적용하지 않는다)
 function paragraph(line: string, style: string): string {
   if (style === 'plain' || /<[a-zA-Z/]/.test(line)) return `<p class="nar">${inline(line)}</p>`;

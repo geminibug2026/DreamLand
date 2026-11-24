@@ -75,3 +75,19 @@
   .menu { max-height: 56dvh; padding-top: 0; overscroll-behavior: contain; box-shadow: 0 0 0 100vmax color-mix(in srgb, var(--text) 14%, transparent); }
   .menu-x { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: flex-end; gap: 6px; width: 100%; min-height: 40px; padding: 0 12px; background: var(--surface); border-bottom: 1px solid var(--line-3); color: var(--dim); font-size: .86em; }
 }
+
+/* ── 대화 모드의 말풍선 ──
+   메신저로 보낸 글 = 채운 말풍선(테두리 · 그림자 없이, 이어지면 붙여 묶는다) · 소리 내어 한 말 = 가는 선만 있는 빈 말풍선 + 말하는 표시 · 지문 = 말풍선 밖 작은 기울임 글씨 */
+.mode-talk .msg:not(.in-scene) .say { margin: 2px 0; }
+.mode-talk .msg:not(.in-scene) .say > span { padding: .5em .9em; border: 0; border-radius: 18px; box-shadow: none; line-height: 1.55; font-weight: 400; }
+.mode-talk .msg.ai:not(.in-scene) .say:not(.voice) > span { background: color-mix(in srgb, var(--text) 7%, var(--surface)); color: var(--text); }   /* 바탕과 같은 흰색이면 안 보이므로 글자색을 살짝 섞는다 */
+.mode-talk .msg.ai:not(.in-scene) .say:not(.voice):has(+ .say:not(.voice)) > span { border-bottom-left-radius: 6px; }
+.mode-talk .msg.ai:not(.in-scene) .say:not(.voice) + .say:not(.voice) > span { border-top-left-radius: 6px; }
+.mode-talk .msg.user:not(.in-scene) .say:not(.voice) > span { border-radius: 18px 18px 6px 18px; }
+.mode-talk .msg:not(.in-scene) .say.voice > span, .mode-talk .msg.user:not(.in-scene) .say.voice > span { background: none; color: var(--text); border: 1px solid var(--line-2); border-radius: 18px; box-shadow: none; font-weight: 400; padding-left: .75em; }
+.mode-talk .msg.user:not(.in-scene) .say.voice > span { border-color: var(--accent); }
+.mode-talk .msg:not(.in-scene) .say.voice > span::before { content: ""; display: inline-block; width: 13px; height: 13px; margin-right: 7px; vertical-align: -1px; background: var(--accent);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M4 10v4M8 7v10M12 9v6M16 6v12M20 10v4'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M4 10v4M8 7v10M12 9v6M16 6v12M20 10v4'/%3E%3C/svg%3E") center / contain no-repeat; }
+.mode-talk .msg:not(.in-scene) .msg-body > p.nar:not(.act) { margin: 5px 4px; font-size: .87em; line-height: 1.6; font-style: italic; color: var(--dim); }
+.mode-talk .msg:not(.in-scene) > .avatar { width: 30px; height: 30px; }
