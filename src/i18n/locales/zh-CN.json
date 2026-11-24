@@ -2078,6 +2078,7 @@
   "chat.composer.more": "更多操作",
   "chat.composer.attach": "附加图片（也可直接粘贴）",
   "chat.composer.placeholderTalk": "发送消息…",
+  "chat.composer.placeholderRpShort": "继续故事",
   "chat.composer.placeholderRp": "继续故事…（留空发送则由 AI 续写）",
   "chat.dice.aria": "{sides} 面骰：{value}",
   "chat.dice.crit": "大成功",

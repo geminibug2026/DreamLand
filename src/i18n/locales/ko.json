@@ -2078,6 +2078,7 @@
   "chat.composer.more": "더 많은 동작",
   "chat.composer.attach": "이미지 첨부 (붙여넣기도 됩니다)",
   "chat.composer.placeholderTalk": "메시지 보내기…",
+  "chat.composer.placeholderRpShort": "이야기를 이어 가세요",
   "chat.composer.placeholderRp": "이야기를 이어 가세요… (비워 두고 보내면 AI 가 이어 씁니다)",
   "chat.dice.aria": "{sides}면 주사위: {value}",
   "chat.dice.crit": "대성공",

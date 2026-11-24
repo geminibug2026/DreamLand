@@ -2117,6 +2117,7 @@
   "chat.composer.more": "More actions",
   "chat.composer.attach": "Attach images (paste works too)",
   "chat.composer.placeholderTalk": "Send a message…",
+  "chat.composer.placeholderRpShort": "Continue the story",
   "chat.composer.placeholderRp": "Continue the story… (send empty to let the AI continue)",
   "chat.dice.aria": "d{sides} die: {value}",
   "chat.dice.crit": "Critical!",

@@ -144,7 +144,7 @@ export function Composer() {
     <div className="composer-box">
       <IconBtn ic="plus" title={t('chat.composer.more')} onClick={plus} />
       <IconBtn ic="image" title={t('chat.composer.attach')} onClick={async () => addImages(await pickFiles({ accept: 'image/*', multiple: true }))} />
-      <textarea className="composer-input" ref={input} rows={1} spellCheck={false} placeholder={talk ? t('chat.composer.placeholderTalk') : t('chat.composer.placeholderRp')} />
+      <textarea className="composer-input" ref={input} rows={1} spellCheck={false} placeholder={talk ? t('chat.composer.placeholderTalk') : t(matchMedia('(max-width: 820px)').matches ? 'chat.composer.placeholderRpShort' : 'chat.composer.placeholderRp')} />
       <StickerBtn />
       <MicBtn />
       <SendBtn />
