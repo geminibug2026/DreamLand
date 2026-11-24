@@ -416,19 +416,25 @@ button.top-room:hover { text-decoration: underline dotted; text-underline-offset
 @media (max-width: 820px) {
   .chat-top { position: relative; }
   .chat-top .av-stack { display: flex; margin-left: 2px; } .chat-top .av-stack .avatar:nth-child(n+2) { display: none; } .chat-top .av-stack .avatar { width: 34px; height: 34px; border-radius: 50%; }
-  .top-title b { font: 600 1.02em var(--fx-serif); letter-spacing: .05em; }
   .top-title .top-room { display: inline; } .top-title .top-room::before { content: none; } .top-meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .72em; }
   .chat-top .gauge { display: block; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; min-width: 0; padding: 0; background: none; pointer-events: none; } .chat-top .gauge span { display: none; } .chat-top .gauge i { background: var(--accent); }
 }
 
-/* ── 다듬기(휴대폰): 입력 칸은 테두리 없이 깔끔하게, 보내기도 다른 단추와 같은 모양의 선 아이콘 · 빠른 단추는 알약 모양 한 줄 ── */
+/* ── 다듬기: 입력 칸은 테두리 없이 깔끔하게, 보내기도 다른 단추와 같은 모양의 선 아이콘 · 빠른 단추는 알약 모양 한 줄 (휴대폰 · PC 같은 모양) ── */
+.composer { border-top: 1px solid var(--line); padding-top: 8px; gap: 6px; }
+.composer .composer-box, .composer .composer-box:focus-within { border: 0; border-radius: 0; background: none; box-shadow: none !important; padding: 0; gap: 0; align-items: flex-end; }   /* 초상 색 그림자(tone.css)도 뺀다 */
+.composer-box .ibtn, .composer .composer-box .trx-quick, .composer .composer-box .send { width: 38px; height: 42px; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--dim); display: grid; place-items: center; transform: none; }
+.composer-box .ibtn:hover, .composer .composer-box .trx-quick:hover { color: var(--text); background: none; }
+.composer .composer-box .send { color: var(--accent); } .composer .composer-box .send:hover { background: none; color: color-mix(in srgb, var(--accent) 80%, var(--text)); } .composer .composer-box .send.busy { color: var(--text); background: none; }
+.composer-box .ic { width: 20px; height: 20px; }
+.composer-input { padding-left: 6px; }
+.quick { gap: 6px; } .quick .chip, .quick .rc-chip { border-radius: 999px; height: 30px; padding: 0 12px; display: inline-flex; align-items: center; flex: none; border-color: var(--line); }
+.quick .rc-chip { font: 400 11px var(--fx-mono); color: var(--accent); border: 1px solid var(--accent); background: none; gap: 5px; }
 @media (max-width: 820px) {
-  .composer { background: var(--surface); border-top: 1px solid var(--line); padding-top: 8px; gap: 6px; }
-  .composer .composer-box, .composer .composer-box:focus-within { border: 0; border-radius: 0; background: none; box-shadow: none !important; padding: 0; gap: 0; align-items: flex-end; }   /* 초상 색 그림자(tone.css)도 뺀다 */
-  .composer-box .ibtn, .composer .composer-box .trx-quick, .composer .composer-box .send { width: 36px; height: 40px; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--dim); display: grid; place-items: center; transform: none; }
-  .composer .composer-box .send { color: var(--accent); } .composer .composer-box .send.busy { color: var(--text); background: none; }
-  .composer-box .ic { width: 20px; height: 20px; }
-  .composer-input { padding-left: 6px; }
-  .quick { gap: 6px; flex-wrap: nowrap; overflow-x: auto; } .quick .chip, .quick .rc-chip { border-radius: 999px; height: 30px; padding: 0 12px; display: inline-flex; align-items: center; flex: none; border-color: var(--line); }
-  .quick .rc-chip { font: 400 11px var(--fx-mono); color: var(--accent); border: 1px solid var(--accent); background: none; gap: 5px; }
+  .composer { background: var(--surface); }
+  .composer-box .ibtn, .composer .composer-box .trx-quick, .composer .composer-box .send { width: 36px; height: 40px; }
+  .quick { flex-wrap: nowrap; overflow-x: auto; }
 }
+/* 위쪽 줄: 이름은 명조로 (휴대폰 · PC 같은 글씨), 방 정보 앞에 혼자 남는 가운뎃점은 뺀다 */
+.top-title b { font: 600 1.02em var(--fx-serif); letter-spacing: .05em; }
+.top-meta > .top-room:first-child::before { content: none; }

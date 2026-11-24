@@ -145,12 +145,14 @@ async function panelLint(replace: string, mode: string): Promise<{ errors: strin
     if (/url\(\s*["']?https?:|@import|<link\b[^>]*https?:/i.test(pg)) notes.push(`${tag} pulls remote styles, fonts or images. Prefer none: they fail offline.`);
     if (!/--dl-/.test(pg) && /#[0-9a-f]{3,8}\b|rgba?\(|hsla?\(/i.test(pg)) notes.push(`${tag} uses fixed colours only. Use the theme variables (--dl-bg, --dl-surface, --dl-surface2, --dl-text, --dl-dim, --dl-accent, --dl-on-accent, --dl-line, --dl-ok, --dl-bad) so it fits both light and dark themes.`);
     if (/position\s*:\s*fixed|\b\d+(\.\d+)?vh\b/i.test(pg)) notes.push(`${tag} uses position: fixed or vh heights. The frame sizes itself to the content; lay out in normal flow.`);
+    { const wide = [...pg.matchAll(/(?:^|[;{\s"'])(?:min-)?width\s*:\s*(\d{3,4})px/gi)].map(m => +m[1]).filter(n => n > 420); if (wide.length) notes.push(`${tag} has a fixed width of ${Math.max(...wide)}px, wider than a phone. Use width: 100% with a max-width and let rows wrap, so it fits both phones and desktops.`); }
     if (/<script\b/i.test(pg) && !/triggerSlash|getVariables|Mvu\.|eventOn/.test(pg)) notes.push(`${tag} has a script but never reads variables or acts (getVariables / triggerSlash). If it only decorates, inline HTML would be lighter.`);
   });
   // 스크립트 문법은 격리된 틀에서 살핀다 (앱 화면에서는 글로 된 코드를 풀 수 없다)
   (await syntaxOf(scripts.map(x => x.code))).forEach((err, i) => { if (err) errors.push(`${scripts[i].tag}, script ${scripts[i].no}: ${err}. Fix the JavaScript (a classic script: no top-level await or import) and send the call again.`); });
   const gone = [/<script\b/i.test(outside) && '<script>', /<button\b/i.test(outside) && '<button>', /<(input|select|textarea)\b/i.test(outside) && 'form fields', /<[a-z][^>]*\son[a-z]+\s*=/i.test(outside) && 'on…= handlers'].filter(Boolean);
   if (gone.length) errors.push(`${gone.join(', ')} outside a screen ${gone.length > 1 ? 'are' : 'is'} removed when the message is drawn, so this would not work. To make it interactive, put the whole panel in one fenced block — three backticks + html, then a page with <body>…</body>, then three backticks — or, for a readout that only folds and animates, use <details> and CSS and drop ${gone.length > 1 ? 'them' : 'it'}.`);
+  { const wide = [...outside.matchAll(/(?:^|[;{\s"'])(?:min-)?width\s*:\s*(\d{3,4})px/gi)].map(m => +m[1]).filter(n => n > 420); if (wide.length) notes.push(`The inline HTML has a fixed width of ${Math.max(...wide)}px, wider than a phone. Use width: 100% with a max-width so it fits both phones and desktops.`); }
   if (!pages.length && /<(div|table|section|details)\b/i.test(outside) && !/var\(--/.test(outside) && /#[0-9a-f]{3,8}\b|rgba?\(/i.test(outside)) notes.push('The inline HTML uses fixed colours only. Use var(--text), var(--dim), var(--surface), var(--accent), var(--line) so it follows the theme.');
   return { errors, notes };
 }
