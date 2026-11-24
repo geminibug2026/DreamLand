@@ -218,15 +218,10 @@ function Home() {
   const selId = picks[pick % Math.max(1, picks.length)]?.id;
   const addChar = async () => { const c = await S.save('chars', newChar({ folder: view.folder && view.folder !== '-' ? view.folder : '' }), true); charEditor(c); };
 
-  return <section className="home hm">
-    <Stage picks={picks} pick={pick} setPick={setPick} ver={ver} />
-    {recent.length ? <Recent recent={recent} ver={ver} /> : null}
-    <DeskSec />
-    <div>
-      <SecHead title={t('home.chars')} sub="characters"><em>{tn('home.charCount', list.length)}</em><span className="hm-sp" />
-        <Btn label={t('common.import')} ic="import" cls="hm-line hm-wide" onClick={() => void importDialog()} />
-        <Btn label={t('home.newChar')} ic="plus" cls="hm-fill" onClick={() => void addChar()} />
-        <IconBtn ic="more" cls="hm-line" title={t('home.bulk.title')} onClick={e => menu(e.currentTarget, [
+  // 휴대폰에서는 정렬이 제목 줄로, 새로 · 가져오기가 검색 옆으로, 폴더와 즐겨찾기가 한 줄 칩으로 모인다
+  const narrow = matchMedia('(max-width: 700px)').matches;
+  const seg = <div className="hm-seg">{([['recent', t('home.sort.recent')], ['new', t('home.sort.new')], ['name', t('common.name')]] as const).map(([k, l]) => <button key={k} className={view.sort === k ? 'on' : undefined} onClick={() => set({ sort: k })}>{l}</button>)}</div>;
+  const more = <IconBtn ic="more" cls="hm-line" title={t('home.bulk.title')} onClick={e => menu(e.currentTarget, [
           { label: t('common.import'), ic: 'import', onclick: () => void importDialog() },
           { label: t('reach.shop.menu'), ic: 'book', onclick: () => go('shop') },
           { label: t('home.stats.title'), ic: 'sparkle', onclick: showStats },
@@ -236,18 +231,45 @@ function Home() {
             if (!(await confirmBox(t('home.bulk.deleteConfirm', { count: ids.length, rooms }), t('common.delete'), true))) return;
             const n = await deleteChars(ids); toast(t('home.bulk.deleted', { count: n }), 'ok'); redraw();
           } }) },
-        ])} />
+        ])} />;
+
+  return <section className="home hm">
+    <Stage picks={picks} pick={pick} setPick={setPick} ver={ver} />
+    {recent.length ? <Recent recent={recent} ver={ver} /> : null}
+    <DeskSec />
+    <div>
+      <SecHead title={t('home.chars')} sub="characters"><em>{tn('home.charCount', list.length)}</em><span className="hm-sp" />
+        {narrow ? seg : <>
+        <Btn label={t('common.import')} ic="import" cls="hm-line hm-wide" onClick={() => void importDialog()} />
+        <Btn label={t('home.newChar')} ic="plus" cls="hm-fill" onClick={() => void addChar()} />
+        {more}</>}
       </SecHead>
+      {narrow ? <>
+        <div className="hm-bar hm-nb">
+          <div className="hm-find"><Icon name="search" size={16} /><input placeholder={t('home.searchPh')} value={q} onChange={e => { view.q = e.target.value; setQ(e.target.value); }} /></div>
+          <Btn label={t('home.newShort')} ic="plus" cls="hm-line" onClick={() => void addChar()} />
+          <Btn label={t('common.import')} ic="import" cls="hm-line" onClick={() => void importDialog()} />
+          {more}
+        </div>
+        <div className="hm-shelf">
+          <div className="hm-tabs"><button className={'folder-tab' + (view.fav ? ' on' : '')} onClick={() => set({ fav: !view.fav })}><Icon name="star" size={13} /><span>{t('home.sort.fav')}</span></button>
+            {fs.length ? shelf : tab('', t('home.folder.all'))}</div>
+          <button className="folder-tab pin" title={t('home.folder.createTitle')} onClick={addFolder}><Icon name="plus" size={13} /><span>{t('home.folder.addShort')}</span></button>
+          <button className="folder-tab pin" title={t('home.size.title', { size: t(SIZES[size][1]) })} onClick={() => { S.set({ homeCols: (size + 1) % SIZES.length }); redraw(); }}><Icon name="grip" size={14} /></button>
+        </div>
+      </> : <>
       <div className="hm-bar">
         <div className="hm-find"><Icon name="search" size={16} /><input placeholder={t('home.searchPh')} value={q} onChange={e => { view.q = e.target.value; setQ(e.target.value); }} /></div>
-        <div className="hm-seg">{([['recent', t('home.sort.recent')], ['new', t('home.sort.new')], ['name', t('common.name')]] as const).map(([k, l]) => <button key={k} className={view.sort === k ? 'on' : undefined} onClick={() => set({ sort: k })}>{l}</button>)}</div>
+        {seg}
         <button className={'btn hm-line' + (view.fav ? ' on' : '')} onClick={() => set({ fav: !view.fav })}><Icon name="star" size={15} /><span>{t('home.sort.fav')}</span></button>
         <button className="btn hm-line" title={t('home.size.title', { size: t(SIZES[size][1]) })} onClick={() => { S.set({ homeCols: (size + 1) % SIZES.length }); redraw(); }}><Icon name="grip" size={15} /><span>{t(SIZES[size][1])}</span></button>
       </div>
       <div className="hm-tabs">{shelf}</div>
+      </>}
       {tags.length ? <div className="hm-tags">{tags.map(x => <button key={x} className={view.tag === x ? 'on' : undefined} onClick={() => set({ tag: view.tag === x ? '' : x })}>#{x}</button>)}</div> : null}
       {folderBar}
       <div className={'hm-grid ' + SIZES[size][0]} ref={el => { grid.current = el; pg.listRef(el); }}>
+
         {pg.rows.map(c => <Card key={c.id} c={c} name={c.name} sub={c.tags.slice(0, 2).join(' · ')} fav={!!c.fav} noPic={!c.avatar} av={c.avatar} sel={c.id === selId} drag={fs.length > 0} folder={folderName(c)} redraw={redraw} />)}
         {list.length ? null : term || view.tag || view.fav ? <div className="fx-empty hm-none"><SearchNone /><p>{t('home.none.search')}</p></div>
           : view.folder && view.folder !== '-' ? <div className="fx-empty hm-none folder-empty"><FolderNone /><p>{t('home.folder.empty')}</p></div>

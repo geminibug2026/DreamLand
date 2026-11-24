@@ -135,3 +135,19 @@
 @media (max-width: 700px) {
   .hm-tl { padding-top: 2px; gap: 10px; } .hm-tl::before, .hm-th::before, .hm-th time { display: none; }
 }
+
+/* 휴대폰의 캐릭터 머리: 정렬은 제목 줄의 글자 탭, 검색 옆에 새로 · 가져오기, 즐겨찾기와 폴더는 한 줄 칩 (폴더 추가 · 크기는 오른쪽에 고정) */
+@media (max-width: 700px) {
+  .hm-sh .hm-seg { height: auto; border: 0; border-radius: 0; overflow: visible; flex: none; }
+  .hm .hm-sh .hm-seg button { padding: 6px 8px; border: 0; border-bottom: 1px solid transparent; font-size: 12.5px; color: var(--dim); background: none; font-weight: 400; }
+  .hm .hm-sh .hm-seg button.on { color: var(--text); font-weight: 700; border-bottom-color: var(--line-1); background: none; }
+  .hm .hm-bar.hm-nb { flex-wrap: nowrap; gap: 6px; } .hm .hm-nb .hm-find { flex: 1 1 0; min-width: 0; width: auto; border-radius: 3px; }
+  .hm .hm-nb .btn.hm-line, .hm .hm-nb .ibtn.hm-line { flex: none; padding: 0 10px; border-radius: 3px; background: var(--surface); font-size: 12.5px; gap: 5px; white-space: nowrap; } .hm .hm-nb .ibtn.hm-line { width: 36px; padding: 0; }
+  .hm-shelf { display: flex; align-items: center; gap: 6px; margin-top: 12px; }
+  .hm-shelf .hm-tabs { flex: 1; min-width: 0; margin: 0; border: 0; gap: 6px; }
+  .hm .hm-shelf .folder-tab { all: unset; box-sizing: border-box; cursor: pointer; flex: none; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 1px solid var(--h-hair2); border-radius: 3px; background: var(--surface); font-size: 12px; color: var(--h-sub); white-space: nowrap; }
+  .hm .hm-shelf .folder-tab em { font: 400 10.5px var(--h-mono); font-style: normal; color: var(--dim); }
+  .hm .hm-shelf .folder-tab.on { background: var(--text); color: var(--bg); border-color: var(--text); box-shadow: none; font-weight: 600; } .hm .hm-shelf .folder-tab.on em { color: inherit; opacity: .7; }
+  .hm .hm-shelf .folder-tab.over { border-color: var(--accent); color: var(--accent); box-shadow: none; }
+  .hm .hm-shelf .hm-tabs .folder-tab.add { display: none; }
+}
