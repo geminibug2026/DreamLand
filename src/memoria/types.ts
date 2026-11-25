@@ -88,7 +88,7 @@ export interface PledgeDue { turn: number; in: number; msgId?: string; was?: Ple
 export interface SummarySrc { from: number; to: number; text: string }
 export interface Summary { id: string; from: number; to: number; text: string; carried?: boolean; carriedFrom?: string; saga?: boolean; src?: SummarySrc[]; av?: unknown; avm?: string; /** 검수에서 걸린 곳 — 원문에서 찾지 못한 숫자, 빠진 전환점(★tN) */ unverified?: string[]; [k: string]: unknown }
 export interface Item { id: string; name: string; holder?: string; meaning?: string; status?: string; disabled?: boolean; turn?: number; first?: number; updated?: number; msgId?: string; manual?: boolean; /** 요약 때 "더는 의미 없다"고 본 턴 (본문에 다시 나오면 지워진다) */ dormant?: number | null; [k: string]: unknown }
-export interface Milestone { id: string; title: string; summary?: string; participants?: string[]; turn?: number | null; msgId?: string; grade?: string; [k: string]: unknown }
+export interface Milestone { id: string; title: string; summary?: string; participants?: string[]; turn?: number | null; msgId?: string; grade?: string; /** 직접 고정 — 오래돼도 장부에 늘 싣는다 */ pinned?: boolean; [k: string]: unknown }
 export interface DossierDoc { id: string; name?: string; title?: string; chunks: string[]; disabled?: boolean; [k: string]: unknown }
 export interface Plan { remember?: unknown[]; scene_goal?: unknown; ideas?: unknown[]; avoid?: unknown[]; tension?: unknown; /** 옛 이름 */ scene_mandate?: unknown; forbidden_moves?: unknown; next_beats?: unknown; pressure?: unknown }
 
@@ -97,6 +97,8 @@ export interface Mem {
   id: string; turns: Turn[]; memories: MemItem[]; canon: CanonRow[]; status: StatusRow[]; pledges: Pledge[]; cast: CastCard[];
   chunks: Summary[]; arcs: Summary[]; items: Item[]; milestones: Milestone[]; dossier: DossierDoc[]; bonds: Bond[];
   chunked: number; consolidatedAt: number; arcAt: number; clockDays: number; bondRev: number; arcCursor?: number;
+  /** 대화마다 한 번 하는 손질을 했는지 — 소설 모드의 "누가 한 말" 다시 가리기 · 인물 카드의 밀린 칸 걷기 */
+  speakerRev?: number; castRev?: number; statusRev?: number;
   packetPin?: { text: string; turn?: number; at?: number } | null;
   direction?: { plan?: Plan | null; afterId?: string; [k: string]: unknown } | null;
   perspective?: string; perspectiveScope?: string;

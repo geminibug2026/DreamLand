@@ -60,9 +60,9 @@ export const chunkTurnsOf = (cfg: Pick<Cfg, 'chunkTurns' | 'chunkTurnsTalk'>, ch
 /** 그 턴 뒤로(from 번째 기록부터) 기록된 답변 수 — 묶음 기록은 기록 하나가 답변 여러 개를 덮으므로(span) 기록 수가 아니라 덮은 답변 수로 센다 */
 export const repliesOf = (turns: Pick<Turn, 'span'>[], from = 0) => { let n = 0; for (let i = Math.max(0, from); i < turns.length; i++) n += Math.max(1, Math.round(Number(turns[i]?.span) || 1)); return n; };
 export const MEMORY_DEFAULTS: Cfg = {
-  enabled: false, auto: true, recordDelay: 0, tokenBudget: 8000, topK: 10, minScore: 0.12, minCosine: 0.08, mmrLambda: 0.74, maxPerKind: 3, maxPerTurn: 2, multiQueryRecent: 3,
+  enabled: false, auto: true, recordDelay: 1, tokenBudget: 8000, topK: 10, minScore: 0.12, minCosine: 0.08, mmrLambda: 0.74, maxPerKind: 3, maxPerTurn: 2, multiQueryRecent: 3,
   chunkTurns: 30, chunkTurnsTalk: 0, talkBatch: 5, rpBatch: 10, arcMergeAt: 6, consolidateEvery: 30, arcConsolidateEvery: 100, maxMemories: 400, responseTokens: 24000, summaryContextCount: 3, fossil: { settling: 12, fossilized: 40, deep: 120 }, language: 'auto',
-  cast: true, lockEdited: true, items: false, milestones: false, storyClock: true, refProfile: true, refLore: false,
+  cast: true, lockEdited: true, items: false, milestones: true, storyClock: true, refProfile: true, refLore: false,
   trim: false, keepRecent: 20, autoHide: true, preserveRecent: 20,   // 요약된 옛 메시지는 기본으로 AI 에게서 숨긴다 (요약이 대신한다 — 긴 대화의 프롬프트가 일정하게 유지된다)
   supervisor: false, associative: true, authorizePrivate: true, perspective: '', audit: true, reasoningHeadroom: 8000,
   position: 'split', depth: 1, prompt: '',
@@ -435,6 +435,10 @@ export const redoTurns = new Map<string, Set<string>>();
 export const STANDING_KINDS = new Set(['fact', 'preference', 'promise', 'goal', 'item', 'place', 'relationship']);
 /** 요약이 닫은 서약의 풀린 경위 자리에 적는 글 (저장된 값이라 바꾸지 않는다) */
 export const SETTLED_AT_SUMMARY = '요약 때 정리됨';
+/* 사서가 인물 칸을 밀려 적을 때가 있다 (다른 이름 칸에 "특성: …", 나이 칸에 "직업: …", 달라진 점에 "남긴 말: …") — 그런 값은 받지 않는다 */
+export const startsWithFieldLabel = (v: unknown) => /^\s*[^\s:：]{1,6}(?:\s[^\s:：]{1,4})?\s*[:：]/.test(String(v ?? ''));
+export const looksLikeAlias = (v: unknown) => { const t = String(v ?? '').trim(); return !!t && t.length <= 30 && !/[:：]/.test(t); };
+export const looksLikeAge = (v: unknown) => { const t = String(v ?? '').trim(); return !!t && t.length <= 24 && !/[:：]/.test(t); };
 export const lasts = new Map<string, PacketResult>();       // chatId → 직전에 실제로 실린 장부
 export const pendingEmbeds = new Map<string, Promise<boolean>>();     // 떠나 있는 질의 임베딩 호출 (같은 글을 두 번 부르지 않게)
 export const queryEmbedCache = new Map<string, Float32Array>();   // 임베딩 모델 + 질의 글 → 벡터 (같은 입력으로 장부를 여러 번 지을 때 다시 부르지 않게. 늦게 도착한 것은 다음 턴에 쓰인다)

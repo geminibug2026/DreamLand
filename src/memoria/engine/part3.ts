@@ -124,7 +124,7 @@ export interface Part3 {
   recallEx(chat: Chat, mem: Mem, history?: HistoryMsg[] | null, opt?: RecallOpts): RecallResult;
   retrieveMemories(chat: Chat, mem: Mem, history?: HistoryMsg[] | null, opt?: RecallOpts): RecallResult;
   recall(mem: Mem, history?: HistoryMsg[] | null): MemItem[];
-  pickRecalledChapter(mem: Mem, query: string | null | undefined, sceneText?: string | null): Summary | null;
+  pickRecalledChapter(mem: Mem, query: string | null | undefined, sceneText?: string | null, shown?: Set<string> | null): Summary | null;
   chapterVec(c: Summary): Float32Array;
   dossierPick(mem: Mem, query: string, aux?: string[] | null, max?: number): DossierExcerpt[];
   pickDossierExcerpts(mem: Mem, query: string, aux?: string[] | null, opt?: { max?: number }): DossierExcerpt[];
@@ -500,13 +500,14 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     const cfg = this.cfg(), qs = (queries || []).map(q => String(q || '')).filter(q => q.trim());
     if (cfg.rawRecall === 'off' || !Array.isArray(msgs) || msgs.length < 8 || !qs.length || (!force && !PAST_QUERY_RE.test(qs.join('\n')))) return [];
     const seen = this.visibleMsgIds(chat, msgs); let me = ''; try { me = chat ? S.persona(chat)?.name || '' : ''; } catch { /* 페르소나가 없어도 된다 */ }
+    const narrated = this.perspective(mem) === NARRATOR;   // 소설 모드: 답변을 쓴 것은 서술자다 — 카드 주인의 이름을 붙이면 그 글 속 남의 대사까지 그 사람 말로 읽힌다
     const lines: { i: number; who: string; text: string }[] = [], terms = new Map<number, Set<string>>();
     for (let i = 0; i < msgs.length; i++) {
       const m = msgs[i]; if (!m || (m.role !== 'user' && m.role !== 'assistant') || seen.has(m.id) || (m.hidden && !m.memHidden) || this.isSideMessage(m)) continue;
       const raw = msgText(m); let hit = transcriptCache.get(m);
       if (!hit || hit.raw !== raw) { const text = prose(m); hit = { raw, text, terms: transcriptTerms(text) }; transcriptCache.set(m, hit); }
       if (hit.text.length < 8) continue;
-      lines.push({ i, who: m.name || (m.role === 'user' ? me || 'User' : S.get('chars', m.charId)?.name || 'Character'), text: hit.text }); terms.set(i, hit.terms);
+      lines.push({ i, who: narrated && m.role !== 'user' ? 'Narration' : m.name || (m.role === 'user' ? me || 'User' : S.get('chars', m.charId)?.name || 'Character'), text: hit.text }); terms.set(i, hit.terms);
     }
     const names = [me, ...(chat?.charIds || []).map(id => S.get('chars', id)?.name), ...mem.cast.flatMap(c => [c.name, ...(c.aka || [])])];
     return pickTranscript(lines, qs, { max, names, mute: list<string>(mem.recallMute) }, l => terms.get(l.i) || transcriptTerms(l.text))
@@ -793,9 +794,10 @@ export const part3: Part3 & ThisType<MemoryApi> = {
   retrieveMemories(chat, mem, history, opt) { return this.recallEx(chat, mem, history, opt); },
   recall(mem, history) { const r = this.recallEx(S.get('chats', mem.id), mem, history); return [...r.pinned, ...r.triggered, ...r.selected]; },
   /** 주입 창(마지막 3개) 밖으로 밀려난 묶음 요약 가운데 지금 질의와 가장 맞는 하나 (문턱 미달이면 null). 기억 조각은 파편이지만 묶음 요약은 그 시절의 이어진 맥락을 준다 */
-  pickRecalledChapter(mem, query, sceneText) {
+  pickRecalledChapter(mem, query, sceneText, shown = null) {
     const mute = list<string>(mem.recallMute).map(w => low(w)).filter(w => w.length >= 2);   // 회상하지 않을 말이 든 옛 묶음은 소환하지 않는다
-    const old = mem.chunks.slice(0, -3).filter(c => !mute.some(w => low(c.text).includes(w))), q = String(query || '').trim(); if (!old.length || q.length < 4) return null;
+    // 이미 "지금까지의 이야기"에 실리는 묶음은 다시 떠올리지 않는다 (shown). 실리지 않은 것 가운데 맨 뒤 하나는 아직 원문으로 보이는 구간의 것이라 뺀다
+    const old = (shown ? mem.chunks.filter(c => !shown.has(c.id)).slice(0, -1) : mem.chunks.slice(0, -3)).filter(c => !mute.some(w => low(c.text).includes(w))), q = String(query || '').trim(); if (!old.length || q.length < 4) return null;
     const qv = vec(q), sv = String(sceneText || '').trim() ? vec(String(sceneText).slice(0, 2400)) : null, qT = new Set(low(q).match(/[\p{L}\p{N}]+/gu) || []), qG = grams(q), pastQ = PAST_QUERY_RE.test(low(q));
     const cfg = this.cfg(), rawFloor = Number(cfg.embed.floor), floor = Number.isFinite(rawFloor) ? Math.max(0, Math.min(0.9, rawFloor)) : 0.35;
     const apiQ = this.queryVec(q) || this.queryVec(String(query || '')), apiS = sv ? this.queryVec(String(sceneText).slice(0, 2400)) : null;   // 임베딩이 켜져 있으면 이 축도 그 임베딩을 따른다 (벡터는 prepare 가 채워 둔다)
@@ -872,8 +874,11 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     // 삼갈 표현이 든 옛 대사는 걷어내면 말이 깨지므로 인용째로 뺀다
     const back = Math.max(0, T - 1 - (m.turn ?? T)), fresh = back <= 40 || m.pinned || (m.importance ?? 0) >= 0.8;
     const quote = withExcerpt && !(m.tags || []).includes('episode_raw') && fresh && m.quote && m.quote.length <= 160 && !(banned?.length && hasPhrase(m.quote, banned)) ? m.quote : null;
-    const dated = m.retired ? ` [no longer current${m.retired.now ? ` — now: ${m.retired.now}` : ''}]` : notes?.has(m.id) ? ` [as of then — ${notes.get(m.id)}]` : '';
-    const d = ages?.get(m.turn!) ?? 0, agoNote = d >= 1 ? ` · ~${ago(d)} ago in-story` : '';   // 이야기 속에서 하루 넘게 지난 기억은 얼마나 옛일인지
+    const d = ages?.get(m.turn!) ?? 0;
+    // 오래된 속마음은 그때의 감정이다 — 그 뒤 사정이 바뀌었을 수 있다 (경멸당할까 두렵던 때의 마음이 연인이 된 뒤에도 "지금 숨기는 것"으로 읽히지 않게)
+    const pastFeeling = m.kind === 'impression' && visNorm !== 'public' && !m.pinned && m.turn != null && (d >= 14 || back >= 40);
+    const dated = m.retired ? ` [no longer current${m.retired.now ? ` — now: ${m.retired.now}` : ''}]` : notes?.has(m.id) ? ` [as of then — ${notes.get(m.id)}]` : pastFeeling ? ' [how they felt back then — things have moved on since; not a present secret]' : '';
+    const agoNote = d >= 1 ? ` · ~${ago(d)} ago in-story` : '';   // 이야기 속에서 하루 넘게 지난 기억은 얼마나 옛일인지
     const when = m.manual || m.turn == null ? 'noted' : back <= 0 ? 'this exchange' : back === 1 ? 'last exchange' : `${back} exchanges back`;   // 절대 턴 번호 대신 상대 최신성
     const core = (m.importance ?? 0) >= 0.8 || m.pinned ? ' · core' : '';   // 오래돼도 무거운 기억에는 core 표시
     return `- (${m.kind}${core}, ${when}${agoNote})${vis} ${m.summary}${quote ? ` — ${speaker}"${quote}"` : ''}${gaps}${dated}`;
@@ -888,10 +893,12 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     const bits = [];
     if (c.appearance && (c.sceneNow || c.provisional)) bits.push(c.appearance);   // 외형은 지금 장면에 있는 인물(묘사에 필요)과 이름 없는 인물(외형이 곧 식별자)만
     // 바탕은 변하지 않는 기준, 달라진 점은 그 위에 천천히 얹히는 것 — 둘을 따로 적어야 모델이 장면 하나의 기분을 성격으로 굳히지 않는다
-    if (c.core) bits.push(`core (constant — the story does not rewrite this): ${c.core}`);
+    // 달라진 점이 적혀 있으면 그쪽이 지금이다 — 바탕을 "바뀌지 않는다"고만 적으면, 이야기가 뒤집은 처음의 태도(혐오 · 불신)가 지금 것처럼 읽힌다
+    const grown = (c.growth || []).slice(-3).map(g => g.text).filter(Boolean).join('; ');
+    if (c.core) bits.push(grown ? `core (the temperament they began with — where "changed in this story" says otherwise, that is who they are now): ${c.core}` : `core (constant — the story does not rewrite this): ${c.core}`);
     if (c.voice) bits.push(`voice: ${c.voice}`);
     if (c.traits?.length) bits.push(c.traits.join(', '));
-    if (c.growth?.length) bits.push(`grown in this story (gradual, on top of the core): ${c.growth.slice(-2).map(g => g.text).join('; ')}`);
+    if (grown) bits.push(`changed in this story (how they stand now — this outranks the core and the original description): ${grown}`);
     if (c.relationships?.length) bits.push(c.relationships.map(r => `${r.target}: ${r.relation}`).join('; '));
     return `- ${c.name}${c.aka?.length ? ` (aka ${c.aka.join(', ')})` : ''}${head ? ` (${head})` : ''}${c.provisional ? ' [not yet named in-story — refer to them only by this handle]' : ''}${bits.length ? ` — ${bits.join(' | ')}` : ''}`;
   },

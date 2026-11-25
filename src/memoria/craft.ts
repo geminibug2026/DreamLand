@@ -27,7 +27,7 @@ export interface BundleSettings {
 export interface BundleFile { name: string; values: BundleValues }
 /** 고정 장부의 한 항목 */
 export interface StableEntry { id: string; sec?: string; line: string; [k: string]: unknown }
-export interface StableDiff<E extends StableEntry = StableEntry> { changed: E[]; removed: number }
+export interface StableDiff<E extends StableEntry = StableEntry> { changed: E[]; removed: number; /** 이번 목록에서는 빠졌지만 서고에 그대로 있어 그대로 둔 줄 수 */ held?: number }
 /** 얼려 둔 장부에서 shouldRefreeze 가 보는 칸 */
 export interface FreezeMark { chatId: string; key: string; level: number; turn: number }
 export interface RefreezeQuery { chatId: string; key: string; level: number; turn: number; diff: StableDiff; maxDelta?: number; maxTurns?: number }
@@ -321,17 +321,27 @@ export function parseBundleFile(text: unknown, defaults: BundleValues): BundleFi
  * entries: [{ id, sec, line }]
  * 반환: { changed: 바뀌었거나 새로 생긴 항목들, removed: 사라진 항목 수 }
  */
-export function diffStableEntries<E extends StableEntry>(frozen: StableEntry[] | null | undefined, current: E[] | null | undefined): StableDiff<E> {
-    const before = new Map<string, string>((frozen || []).map(e => [e.id, e.line]));
+/**
+ * stillStands(e): 이번에는 뽑히지 않았지만 서고에 그대로 있는 줄인가 — true(얼려 둔 줄 그대로 맞다) · 글(그 줄이 지금은 이렇게 달라졌다) · 그 밖(정말 사라졌다).
+ * 인물이 열 명 · 관계선이 여덟 줄을 넘는 대화에서 누가 장면에 들어오면 다른 줄이 상한에 밀려 이번 목록에서 빠진다. 지워진 게 아니라 자리가 없었을 뿐이므로 얼려 둔 장부의 그 줄은 그대로 맞다
+ */
+export function diffStableEntries<E extends StableEntry>(frozen: StableEntry[] | null | undefined, current: E[] | null | undefined, stillStands: ((e: StableEntry) => boolean | string) | null = null): StableDiff<E> {
+    const before = new Map<string, StableEntry>((frozen || []).map(e => [e.id, e]));
     const now = new Set<string>();
     const changed: E[] = [];
     for (const e of current || []) {
         now.add(e.id);
-        if (before.get(e.id) !== e.line) changed.push(e);
+        if (before.get(e.id)?.line !== e.line) changed.push(e);
     }
-    let removed = 0;
-    for (const id of before.keys()) if (!now.has(id)) removed++;
-    return { changed, removed };
+    let removed = 0, held = 0;
+    for (const [id, e] of before) {
+        if (now.has(id)) continue;
+        const v = stillStands ? stillStands(e) : false;
+        if (typeof v === 'string') { if (v !== e.line) changed.push({ ...e, line: v } as E); held++; }
+        else if (v) held++;
+        else removed++;
+    }
+    return { changed, removed, held };
 }
 
 /**
@@ -396,6 +406,16 @@ export function findRivalExtensions(names: unknown[] | null | undefined, disable
 /* ------------------------------------------------------------
  * 떡밥(미해결 서약) 관리 — 끝난 일이 "미해결"로 남아 계속 실리지 않게
  * ------------------------------------------------------------ */
+
+/**
+ * 오래돼도 장부에서 밀려나지 않게 지킬 전환점: 직접 고정한 것(여섯까지)이 먼저, 모자란 자리는 처음의 큰 전환으로 셋까지 채운다.
+ * "정체가 드러났다" 같은 처음의 큰 전환은 캐릭터 설명의 시작 설정이 뒤집혔음을 붙드는 닻이다 — 최근 것만 실으면 그 줄이 빠진다. 반환: 턴 순서대로
+ */
+export function keptMilestones<M extends { turn?: number | null; grade?: string; pinned?: unknown }>(list: M[] | null | undefined): M[] {
+    const byTurn = (a: M, b: M) => (a.turn || 0) - (b.turn || 0);
+    const pinned = (list || []).filter(e => !!e.pinned).sort(byTurn).slice(0, 6);
+    return [...pinned, ...(list || []).filter(e => !e.pinned && e.grade !== 'minor').sort(byTurn).slice(0, Math.max(0, 3 - pinned.length))].sort(byTurn);
+}
 
 export const THREAD_KINDS = Object.freeze(['keep_unresolved', 'loose_end', 'foreshadow', 'feeling']);
 /** 숨겨야 하는 것(비밀 · 정보 격차) — 떡밥처럼 저절로 닫히지 않는다. 끝난 뒤에도 "지켜야 할 것"으로 남으면 모델이 옛 비밀을 지금 일처럼 꺼낸다 */

@@ -3,7 +3,7 @@ import { useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent,
 import { createPortal, flushSync } from 'react-dom';
 import { Btn, Icon } from '../../kit';
 import { confirmBox, promptBox, toast } from '../../ui';
-import { THREAD_KINDS } from '../craft';
+import { THREAD_KINDS, keptMilestones } from '../craft';
 import { buildTimelineRows, filterTimelineRows, layoutTimelineGraph, timelineCsv, timelineMarkdown, type TimelineRow } from '../scene';
 import { bondCardsHtml, bondMapSvg, flowHtml, heroHtml, pulseSvg, railHtml, statusListHtml, tableHtml } from '../story';
 import type { Milestone, Summary, Turn } from '../types';
@@ -131,8 +131,11 @@ export function Story({ st }: { st: StOpen }) {
   // ── 전환점
   const miles = [...mem.milestones].sort((a, b) => (a.turn || 0) - (b.turn || 0));
   const editMile = async (e?: Milestone) => { const d = await editBox<Partial<Milestone>>(e ? t('memoria.story.editEvent') : t('memoria.story.addEvent'), e || { title: '', summary: '', participants: [], grade: 'major' }, [{ k: 'title', label: t('memoria.story.f.title'), half: true }, { k: 'grade', label: t('memoria.story.f.grade'), type: 'select', opts: [['major', t('memoria.story.major')], ['minor', t('memoria.story.minor')]], half: true }, { k: 'summary', label: t('memoria.story.f.summary') }, { k: 'participants', label: t('memoria.story.f.participants'), type: 'tags' }]); if (!d?.title?.trim()) return; if (e) Object.assign(e, d); else mem.milestones.push({ id: uid(), ...d, manual: true, turn: T } as Milestone); await M.save(mem); st.draw(); };
-  const mileSec = <Sec title={t('memoria.story.milesTitle')} desc="" tools={<Btn label={t('common.add')} ic="plus" cls="ghost" title={t('memoria.story.addEvent')} onClick={() => void editMile()} />}>
-    <div className="mm-miles">{miles.map(e => <div key={e.id} className={`mm-mile ${e.grade === 'minor' ? 'minor' : 'major'}`}><span className="mm-node" /><div><em className={`mm-tag${e.grade === 'minor' ? '' : ' on'}`}>{e.grade === 'minor' ? t('memoria.story.minor') : t('memoria.story.major')}</em> <b>{e.title}</b>{e.summary ? <p>{e.summary}</p> : null}<small>{[e.turn != null && `t${e.turn + 1}`, ...(e.participants || [])].filter(Boolean).join(' · ')}</small></div><span className="mm-actions"><Ib name="edit" title={t('common.edit')} onClick={() => editMile(e)} /><Del st={st} arr="milestones" x={e} what={t('memoria.story.thisEvent')} /></span></div>)}
+  // 오래돼도 장부에 늘 실리는 전환점 (직접 고정한 것 + 처음의 큰 전환 셋까지) — 어느 것이 닻인지 보여 준다
+  const keptIds = new Set(keptMilestones(mem.milestones).map(e => e.id));
+  const pinMile = async (e: Milestone) => { if (e.pinned) delete e.pinned; else e.pinned = true; await M.save(mem); st.draw(); };
+  const mileSec = <Sec title={t('memoria.story.milesTitle')} desc={miles.length ? t('memoria.story.milesDesc') : ''} tools={<Btn label={t('common.add')} ic="plus" cls="ghost" title={t('memoria.story.addEvent')} onClick={() => void editMile()} />}>
+    <div className="mm-miles">{miles.map(e => <div key={e.id} className={`mm-mile ${e.grade === 'minor' ? 'minor' : 'major'}`}><span className="mm-node" /><div><em className={`mm-tag${e.grade === 'minor' ? '' : ' on'}`}>{e.grade === 'minor' ? t('memoria.story.minor') : t('memoria.story.major')}</em> <b>{e.title}</b>{keptIds.has(e.id) ? <em className="mm-tag dash" title={t('memoria.story.keptTitle')}>{t('memoria.story.kept')}</em> : null}{e.summary ? <p>{e.summary}</p> : null}<small>{[e.turn != null && `t${e.turn + 1}`, ...(e.participants || [])].filter(Boolean).join(' · ')}</small></div><span className="mm-actions"><Ib name="pin" cls={e.pinned ? 'on' : ''} title={e.pinned ? t('memoria.story.unpinMile') : t('memoria.story.pinMile')} onClick={() => void pinMile(e)} /><Ib name="edit" title={t('common.edit')} onClick={() => editMile(e)} /><Del st={st} arr="milestones" x={e} what={t('memoria.story.thisEvent')} /></span></div>)}
       {!miles.length ? <None text={cfg.milestones ? t('memoria.story.emptyMiles') : t('memoria.story.emptyMilesOff')} /> : null}</div>
   </Sec>;
 

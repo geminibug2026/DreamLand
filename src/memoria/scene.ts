@@ -16,7 +16,7 @@ const timelineCols = () => ['order', 'when', 'where', 'people', 'text', 'importa
 
 /** 본문에서 읽은 상태창 한 줄 */
 export interface StatusBar { raw: string; when: string; place: string; weather: string }
-export interface StatusBarOptions { mode?: string; pattern?: string }
+export interface StatusBarOptions { mode?: string; pattern?: string; /** 꼬리표 · 문장 칸을 가리지 않던 예전 판정 — 그때 잘못 찍힌 시간 · 장소를 찾아 지울 때만 쓴다 */ loose?: boolean }
 /** 요약 레코드를 화면용으로 푼 것 */
 export interface RecordView { when: string; beats: string[]; shifts: string[]; open: string[]; structured: boolean }
 /** 연표가 받는 서고 모양 (턴 번호는 t1부터, 메시지는 화면 번호. 없으면 -1) */
@@ -61,6 +61,26 @@ const clean = (s: unknown) => String(s ?? '').replace(EMOJI_RX, '').replace(/\*\
 const labelKind = (label: unknown) => (LABEL_KINDS.find(([rx]) => rx.test(clean(label))) || [])[1] || '';
 const splitBar = (inner: unknown) => String(inner).split(/\s*[·•|｜∙ㆍ]\s*|\s+\/\s+/).map(p => p.trim()).filter(Boolean);
 
+// 화면에서 카드 · 그림으로 바꿔 그리는 꼬리표 — [[prop:sms|보낸 사람|내용]] [[sms|…]] {{img:…}} — 는 이야기 속 소품이다.
+// 내용에 "목요일 저녁 일곱 시"가 있어도 지금 시각이 아니므로 상태창을 찾기 전에 걷어 낸다
+const TAG_SPAN_RX = /\[\[[a-z][\w.-]*[:|][\s\S]{0,4000}?\]\]|\{\{[a-z][\w.-]*[:|][\s\S]{0,4000}?\}\}/gi;
+// 한 겹 괄호라도 첫 칸이 "종류:이름" 꼴의 기계 표식이면 꼬리표다 ([prop:sms|…]). time: · place: 같은 상태창 이름표는 뺀다
+const TAG_HEAD_RX = /^[[【(<]\s*([a-z][a-z0-9_.-]*):[a-z0-9_.-]+\s*[|｜]/i;
+// 첫 칸이 문자 · 편지 · 전화 같은 소품 이름이면 그 줄은 주고받은 글이다
+const PROP_HEAD_RX = /^(?:문자|메시지|메세지|카톡|톡|쪽지|편지|메모|알림|전화|통화|부재중|메일|이메일|신문|기사|영수증|명함|간판|dm|sms|mms|text|message|msg|e-?mail|mail|letter|note|memo|call|phone|chat|notification|news|receipt|card|sign)$/i;
+
+/** 칸이 값이 아니라 문장인가 — 문자 · 편지 · 속마음의 내용은 시간 낱말이 들어 있어도 지금 시각 · 장소가 아니다 */
+function isSentence(cell: unknown): boolean {
+    const t = clean(cell).replace(/^[[【〔「『〈(（<]+|[\]】〕」』〉)）>]+$/g, '').trim();
+    const v = (t.match(/^[^\d:：]{1,14}[:：]\s*(.+)$/) || [])[1] || t;
+    if (!v) return false;
+    if (/^["“‘「『]/.test(v)) return true;
+    const words = v.split(/\s+/).length;
+    if (words >= 2 && /[?!？！]$/.test(v)) return true;
+    if (words >= 3 && /[^\d\s.。…][.。…]+$/.test(v)) return true;
+    return words >= 5 && /[.?!。？！…]\s+\S/.test(v);
+}
+
 function fieldsFrom(parts: string[]) {
     const when: string[] = [];
     const weather: string[] = [];
@@ -90,22 +110,29 @@ function fieldsFrom(parts: string[]) {
     };
 }
 
-function barFromLine(line: string): StatusBar | null {
+function barFromLine(line: string, loose = false): StatusBar | null {
     const t = line.trim().replace(/^(?:>\s*)+/, '').replace(/^[*_`#\s]+|[*_`\s]+$/g, '');
     if (t.length < 8 || t.length > 320) return null;
     if (/^["“”'‘’]/.test(t)) return null; // 대사
-    if (/^\[\[\s*[a-z][\w-]*\s*[:|]/i.test(t)) return null; // 앱이 그리는 꼬리표([[prop:sms|…]] 같은 것)는 상태창이 아니다
-    const wrap = t.match(/^[[【〔「『〈(（<]\s*([\s\S]+?)\s*[\]】〕」』〉)）>]$/);
+    if (!loose) {
+        const head = t.match(TAG_HEAD_RX);
+        if (head && !labelKind(head[1])) return null;   // [prop:sms|…] 같은 기계 표식
+    }
+    const wrap = (!loose && t.match(/^\[\[\s*([^[\]]+?)\s*\]\]$/)) || t.match(/^[[【〔「『〈(（<]\s*([\s\S]+?)\s*[\]】〕」』〉)）>]$/);
     const inner = wrap ? wrap[1] : t;
     const parts = splitBar(inner);
     if (parts.length < 2) return null;
-    const has = { clock: parts.some(p => CLOCK_RX.test(p)), date: parts.some(p => DATE_RX.test(p)), weather: parts.some(p => WEATHER_RX.test(p)), place: parts.some(p => PLACE_RX.test(p)) };
+    if (!loose && PROP_HEAD_RX.test(clean(parts[0]))) return null;   // [문자 | 차유원 선배 | …] — 주고받은 글
+    // 시간 · 날짜 · 장소는 값으로 적힌 칸에서만 읽는다 — 문장 칸(문자 내용 · 속마음)은 센 것으로 치지 않는다
+    const cells = loose ? parts : parts.filter(p => !isSentence(p));
+    if (cells.length < 2) return null;
+    const has = { clock: cells.some(p => CLOCK_RX.test(p)), date: cells.some(p => DATE_RX.test(p)), weather: cells.some(p => WEATHER_RX.test(p)), place: cells.some(p => PLACE_RX.test(p)) };
     const score = Object.values(has).filter(Boolean).length;
     if (!has.clock && !has.date) return null;
     // 괄호로 감싼 줄은 두 가지, 맨 줄은 세 가지 이상 맞아야 상태창이다 (가운뎃점이 든 서술문과 구분)
-    if (!(wrap ? score >= 2 : score >= 3 && parts.length >= 3)) return null;
+    if (!(wrap ? score >= 2 : score >= 3 && cells.length >= 3)) return null;
     if (parts.some(p => p.length > 60) || (!wrap && /[.!?。]\s*$/.test(inner))) return null;
-    return { raw: line.trim(), ...fieldsFrom(parts) };
+    return { raw: line.trim(), ...fieldsFrom(cells) };
 }
 
 function barFromLabels(lines: string[], start: number): { end: number; bar: StatusBar } | null {
@@ -138,7 +165,7 @@ export function plainLines(text: unknown): string[] {
  * 본문 속 상태창을 순서대로 찾는다 (최대 6개).
  * mode: 'auto' | 'custom'(pattern 정규식 — 괄호로 묶은 부분을 내용으로 읽는다) | 'off'
  */
-export function findStatusBars(text: string | null | undefined, { mode = 'auto', pattern = '' }: StatusBarOptions = {}): StatusBar[] {
+export function findStatusBars(text: string | null | undefined, { mode = 'auto', pattern = '', loose = false }: StatusBarOptions = {}): StatusBar[] {
     if (mode === 'off' || !text) return [];
     if (mode === 'custom') {
         let rx: RegExp;
@@ -156,11 +183,11 @@ export function findStatusBars(text: string | null | undefined, { mode = 'auto',
         }
         return out;
     }
-    const lines = plainLines(text);
+    const lines = plainLines(loose ? text : String(text).replace(TAG_SPAN_RX, ' '));
     const out: StatusBar[] = [];
     for (let i = 0; i < lines.length && out.length < 6; i++) {
         if (!lines[i]) continue;
-        const bar = barFromLine(lines[i]);
+        const bar = barFromLine(lines[i], loose);
         if (bar) { out.push(bar); continue; }
         if (LABEL_RX.test(lines[i])) {
             const hit = barFromLabels(lines, i);

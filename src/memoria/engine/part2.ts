@@ -12,7 +12,7 @@ import { attributeQuote, type AddressPerson } from '../stage';
 import { parseStoryDate, syncDaysToDates } from '../calendar';
 import * as MP from '../prompts';
 import { KNOW_DIRECTIVE, LEARN_DIRECTIVE, BEATS_DIRECTIVE, FEELING_DIRECTIVE } from '../directives';
-import { chunkTurnsOf, repliesOf } from './base';
+import { chunkTurnsOf, repliesOf, startsWithFieldLabel, looksLikeAlias, looksLikeAge } from './base';
 import { snapUndo, diffUndo, trimUndo, mergeUndo, type Undo } from './undo';
 import { t as tr } from '../../i18n';
 
@@ -212,11 +212,11 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     for (const c of (Array.isArray(raw?.cast) ? raw.cast : arr(raw?.characters)).slice(0, 5)) {
       const name = cleanStr(c?.name, 60); if (!name) continue;
       out.characters.push({
-        name, provisional: c?.provisional === true, aka: arr(c?.aka).map(a => cleanStr(a, 60)).filter(Boolean).slice(0, 4),
-        role: naLike(c?.role), age: naLike(c?.age), occupation: naLike(c?.occupation), appearance: naLike(c?.appearance) ? cleanStr(c.appearance, 200) : null, voice: naLike(c?.voice) ? cleanStr(c.voice, 200) : null,
+        name, provisional: c?.provisional === true, aka: arr(c?.aka).map(a => cleanStr(a, 60)).filter(a => !!a && looksLikeAlias(a)).slice(0, 4),   // "특성: 다정함" · "직업: 대리"처럼 다른 칸의 이름표가 붙어 온 값은 칸이 밀린 것이다 — 이름 · 나이로 받지 않는다
+        role: naLike(c?.role), age: looksLikeAge(naLike(c?.age)) ? naLike(c?.age) : null, occupation: naLike(c?.occupation), appearance: naLike(c?.appearance) ? cleanStr(c.appearance, 200) : null, voice: naLike(c?.voice) ? cleanStr(c.voice, 200) : null,
         core: naLike(c?.core) ? cleanStr(c.core, 500) : null,             // 바탕 — 카드가 비어 있을 때 한 번만 받는다 (upsertCast 가 덮어쓰기를 막는다)
         line: this.validLine(c?.line, userText, assistantText),          // 실제로 한 대사 한 줄 — 원문에 그대로 있는 문장만 (지어낸 대사는 버린다)
-        growth: naLike(c?.growth) ? cleanStr(c.growth, 200) : null,      // 이야기 속에서 생긴, 원인이 분명하고 오래갈 변화
+        growth: naLike(c?.growth) && !startsWithFieldLabel(c.growth) ? cleanStr(c.growth, 200) : null,      // 이야기 속에서 생긴, 원인이 분명하고 오래갈 변화
         traits: arr(c?.traits).map(t => cleanStr(t, 40)).filter(Boolean).slice(0, 8),
         relationships: arr(c?.relationships).map(r => ({ target: cleanStr(r?.target, 60), relation: cleanStr(r?.relation, 80) })).filter(r => r.target && r.relation).slice(0, 8),
       });
@@ -450,11 +450,13 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     for (const n of speakersNow) if (n && !people.some(p => ekey(p.name) === ekey(n))) people.push({ name: n, forms: [] });
     const coveredMsgs = (batch || [userMes, ai]).filter((m): m is Msg => !!m && !this.isSideMessage(m)), soloChat = (chat.charIds || []).length <= 1;
     const knownPerson = (n?: string | null) => { if (!n) return ''; const c = this.canonName(mem, n); return people.some(p => ekey(p.name) === ekey(c)) ? c : ''; };
+    // 소설 모드에서는 글쓴이가 서술자다 — 글에 누가 말했는지 적히지 않은 대사를 카드 주인의 말로 치지 않는다 (사서가 적은 이름을 쓴다)
+    const narrated = this.perspective(mem) === NARRATOR;
     // 인용한 말을 한 사람 · 들은 사람: 원문에서 규칙으로 가린 것이 먼저, 규칙이 못 가리면 사서가 적은 이름(서고에 있는 사람일 때만)
     const whoSaid = (quote: string | null, by0?: string | null, to0?: string | null) => {
       if (!quote) return { by: '', to: '' };
       let r = { by: '', to: '', found: false };
-      for (const m of coveredMsgs) { r = attributeQuote(visibleProse(msgText(m)), quote, { author: this.canonName(mem, nameOf(m)), people, partner: soloChat ? this.canonName(mem, m.role === 'user' ? charLabel : userLabel) : '' }); if (r.found) break; }
+      for (const m of coveredMsgs) { r = attributeQuote(visibleProse(msgText(m)), quote, { author: narrated ? '' : this.canonName(mem, nameOf(m)), people, partner: soloChat && !narrated ? this.canonName(mem, m.role === 'user' ? charLabel : userLabel) : '' }); if (r.found) break; }
       const by = r.by || knownPerson(by0), to = r.to || knownPerson(to0);
       return { by, to: to && ekey(to) !== ekey(by) ? to : '' };
     };

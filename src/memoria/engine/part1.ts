@@ -9,9 +9,8 @@ import { BATCH_TOKENS, G, PROMPTS, NARRATOR, PUBLIC_ONLY, LANG_DIRECTIVES, MEMOR
 import * as MP from '../prompts';
 import { findStatusBars, statusOneLine, isPauseDirective, isPauseMessage, verifyIssues, applyVerdicts } from '../scene';
 import { withDeadline, parsePhraseList, BUNDLE_EXCLUDED, resolveBundleName, switchBundle, noteUsage, looksRefused, looksBlocked } from '../craft';
-import { REC_ANY } from './base';
-import { isOocText, looksOocReply } from '../stage';
-import { dropProps } from '../../crew/props';
+import { REC_ANY, startsWithFieldLabel, looksLikeAlias, looksLikeAge } from './base';
+import { isOocText, looksOocReply, attributeQuote } from '../stage';
 import { parseStoryDate } from '../calendar';
 import type { Usage } from '../craft';
 import { t } from '../../i18n';
@@ -91,6 +90,9 @@ export interface Part1 {
   applyBundleForChat(chat?: ChatM | null): boolean;
   reconcile(mem: Mem, msgs?: Msg[] | null): boolean;
   reconcileWithChat(mem: Mem, msgs?: Msg[] | null): boolean;
+  repairNarratedSpeakers(mem: Mem, msgs?: Msg[] | null): number;
+  repairStatusStamps(mem: Mem, msgs?: Msg[] | null): number;
+  cleanCastFields(mem: Mem): number;
   repairChatSync(chat: ChatM, msgs?: Msg[] | null): Promise<{ changed: boolean; before: number; after: number }>;
   dropAffectedSummaries(mem: Mem, deleted: number[]): void;
   repairSummaryRecords(mem: Mem): number;
@@ -150,8 +152,6 @@ export const part1: Part1 & ThisType<MemoryApi> = {
       if (m.chapters && !m.chunks.length) { m.chunks = m.chapters; m.chunked = m.chaptered || 0; }
       for (const k of SHELVES) if (!Array.isArray(m[k])) m[k] = [];
       if ((m.bondRev || 0) < 1) { for (const b of m.bonds) this.compactBondLog(b); m.bondRev = 1; }   // 같은 단계를 말만 바꿔 여러 칸으로 쌓아 둔 관계선을 한 번 접는다
-      // 소품 꼬리표([[prop:…]])를 상태창으로 잘못 읽어 턴에 찍어 둔 시간 · 장소를 지운다 (그 글에서 뽑은 날짜도 함께). 비워 두면 요약은 장면 기록의 값을 쓴다
-      for (const tn of m.turns || []) { const w = `${tn.when || ''} ${tn.where || ''}`; if (!/\[\[?prop:/i.test(w)) continue; if (tn.date && tn.date === parseStoryDate(tn.when, '')) delete tn.date; tn.when = ''; tn.where = ''; }
       cache.set(chatId, m);
     }
     return cache.get(chatId)!;
@@ -172,7 +172,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
    * 저장은 다음 설정 저장 때 함께 된다 (그전까지는 열 때마다 같은 판정을 다시 한다)
    */
   migrateSettings(s = S.settings.memory) {
-    if (!s || typeof s !== 'object' || ((s.promptRev || 1) >= MP.PROMPT_REV && (s.settingsRev || 1) >= 3)) return false;
+    if (!s || typeof s !== 'object' || ((s.promptRev || 1) >= MP.PROMPT_REV && (s.settingsRev || 1) >= 4)) return false;
     if ((s.promptRev || 1) < MP.PROMPT_REV) {
       if (!s.promptOutdated || typeof s.promptOutdated !== 'object') s.promptOutdated = {};
       for (const k of PROMPT_KEYS) {
@@ -183,6 +183,11 @@ export const part1: Part1 & ThisType<MemoryApi> = {
       s.promptRev = MP.PROMPT_REV;
     }
     if ((s.settingsRev || 1) < 3) { if (s.responseTokens === 6000 || s.responseTokens! <= 2048) s.responseTokens = MEMORY_DEFAULTS.responseTokens; if (s.tokenBudget === 1600 || s.tokenBudget === 4000) s.tokenBudget = MEMORY_DEFAULTS.tokenBudget; if (s.minCosine === 0.05) s.minCosine = MEMORY_DEFAULTS.minCosine; if (s.fossil === 40) s.fossil = { ...FOSSIL }; s.settingsRev = 3; }   // 사서 응답 상한의 옛 기본값을 올린다 (직접 바꾼 값은 둔다)
+    // rev 4: 문제를 부르던 옛 기본값을 고친다 (옛 기본값 그대로 저장된 것만 — 직접 바꾼 값은 둔다)
+    //  · 기록 지연 0 → 1: 답변을 받자마자 적으면 다시 받을(리롤) 때마다 그 기록을 걷고 다시 적는다 — 내가 다음 말을 보내 그 답변을 받아들인 뒤에 적는다
+    //  · 전환점 기록 끔 → 켬: 기록 호출에 함께 받아 호출은 늘지 않는다. 전환점이 없으면 캐릭터 설명의 시작 설정이 뒤집힌 것을 장부가 붙들지 못한다
+    //  · 자동 숨김 때 남기는 메시지 6 → 20: 세 번 주고받은 것만 남기면 방금 일의 결이 끊긴다
+    if ((s.settingsRev || 1) < 4) { if (s.recordDelay === 0) s.recordDelay = 1; if (s.milestones === false) s.milestones = true; if (s.preserveRecent === 6) s.preserveRecent = 20; s.settingsRev = 4; }
     return true;
   },
   /** 기본 프롬프트 글 (key: archivist · supervisor · chunk · arc) */
@@ -341,9 +346,75 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     if (repaired) { console.info(`[장기기억] 요약 복구: 이야기 이어쓰기 · 확장 태그가 섞인 기록 ${repaired}건 정리`); changed = true; }
     const folded = this.foldAliases(mem);
     if (folded.states || folded.memories) { console.info(`[장기기억] 이름 접기: 상태 ${folded.states}건 · 기억 ${folded.memories}건을 정식 이름으로 통합`); changed = true; }
+    const restamped = this.repairStatusStamps(mem, msgs);
+    if (restamped) { this.logActivity('update', t('memoria.engine.log.restamped', { n: restamped })); changed = true; }
+    // 대화마다 한 번: 소설 모드에서 잘못 붙은 "누가 한 말" 다시 가리기 · 인물 카드에 밀려 적힌 칸 걷어 내기
+    const respoken = this.repairNarratedSpeakers(mem, msgs);
+    if (respoken) { this.logActivity('update', t('memoria.engine.log.respoken', { n: respoken })); changed = true; }
+    if (!((mem.castRev || 0) >= 1)) { const cleaned = this.cleanCastFields(mem); mem.castRev = 1; changed = true; if (cleaned) this.logActivity('update', t('memoria.engine.log.castCleaned', { n: cleaned })); }
     return changed;
   },
   reconcileWithChat(mem, msgs) { return this.reconcile(mem, msgs); },
+  /**
+   * 소설 모드에서 인용한 말에 붙은 "누가 한 말"을 다시 가린다 (대화마다 한 번).
+   * 전에는 글에 말한 사람이 적히지 않은 대사를 전부 메시지를 쓴 카드 주인의 말로 적었다 — 상대가 한 말까지 카드 주인의 말로 실렸다.
+   * 그 답변(묶어 기록했으면 함께 든 메시지까지)을 다시 읽어 글에 적힌 화자가 있으면 그 사람으로 고치고, 없으면 이름을 뗀다 (틀린 이름보다 없는 편이 낫다). 반환: 고친 수
+   */
+  repairNarratedSpeakers(mem, msgs) {
+    if ((mem.speakerRev || 0) >= 1 || this.perspective(mem) !== NARRATOR) return 0;
+    if (mem.turns.length && !(msgs || []).length) return 0;   // 대화를 아직 못 읽었다 — 다음에 한다
+    const byId = new Map((msgs || []).map(m => [m.id, m])), people = mem.cast.filter(c => !c.disabled).map(c => ({ name: c.name, forms: c.aka || [] }));
+    let fixed = 0;
+    for (const m of mem.memories) {
+      if (!m.by || !m.quote || m.manual || m.turn == null) continue;
+      const turn = mem.turns[m.turn], ids = [m.msgId, turn?.msgId, ...(Array.isArray(turn?.parts) ? turn!.parts!.map(p => p[0]) : [])].filter((x): x is string => !!x);
+      let r: { by: string; to: string; found: boolean } | null = null;
+      for (const id of new Set(ids)) { const src = byId.get(id); if (!src) continue; try { r = attributeQuote(visibleProse(msgText(src)), m.quote, { author: '', people, partner: '' }); } catch { r = null; } if (r?.found) break; }
+      if (!r?.found) continue;
+      const by = r.by ? this.canonName(mem, r.by) : '', to = by && r.to && ekey(r.to) !== ekey(by) ? this.canonName(mem, r.to) : '';
+      if (by === m.by && (to || '') === (m.to || '')) continue;
+      if (by) m.by = by; else delete m.by;
+      if (to) m.to = to; else delete m.to;
+      fixed++;
+    }
+    mem.speakerRev = 1;
+    return fixed;
+  },
+  /**
+   * 상태창이 아닌 줄에서 읽혀 턴에 찍힌 시간 · 장소를 걷어 낸다 (대화마다 한 번).
+   * 전에는 화면에서 카드로 그려지는 소품 꼬리표나 문자 · 편지의 내용이 상태창 모양이면 그대로 읽었다.
+   * 그 답변을 예전 판정과 지금 판정으로 다시 읽어, 예전 판정으로만 나오던 값이 찍힌 턴만 고친다 (사서가 적은 장면 값 · 직접 정한 모양으로 읽은 값은 그대로). 반환: 고친 턴 수
+   */
+  repairStatusStamps(mem, msgs) {
+    if ((mem.statusRev || 0) >= 1) return 0;
+    if (mem.turns.length && !(msgs || []).length) return 0;   // 대화를 아직 못 읽었다 — 다음에 한다
+    const byId = new Map((msgs || []).map(m => [m.id, m])), readDates = this.cfg().storyDates !== false; let fixed = 0;
+    mem.turns.forEach((tn, at) => {
+      const m = byId.get(tn.msgId); if (!tn.when || !m || m.role === 'user') return;
+      let was: StatusBar | null = null, now: StatusBar | null = null;
+      try { const text = msgText(m); was = findStatusBars(text, { loose: true }).slice(-1)[0] || null; now = findStatusBars(text).slice(-1)[0] || null; } catch { return; }
+      if (!was || tn.when !== was.when) return;                             // 사서가 적은 장면이거나 직접 정한 모양으로 읽은 값
+      if (now && now.when === was.when && now.place === was.place) return;  // 진짜 상태창
+      const bar = this.messageStatusBars(m).slice(-1)[0] || null;
+      tn.when = bar?.when || '';
+      if ((tn.where || '') === (was.place || '')) tn.where = bar?.place || '';
+      if (readDates) { const prevDate = [...mem.turns.slice(0, at)].reverse().find(x => x.date)?.date || '', d = parseStoryDate(tn.when, prevDate); if (d) tn.date = d; else delete tn.date; }
+      fixed++;
+    });
+    mem.statusRev = 1;
+    return fixed;
+  },
+  /** 이미 저장된 인물 카드에서 밀려 적힌 값(다른 이름 · 나이 · 달라진 점)을 걷어 낸다 — 잠근 카드와 직접 적은 카드는 건드리지 않는다. 반환: 고친 카드 수 */
+  cleanCastFields(mem) {
+    let n = 0;
+    for (const c of mem.cast || []) {
+      if (c.locked || c.manual) continue;
+      const names = (c.aka || []).filter(looksLikeAlias), growth = (c.growth || []).filter(g => !startsWithFieldLabel(g?.text)), age = c.age && !looksLikeAge(c.age) ? undefined : c.age;
+      if (names.length === (c.aka || []).length && growth.length === (c.growth || []).length && age === c.age) continue;
+      c.aka = names; c.growth = growth; if (age === undefined) delete c.age; n++;
+    }
+    return n;
+  },
   /** 수동 맞추기 — 이미 지워진 기록은 복구하지 않는다. 반환 { changed, before, after }(기록 턴 수) */
   async repairChatSync(chat, msgs) {
     const mem = await this.load(chat.id), before = mem.turns.length, changed = this.reconcile(mem, msgs);
@@ -499,7 +570,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
   messageStatusBars(msg) {
     const cfg = this.cfg(); if (!msg || msg.role === 'user' || cfg.statusMode === 'off' || this.isSideMessage(msg)) return [];
     const key = `${cfg.statusMode}|${cfg.statusPattern}`, text = msgText(msg); let hit = statusCache.get(msg);
-    if (!hit || hit.text !== text || hit.key !== key) { let bars: StatusBar[] = []; try { bars = findStatusBars(dropProps(text), { mode: cfg.statusMode, pattern: cfg.statusPattern }); } catch (e) { console.debug('[장기기억] 상태창 읽기 실패', e); } hit = { text, key, bars }; statusCache.set(msg, hit); }
+    if (!hit || hit.text !== text || hit.key !== key) { let bars: StatusBar[] = []; try { bars = findStatusBars(text, { mode: cfg.statusMode, pattern: cfg.statusPattern }); } catch (e) { console.debug('[장기기억] 상태창 읽기 실패', e); } hit = { text, key, bars }; statusCache.set(msg, hit); }
     return hit.bars;
   },
   /** 상태창이 바뀐 순서대로 — 시간 · 장소 · 날씨가 달라질 때마다 한 줄, 최신이 위. [{ msgId, mesId(메시지 번호, 0부터), when, place, weather, raw }] */
