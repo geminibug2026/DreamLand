@@ -7,7 +7,7 @@ import { go, route } from '../lib/router';
 import { confirmBox, menu, openModal, toast } from '../ui';
 import { fmtDate, has, t, useLang } from '../i18n';
 import { cur } from '../chat/store';
-import { G, apply, applyAll, branchAt, closeGuide, discard, editFrom, newTalk, openTalk, poke, regen, removeTalk, resume, retry, send, stop, undo } from './agent';
+import { G, apply, applyAll, branchAt, closeGuide, discard, editFrom, newTalk, openTalk, poke, regen, removeTalks, restoreTalks, resume, retry, send, stop, undo, type RemovedTalks } from './agent';
 import { ACCEPT, MAX_FILES, sizeText } from './attach';
 import { AttachError, readAttach } from './upload';
 import { targetOf, touchedSince } from './changes';
@@ -375,21 +375,68 @@ function Empty() {
   </div>;
 }
 
+/** 지운 뒤 몇 초 동안 되돌릴 수 있는 알림 */
+function undoRemoved(b: RemovedTalks) {
+  if (!b.heads.length) return;
+  const box = document.createElement('span'), btn = document.createElement('button');
+  box.className = 'gd-undo'; box.append(b.heads.length === 1 ? t('guide.talk.removed') : t('guide.talk.removedN', { n: b.heads.length }));
+  btn.type = 'button'; btn.className = 'gd-undo-btn'; btn.textContent = t('guide.talk.undo');
+  btn.addEventListener('click', () => { btn.closest('.toast')?.remove(); void restoreTalks(b).then(() => toast(t('guide.talk.restored'), 'ok')); });
+  box.append(btn); toast(box);
+}
+/** 대화 기록: 목록에서 바로 열고 지운다. 한 개는 휴지통 단추(되돌리기 알림), 여러 개는 골라 지우기 */
+function TalkList({ close }: { close: () => void }) {
+  useEvents('guide');
+  const [picking, setPicking] = useState(false), [sel, setSel] = useState<Set<string>>(() => new Set());
+  const heads = G.heads, n = heads.length, busyId = G.busy ? G.talk?.id : undefined;
+  const pickable = heads.filter(h => h.id !== busyId), all = pickable.length > 0 && pickable.every(h => sel.has(h.id));
+  useEffect(() => { const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); if (picking) { setPicking(false); setSel(new Set()); } else close(); } }; document.addEventListener('keydown', key, true); return () => document.removeEventListener('keydown', key, true); }, [picking, close]);
+  const flip = (id: string) => { if (id === busyId) return; setSel(p => { const x = new Set(p); if (x.has(id)) x.delete(id); else x.add(id); return x; }); };
+  const open = (id: string) => { if (G.busy) { toast(t('guide.talk.busy')); return; } void openTalk(id).then(close); };
+  const delOne = async (id: string) => undoRemoved(await removeTalks([id]));
+  const delSel = async () => {
+    const ids = [...sel]; if (!ids.length) return;
+    if (ids.length > 1 && !(await confirmBox(t('guide.talk.removeNConfirm', { n: ids.length }), t('common.delete'), true))) return;
+    const b = await removeTalks(ids); setSel(new Set()); setPicking(false); undoRemoved(b);
+  };
+  const when = (at: number) => fmtDate(at, { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return <div className="gd-talks" role="dialog" aria-label={t('guide.talk.list')}>
+    <div className="gd-talks-bar">
+      {picking ? <>
+        <b className="gd-talks-n" role="status">{t('guide.talk.picked', { n: sel.size })}</b>
+        <button type="button" className="btn ghost" onClick={() => setSel(all ? new Set() : new Set(pickable.map(h => h.id)))}>{all ? t('guide.talk.pickNone') : t('guide.talk.pickAll')}</button>
+        <button type="button" className="btn danger" disabled={!sel.size} onClick={() => void delSel()}><Icon name="trash" size={15} />{t('guide.talk.removeN', { n: sel.size })}</button>
+        <button type="button" className="ibtn" title={t('common.cancel')} aria-label={t('common.cancel')} onClick={() => { setPicking(false); setSel(new Set()); }}><Icon name="x" size={17} /></button>
+      </> : <>
+        <b className="gd-talks-n">{t('guide.talk.list')}<span className="fx-num">{n}</span></b>
+        {n > 1 ? <button type="button" className="btn ghost" onClick={() => setPicking(true)}>{t('guide.talk.pick')}</button> : null}
+        <button type="button" className="ibtn" title={t('guide.talk.close')} aria-label={t('guide.talk.close')} onClick={close}><Icon name="x" size={17} /></button>
+      </>}
+    </div>
+    <div className="gd-talks-scroll">
+      {!picking ? <button type="button" className="gd-talk-new" onClick={() => { newTalk(); close(); }} disabled={G.busy}><Icon name="plus" size={16} />{t('guide.talk.new')}</button> : null}
+      {n ? <ul className="gd-talk-list">{heads.map(h => { const on = h.id === G.talk?.id, picked = sel.has(h.id), locked = h.id === busyId;
+        return <li key={h.id} className={'gd-talk' + (on ? ' on' : '') + (picked ? ' picked' : '')}>
+          <button type="button" className="gd-talk-open" onClick={() => (picking ? flip(h.id) : open(h.id))} disabled={picking && locked} {...(picking ? { role: 'checkbox', 'aria-checked': picked } : {})}>
+            {picking ? <span className="gd-talk-box" aria-hidden="true">{picked ? <Icon name="check" size={13} /> : null}</span> : <Icon name="note" size={15} />}
+            <span className="gd-talk-t"><b>{h.title || t('guide.talk.untitled')}</b><small className="fx-num">{when(h.at)}{on ? ` · ${t('guide.talk.current')}` : ''}</small></span>
+          </button>
+          {!picking ? <button type="button" className="ibtn gd-talk-del" title={locked ? t('guide.talk.busy') : t('guide.talk.remove')} aria-label={t('guide.talk.remove')} disabled={locked} onClick={() => void delOne(h.id)}><Icon name="trash" size={16} /></button> : null}
+        </li>; })}</ul> : <p className="gd-talks-none dim">{t('guide.talk.none')}</p>}
+    </div>
+  </div>;
+}
+
 const STATUS_KEY = { idle: '', working: 'guide.status.working', review: 'guide.status.review', done: 'guide.status.done' } as const;
 function Panel() {
   useEvents('guide', 'route'); useLang();
-  const scroll = useRef<HTMLDivElement>(null), stick = useRef(true), [drag, setDrag] = useState(false);
+  const scroll = useRef<HTMLDivElement>(null), stick = useRef(true), [drag, setDrag] = useState(false), [list, setList] = useState(false);
   const items = G.talk?.items || [], n = items.length;
   useEffect(() => { const el = scroll.current; if (el && stick.current) el.scrollTop = el.scrollHeight; });
   useEffect(() => { stick.current = true; }, [n, G.talk?.id]);
   if (!G.open) return null;
   const waiting = items.filter(i => i.k === 'change' && i.change.state === 'pending').length;
-  const talks = (e: React.MouseEvent<HTMLButtonElement>) => menu(e.currentTarget, [
-    { label: t('guide.talk.new'), ic: 'plus', onclick: newTalk }, G.heads.length ? '-' : null,
-    ...G.heads.slice(0, 14).map(h => ({ label: h.title || t('guide.talk.untitled'), hint: fmtDate(h.at, { month: 'numeric', day: 'numeric' }), ic: h.id === G.talk?.id ? 'check' : 'note', onclick: () => void openTalk(h.id) })),
-    G.talk && G.heads.some(h => h.id === G.talk?.id) ? '-' : null,
-    G.talk && G.heads.some(h => h.id === G.talk?.id) ? { label: t('guide.talk.remove'), ic: 'trash', danger: true, onclick: async () => { if (await confirmBox(t('guide.talk.removeConfirm'), t('common.delete'), true)) void removeTalk(G.talk!.id); } } : null,
-  ]);
+  const closeList = () => setList(false);
   // 끌어 놓기: 파일을 옆 창 어디에 놓아도 입력창에 붙는다
   const hasFiles = (e: React.DragEvent) => [...(e.dataTransfer?.types || [])].includes('Files');
   const lastU = items.map(i => i.k).lastIndexOf('user'), lastAi = items.length - 1;
@@ -402,12 +449,13 @@ function Panel() {
       <div className="gd-title"><span className="fx-lbl">Lampkeeper</span><h2 className="fx-serif">{t('guide.name')}</h2></div>
       {G.status !== 'idle' ? <span className={'fx-pill gd-status is-' + G.status} role="status"><i className="fx-dot" />{t(STATUS_KEY[G.status])}{G.busy ? <b className="fx-num">{t('guide.calls', { n: G.calls })}</b> : null}</span> : null}
       <span className="gd-hbtns">
-        <button type="button" className="ibtn" title={t('guide.talk.list')} aria-label={t('guide.talk.list')} onClick={talks}><Icon name="note" size={17} /></button>
+        <button type="button" className={'ibtn' + (list ? ' on' : '')} title={t('guide.talk.list')} aria-label={t('guide.talk.list')} aria-expanded={list} onClick={() => setList(v => !v)}><Icon name="note" size={17} /></button>
         <button type="button" className="ibtn" title={t('nav.help')} aria-label={t('nav.help')} onClick={e => menu(e.currentTarget, [{ label: t('nav.help'), ic: 'book', onclick: () => { closeGuide(); go('help'); } }, { label: t('guide.tour.again'), ic: 'play', onclick: () => { closeGuide(); startTour(); } }])}><Icon name="book" size={17} /></button>
         <button type="button" className="ibtn" title={t('common.close')} aria-label={t('common.close')} onClick={closeGuide}><Icon name="x" size={17} /></button>
       </span>
     </header>
     <div className="fx-ticks gd-rule" aria-hidden="true" />
+    {list ? <TalkList close={closeList} /> : null}
     <div className="gd-scroll" ref={scroll} onScroll={e => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60; }}>
       {G.talk?.plan && (n || G.busy) ? <PlanView plan={G.talk.plan} /> : null}
       {!n && !G.busy ? <Empty /> : <div className="gd-items">

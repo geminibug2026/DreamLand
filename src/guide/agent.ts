@@ -199,6 +199,24 @@ export async function openTalk(id: string) {
   if (G.busy) return;
   G.talk = normTalk(await DB.get('kv', 'gdtalk:' + id) as unknown as Talk & { tid?: string }, id); G.editing = -1; refreshStatus(); poke();
 }
+/** 지운 대화 묶음 — 되살리기에 쓴다 */
+export interface RemovedTalks { heads: TalkHead[]; rows: unknown[] }
+/** 여러 대화를 한꺼번에 지운다 (답을 쓰는 중인 대화는 빼고). 반환: 되살릴 수 있게 지운 것 */
+export async function removeTalks(ids: string[]): Promise<RemovedTalks> {
+  const skip = G.busy ? G.talk?.id : undefined, set = new Set(ids.filter(id => id !== skip)), heads = G.heads.filter(h => set.has(h.id)), rows: unknown[] = [];
+  for (const h of heads) { const r = await DB.get('kv', 'gdtalk:' + h.id).catch(() => undefined); if (r) rows.push(r); await DB.del('kv', 'gdtalk:' + h.id).catch(() => { }); }
+  G.heads = G.heads.filter(h => !set.has(h.id)); await DB.put('kv', { id: INDEX, list: G.heads });
+  if (G.talk && set.has(G.talk.id)) { G.talk = null; G.status = 'idle'; G.stream = ''; G.editing = -1; }
+  poke();
+  return { heads, rows };
+}
+/** 방금 지운 대화를 되살린다 (목록 순서는 마지막으로 쓴 때 순) */
+export async function restoreTalks(b: RemovedTalks) {
+  for (const r of b.rows) await DB.put('kv', r as object);
+  const have = new Set(G.heads.map(h => h.id));
+  G.heads = [...G.heads, ...b.heads.filter(h => !have.has(h.id))].sort((x, y) => y.at - x.at).slice(0, KEEP_TALKS);
+  await DB.put('kv', { id: INDEX, list: G.heads }); poke();
+}
 export async function removeTalk(id: string) {
   await DB.del('kv', 'gdtalk:' + id).catch(() => { }); G.heads = G.heads.filter(h => h.id !== id); await DB.put('kv', { id: INDEX, list: G.heads });
   if (G.talk?.id === id) { G.talk = null; G.status = 'idle'; } poke();

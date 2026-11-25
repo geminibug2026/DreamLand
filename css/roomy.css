@@ -2,7 +2,9 @@
 
 /* 메뉴: 이름은 한 줄로, 설명은 옆(넓은 화면) 또는 아래(좁은 화면) */
 .menu-item .mi-t { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 14px; }
-.menu-item .mi-t > span { white-space: nowrap; }
+.menu-item .mi-t > span { white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* 이름이 긴 항목이 있어도 메뉴가 화면 밖으로 나가지 않는다 (긴 이름은 말줄임) */
+.menu { max-width: calc(100vw - 16px); }
 .menu-item .mi-t > small { margin-left: auto; padding-left: 0; text-align: right; }
 /* 이름표 · 짧은 낱말이 글자 단위로 꺾이지 않게 */
 .gm-status small, .gm-status span:not(.gm-where) { flex: none; white-space: nowrap; }
