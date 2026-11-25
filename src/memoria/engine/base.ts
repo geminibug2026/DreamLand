@@ -435,6 +435,30 @@ export const redoTurns = new Map<string, Set<string>>();
 export const STANDING_KINDS = new Set(['fact', 'preference', 'promise', 'goal', 'item', 'place', 'relationship']);
 /** 요약이 닫은 서약의 풀린 경위 자리에 적는 글 (저장된 값이라 바꾸지 않는다) */
 export const SETTLED_AT_SUMMARY = '요약 때 정리됨';
+/* 같은 뜻의 특성 — "유약함"·"유약한", "체념"·"체념적", "다혈질"·"불같은 다혈질"처럼 끝만 다르거나 한쪽이 다른 쪽을 꾸민 것은 한 칸이다 (매 턴 장부에 실리므로 겹친 칸은 토큰만 먹는다).
+   "관심"과 "무관심"처럼 낱말 중간에 걸린 것은 같은 것으로 보지 않는다 — 낱말 단위로만 견준다 */
+const TRAIT_END = /(?:스러움|스러운|스럽다|스럽게|적인|하다|하고|있음|함|한|적|임)$/;
+const traitWords = (t: unknown) => String(t ?? '').toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(w => /[가-힣]$/.test(w) ? (w.length >= 3 ? w.replace(TRAIT_END, '') : w) : w.length > 4 ? w.replace(/(?:ness|s)$/, '') : w);
+/** 두 특성이 같은 칸인가: 낱말 줄기가 같거나, 짧은 쪽의 낱말이 긴 쪽에 그대로 이어서 들어 있다 (짧은 쪽이 두 글자 이상일 때만) */
+export function sameTrait(a: unknown, b: unknown): boolean {
+  const x = traitWords(a), y = traitWords(b); if (!x.length || !y.length) return false;
+  if (x.join(' ') === y.join(' ')) return true;
+  const [s, l, sRaw] = x.length <= y.length ? [x, y, a] : [y, x, b]; if (s.length === l.length || s.join('').length < 2) return false;
+  // "강함" · "단호함" 같은 서술어 한 낱말은 남의 말을 꾸미는 쪽이라 긴 말 속에 들어 있어도 같은 칸이 아니다 ("강함" ≠ "자존심 강함")
+  if (s.length === 1 && /(?:함|한|있음|없음|임|하다)$/.test(String(sRaw ?? '').trim())) return false;
+  for (let i = 0; i + s.length <= l.length; i++) if (s.every((w, j) => l[i + j] === w)) return true;
+  return false;
+}
+/** 특성 목록을 합친다: 겹치는 것은 한 칸으로 (꾸민 말이 붙은 쪽이 더 많은 것을 말하므로 그쪽을 남긴다 · 자리는 먼저 있던 곳). 앞에서부터 max 개 */
+export function mergeTraits(base: readonly string[] | null | undefined, add: readonly string[] = [], max = 10): string[] {
+  const out: string[] = [];
+  for (const t of [...(base || []), ...add]) {
+    const v = String(t ?? '').trim(); if (!v) continue;
+    const i = out.findIndex(o => sameTrait(o, v));
+    if (i < 0) out.push(v); else if (traitWords(v).length > traitWords(out[i]).length) out[i] = v;
+  }
+  return out.slice(0, max);
+}
 /* 사서가 인물 칸을 밀려 적을 때가 있다 (다른 이름 칸에 "특성: …", 나이 칸에 "직업: …", 달라진 점에 "남긴 말: …") — 그런 값은 받지 않는다 */
 export const startsWithFieldLabel = (v: unknown) => /^\s*[^\s:：]{1,6}(?:\s[^\s:：]{1,4})?\s*[:：]/.test(String(v ?? ''));
 export const looksLikeAlias = (v: unknown) => { const t = String(v ?? '').trim(); return !!t && t.length <= 30 && !/[:：]/.test(t); };

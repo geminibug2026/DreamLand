@@ -9,7 +9,7 @@ import { BATCH_TOKENS, G, PROMPTS, NARRATOR, PUBLIC_ONLY, LANG_DIRECTIVES, MEMOR
 import * as MP from '../prompts';
 import { findStatusBars, statusOneLine, isPauseDirective, isPauseMessage, verifyIssues, applyVerdicts } from '../scene';
 import { withDeadline, parsePhraseList, BUNDLE_EXCLUDED, resolveBundleName, switchBundle, noteUsage, looksRefused, looksBlocked } from '../craft';
-import { REC_ANY, startsWithFieldLabel, looksLikeAlias, looksLikeAge } from './base';
+import { REC_ANY, startsWithFieldLabel, looksLikeAlias, looksLikeAge, mergeTraits } from './base';
 import { isOocText, looksOocReply, attributeQuote } from '../stage';
 import { parseStoryDate } from '../calendar';
 import type { Usage } from '../craft';
@@ -351,7 +351,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     // 대화마다 한 번: 소설 모드에서 잘못 붙은 "누가 한 말" 다시 가리기 · 인물 카드에 밀려 적힌 칸 걷어 내기
     const respoken = this.repairNarratedSpeakers(mem, msgs);
     if (respoken) { this.logActivity('update', t('memoria.engine.log.respoken', { n: respoken })); changed = true; }
-    if (!((mem.castRev || 0) >= 1)) { const cleaned = this.cleanCastFields(mem); mem.castRev = 1; changed = true; if (cleaned) this.logActivity('update', t('memoria.engine.log.castCleaned', { n: cleaned })); }
+    if ((mem.castRev || 0) < 2) { const cleaned = this.cleanCastFields(mem); mem.castRev = 2; changed = true; if (cleaned) this.logActivity('update', t('memoria.engine.log.castCleaned', { n: cleaned })); }
     return changed;
   },
   reconcileWithChat(mem, msgs) { return this.reconcile(mem, msgs); },
@@ -404,14 +404,15 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     mem.statusRev = 1;
     return fixed;
   },
-  /** 이미 저장된 인물 카드에서 밀려 적힌 값(다른 이름 · 나이 · 달라진 점)을 걷어 낸다 — 잠근 카드와 직접 적은 카드는 건드리지 않는다. 반환: 고친 카드 수 */
+  /** 이미 저장된 인물 카드에서 밀려 적힌 값(다른 이름 · 나이 · 달라진 점)과 겹친 특성을 걷어 낸다 — 잠근 카드와 직접 적은 카드는 건드리지 않는다. 반환: 고친 카드 수 */
   cleanCastFields(mem) {
     let n = 0;
     for (const c of mem.cast || []) {
       if (c.locked || c.manual) continue;
       const names = (c.aka || []).filter(looksLikeAlias), growth = (c.growth || []).filter(g => !startsWithFieldLabel(g?.text)), age = c.age && !looksLikeAge(c.age) ? undefined : c.age;
-      if (names.length === (c.aka || []).length && growth.length === (c.growth || []).length && age === c.age) continue;
-      c.aka = names; c.growth = growth; if (age === undefined) delete c.age; n++;
+      const traits = mergeTraits([], c.traits || [], 99), sameTraits = traits.length === (c.traits || []).length && traits.every((x, i) => x === c.traits![i]);   // 겹친 특성 (다혈질 · 불같은 다혈질)
+      if (names.length === (c.aka || []).length && growth.length === (c.growth || []).length && age === c.age && sameTraits) continue;
+      c.aka = names; c.growth = growth; if (age === undefined) delete c.age; if (!sameTraits) c.traits = traits; n++;
     }
     return n;
   },

@@ -6672,7 +6672,7 @@
   "memoria.engine.ledger.why.age": "已超过设定的轮数",
   "memoria.engine.log.restamped": "已清除 {n} 个回合中从非状态栏行（短信、道具标记）读出的时间和地点",
   "memoria.engine.log.respoken": "重新判定了小说模式下说话人标错的 {n} 条引用",
-  "memoria.engine.log.castCleaned": "从 {n} 张人物卡中清除了从其他栏混入的别名、年龄和变化",
+  "memoria.engine.log.castCleaned": "整理了 {n} 张人物卡：清除了从其他栏混入的别名、年龄和变化，并合并了重复的特质",
   "memoria.engine.log.ledgerRefrozen": "已重新生成固定账本（{reason}）— 本轮缓存将重建",
   "memoria.engine.log.recallTimeout": "回想 {count} 条 · {sec} 秒 — 嵌入响应超过 {wait} 秒，已改用内置搜索",
   "memoria.engine.log.recall": "回想 {count} 条 · 账本 {tokens} 词元 · {sec} 秒",

@@ -5,7 +5,7 @@ import { embedTexts, embedKind, embedModel } from '../../lib/embed';
 import type { MemoryApi } from './api';
 import type { StatusBar } from './part1';
 import type { CastCard, Cfg, ChatM, Mem, MemItem, Msg, Summary, SummarySrc, Turn } from '../types';
-import { G, NARRATOR, PUBLIC_ONLY, PAST_QUERY_RE, str, list, clip, low, cleanStr, visibleProse, sanitizeRecord, ekey, vec, cos, cueText, indexText, vecOf, cleanMultiline, normScope, sameKnowledgeScope, storyFossilWeight, grams, lexical, gramOverlap, calibrate, parseLoose, toDays, ago, dcache, dvec, normLockKind, normVisibility, overrides, pendingEmbeds, queryEmbedCache, preps, overlap, canonSlot, VOLATILE, STANDING_KINDS, SETTLED_AT_SUMMARY, recallRuns } from './base';
+import { G, NARRATOR, PUBLIC_ONLY, PAST_QUERY_RE, str, list, clip, low, cleanStr, visibleProse, sanitizeRecord, ekey, vec, cos, cueText, indexText, vecOf, cleanMultiline, normScope, sameKnowledgeScope, storyFossilWeight, grams, lexical, gramOverlap, calibrate, parseLoose, toDays, ago, dcache, dvec, normLockKind, normVisibility, overrides, pendingEmbeds, queryEmbedCache, preps, overlap, canonSlot, VOLATILE, STANDING_KINDS, SETTLED_AT_SUMMARY, recallRuns, mergeTraits } from './base';
 import * as MP from '../prompts';
 import { chunkTurnsOf } from './base';
 import { THREAD_KINDS, SECRET_KINDS, withDeadline, hasPhrase, splitClosedLine, isEndedValue, ungroundedFigures, recallCooldown, rareQueryWords, rareStrong, strayHidden, pickTranscript, transcriptTerms } from '../craft';
@@ -887,7 +887,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
   formatCharacterLine(c) {
     const head = [c.role, c.age, c.occupation].filter(Boolean).join(', ');
     if (c.brief) {   // 말투 · 달라진 점 · 관계 전부는 그 인물이 장면에 설 때 싣는다
-      const gist = c.core ? cleanStr(c.core, 90) : (c.traits || []).slice(0, 3).join(', '), akaBrief = c.aka?.length ? ` (aka ${c.aka.slice(0, 2).join(', ')})` : '';
+      const gist = c.core ? cleanStr(c.core, 90) : mergeTraits([], c.traits || [], 3).join(', '), akaBrief = c.aka?.length ? ` (aka ${c.aka.slice(0, 2).join(', ')})` : '';
       return `- ${c.name}${akaBrief}${head ? ` (${head})` : ''}${gist ? ` — ${gist}` : ''}`;
     }
     const bits = [];
@@ -897,7 +897,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     const grown = (c.growth || []).slice(-3).map(g => g.text).filter(Boolean).join('; ');
     if (c.core) bits.push(grown ? `core (the temperament they began with — where "changed in this story" says otherwise, that is who they are now): ${c.core}` : `core (constant — the story does not rewrite this): ${c.core}`);
     if (c.voice) bits.push(`voice: ${c.voice}`);
-    if (c.traits?.length) bits.push(c.traits.join(', '));
+    if (c.traits?.length) bits.push(mergeTraits([], c.traits, 10).join(', '));   // 직접 적거나 잠근 카드에 겹친 칸이 있어도 장부에는 한 번만
     if (grown) bits.push(`changed in this story (how they stand now — this outranks the core and the original description): ${grown}`);
     if (c.relationships?.length) bits.push(c.relationships.map(r => `${r.target}: ${r.relation}`).join('; '));
     return `- ${c.name}${c.aka?.length ? ` (aka ${c.aka.join(', ')})` : ''}${head ? ` (${head})` : ''}${c.provisional ? ' [not yet named in-story — refer to them only by this handle]' : ''}${bits.length ? ` — ${bits.join(' | ')}` : ''}`;

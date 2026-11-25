@@ -6672,7 +6672,7 @@
   "memoria.engine.ledger.why.age": "정해 둔 턴 수가 지남",
   "memoria.engine.log.restamped": "상태창이 아닌 줄(문자 · 소품 표식)에서 읽혀 있던 시간 · 장소를 {n}턴에서 지웠어요",
   "memoria.engine.log.respoken": "소설 모드에서 말한 사람이 잘못 붙어 있던 인용 {n}개를 다시 가렸어요",
-  "memoria.engine.log.castCleaned": "인물 카드 {n}장에서 다른 칸의 내용이 섞여 든 이름 · 나이 · 달라진 점을 걷어 냈어요",
+  "memoria.engine.log.castCleaned": "인물 카드 {n}장에서 다른 칸의 내용이 섞여 든 이름 · 나이 · 달라진 점과 겹친 특성을 걷어 냈어요",
   "memoria.engine.log.ledgerRefrozen": "고정 장부를 새로 떴어요 ({reason}) — 이번 턴은 캐시가 새로 잡혀요",
   "memoria.engine.log.recallTimeout": "회상 {count}개 · {sec}초 — 임베딩 응답이 {wait}초를 넘겨 내장 검색으로 진행했어요",
   "memoria.engine.log.recall": "회상 {count}개 · 장부 {tokens}토큰 · {sec}초",

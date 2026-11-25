@@ -12,7 +12,7 @@ import { attributeQuote, type AddressPerson } from '../stage';
 import { parseStoryDate, syncDaysToDates } from '../calendar';
 import * as MP from '../prompts';
 import { KNOW_DIRECTIVE, LEARN_DIRECTIVE, BEATS_DIRECTIVE, FEELING_DIRECTIVE } from '../directives';
-import { chunkTurnsOf, repliesOf, startsWithFieldLabel, looksLikeAlias, looksLikeAge } from './base';
+import { chunkTurnsOf, repliesOf, startsWithFieldLabel, looksLikeAlias, looksLikeAge, mergeTraits, sameTrait } from './base';
 import { snapUndo, diffUndo, trimUndo, mergeUndo, type Undo } from './undo';
 import { t as tr } from '../../i18n';
 
@@ -217,7 +217,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
         core: naLike(c?.core) ? cleanStr(c.core, 500) : null,             // 바탕 — 카드가 비어 있을 때 한 번만 받는다 (upsertCast 가 덮어쓰기를 막는다)
         line: this.validLine(c?.line, userText, assistantText),          // 실제로 한 대사 한 줄 — 원문에 그대로 있는 문장만 (지어낸 대사는 버린다)
         growth: naLike(c?.growth) && !startsWithFieldLabel(c.growth) ? cleanStr(c.growth, 200) : null,      // 이야기 속에서 생긴, 원인이 분명하고 오래갈 변화
-        traits: arr(c?.traits).map(t => cleanStr(t, 40)).filter(Boolean).slice(0, 8),
+        traits: mergeTraits([], arr(c?.traits).map(t => cleanStr(t, 40)).filter(Boolean), 8),
         relationships: arr(c?.relationships).map(r => ({ target: cleanStr(r?.target, 60), relation: cleanStr(r?.relation, 80) })).filter(r => r.target && r.relation).slice(0, 8),
       });
     }
@@ -718,7 +718,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
   mergeCast(mem, keep, src) {
     keep.aka = [...new Set([...(keep.aka || []), src.name, ...(src.aka || [])])].filter(a => a && low(a) !== low(keep.name)).slice(0, 8);
     for (const k of ['role', 'age', 'occupation', 'appearance', 'voice']) if (!keep[k] && src[k]) keep[k] = src[k];
-    keep.traits = [...new Set([...(keep.traits || []), ...(src.traits || [])])].slice(0, 10);
+    keep.traits = mergeTraits(keep.traits, src.traits || [], 10);
     if (!keep.core && src.core) { keep.core = src.core; keep.coreTurn = src.coreTurn ?? null; keep.coreMsgId = src.coreMsgId || ''; }
     for (const l of src.lines || []) this.addCharacterLine(keep, l.text, l.turn || 0, l.msgId || '');
     keep.growth = [...(keep.growth || []), ...(src.growth || [])].sort((a, b) => (a.turn || 0) - (b.turn || 0)).slice(-CHARACTER_GROWTH_MAX);
@@ -749,7 +749,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
       break;
     }
     if (!card) {
-      card = { id: uid(), name, provisional: c.provisional === true, core, coreTurn: core ? turn : null, coreMsgId: core ? msgId : '', lines: [], growth: growth ? [msgId ? { text: growth, turn, msgId } : { text: growth, turn }] : [], traits: traits.slice(0, 10), relationships: rels.slice(0, 10),
+      card = { id: uid(), name, provisional: c.provisional === true, core, coreTurn: core ? turn : null, coreMsgId: core ? msgId : '', lines: [], growth: growth ? [msgId ? { text: growth, turn, msgId } : { text: growth, turn }] : [], traits: mergeTraits([], traits, 10), relationships: rels.slice(0, 10),
         aka: aka.filter(a => low(a) !== low(name)).slice(0, 6), first: turn, updated: turn, disabled: false, manual: false, locked: c.locked === true, prev: null, prevTurn: null, msgId, firstMsgId: msgId };
       for (const k of ['role', 'age', 'occupation', 'appearance', 'voice']) if (val(k)) card[k] = val(k);
       if (line && this.keepsLinesFor(mem, card)) this.addCharacterLine(card, line, turn, msgId);
@@ -761,13 +761,13 @@ export const part2: Part2 & ThisType<MemoryApi> = {
       if (aka.length) card.aka = [...new Set([...(card.aka || []), ...aka])].filter(a => low(a) !== low(card.name)).slice(0, 6);
       if (card.provisional && c.provisional !== true) card.provisional = false;
       // 실제로 내용이 바뀌는지 먼저 본다 — 재확인(변화 없음)이면 이전 값 이력을 건드리지 않는다
-      const scalarChanged = ['role', 'age', 'occupation', 'appearance', 'voice'].some(k => val(k) && val(k) !== card[k]), incoming = traits.filter(t => !(card.traits || []).includes(t));
+      const scalarChanged = ['role', 'age', 'occupation', 'appearance', 'voice'].some(k => val(k) && val(k) !== card[k]), incoming = traits.filter(t => !(card.traits || []).some(x => sameTrait(x, t)));
       if (scalarChanged || incoming.length) {   // 이 턴이 지워지면 되돌릴 수 있게, 바뀌기 직전 값을 한 단계만 남겨 둔다
         card.prev = { role: card.role, age: card.age, occupation: card.occupation, appearance: card.appearance, voice: card.voice, traits: card.traits ? [...card.traits] : [] };
         card.prevTurn = card.updated; card.prevBy = msgId;
       }
       for (const k of ['role', 'age', 'occupation', 'appearance', 'voice']) if (val(k)) card[k] = val(k);
-      if (traits.length) card.traits = [...new Set([...(card.traits || []), ...traits])].slice(0, 10);
+      if (traits.length) card.traits = mergeTraits(card.traits, traits, 10);
       // 바탕은 한 번 적히면 사서가 다시 쓰지 못한다 — 장면 하나가 사람을 새로 규정하지 못하게.
       // 바꾸는 길은 사용자의 직접 수정뿐이고, 달라진 점은 growth 에 원인과 함께 따로 쌓인다
       if (core && !card.core) { card.core = core; card.coreTurn = turn; card.coreMsgId = msgId; }
