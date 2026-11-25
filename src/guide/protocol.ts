@@ -98,6 +98,12 @@ export function parseReply(raw: string): Parsed {
     const bare = /(^|\n)[ \t]*((?:\[\s*)?\{\s*"(?:tool|tick)"\s*:)/g;
     while ((m = bare.exec(src))) { const at = m.index + m[1].length, open = at + (m[0].length - m[1].length) - m[2].length, end = matchBrace(src, open); found.push({ at, end: end < 0 ? src.length : end + 1, body: src.slice(open, end < 0 ? undefined : end + 1) }); if (end < 0) break; bare.lastIndex = end + 1; }
   }
+  // 계획 걸음 덩이가 줄을 바꾸지 않고 문장 끝에 붙어 온 것(「…작동합니다.{"tick": [1, 2]}」)도 걷는다 — 숫자만 든 꼴이라 본문과 헷갈리지 않는다.
+  // 울타리(```) 안은 예시로 두고, 이미 찾은 덩이와 겹치는 것은 빼고
+  const fences: [number, number][] = []; { const re = /```/g; let a = -1, f: RegExpExecArray | null; while ((f = re.exec(src))) { if (a < 0) a = f.index; else { fences.push([a, f.index + 3]); a = -1; } } if (a >= 0) fences.push([a, src.length]); }
+  const glued = /\{\s*"tick"\s*:\s*(?:\[\s*\d+(?:\s*,\s*\d+)*\s*\]|\d+)\s*(?:,\s*"end"\s*:\s*(?:true|false)\s*)?\}/g;
+  while ((m = glued.exec(src))) { const at = m.index, end = at + m[0].length; if (!found.some(x => at < x.end && end > x.at) && !fences.some(([a, b]) => at >= a && at < b)) found.push({ at, end, body: m[0] }); }
+  found.sort((a, b) => a.at - b.at);
   if (!found.length) return { text: tidyText(src) };
   // 계획 걸음만 적은 덩이({"tick": […]})는 호출이 아니다: 따로 모아 호출에 붙이거나, 호출이 없으면 끝맺음으로
   const tickOnly = found.filter(x => TICK_ONLY.test(x.body)), blocks = found.filter(x => !tickOnly.includes(x));

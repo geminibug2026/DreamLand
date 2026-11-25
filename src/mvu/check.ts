@@ -33,6 +33,7 @@ export async function checkUpdate(text: string, statIn: Obj, schemaIn?: unknown)
     if (at >= 0) r.line = src.slice(0, at).split('\n').length;
     if (changed) { r.before = had === undefined ? undefined : brief(isVwd(had) ? (had as unknown[])[0] : had); r.after = brief(isVwd(now) ? (now as unknown[])[0] : now); }
     if (errs.length) r.why = errs.map(e => e.split('\n').slice(1).join(' ').trim() || e).join(' | ');
+    if (/^stat_data[.[]/.test(path) && !(isPlainObject(before) && 'stat_data' in before)) r.why = `${r.why ? r.why + ' | ' : ''}Update paths are relative to stat_data: write '${path.replace(/^stat_data\.?/, '')}', not '${path}'.`;
     else if (!changed) r.why = c.type === 'move' ? 'move is only carried out when the card registers a zod schema (MVU zod); the built-in engine ignores it.' : 'The command ran but the value did not change (same value as before).';
     out.push(r);
   }
@@ -60,6 +61,8 @@ export function checkInit(text: string): { ok: boolean; error?: string; stat_dat
   try {
     const v = parseString(String(text || '').replace(/^\s*```[a-z0-9]*\s*\n/i, '').replace(/\n\s*```\s*$/, ''));
     if (!isPlainObject(v)) return { ok: false, error: 'The initial variables must be one object at the top level ({ … } in JSON, or key: value lines in YAML).' };
+    const wrap = ['stat_data', 'display_data', 'delta_data', 'initialized_lorebooks'].filter(k => k in (v as Obj));
+    if (wrap.length) return { ok: false, error: `The top level is wrapped in "${wrap[0]}". Remove that wrapper and write your own keys directly at the top ({ "chars": …, "shelter": … }). Dreamland (like MVU) already stores the whole entry AS stat_data, so a wrapper makes every path stat_data.${wrap[0]}.… — status bars reading getVariables(...).stat_data.chars and update commands like _.set('chars.…') would then find nothing.` };
     const d: MvuData = { ...createEmptyGameData(), stat_data: v }; finishInit(d, true);
     return { ok: true, stat_data: d.stat_data, paths: leafPaths(d.stat_data) };
   } catch (e) { return { ok: false, error: `Could not read it as JSON or YAML: ${e instanceof Error ? e.message.split('\n').slice(0, 6).join(' ') : String(e)}` }; }
