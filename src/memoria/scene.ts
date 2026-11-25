@@ -94,6 +94,7 @@ function barFromLine(line: string): StatusBar | null {
     const t = line.trim().replace(/^(?:>\s*)+/, '').replace(/^[*_`#\s]+|[*_`\s]+$/g, '');
     if (t.length < 8 || t.length > 320) return null;
     if (/^["“”'‘’]/.test(t)) return null; // 대사
+    if (/^\[\[\s*[a-z][\w-]*\s*[:|]/i.test(t)) return null; // 앱이 그리는 꼬리표([[prop:sms|…]] 같은 것)는 상태창이 아니다
     const wrap = t.match(/^[[【〔「『〈(（<]\s*([\s\S]+?)\s*[\]】〕」』〉)）>]$/);
     const inner = wrap ? wrap[1] : t;
     const parts = splitBar(inner);

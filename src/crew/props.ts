@@ -79,3 +79,8 @@ export function renderProps(text: string, labels: Record<string, string> = {}): 
 }
 /** 꼬리표를 걷어 낸 맨글 (조수에게 보내는 글 · 길이 비교에 쓴다) */
 export const stripProps = (text: string) => text.replace(TAG, (_m, _k, h: string, b: string) => `${h ? h + ': ' : ''}${b}`);
+/** 꼬리표를 이야기 속 글로: "(문자) 차유원 선배: …" — 기억 · 요약처럼 답장을 글로 읽는 곳이 쓴다. label 은 종류 이름을 준다 */
+export const propsAsText = (text: string, label: (kind: string) => string = k => k): string => text.indexOf('[[prop:') < 0 ? text
+  : text.replace(TAG, (_m, k: string, h: string, b: string) => `\n(${label(k.toLowerCase())}) ${h.trim() ? h.trim() + ': ' : ''}${b.trim()}\n`);
+/** 꼬리표를 통째로 뺀 글 — 본문의 다른 줄만 봐야 하는 곳(상태창 찾기)에서 쓴다 */
+export const dropProps = (text: string): string => text.indexOf('[[prop:') < 0 ? text : text.replace(TAG, '\n');

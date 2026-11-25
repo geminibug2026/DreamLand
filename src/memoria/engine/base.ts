@@ -2,6 +2,7 @@
 import { uid, msgText, on } from '../../lib/core';
 import { tokens } from '../../lib/engine';
 import { t as tr } from '../../i18n';
+import { propsAsText } from '../../crew/props';
 import type { Cfg, Mem, MemItem, Msg, RowHistory, Turn } from '../types';
 import type { PrepResult } from './part3';
 import type { Freeze, PacketResult, StableOpts } from './part4';
@@ -238,6 +239,7 @@ export function transformTags(text: unknown, mode: TagMode): string {
 /** 대화 원문에서 "눈에 보이는 이야기"만 남긴다 (사서에게 보내는 글 · 인용 대조 · 출처 보기에 쓴다. 턴 해시도 이 글로 잰다) */
 export function visibleProse(s: unknown): string {
   let t = String(s ?? ''); if (!t) return '';
+  t = propsAsText(t, k => tr('crew.prop.' + k));   // 소품 꼬리표([[prop:sms|…]])는 이야기 속 글로: "(문자) 차유원 선배: …"
   t = transformTags(t.replace(/<!--[\s\S]*?-->/g, ' ').replace(/<(think|thinking|thought|reasoning|reflection)>[\s\S]*?<\/\1>/gi, ' ').replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, ' '), 'chat');
   if (t.includes(S_OPEN)) { const story = [...t.matchAll(S_SEG)].map(x => x[1]).filter(x => x.trim()).join('\n\n'); t = story.replace(/\s/g, '').length >= 20 ? story : t; }
   return t.replace(S_MARK, ' ').replace(/[​-‍﻿]/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();

@@ -1,1 +1,0 @@
-export{r as cfg,u as translate}from"./logic-DNeKTZ7k.js";

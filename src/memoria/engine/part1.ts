@@ -11,6 +11,8 @@ import { findStatusBars, statusOneLine, isPauseDirective, isPauseMessage, verify
 import { withDeadline, parsePhraseList, BUNDLE_EXCLUDED, resolveBundleName, switchBundle, noteUsage, looksRefused, looksBlocked } from '../craft';
 import { REC_ANY } from './base';
 import { isOocText, looksOocReply } from '../stage';
+import { dropProps } from '../../crew/props';
+import { parseStoryDate } from '../calendar';
 import type { Usage } from '../craft';
 import { t } from '../../i18n';
 import { applyUndo } from './undo';
@@ -148,6 +150,8 @@ export const part1: Part1 & ThisType<MemoryApi> = {
       if (m.chapters && !m.chunks.length) { m.chunks = m.chapters; m.chunked = m.chaptered || 0; }
       for (const k of SHELVES) if (!Array.isArray(m[k])) m[k] = [];
       if ((m.bondRev || 0) < 1) { for (const b of m.bonds) this.compactBondLog(b); m.bondRev = 1; }   // 같은 단계를 말만 바꿔 여러 칸으로 쌓아 둔 관계선을 한 번 접는다
+      // 소품 꼬리표([[prop:…]])를 상태창으로 잘못 읽어 턴에 찍어 둔 시간 · 장소를 지운다 (그 글에서 뽑은 날짜도 함께). 비워 두면 요약은 장면 기록의 값을 쓴다
+      for (const tn of m.turns || []) { const w = `${tn.when || ''} ${tn.where || ''}`; if (!/\[\[?prop:/i.test(w)) continue; if (tn.date && tn.date === parseStoryDate(tn.when, '')) delete tn.date; tn.when = ''; tn.where = ''; }
       cache.set(chatId, m);
     }
     return cache.get(chatId)!;
@@ -495,7 +499,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
   messageStatusBars(msg) {
     const cfg = this.cfg(); if (!msg || msg.role === 'user' || cfg.statusMode === 'off' || this.isSideMessage(msg)) return [];
     const key = `${cfg.statusMode}|${cfg.statusPattern}`, text = msgText(msg); let hit = statusCache.get(msg);
-    if (!hit || hit.text !== text || hit.key !== key) { let bars: StatusBar[] = []; try { bars = findStatusBars(text, { mode: cfg.statusMode, pattern: cfg.statusPattern }); } catch (e) { console.debug('[장기기억] 상태창 읽기 실패', e); } hit = { text, key, bars }; statusCache.set(msg, hit); }
+    if (!hit || hit.text !== text || hit.key !== key) { let bars: StatusBar[] = []; try { bars = findStatusBars(dropProps(text), { mode: cfg.statusMode, pattern: cfg.statusPattern }); } catch (e) { console.debug('[장기기억] 상태창 읽기 실패', e); } hit = { text, key, bars }; statusCache.set(msg, hit); }
     return hit.bars;
   },
   /** 상태창이 바뀐 순서대로 — 시간 · 장소 · 날씨가 달라질 때마다 한 줄, 최신이 위. [{ msgId, mesId(메시지 번호, 0부터), when, place, weather, raw }] */
