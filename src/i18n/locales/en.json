@@ -7007,6 +7007,8 @@
   "scenebook.studio.gal.noJobMatch": "No matching jobs.",
   "scenebook.studio.gal.noJobs": "No unfinished jobs.",
   "scenebook.studio.gal.noMatch": "No matching images.",
+  "scenebook.studio.gal.gone": "This picture has already been deleted.",
+  "scenebook.studio.gal.indexing": "Sorting out the picture list… {done} / {total} (first time only)",
   "scenebook.studio.gal.empty": "No illustrations drawn yet.",
   "scenebook.studio.refresh": "Refresh",
   "scenebook.studio.prevPage": "Previous page",

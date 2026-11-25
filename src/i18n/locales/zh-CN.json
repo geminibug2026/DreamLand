@@ -6936,6 +6936,8 @@
   "scenebook.studio.gal.noJobMatch": "没有找到任务。",
   "scenebook.studio.gal.noJobs": "没有未完成的任务。",
   "scenebook.studio.gal.noMatch": "没有找到图片。",
+  "scenebook.studio.gal.gone": "这张图片已被删除。",
+  "scenebook.studio.gal.indexing": "正在整理图片列表… {done} / {total}（仅第一次需要）",
   "scenebook.studio.gal.empty": "还没有绘制的插图。",
   "scenebook.studio.refresh": "刷新",
   "scenebook.studio.prevPage": "上一页",

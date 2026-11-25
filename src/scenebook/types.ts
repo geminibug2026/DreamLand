@@ -40,6 +40,11 @@ export interface IllustApi {
   saveCfg(patch: Partial<IllustCfg>, o?: { reason?: string; force?: boolean }): IllustCfg;
   data(id: string): string;
   url(id: string): string;
+  /** 목록용 작은 그림 주소 (없으면 '' 를 주고 만들러 간다 — onPic 으로 알린다) */
+  thumb(id: string): string;
+  thumbHold(id: string): () => void;
+  /** 그림이 읽히면 부른다 → 끊는 함수 */
+  onPic(f: () => void): () => void;
   dataOf(id: string): Promise<string>;
   load(chatId: string): Promise<void>;
   validate<T extends GenConfig>(c: T): T;

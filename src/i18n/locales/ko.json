@@ -6936,6 +6936,8 @@
   "scenebook.studio.gal.noJobMatch": "찾는 작업이 없어요.",
   "scenebook.studio.gal.noJobs": "끝내지 못한 작업이 없어요.",
   "scenebook.studio.gal.noMatch": "찾는 그림이 없어요.",
+  "scenebook.studio.gal.gone": "이 그림은 이미 지워졌어요.",
+  "scenebook.studio.gal.indexing": "그림 목록을 정리하는 중… {done} / {total} (처음 한 번만 걸려요)",
   "scenebook.studio.gal.empty": "아직 그린 삽화가 없어요.",
   "scenebook.studio.refresh": "새로 고침",
   "scenebook.studio.prevPage": "이전 쪽",

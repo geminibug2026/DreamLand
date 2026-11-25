@@ -203,3 +203,7 @@
 .sb-ref-cost { margin: 0; padding: 6px 10px; border-left: 2px solid var(--accent); background: var(--surface); font-size: .86em; color: var(--dim); overflow-wrap: anywhere; }
 .sb-ref-skip { margin: 0; padding: 5px 8px; border: 1px dashed var(--bad); color: var(--bad); font-size: .84em; overflow-wrap: anywhere; }
 .sb-ref > .col { justify-content: flex-start; align-self: start; } .sb-manual .sb-seg { display: flex; width: 100%; }
+/* 목록의 작은 그림: 아직 만들어지지 않은 칸도 같은 크기로 자리를 잡아 둔다 */
+.sb-shot .sb-thumb-wait { display: block; width: 100%; aspect-ratio: 3 / 4; border: 1px solid var(--text); background: var(--surface2); }
+.sb-ref-img .sb-thumb-wait { display: block; width: 100%; aspect-ratio: 1; }
+.sb-indexing { margin: 0; padding: 6px 10px; border-left: 2px solid var(--accent); background: var(--surface); }

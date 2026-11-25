@@ -235,7 +235,7 @@ async function tidy() {
     const have = new Set((await (DB as unknown as { keys(s: string): Promise<IDBValidKey[]> }).keys('assets')).map(String));
     if (!have.size) return;
     const mine = await keys(d.transaction('pic', 'readonly').objectStore('pic')), tx = d.transaction('pic', 'readwrite'), st = tx.objectStore('pic');
-    for (const k of mine) if (!have.has(String(k))) st.delete(k);
+    for (const k of mine) { const id = String(k); if (id.startsWith('#')) continue; if (!have.has(id.replace(/^t:/, ''))) st.delete(k); }   // 't:' = 작은 그림, '#' = 쪽지
   } catch { }
 }
 function want(id: string) {
@@ -245,6 +245,50 @@ function want(id: string) {
   if (!askTimer) askTimer = window.setTimeout(fetchAsked, 0);
 }
 const tell = () => { for (const f of [...picSubs]) try { f(); } catch (e) { console.warn('[삽화]', e); } };
+// ── 작은 그림 (갤러리 · 참조 목록) ──
+// 목록에 원본을 그대로 깔면 한 장에 1~2MB 씩 풀어야 한다. 긴 변 480 의 WebP 를 그림 상자에 't:<id>' 로 넣어 두고 그것만 띄운다.
+// 없으면 화면용 사본(없으면 원본)에서 한 장씩 만든다 — 한 번 만든 뒤로는 원본을 읽지 않는다.
+const thumbs = new Map<string, string>(), thumbBusy = new Set<string>(), thumbHeld = new Map<string, number>(); let thumbNew: string[] = [], thumbQueue: string[] = [], thumbTimer = 0, thumbRun = false;
+async function tiny(b: Blob, side: number, q: number): Promise<Blob | null> {
+  try {
+    const bmp = await createImageBitmap(b), k = Math.min(1, side / Math.max(bmp.width, bmp.height)), w = Math.max(1, Math.round(bmp.width * k)), h = Math.max(1, Math.round(bmp.height * k));
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = h; cv.getContext('2d')?.drawImage(bmp, 0, 0, w, h); bmp.close();
+    const out = await new Promise<Blob | null>(r => cv.toBlob(r, 'image/webp', q));
+    return out && out.size && out.size < b.size ? out : null;
+  } catch { return null; }
+}
+function wantThumb(id: string) { if (thumbBusy.has(id) || gone.has(id)) return; thumbBusy.add(id); thumbNew.push(id); if (!thumbTimer) thumbTimer = window.setTimeout(thumbGo, 0); }
+async function thumbGo() {
+  thumbTimer = 0; if (thumbRun) return; thumbRun = true;
+  try {
+    for (;;) {
+      if (thumbNew.length) {   // 새로 청한 묶음: 넣어 둔 것은 바로 띄우고, 없는 것은 줄 맨 앞에 세운다 (지금 보이는 쪽이 먼저)
+        const ids = thumbNew; thumbNew = [];
+        const kept = await picGet(ids.map(id => 't:' + id)), miss: string[] = [];
+        ids.forEach((id, i) => { const b = kept[i]; if (b instanceof Blob && b.size) { thumbs.set(id, URL.createObjectURL(b)); thumbBusy.delete(id); } else miss.push(id); });
+        if (miss.length < ids.length) tell();
+        thumbQueue = [...miss, ...thumbQueue];
+        continue;
+      }
+      const id = thumbQueue.shift(); if (id === undefined) break;
+      if (!thumbHeld.get(id)) { thumbBusy.delete(id); continue; }   // 그사이 화면에서 사라진 칸은 만들지 않는다 (다시 보이면 다시 청한다)
+      let src: Blob | null = null;   // 한 장씩: 원본은 크다
+      const [copy] = await picGet([id]); if (copy instanceof Blob && copy.size) src = copy;
+      if (!src) { let r: AssetRec | undefined; try { r = await db().get('assets', id); } catch (e) { console.warn('[삽화]', e); } src = r?.data ? dataToBlob(r.data) : null; }
+      thumbBusy.delete(id);
+      if (!src) { gone.add(id); tell(); continue; }
+      const small = await tiny(src, 480, .82);
+      thumbs.set(id, URL.createObjectURL(small || src)); if (small) void picSet('t:' + id, small);
+      tell();
+    }
+  } finally { thumbRun = false; }
+}
+/** 그림 상자에 함께 두는 쪽지 — 그림 목록처럼 다시 만들 수 있는 것 (열쇠는 '#' 로 시작) */
+export async function boxGet<T>(key: string): Promise<T | undefined> {
+  const d = await pics(); if (!d) return undefined;
+  return new Promise(res => { try { const q = d.transaction('pic', 'readonly').objectStore('pic').get(key); q.onsuccess = () => res(q.result as T | undefined); q.onerror = () => res(undefined); } catch { res(undefined); } });
+}
+export async function boxSet(key: string, v: unknown) { const d = await pics(); if (!d) return; try { d.transaction('pic', 'readwrite').objectStore('pic').put(v, key); } catch { } }
 async function fetchAsked() {
   askTimer = 0; const ids = [...asked]; asked = new Set(); if (!ids.length) return;   const kept = await picGet(ids), miss: string[] = [];
   ids.forEach((id, i) => { const b = kept[i]; if (b instanceof Blob && b.size) { show(id, b, '', false); busyIds.delete(id); } else miss.push(id); });
@@ -285,6 +329,10 @@ export const Illust = {
     const d = cache.get(id); if (d) { show(id, dataToBlob(d), d, true); return urls.get(id) || ''; }
     want(id); return '';
   },
+  /** 목록용 작은 그림 주소. 아직 없으면 만들러 가고 '' (되면 onPic 으로 알린다) */
+  thumb(id: string): string { if (!id) return ''; const u = thumbs.get(id); if (u) return u; wantThumb(id); return ''; },
+  /** 그 작은 그림을 화면이 쓰고 있다고 알린다 → 놓는 함수. 쓰는 칸이 없는 그림은 만들지 않는다 (쪽을 넘긴 뒤 지난 쪽 것을 만드느라 밀리지 않게) */
+  thumbHold(id: string) { thumbHeld.set(id, (thumbHeld.get(id) || 0) + 1); return () => { const n = (thumbHeld.get(id) || 1) - 1; if (n > 0) thumbHeld.set(id, n); else thumbHeld.delete(id); }; },
   /** 그림이 읽히면 부른다 → 끊는 함수 */
   onPic(f: () => void) { picSubs.add(f); return () => { picSubs.delete(f); }; },
   /** 그림 한 장의 원본(data:) — 안 읽었으면 그 한 장만 읽는다 */
@@ -607,7 +655,7 @@ export const Illust = {
     await db().put('assets', rec); cache.set(rec.id, rec.data);
     return rec;
   },
-  async remove(id: string) { await db().del('assets', id); cache.delete(id); void picSet(id, null); const u = urls.get(id); if (u) { urls.delete(id); if (u.startsWith('blob:')) URL.revokeObjectURL(u); } },
+  async remove(id: string) { await db().del('assets', id); cache.delete(id); void picSet(id, null); void picSet('t:' + id, null); const u = urls.get(id); if (u) { urls.delete(id); if (u.startsWith('blob:')) URL.revokeObjectURL(u); } const tu = thumbs.get(id); if (tu) { thumbs.delete(id); URL.revokeObjectURL(tu); } },
   /** AI 검수: 그림을 볼 수 있는 연결로 결과를 평가한다. 의견만 남기고 그림은 바꾸지 않는다 → { summary, issues, created } */
   async review(id: string, scene: Bag | null | undefined, chat: IChat | null | undefined, signal?: AbortSignal) {
     const rec = await db().get('assets', id), image = rec?.data || cache.get(id);

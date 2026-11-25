@@ -171,7 +171,10 @@ const msgDrop = (id?: string | null, own = false) => {
 };
 const msgKeep = (id: string, list: Msg[]) => { msgCache.delete(id); msgCache.set(id, list); while (msgCache.size > 4) msgCache.delete(msgCache.keys().next().value as string); };
 try { msgBus = new BroadcastChannel('dreamland-msgs'); msgBus.onmessage = e => msgDrop(e.data); } catch { }
-const wrote = (s: string, id?: unknown, own = false) => { if (s !== 'msgs') return; msgDrop(id as string | null | undefined, own); try { msgBus?.postMessage(id == null ? null : MS.chatOfId(id)); } catch { } };
+/** assets 저장소에 쓰거나 지우면 알린다 (id 가 없으면 여러 줄이 한꺼번에 바뀐 것) — 그림 목록이 달라진 줄만 다시 읽는 데 쓴다 */
+const assetSubs = new Set<(id?: string) => void>();
+export const onAssetWrite = (f: (id?: string) => void) => { assetSubs.add(f); return () => { assetSubs.delete(f); }; };
+const wrote = (s: string, id?: unknown, own = false) => { if (s === 'assets') { for (const f of assetSubs) try { f(id == null ? undefined : String(id)); } catch { } return; } if (s !== 'msgs') return; msgDrop(id as string | null | undefined, own); try { msgBus?.postMessage(id == null ? null : MS.chatOfId(id)); } catch { } };
 /** 메시지 저장소에 닿는 길 (msgstore 가 쓴다). 쓰기는 DB.batch 를 거친다 — 자료 폴더 거울이 그것을 감싸 따라 보낸다 */
 const msgIo: MS.Io = {
   tx: (mode, fn) => tx<unknown>('msgs', mode, o => { fn(o); }),
@@ -192,6 +195,8 @@ export const DB = {
   /** 여러 줄을 한 번의 읽기로 → 없는 것은 undefined */
   many: <K extends StoreName>(s: K, ids: IDBValidKey[]) => { const out: (Rows[K] | undefined)[] = []; return tx<unknown>(s, 'readonly', o => { ids.forEach((id, i) => { const q = o.get(id); q.onsuccess = () => { out[i] = q.result as Rows[K]; }; }); }).then(() => out); },
   byOwner: (owner: string) => tx<Asset[]>('assets', 'readonly', o => o.index('owner').getAll(owner)),
+  /** assets 의 [id, 주인] 만 — 그림 글자를 읽지 않는다 (목록을 맞춰 볼 때) */
+  owners: () => { const out: [string, string][] = []; return tx<unknown>('assets', 'readonly', o => { const q = o.index('owner').openKeyCursor(); q.onsuccess = () => { const c = q.result; if (c) { out.push([String(c.primaryKey), String(c.key)]); c.continue(); } }; }).then(() => out); },
   bulk: (s: StoreName, list: object[]) => { wrote(s); return s === 'chars' ? Av.bulk(list as Parameters<typeof Av.bulk>[0]) as Promise<undefined> : tx<undefined>(s, 'readwrite', o => { list.forEach(v => o.put(v)); }); },
   /** 한 트랜잭션 안에서 여러 줄을 쓰고 지운다 (fn 이 그 자리에서 읽어 보고 정할 수 있다). 다 되면 쓴 줄 · 지운 id 를 돌려준다 */
   batch: (s: StoreName, fn: (o: IDBObjectStore, log: { put(v: object): void; del(id: IDBValidKey): void }) => void) => {
