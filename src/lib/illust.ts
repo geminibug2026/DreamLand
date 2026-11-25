@@ -281,7 +281,23 @@ async function thumbGo() {
       thumbs.set(id, URL.createObjectURL(small || src)); if (small) void picSet('t:' + id, small);
       tell();
     }
-  } finally { thumbRun = false; }
+  } finally { thumbRun = false; if (!thumbNew.length && !thumbQueue.length) for (const f of idleWaiters.splice(0)) f(); }
+}
+/** 작은 그림 만들기가 한가해질 때까지 (그림 목록 정리처럼 무거운 일이 지금 보이는 그림보다 앞서지 않게). 오래 걸리면 maxMs 뒤에 그냥 간다 */
+const idleWaiters: (() => void)[] = [];
+export function thumbsIdle(maxMs = 4000): Promise<void> {
+  if (!thumbRun && !thumbNew.length && !thumbQueue.length && !thumbTimer) return Promise.resolve();
+  return new Promise(res => { const t = setTimeout(res, maxMs); idleWaiters.push(() => { clearTimeout(t); res(); }); });
+}
+/** 그림 상자(지워도 되는 사본)가 쓰는 공간: 화면용 사본 · 작은 그림 (파일 크기만 본다 — 내용은 읽지 않는다) */
+export async function boxUsage(): Promise<{ copies: number; thumbs: number; n: number }> {
+  const d = await pics(), out = { copies: 0, thumbs: 0, n: 0 }; if (!d) return out;
+  return new Promise(res => { try { const q = d.transaction('pic', 'readonly').objectStore('pic').openCursor(); q.onsuccess = () => { const c = q.result; if (!c) return res(out); const k = String(c.key), v = c.value; if (!k.startsWith('#') && v instanceof Blob) { if (k.startsWith('t:')) out.thumbs += v.size; else out.copies += v.size; out.n++; } c.continue(); }; q.onerror = () => res(out); } catch { res(out); } });
+}
+/** 그림 상자를 비운다 (목록 쪽지는 남긴다). 그림은 다시 볼 때 원본에서 새로 만든다 */
+export async function clearBox(): Promise<void> {
+  const d = await pics(); if (!d) return;
+  await new Promise<void>(res => { try { const t = d.transaction('pic', 'readwrite'), st = t.objectStore('pic'), q = st.openKeyCursor(); q.onsuccess = () => { const c = q.result; if (!c) return; if (!String(c.key).startsWith('#')) st.delete(c.key); c.continue(); }; t.oncomplete = () => res(); t.onerror = t.onabort = () => res(); } catch { res(); } });
 }
 /** 그림 상자에 함께 두는 쪽지 — 그림 목록처럼 다시 만들 수 있는 것 (열쇠는 '#' 로 시작) */
 export async function boxGet<T>(key: string): Promise<T | undefined> {

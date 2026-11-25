@@ -234,13 +234,26 @@ function Slider({ row, k, label, max = 1, hint, later }: { row: RefRow; k: 'stre
   const bump = useBump(), v = Math.min(row[k], max);
   return <Fld label={label} cls="third" hint={hint}><div className="range"><input type="range" min={0} max={max} step={0.05} value={v} onChange={e => { row[k] = +e.target.value; bump(); later(); }} /><output>{Number(v).toFixed(2)}</output></div></Fld>;
 }
-/** 목록용 작은 그림. 아직 만들어지지 않았으면 같은 크기의 빈 칸을 두었다가 바꿔 낀다 (자리가 흔들리지 않게) */
-function Thumb({ id, alt = '' }: { id: string; alt?: string }) {
-  const [, bump] = useState(0), u = Illust.thumb(id);
-  // 이 칸이 보이는 동안만 만들게 붙잡아 둔다. 붙기 직전에 이미 만들어졌거나 줄에서 빠졌을 수 있어 한 번 더 청한다
-  useEffect(() => { if (u) return; const release = Illust.thumbHold(id), check = () => { if (Illust.thumb(id)) bump(n => n + 1); }, off = Illust.onPic(check); check(); return () => { off(); release(); }; }, [id, u]);
-  return u ? <img src={u} alt={alt} decoding="async" /> : <i className="sb-thumb-wait" aria-hidden="true" />;
+/** 가장 가까운 스크롤 상자 (없으면 화면) */
+const scrollParent = (el: Element): Element | null => { for (let p = el.parentElement; p; p = p.parentElement) { const o = getComputedStyle(p).overflowY; if (o === 'auto' || o === 'scroll') return p; } return null; };
+/** el 이 스크롤 상자 안에서 화면 가까이 오면 f 를 한 번 부른다 → 끊는 함수 */
+function whenNear(el: Element, f: () => void, margin = 300): () => void {
+  if (typeof IntersectionObserver === 'undefined') { f(); return () => { }; }
+  const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { io.disconnect(); f(); } }, { root: scrollParent(el), rootMargin: `${margin}px 0px` });
+  io.observe(el); return () => io.disconnect();
 }
+/** 목록용 작은 그림. 화면 가까이 오기 전에는 읽지도 만들지도 않는다 — 그림이 수천 장이어도 보이는 칸만큼만 일한다.
+ *  아직 없으면 같은 크기의 빈 칸을 두었다가 바꿔 낀다 (자리가 흔들리지 않게) */
+function Thumb({ id, alt = '' }: { id: string; alt?: string }) {
+  const [, bump] = useState(0), [near, setNear] = useState(false), box = useRef<HTMLElement>(null);
+  useEffect(() => { if (near) return; const el = box.current; if (!el) { setNear(true); return; } return whenNear(el, () => setNear(true)); }, [near]);
+  const u = near ? Illust.thumb(id) : '';
+  // 이 칸이 보이는 동안만 만들게 붙잡아 둔다. 붙기 직전에 이미 만들어졌거나 줄에서 빠졌을 수 있어 한 번 더 청한다
+  useEffect(() => { if (!near || u) return; const release = Illust.thumbHold(id), check = () => { if (Illust.thumb(id)) bump(n => n + 1); }, off = Illust.onPic(check); check(); return () => { off(); release(); }; }, [id, u, near]);
+  return u ? <img src={u} alt={alt} decoding="async" /> : <i ref={box} className="sb-thumb-wait" aria-hidden="true" />;
+}
+/** 바이트 → 사람이 읽는 크기 */
+const sizeText = (n: number) => n >= 1073741824 ? `${(n / 1073741824).toFixed(1)}GB` : n >= 10485760 ? `${Math.round(n / 1048576)}MB` : n >= 1048576 ? `${(n / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`;
 function RefsPage({ reopen, refs }: { reopen: () => void; refs: Card[] }) {
   const bump = useBump(), S = C.S, c = Illust.cfg(), { MODELS, REF_OWNER, REFERENCE_LIMIT, referencePlan } = IL;
   const nai = c.backend === 'nai', sp = nai ? MODELS[c.model]?.references : undefined, fresh = sp?.bucket ? 'character&style' : 'vibe';
@@ -316,10 +329,29 @@ async function purgeAsset(rec: Asset) {
   }
   if (hit) { if (live) { await chatApi.save(); chatApi.redraw(); } else if (chat) await S.saveMsgs(chat, list); }
 }
+/** 여러 장을 한꺼번에 지운다: 대화마다 메시지를 한 번 읽고 한 번 저장한다 (먼저 대화에서 빼고, 그다음 그림을 지운다 — 중간에 멈춰도 대화에 빈 칸이 남지 않게) */
+async function purgeMany(cards: { id: string; owner: string }[]) {
+  const S = C.S, I = Illust, byChat = new Map<string, Set<string>>();
+  for (const c of cards) { const k = String(c.owner || '').replace(/^chat:/, ''); if (!byChat.has(k)) byChat.set(k, new Set()); byChat.get(k)!.add(c.id); }
+  for (const [chatId, ids] of byChat) {
+    const live = cur().chat?.id === chatId, chat = S.get('chats', chatId), list: Msg[] = live ? (cur().msgs || []) : chat ? await S.msgs(chatId) : []; let hit = false;
+    for (const m of list) for (const sw of m.swipes || []) {
+      if (!sw.illust?.some(it => ids.has(it.id) || it.versions?.some(v => ids.has(v.id)))) continue; hit = true;
+      sw.illust = sw.illust.filter(it => { I.slot(it); it.versions = it.versions.filter(v => !ids.has(v.id)); if (!it.versions.length) return false; I.select(it, Math.min(it.sel, it.versions.length - 1)); return true; });
+    }
+    if (hit) { if (live) { await chatApi.save(); chatApi.redraw(); } else if (chat) await S.saveMsgs(chat, list); }
+    for (const id of ids) await I.remove(id);
+  }
+}
 const jobOff = (): Record<string, string> => ({ failed: t('scenebook.studio.job.failed'), uncertain: t('scenebook.studio.job.uncertain'), running: t('scenebook.job.running'), waiting: t('scenebook.studio.job.waiting') });
+const PAGE = 36;
+const dayKey = (ts: number) => { const d = new Date(ts); return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; };
+/** 갤러리: 날짜별로 이어 보고(쪽 넘기기 없이 내려가면 더 불러온다), 대화별로 묶어 보고, 골라서 여러 장 지운다. 목록은 가벼운 정보 · 칸은 작은 그림만 */
 function GalleryPage({ reopen, all }: { reopen: () => void; all: Card[] }) {
-  const S = C.S, I = Illust, chat = cur().chat, SIZE = 24;
-  const [query, setQuery] = useState(''), [scope, setScope] = useState('all'), [page0, setPage] = useState(0);
+  const S = C.S, I = Illust, chat = cur().chat;
+  const [query, setQuery] = useState(''), [scope, setScope0] = useState('all'), [limit, setLimit] = useState(PAGE), [picking, setPicking] = useState(false), [sel, setSel] = useState<Set<string>>(() => new Set());
+  const more = useRef<HTMLDivElement>(null);
+  const setScope = (v: string) => { setScope0(v); setLimit(PAGE); setSel(new Set()); };
   const chatOf = (a: { owner: string }) => String(a.owner).replace(/^chat:/, '');
   const chatName = (a: { owner: string }) => { const c = S.get('chats', chatOf(a)); return c ? (c.name || c.charIds.map(id => S.get('chars', id)?.name).filter(Boolean).join(', ') || t('scenebook.studio.gal.chat')) : t('scenebook.studio.gal.deletedChat'); };
   const [used] = useState(() => new Set((cur().msgs || []).flatMap(m => (m.swipes || []).flatMap(sw => (sw.illust || []).flatMap(it => [it.id, ...(it.versions || []).map(v => v.id)])))));
@@ -336,20 +368,71 @@ function GalleryPage({ reopen, all }: { reopen: () => void; all: Card[] }) {
     more: [{ label: t('scenebook.review.run'), ic: 'search', onclick: guard(() => review(a)) }, ...(a.review ? [{ label: t('scenebook.review.last'), ic: 'eye', onclick: () => showReview(a.review || {}) }] : []), { label: t('scenebook.record'), ic: 'note', onclick: () => inspect(a) }, ...(S.get('chats', chatOf(a)) ? [{ label: t('scenebook.studio.gal.goChat'), ic: 'chat', onclick: () => go('chat', chatOf(a)) }] : [])] });
   // 목록은 가벼운 정보만 들고 있다: 그림을 열 때 그 한 장만 읽는다
   const open = guard(async (c: Card) => { const a = await C.DB.get('assets', c.id) as unknown as Asset | undefined; if (!a?.data) { toast(t('scenebook.studio.gal.gone')); reopen(); return; } show(a); });
-  const q = query.trim().toLowerCase(), mine = (a: Card) => !!chat && a.owner === 'chat:' + chat.id, off = scope === 'failed';
+  const q = query.trim().toLowerCase(), mine = (a: Card) => !!chat && a.owner === 'chat:' + chat.id, off = scope === 'failed', folders = scope === 'chats', inChat = scope.startsWith('in:') ? scope.slice(3) : '';
   const jobs = off ? [...I.queue()].reverse().filter(j => jobOff()[j.state] && (!q || [j.label, j.scene?.prompt, ...(j.scene?.characters || []).map(x => x.name)].join(' ').toLowerCase().includes(q))) : [];
-  const pics = off ? [] : all.filter(a => (scope !== 'chat' || mine(a)) && (scope !== 'loose' || (mine(a) && !used.has(a.id))) && (!q || `${a.find || ''} ${chatName(a).toLowerCase()}`.includes(q)));
-  const total = off ? jobs.length : pics.length, pages = Math.max(1, Math.ceil(total / SIZE)), page = Math.max(0, Math.min(page0, pages - 1)), cut = <T,>(l: T[]) => l.slice(page * SIZE, (page + 1) * SIZE);
+  const pics = off ? [] : all.filter(a => (scope !== 'chat' || mine(a)) && (scope !== 'loose' || (mine(a) && !used.has(a.id))) && (!inChat || chatOf(a) === inChat) && (!q || `${a.find || ''} ${chatName(a).toLowerCase()}`.includes(q)));
+  // 대화별 묶음: 가장 최근에 그린 대화부터, 표지는 그 대화의 가장 새 그림
+  const groups = folders ? [...pics.reduce((m, a) => { const k = chatOf(a), g = m.get(k) || { id: k, n: 0, size: 0, top: a }; g.n++; g.size += a.size || 0; if (a.ts > g.top.ts) g.top = a; return m.set(k, g); }, new Map<string, { id: string; n: number; size: number; top: Card }>()).values()].sort((x, y) => y.top.ts - x.top.ts) : [];
+  const total = off ? jobs.length : folders ? groups.length : pics.length, bytes = pics.reduce((n, a) => n + (a.size || 0), 0);
+  // 내려가면 더 불러온다 (맨 끝 표시가 화면 가까이 오면)
+  useEffect(() => { const el = more.current; if (!el || limit >= total) return; return whenNear(el, () => setLimit(l => l + PAGE), 700); }, [limit, total, scope, query]);
+  const flip = (id: string) => setSel(p => { const x = new Set(p); if (x.has(id)) x.delete(id); else x.add(id); return x; });
+  const allPicked = pics.length > 0 && pics.every(a => sel.has(a.id)), selBytes = pics.reduce((n, a) => n + (sel.has(a.id) ? a.size || 0 : 0), 0);
+  const stopPick = () => { setPicking(false); setSel(new Set()); };
+  const delSel = guard(async () => {
+    const cards = pics.filter(a => sel.has(a.id)); if (!cards.length) return;
+    if (!(await confirmBox(t('scenebook.studio.gal.removeNAsk', { n: cards.length, size: sizeText(selBytes) }), t('scenebook.delete'), true))) return;
+    await purgeMany(cards); toast(t('scenebook.studio.gal.removedN', { n: cards.length }), 'ok'); stopPick(); reopen();
+  });
+  // 저장 공간: 원본 · 지워도 되는 사본 · 이 기기에서 쓰는 공간
+  const storage = guard(async () => {
+    const box = await IL.boxUsage(), est = await (navigator.storage?.estimate?.() ?? Promise.resolve(null)).catch(() => null), orig = all.reduce((n, a) => n + (a.size || 0), 0);
+    openModal({ title: t('scenebook.studio.gal.storage'), cls: 'col', actions: [
+      { label: t('scenebook.studio.gal.st.clear'), ic: 'trash', cls: 'ghost', onclick: async () => { if (!(await confirmBox(t('scenebook.studio.gal.st.clearAsk'), t('scenebook.studio.gal.st.clear'), true))) return false; await IL.clearBox(); toast(t('scenebook.studio.gal.st.cleared', { size: sizeText(box.copies + box.thumbs) }), 'ok'); } },
+      { label: t('common.close'), cls: 'primary' }] },
+      () => <>
+        <dl className="facts">
+          <div><dt>{t('scenebook.studio.gal.st.originals')}</dt><dd>{t('scenebook.studio.gal.st.originalsValue', { n: all.length, size: sizeText(orig) })}</dd></div>
+          <div><dt>{t('scenebook.studio.gal.st.copies')}</dt><dd>{sizeText(box.copies)}</dd></div>
+          <div><dt>{t('scenebook.studio.gal.st.thumbs')}</dt><dd>{sizeText(box.thumbs)}</dd></div>
+          {est?.usage != null ? <div><dt>{t('scenebook.studio.gal.st.device')}</dt><dd>{t('scenebook.studio.gal.st.deviceValue', { used: sizeText(est.usage), quota: sizeText(est.quota || 0) })}</dd></div> : null}
+        </dl>
+        <p className="hint">{t('scenebook.studio.gal.st.copiesNote')}</p>
+        <p className="hint">{t('scenebook.studio.gal.st.note')}</p>
+      </>);
+  });
+  const scopeLabel = off ? t('scenebook.studio.gal.scopeUnfinished') : inChat ? chatName({ owner: 'chat:' + inChat }) : scope === 'chat' ? t('scenebook.studio.gal.thisChat') : scope === 'loose' ? t('scenebook.studio.gal.scopeLoose') : t('scenebook.studio.gal.scopeAll');
+  const countLine = folders ? t('scenebook.studio.gal.chatsLine', { chats: groups.length, n: pics.length, size: sizeText(bytes) }) : tn('scenebook.studio.gal.count', total, { scope: scopeLabel }) + (!off && bytes ? ` · ${t('scenebook.studio.gal.sizeAbout', { size: sizeText(bytes) })}` : '');
+  // 날짜 머리줄 (그날 그린 장 수와 함께) — 지금 대화 안에서는 대화 이름 대신 시각을 적는다
+  const dayCount = new Map<string, number>(); if (!folders && !off) for (const a of pics) { const k = dayKey(a.ts); dayCount.set(k, (dayCount.get(k) || 0) + 1); }
+  const thisYear = new Date().getFullYear(), dayLabel = (ts: number) => new Date(ts).toLocaleDateString(locale(), { ...(new Date(ts).getFullYear() !== thisYear ? { year: 'numeric' } : {}), month: 'long', day: 'numeric', weekday: 'short' });
+  const oneChat = !!inChat || scope === 'chat' || scope === 'loose';
+  const tile = (a: Card) => { const picked = sel.has(a.id);
+    return <button key={a.id} type="button" className={'sb-shot' + (picked ? ' picked' : '')} title={a.title || t('scenebook.illust')} aria-label={t('scenebook.studio.gal.view', { title: a.title || t('scenebook.illust') })} {...(picking ? { 'aria-pressed': picked } : {})} onClick={() => (picking ? flip(a.id) : void open(a))}>
+      <Thumb id={a.id} />{picking ? <i className="sb-shot-pick" aria-hidden="true">{picked ? <Icon name="check" size={13} /> : null}</i> : null}{a.review ? <em className="sb-shot-mark" title={t('scenebook.studio.gal.hasReview')}>{t('scenebook.studio.gal.reviewMark')}</em> : null}
+      <span>{a.title || t('scenebook.illust')}</span><small>{oneChat ? new Date(a.ts).toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' }) : chatName(a)}</small></button>; };   // 날짜는 머리줄에 있다
+  const body: ReactNode[] = []; let lastDay = '';
+  if (off) for (const j of jobs.slice(0, limit)) body.push(<button key={j.id} type="button" className="sb-shot" title={j.label || t('scenebook.illust')} aria-label={t('scenebook.studio.gal.checkJob', { title: j.label || t('scenebook.illust') })} onClick={() => openJob(j)}><i className={`sb-shot-off ${j.state}`}>{jobOff()[j.state]}</i><span>{j.label || t('scenebook.illust')}</span><small>{j.error || configLine(j.config)}</small></button>);
+  else if (folders) for (const g of groups.slice(0, limit)) body.push(<button key={g.id} type="button" className="sb-shot sb-folder" title={chatName({ owner: 'chat:' + g.id })} onClick={() => setScope('in:' + g.id)}><Thumb id={g.top.id} /><em className="sb-folder-n">{t('scenebook.studio.gal.picsN', { n: g.n })}</em><span>{chatName({ owner: 'chat:' + g.id })}</span><small>{[new Date(g.top.ts).toLocaleDateString(locale()), g.size ? sizeText(g.size) : ''].filter(Boolean).join(' · ')}</small></button>);
+  else for (const a of pics.slice(0, limit)) { const k = dayKey(a.ts); if (k !== lastDay) { lastDay = k; body.push(<h4 key={'d' + k} className="sb-gal-day"><span>{dayLabel(a.ts)}</span><small>{t('scenebook.studio.gal.picsN', { n: dayCount.get(k) || 0 })}</small></h4>); } body.push(tile(a)); }
   return <div className="sb-gallery-page">
-    <div className="sb-gallery-bar"><input className="inp" type="search" placeholder={t('scenebook.studio.gal.searchPh')} aria-label={t('scenebook.studio.gal.search')} value={query} onChange={e => { setQuery(e.target.value); setPage(0); }} />
-      <Sel opts={[['all', t('scenebook.studio.gal.all')], ...(chat ? [['chat', t('scenebook.studio.gal.thisChat')], ['loose', t('scenebook.studio.gal.loose')]] as [string, string][] : []), ['failed', t('scenebook.studio.gal.unfinished')]]} value="all" onChange={val => { setScope(val); setPage(0); }} />
-      <IBtn ic="more" title={t('scenebook.more')} onClick={e => menu(e.currentTarget, [{ label: t('scenebook.studio.refresh'), ic: 'refresh', onclick: reopen }, { label: t('scenebook.studio.gal.exportChat'), ic: 'import', onclick: exportChat }])} /></div>
-    <p className="hint" role="status">{tn('scenebook.studio.gal.count', total, { scope: off ? t('scenebook.studio.gal.scopeUnfinished') : scope === 'chat' ? t('scenebook.studio.gal.thisChat') : scope === 'loose' ? t('scenebook.studio.gal.scopeLoose') : t('scenebook.studio.gal.scopeAll') })}</p>
-    <div className="sb-gallery">
-      {cut(jobs).map(j => <button key={j.id} type="button" className="sb-shot" title={j.label || t('scenebook.illust')} aria-label={t('scenebook.studio.gal.checkJob', { title: j.label || t('scenebook.illust') })} onClick={() => openJob(j)}><i className={`sb-shot-off ${j.state}`}>{jobOff()[j.state]}</i><span>{j.label || t('scenebook.illust')}</span><small>{j.error || configLine(j.config)}</small></button>)}
-      {cut(pics).map(a => <button key={a.id} type="button" className="sb-shot" title={a.title || t('scenebook.illust')} aria-label={t('scenebook.studio.gal.view', { title: a.title || t('scenebook.illust') })} onClick={() => void open(a)}><Thumb id={a.id} />{a.review ? <em className="sb-shot-mark" title={t('scenebook.studio.gal.hasReview')}>{t('scenebook.studio.gal.reviewMark')}</em> : null}<span>{a.title || t('scenebook.illust')}</span><small>{chatName(a)}</small></button>)}
-      {!total ? <Empty>{off ? (q ? t('scenebook.studio.gal.noJobMatch') : t('scenebook.studio.gal.noJobs')) : q ? t('scenebook.studio.gal.noMatch') : t('scenebook.studio.gal.empty')}</Empty> : null}</div>
-    <div className="sb-pager" hidden={pages < 2}><IBtn ic="left" title={t('scenebook.studio.prevPage')} disabled={page === 0} onClick={() => setPage(page - 1)} /><span className="hint">{`${page + 1} / ${pages}`}</span><IBtn ic="right" title={t('scenebook.studio.nextPage')} disabled={page >= pages - 1} onClick={() => setPage(page + 1)} /></div>
+    <div className="sb-gallery-bar"><input className="inp" type="search" placeholder={t('scenebook.studio.gal.searchPh')} aria-label={t('scenebook.studio.gal.search')} value={query} onChange={e => { setQuery(e.target.value); setLimit(PAGE); }} />
+      <Sel opts={[['all', t('scenebook.studio.gal.all')], ['chats', t('scenebook.studio.gal.byChat')], ...(chat ? [['chat', t('scenebook.studio.gal.thisChat')], ['loose', t('scenebook.studio.gal.loose')]] as [string, string][] : []), ['failed', t('scenebook.studio.gal.unfinished')]]} value={inChat ? 'chats' : scope} onChange={val => { stopPick(); setScope(val); }} />
+      <IBtn ic="more" title={t('scenebook.more')} onClick={e => menu(e.currentTarget, [
+        !off && !folders && pics.length ? { label: t('scenebook.studio.gal.pick'), ic: 'check', onclick: () => setPicking(true) } : null,
+        { label: t('scenebook.studio.gal.storage'), ic: 'folder', onclick: storage },
+        { label: t('scenebook.studio.refresh'), ic: 'refresh', onclick: reopen }, { label: t('scenebook.studio.gal.exportChat'), ic: 'import', onclick: exportChat }])} /></div>
+    {inChat ? <div className="sb-gal-crumb"><button type="button" className="btn ghost" onClick={() => { stopPick(); setScope('chats'); }}><Icon name="left" size={15} />{t('scenebook.studio.gal.byChat')}</button><b>{scopeLabel}</b></div> : null}
+    {picking ? <div className="sb-gal-pickbar" role="status">
+      <b>{t('scenebook.studio.gal.picked', { n: sel.size })}{sel.size ? <small>{` · ${sizeText(selBytes)}`}</small> : null}</b>
+      <button type="button" className="btn ghost" onClick={() => setSel(allPicked ? new Set() : new Set(pics.map(a => a.id)))}>{allPicked ? t('scenebook.studio.gal.pickNone') : t('scenebook.studio.gal.pickAll', { n: pics.length })}</button>
+      <button type="button" className="btn danger" disabled={!sel.size} onClick={delSel}><Icon name="trash" size={15} />{t('scenebook.studio.gal.removeN', { n: sel.size })}</button>
+      <button type="button" className="ibtn" title={t('common.cancel')} aria-label={t('common.cancel')} onClick={stopPick}><Icon name="x" size={17} /></button>
+    </div> : <p className="hint" role="status">{countLine}</p>}
+    <div className={'sb-gallery' + (folders ? ' sb-gal-chats' : '')}>
+      {body}
+      {!total ? <Empty>{off ? (q ? t('scenebook.studio.gal.noJobMatch') : t('scenebook.studio.gal.noJobs')) : q ? t('scenebook.studio.gal.noMatch') : t('scenebook.studio.gal.empty')}</Empty> : null}
+      {limit < total ? <div ref={more} className="sb-gal-more"><button type="button" className="btn ghost" onClick={() => setLimit(l => l + PAGE)}>{t('scenebook.studio.gal.loadMore', { n: total - limit })}</button></div> : null}</div>
   </div>;
 }
 
@@ -390,10 +473,12 @@ export function Studio() {
       if (id === 'refs' || id === 'gallery') {
         // 처음 한 번(또는 새 그림이 많이 생긴 뒤)만 줄마다 읽는다. 오래 걸리면 얼마나 읽었는지 알려 준다
         const pics = (l: Card[]) => l.filter(a => a.kind === 'illust').sort((a, b) => b.ts - a.ts);
+        let early = 0;
         const list = await shelf((done, total, part) => {
           if (total <= 12 || n !== ticket.current || !alive.current) return;
           setNote(t('scenebook.studio.gal.indexing', { done, total }));
-          if (id === 'gallery' && done < total) setShown({ id, n, all: pics(part) });   // 읽은 데까지 먼저 보여 준다 (같은 화면에 목록만 늘어난다)
+          // 읽은 데까지 먼저 보여 준다 — 첫 화면이 찰 때까지만. 그 뒤로 계속 바꿔 끼우면 보이던 칸이 자꾸 바뀌어 작은 그림을 만들다 버리기를 되풀이한다
+          if (id === 'gallery' && done < total && early < PAGE) { const p = pics(part); early = p.length; setShown({ id, n, all: p }); }
         });
         if (id === 'refs') next.refs = list.filter(r => r.kind === 'illust-ref').sort((a, b) => a.ts - b.ts);
         else next.all = pics(list);

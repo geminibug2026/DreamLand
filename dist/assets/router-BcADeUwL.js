@@ -1,1 +1,0 @@
-export{t as go}from"./router-bHC96AsS.js";
