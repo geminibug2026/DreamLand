@@ -1,1 +1,0 @@
-export{t as allNames,n as checkScript,r as commandInfo,i as searchCommands}from"./ref-n8Rf-_4m.js";

@@ -232,6 +232,9 @@ export async function updateVariables(current_message_content: string, variables
   const schema = variables.schema;
   const strict_template = schema?.strictTemplate ?? false, concat_template_array = schema?.concatTemplateArray ?? true, strict_set = schema?.strictSet ?? false;
   for (const c of commands) { if (c.type === 'remove' || c.type === 'unset') c.type = 'delete'; else if (c.type === 'assign') c.type = 'insert'; }
+  // 모델이 흔히 경로 앞에 'stat_data.' 를 붙인다 (경로는 stat_data 안에서 시작한다). stat_data 안에 'stat_data' 칸이 따로 없을 때만 앞부분을 떼고 읽는다
+  // — 원래 틀에서는 이런 명령이 '없는 경로'로 건너뛰어져, 호감도 · 소지품이 아무리 바뀌어도 반영되지 않는다
+  if (!has(variables.stat_data, 'stat_data')) for (const c of commands) { const p = trimQuotesAndBackslashes(String(c.args[0] ?? '')); if (/^stat_data(\.|\[)/.test(p)) c.args[0] = p.replace(/^stat_data\.?/, ''); }
 
   await host.emit(variable_events.COMMAND_PARSED, variables, commands, current_message_content);
   // 스키마(zod) 카드의 처리는 다른 COMMAND_PARSED 듣는 이들 뒤에 온다

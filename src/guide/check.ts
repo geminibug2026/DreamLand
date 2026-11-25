@@ -84,6 +84,9 @@ export function checkChar(c: Char): { tokens: Record<string, number>; findings: 
   // 길이 지시가 서로 어긋나는지 (짧게 · 길게가 함께 있으면)
   const rules = [c.description, c.systemPrompt, c.postHistory, c.depthPrompt?.prompt].join('\n');
   if (clash(rules)) f.push({ level: 'note', code: 'clash', where: 'systemPrompt', detail: clash(rules) });
+  for (const [k, what] of [['systemPrompt', "the preset's main prompt"], ['postHistory', "the preset's post-history instructions"]] as const) {
+    const v = String(c[k] || '').trim(); if (v && !/\{\{original\}\}/i.test(v)) f.push({ level: 'warn', code: 'replacesPreset', where: k, detail: `${k} REPLACES ${what} for this character (as in SillyTavern, while the preset lets cards override). Everything the user's preset says there is dropped. Keep {{original}} in it where the preset's text should stay, or move game/variable rules to a constant lorebook entry instead.` });
+  }
   const st: Record<string, string> = {}; for (const k of STYLE_FIELDS) st[k] = String(c[k] || ''); (c.altGreetings || []).forEach((g, i) => { st[`altGreetings[${i}]`] = String(g || ''); }); st['depthPrompt.prompt'] = String(c.depthPrompt?.prompt || '');
   f.push(...styleFindings(st));
   // 인사말이 {{user}} 의 마음 · 행동을 정해 버리는가 (사용자가 할 몫)

@@ -123,6 +123,7 @@ const SETTINGS: Record<string, 'b' | 's' | [number, number] | string[]> = {
   'translate.auto': 'b', 'translate.autoInput': 'b', 'translate.lang': 's', 'translate.inputLang': 's',
   'memory.enabled': 'b', 'memory.auto': 'b', 'tracker.enabled': 'b', 'tracker.hud': 'b',
   'illust.auto': 'b', 'illust.every': [1, 20], 'illust.maxScenes': [1, 4],
+  'mvu.mode': ['inline', 'extra'],
   'modes.choices': 'b', 'modes.choiceCount': [2, 5], 'modes.stagger': 'b', 'modes.together': 'b', 'modes.scenes': 'b', 'modes.presenceDelay': 'b', 'modes.talkTokens': [100, 4000],
 };
 /** 정규식의 바꿀 글(replace)에 든 HTML 을 살핀다: 화면(```html 로 감싼 한 장의 문서)의 스크립트 문법, 인라인 HTML 에서 지워지는 것, 테마를 따르는지.
@@ -363,7 +364,7 @@ const R: ToolDef[] = [
   { name: 'get_settings', sig: '{}', desc: 'A safe subset of app settings (look, chat modes, tracker, translation, memory, helper tasks). Never includes keys or addresses.',
     run: () => { const s = S.settings, name = (id: unknown) => S.conns.find(c => c.id === id)?.name || null, m = s.modes || {};
       return { language: document.documentElement.lang, theme: s.theme, font: s.font, fontSize: s.fontSize, defaultMode: s.defaultMode, enterSend: s.enterSend, activeConnection: name(s.activeConn), activePreset: S.get('presets', s.activePreset)?.name || null, defaultPersona: S.get('personas', s.activePersona)?.name || null, globalLorebooks: s.activeLore.map(i => S.get('lore', i)?.name),
-        modes: { choices: m.choices, proactive: m.auto, scenes: m.scenes, notify: m.notify, stagger: m.stagger }, tracker: { enabled: s.tracker.enabled, mode: s.tracker.mode, fields: clip(s.tracker.fields, 'tracker.fields', 400) }, translate: { lang: s.translate.lang, auto: s.translate.auto, autoInput: s.translate.autoInput }, memory: { enabled: s.memory.enabled, auto: s.memory.auto },
+        modes: { choices: m.choices, proactive: m.auto, scenes: m.scenes, notify: m.notify, stagger: m.stagger }, tracker: { enabled: s.tracker.enabled, mode: s.tracker.mode, fields: clip(s.tracker.fields, 'tracker.fields', 400) }, translate: { lang: s.translate.lang, auto: s.translate.auto, autoInput: s.translate.autoInput }, memory: { enabled: s.memory.enabled, auto: s.memory.auto }, mvu: { mode: (s as unknown as { mvu?: { mode?: string } }).mvu?.mode || 'inline' },
         illustration: { auto: s.illust.auto, mode: s.illust.mode, backend: s.illust.backend }, helperTasks: Object.fromEntries(Object.entries(s.helpers || {}).map(([k, v]) => [k, name(v) || '(same as chat)'])), counts: { characters: S.chars.length, chats: S.chats.length, lorebooks: S.lore.length, presets: S.presets.length, personas: S.personas.length, regex: S.regex.length } }; } },
   { name: 'help_search', sig: '{query}', desc: 'Search the Dreamland handbook (where things are, what a feature does, exact menu labels in the user\'s language). Use before answering any how-do-I question.',
     run: a => { const rows = searchHelp(str(a.query)).slice(0, 5).map(h => ({ id: h.id, title: h.title, text: h.body })); return rows.length ? rows : { none: true, hint: 'No topic matched. Try other words, or say you are not sure.' }; } },

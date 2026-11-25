@@ -25,15 +25,15 @@ export async function checkUpdate(text: string, statIn: Obj, schemaIn?: unknown)
     const at = patch ? -1 : src.indexOf(c.full_match, from); if (at >= 0) from = at + c.full_match.length;
     const one = patch ? `<JSONPatch>[${c.full_match}]</JSONPatch>` : c.full_match;
     const path = String(c.args[0] ?? '').replace(/^[\\"'` ]*(.*?)[\\"'` ]*$/, '$1');
-    const before = clone(data.stat_data), had = path ? get(before, path) : before;
+    const before = clone(data.stat_data), eff = /^stat_data(\.|\[)/.test(path) && !(isPlainObject(before) && 'stat_data' in before) ? path.replace(/^stat_data\.?/, '') : path, had = eff ? get(before, eff) : before;   // 엔진과 같이: 'stat_data.' 를 붙인 경로는 떼고 읽는다
     const errs: string[] = [];
     const changed = await updateVariables(one, data, errs);
-    const now = path ? get(data.stat_data, path) : data.stat_data;
+    const now = eff ? get(data.stat_data, eff) : data.stat_data;
     const r: CmdReport = { no: i + 1, command: patch ? one : c.full_match.replace(/\s*\/\/.*$/, ''), type: c.type, path, result: errs.length ? 'failed' : changed ? 'applied' : 'no-op', ...(c.reason && !patch ? { reason: c.reason } : {}) };
     if (at >= 0) r.line = src.slice(0, at).split('\n').length;
     if (changed) { r.before = had === undefined ? undefined : brief(isVwd(had) ? (had as unknown[])[0] : had); r.after = brief(isVwd(now) ? (now as unknown[])[0] : now); }
     if (errs.length) r.why = errs.map(e => e.split('\n').slice(1).join(' ').trim() || e).join(' | ');
-    if (/^stat_data[.[]/.test(path) && !(isPlainObject(before) && 'stat_data' in before)) r.why = `${r.why ? r.why + ' | ' : ''}Update paths are relative to stat_data: write '${path.replace(/^stat_data\.?/, '')}', not '${path}'.`;
+    if (eff !== path) r.why = `${r.why ? r.why + ' | ' : ''}Read as '${path.replace(/^stat_data\.?/, '')}'. Update paths start inside stat_data — write '${path.replace(/^stat_data\.?/, '')}', not '${path}' (SillyTavern's MVU skips such commands).`;
     else if (!changed) r.why = c.type === 'move' ? 'move is only carried out when the card registers a zod schema (MVU zod); the built-in engine ignores it.' : 'The command ran but the value did not change (same value as before).';
     out.push(r);
   }
