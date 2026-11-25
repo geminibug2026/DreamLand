@@ -95,6 +95,13 @@ export const confirmBox = (msg: string, okLabel = t('common.ok'), danger = false
   m.el.classList.add('dialog');   // 휴대폰에서도 아래에 붙지 않고 가운데에 뜬다
 });
 
+/** 여러 갈래 중 하나: 고른 단추의 key, 취소 · 닫기면 null. 가운데 뜨고, 맨 끝 단추가 주된 것 */
+export const choiceBox = (title: string, body: ReactNode, choices: { key: string; label: string; cls?: string }[]) => new Promise<string | null>(res => {
+  let picked: string | null = null;
+  const m = openModal({ title, body, onClose: () => res(picked), actions: [{ label: t('common.cancel') }, ...choices.map(c => ({ label: c.label, cls: c.cls, onclick: () => { picked = c.key; } }))] });
+  m.el.classList.add('dialog');
+});
+
 /** 글 한 줄(area 면 여러 줄) 받기. 취소하면 null */
 export const promptBox = (title: string, value = '', { area = false, placeholder = '' }: { area?: boolean; placeholder?: string } = {}) => new Promise<string | null>(res => {
   let done = false, el: HTMLInputElement | HTMLTextAreaElement | null = null;

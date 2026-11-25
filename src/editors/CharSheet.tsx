@@ -3,14 +3,14 @@ import { useRef, useState } from 'react';
 import { Art, Btn, Emblem, Icon, IconBtn, InkName, tintRef } from '../kit';
 import type { Char, Folder } from '../types';
 import type { XChar } from './types';
-import { confirmBox, menu, openModal, promptBox, type ModalHandle } from '../ui';
+import { choiceBox, confirmBox, menu, openModal, promptBox, toast, type ModalHandle } from '../ui';
 import { useBump } from './parts';
 import { charEditor } from './CharEditor';
 import { go } from '../lib/router';
 import { S, fmtTime, uid } from '../lib/core';
 import { startChat } from '../chat/start';
-import { Assets } from '../lib/assets';
 import { pageRefresh } from './refresh';
+import { chatsOnlyOf, deleteChars } from '../lib/bulk';
 import * as engine from '../lib/engine';
 import * as core from '../lib/core';
 import * as cards from '../lib/cards';
@@ -48,11 +48,16 @@ function Sheet({ c, close }: { c: XChar; close: () => void }) {
     { label: t('common.duplicate'), ic: 'copy', onclick: async () => { await S.save('chars', { ...structuredClone(c), id: uid(), name: c.name + ' (사본)', src: '', createdAt: now() }, true); close(); pageRefresh(); } },
     '-',
     { label: t('editors.sheet.delete'), ic: 'trash', danger: true, onclick: async () => {
-      if (!(await confirmBox(tn('editors.sheet.confirmDelete', chats.length, { name: c.name }), t('common.delete'), true))) return;
-      await Assets.removeOwner(Assets.ownerOfChar(c.id)).catch(() => { });
-      if (S.settings.assets?.chars) delete S.settings.assets.chars[c.id];
-      for (const r of S.regex) if (r.scope === c.id) { r.scope = 'global'; r.enabled = false; await S.save('regex', r, true); }
-      await S.remove('chars', c.id); close(); pageRefresh();
+      // 이 캐릭터만 나오는 대화가 있으면 함께 지울지 묻는다 (그룹 대화에서는 함께 지울 때 이 캐릭터만 빠진다)
+      const solo = chatsOnlyOf([c.id]).length, group = chats.length - solo;
+      let withChats = false;
+      if (solo) {
+        const pick = await choiceBox(t('editors.sheet.del.title', { name: c.name }), <div className="del-ask"><p>{tn('editors.sheet.del.solo', solo)}</p>{group ? <p className="dim">{tn('editors.sheet.del.group', group)}</p> : null}</div>,
+          [{ key: 'char', label: t('editors.sheet.del.charOnly') }, { key: 'all', label: t('editors.sheet.del.withChats'), cls: 'danger' }]);
+        if (!pick) return; withChats = pick === 'all';
+      } else if (!(await confirmBox(tn('editors.sheet.confirmDelete', chats.length, { name: c.name }), t('common.delete'), true))) return;
+      const r = await deleteChars([c.id], { withChats }); close(); pageRefresh();
+      if (r.chats) toast(tn('editors.sheet.del.done', r.chats, { name: c.name }), 'ok');
     } },
   ]);
   return <div className="sheet-pane">
@@ -60,13 +65,18 @@ function Sheet({ c, close }: { c: XChar; close: () => void }) {
       <button className={'ibtn star' + (c.fav ? ' on' : '')} title={t('editors.sheet.fav')} onClick={async () => { c.fav = !c.fav; redraw(); await S.save('chars', c, true); }}><Icon name="star" /></button></div>
     <p className="dim">{[c.creator && `by ${c.creator}`, c.version && `v${c.version}`, tn('editors.sheet.chats', chats.length), t('editors.tokens', { n: charTokens(c).toLocaleString() })].filter(Boolean).join(' · ')}</p>
     {c.tags.length ? <div className="tag-row">{c.tags.map((t, i) => <span className="chip static" key={i}>#{t}</span>)}</div> : null}
-    <div className="row wrap">
-      <Btn label={t('editors.sheet.startRp')} ic="book" cls="primary" onClick={() => { close(); void startChat([c.id], { mode: 'rp' }); }} />
-      <Btn label={t('editors.sheet.startTalk')} ic="chat" onClick={() => { close(); void startChat([c.id], { mode: 'talk' }); }} />
-      <Btn label={t('game.startWith')} ic="dice" onClick={() => { close(); void startChat([c.id], { mode: 'rp' }).then(chat => { if (chat) core.emit('game:enter', chat); }); }} />
-      {chats[0] && <Btn label={t('editors.sheet.resume')} ic="play" onClick={() => { close(); go('chat', chats[0].id); }} />}
-      <Btn label={t('common.edit')} ic="edit" onClick={() => { close(); charEditor(c); }} />
-      <IconBtn ic="more" title={t('editors.sheet.more')} onClick={e => more(e.currentTarget)} />
+    {/* 시작 셋은 같은 폭으로 한 줄, 그 아래 이어서 · 편집 · 더 보기 — 폰에서도 두 줄로 가지런히 */}
+    <div className="sheet-acts">
+      <div className="sheet-start">
+        <Btn label={t('editors.sheet.startRp')} ic="book" cls="primary" onClick={() => { close(); void startChat([c.id], { mode: 'rp' }); }} />
+        <Btn label={t('editors.sheet.startTalk')} ic="chat" onClick={() => { close(); void startChat([c.id], { mode: 'talk' }); }} />
+        <Btn label={t('game.startWith')} ic="dice" onClick={() => { close(); void startChat([c.id], { mode: 'rp' }).then(chat => { if (chat) core.emit('game:enter', chat); }); }} />
+      </div>
+      <div className="sheet-tools">
+        {chats[0] && <Btn label={t('editors.sheet.resume')} ic="play" onClick={() => { close(); go('chat', chats[0].id); }} />}
+        <Btn label={t('common.edit')} ic="edit" onClick={() => { close(); charEditor(c); }} />
+        <IconBtn ic="more" title={t('editors.sheet.more')} onClick={e => more(e.currentTarget)} />
+      </div>
     </div>
     <div className="tabs">{['대화', '소개'].map(x => <button key={x} className={'tab' + (x === tab ? ' on' : '')} onClick={() => setTab(x)}>{t(x === '대화' ? 'editors.sheet.tabChats' : 'editors.sheet.tabAbout')}</button>)}</div>
     {tab === '대화'

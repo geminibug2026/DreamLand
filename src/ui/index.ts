@@ -26,7 +26,7 @@
 //     · 끌어서 순서가 있는 목록은 메뉴에 crossPageItems(전체 자리, 전체 수, pg.perPage, move) 를 붙인다
 //   markUsed(coll, id, explicit) 쓰인 시각 · 횟수 / stripShelf(o) 내보낼 때 정리 필드 빼기
 //   charPicker({ title, selected, multi, note: c => '꼬리표', onDone: ids => … });
-export { Modal, openModal, confirmBox, promptBox, type ModalAction, type ModalHandle, type ModalProps } from './Modal';
+export { Modal, openModal, confirmBox, choiceBox, promptBox, type ModalAction, type ModalHandle, type ModalProps } from './Modal';
 export { toast } from './toast';
 export { menu, type MenuItem } from './menu';
 export { Form, TipBtn, installTipify, type FieldDef, type FormDefs } from './Form';

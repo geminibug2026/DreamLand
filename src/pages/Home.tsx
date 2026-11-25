@@ -2,7 +2,7 @@
 import { memo, useDeferredValue, useEffect, useMemo, useReducer, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { Btn, Emblem, Icon, IconBtn, InkName, useThumb } from '../kit';
 import type { Char, Folder } from '../types';
-import { charPicker, confirmBox, menu, promptBox, usePaged } from '../ui';
+import { charPicker, choiceBox, confirmBox, menu, promptBox, usePaged } from '../ui';
 import { moonPhase } from '../lib/moon';
 import { go } from '../lib/router';
 import { S, fmtTime, newChar, on, uid } from '../lib/core';
@@ -228,8 +228,10 @@ function Home() {
           { label: t('home.bulk.export'), ic: 'import', onclick: () => charPicker({ title: t('home.bulk.export'), selected: [], onDone: async ids => { if (!ids.length) return; const n = await exportChars(ids); toast(t('home.bulk.exported', { count: n }), 'ok'); } }) },
           { label: t('home.bulk.delete'), ic: 'trash', danger: true, onclick: () => charPicker({ title: t('home.bulk.delete'), selected: [], onDone: async ids => {
             if (!ids.length) return; const rooms = chatsOnlyOf(ids).length;
-            if (!(await confirmBox(t('home.bulk.deleteConfirm', { count: ids.length, rooms }), t('common.delete'), true))) return;
-            const n = await deleteChars(ids); toast(t('home.bulk.deleted', { count: n }), 'ok'); redraw();
+            let withChats = false;
+            if (rooms) { const pick = await choiceBox(t('home.bulk.deleteAsk', { count: ids.length }), <p className="del-ask">{t('home.bulk.deleteRooms', { rooms })}</p>, [{ key: 'char', label: t('editors.sheet.del.charOnly') }, { key: 'all', label: t('editors.sheet.del.withChats'), cls: 'danger' }]); if (!pick) return; withChats = pick === 'all'; }
+            else if (!(await confirmBox(t('home.bulk.deleteAsk', { count: ids.length }), t('common.delete'), true))) return;
+            const r = await deleteChars(ids, { withChats }); toast(r.chats ? t('home.bulk.deletedWith', { count: r.chars, rooms: r.chats }) : t('home.bulk.deleted', { count: r.chars }), 'ok'); redraw();
           } }) },
         ])} />;
 

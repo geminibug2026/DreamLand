@@ -1,0 +1,1 @@
+export{p as runScript}from"./run-DDeRX-1A.js";
