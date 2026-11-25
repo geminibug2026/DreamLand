@@ -315,12 +315,29 @@ export function deleted(chat: Chat | null | undefined) {
   clearTimeout(restoreTimer);
   restoreTimer = window.setTimeout(() => { const msgs = cur.msgs; if (cur.chat !== chat) return; void enqueue(chat, async () => { const R = await runtime(); if (live(chat, msgs) && await restore(R, chat, msgs)) await commit(chat, msgs); }); }, 2000);
 }
+/** 정리 창에 보여 줄 것: 변수가 적힌 메시지 수 · 차지하는 글자 수 · 어떤 값인지 · 정리하면 몇 개가 지워지는지 (아무것도 바꾸지 않는다) */
+export interface LegacyInfo { name: string; held: number; total: number; size: number; names: string[]; drop: number; recent: number; every: number }
+export function legacyInfo(chat: Chat, msgs: Msg[]): LegacyInfo {
+  const E = eff(chat), every = Math.max(1, E.snapEvery), end = msgs.length - 1 - E.keepRecent;
+  let held = 0, size = 0, drop = 0, names: string[] = [];
+  msgs.forEach((m, i) => {
+    let has = false, goes = false;
+    m.swipes.forEach((_s, k) => {
+      const v = varsOf(m, k); if (!v || v.stat_data === undefined) return;
+      has = true; for (const key of KEYS) if (v[key] !== undefined) { try { size += JSON.stringify(v[key]).length; } catch { } }
+      if (i >= 1 && i <= end && v.snapshot !== true && i % every !== 0) goes = true;
+    });
+    if (has) { held++; const d = varsOf(m)?.stat_data; if (d && typeof d === 'object') names = Object.keys(d as object); }
+    if (goes) drop++;
+  });
+  return { name: charsOf(chat)[0]?.name || chat.name || '', held, total: msgs.length, size, names: names.filter(n => !/^[$_]/.test(n)), drop, recent: E.keepRecent, every };
+}
 /** 옛 대화(오래 이어진 대화)를 처음 열 때 한 번: 정리할지 묻는다 */
 async function legacyCleanup(chat: Chat, msgs: Msg[]): Promise<boolean> {
   const E = eff(chat), v1 = varsOf(msgs[1], 0);
   if (!E.cleanup || msgs.length <= E.keepRecent + 5 || !v1 || v1.stat_data === undefined || v1.ignore_cleanup !== undefined) return false;
   const { askLegacyCleanup } = await import('./Ui');
-  const pick = await askLegacyCleanup();
+  const pick = await askLegacyCleanup(legacyInfo(chat, msgs));
   if (pick !== 'clean' && pick !== 'backup') { v1.ignore_cleanup = true; return true; }
   if (pick === 'backup') { const { chatToStJsonl } = await import('../lib/cards'); const { download } = await import('../lib/core'); download(`${chat.name || chat.id}.jsonl`, chatToStJsonl(chat, msgs, S.persona(chat)?.name || 'User', charsOf(chat)[0]?.name || 'Character'), 'application/jsonl'); }
   const n = cleanupRange(msgs, 1, msgs.length - 1 - E.keepRecent, Math.max(1, E.snapEvery));

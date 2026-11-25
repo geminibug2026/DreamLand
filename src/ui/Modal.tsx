@@ -57,10 +57,23 @@ export function Modal({ title, wide = false, actions = [], onClose, handle, wrap
     };
   }, [wrap, close]);
 
+  // 단추가 한 줄에 다 안 들어가면(좁은 화면 · 긴 이름) 오른쪽 맞춤이라 왼쪽으로 삐져나간다. 그럴 때만 세로로 쌓는다 — 주된 단추가 맨 위
+  const foot = useRef<HTMLElement>(null), nActs = actions.length;
+  useLayoutEffect(() => {
+    const el = foot.current; if (!el) return;
+    const fit = () => {
+      el.classList.remove('stack'); const first = el.firstElementChild; if (!first) return;
+      if (first.getBoundingClientRect().left < el.getBoundingClientRect().left + parseFloat(getComputedStyle(el).paddingLeft || '0') - 0.5) el.classList.add('stack');
+    };
+    fit(); let w = el.clientWidth;
+    const ro = new ResizeObserver(() => { if (el.clientWidth !== w) { w = el.clientWidth; fit(); } }); ro.observe(el);
+    return () => ro.disconnect();
+  }, [nActs]);
+
   return createPortal(<div className={wide ? 'modal wide' : 'modal'} role="dialog" aria-modal="true">
     <header className="modal-head"><h2>{title || ''}</h2><IconBtn ic="x" title={t('common.close')} cls="modal-x" onClick={close} /></header>
     <div className="modal-body">{children}</div>
-    {actions.length ? <footer className="modal-foot">{actions.map((a, i) =>
+    {actions.length ? <footer className="modal-foot" ref={foot}>{actions.map((a, i) =>
       <Btn key={i} label={a.label} ic={a.ic} cls={a.cls || ''} onClick={async () => { if ((await a.onclick?.()) !== false) close(); }} />)}</footer> : null}
   </div>, wrap);
 }

@@ -106,10 +106,21 @@ export function MvuPanel({ chat }: { chat: Chat; msgs: Msg[] }) {
 }
 
 /** 오래 이어진 대화를 처음 열 때: 옛 메시지의 변수를 정리할지 (정리만 · 받아 두고 정리 · 다시 묻지 않기) */
-export function askLegacyCleanup(): Promise<'clean' | 'backup' | 'never' | null> {
+export function askLegacyCleanup(info: A.LegacyInfo): Promise<'clean' | 'backup' | 'never' | null> {
+  const size = info.size >= 1048576 ? `${(info.size / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(info.size / 1024))}KB`;
+  const shown = info.names.slice(0, 4), more = info.names.length - shown.length;
   return new Promise(res => {
     let done = false; const fin = (v: 'clean' | 'backup' | 'never' | null) => { if (!done) { done = true; res(v); } };
     openModal({ title: t('mvu.legacy.title'), onClose: () => fin(null), actions: [{ label: t('mvu.legacy.never'), onclick: () => fin('never') }, { label: t('mvu.legacy.backup'), onclick: () => fin('backup') }, { label: t('mvu.legacy.clean'), cls: 'primary', onclick: () => fin('clean') }] },
-      () => <p style={{ whiteSpace: 'pre-wrap' }}>{t('mvu.legacy.body')}</p>);
+      () => <>
+        <p>{info.name ? t('mvu.legacy.what', { name: info.name }) : t('mvu.legacy.whatPlain')}</p>
+        <dl className="facts">
+          <div><dt>{t('mvu.legacy.f.held')}</dt><dd>{t('mvu.legacy.f.heldValue', { n: info.held })} <small>{t('mvu.legacy.f.ofTotal', { n: info.total })}</small></dd></div>
+          <div><dt>{t('mvu.legacy.f.size')}</dt><dd>{t('mvu.legacy.f.sizeValue', { size })}</dd></div>
+          {shown.length ? <div><dt>{t('mvu.legacy.f.names')}</dt><dd>{shown.join(' · ')}{more > 0 ? <small>{t('mvu.legacy.f.more', { n: more })}</small> : null}</dd></div> : null}
+        </dl>
+        <p>{t('mvu.legacy.plan', { recent: info.recent, every: info.every, drop: info.drop })}</p>
+        <p className="hint">{t('mvu.legacy.safe')}</p>
+      </>);
   });
 }
