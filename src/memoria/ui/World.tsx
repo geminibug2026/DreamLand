@@ -5,7 +5,7 @@ import { confirmBox, openModal, type FormDefs, toast } from '../../ui';
 import { bondMapSvg } from '../story';
 import type { Bond, BondStep, CanonRow, CastCard, CastNote, DossierDoc, Item, Pledge, StatusRow } from '../types';
 import type { RecordClaim } from '../engine/part5';
-import type { ConflictWhy } from '../craft';
+import { pledgeHeldBack, type ConflictWhy } from '../craft';
 import { dueLabel, storyDays } from '../stage';
 import { Chip, Del, Ib, Ico, Meter, None, SceneLine, Sec, editBox, mergeCast, safe, type StOpen, Revive } from './parts';
 import { GROWTH_MAX, Gi, HAND, LINES_MAX, Mx, bondNow, bondViewRows, cut, storyState } from './viewsShared';
@@ -177,6 +177,14 @@ export function World({ st }: { st: StOpen }) {
     p.suggestResolved = false; p.suggestTurn = null; p.suggestBy = null as unknown as undefined; p.suggestHow = null;   // 직접 결정했으니 사서 의견은 정리
     await M.save(mem); st.draw();
   };
+  // 「아직 유효」: 사서의 "해소된 듯" 의견을 물리고 다시 싣는다 — 방금 다뤄진 것으로 치고, 서약 훑기가 옛 요약만 보고 같은 의견을 다시 붙이지 않게 표시해 둔다
+  const uphold = async (p: Pledge) => { p.suggestResolved = false; p.suggestTurn = null; p.suggestBy = null as unknown as undefined; p.suggestHow = null; p.upheld = true; p.turn = T; await M.save(mem); M.reinjectNow?.(st.chat); st.draw(); };
+  // 서약 훑기 — 눌렀을 때 모델을 한 번 불러, 오래된 서약 가운데 지금까지의 요약이 이미 끝났다고 보여 주는 것에 "해소된 듯" 표시를 붙인다 (닫거나 지우지 않는다)
+  const sweep = async () => {
+    toast(t('memoria.world.pledge.sweeping'));
+    try { const r = await Memory.sweepPledges(st.chat, mem); await M.save(mem); if (r.flagged) M.reinjectNow?.(st.chat); st.draw(); toast(r.checked ? t('memoria.world.pledge.sweepDone', { checked: r.checked, flagged: r.flagged }) : t('memoria.world.pledge.sweepNone'), r.flagged ? 'ok' : ''); }
+    catch (e) { toast(t('memoria.world.pledge.sweepFail', { error: (e as Error).message }), 'err'); }
+  };
   const rank = (p: Pledge) => p.status === 'resolved' ? 2 : p.status === 'dormant' ? 1 : 0;
   // 가린 줄이 없는 작가 계획 — 눌렀을 때만 모델을 한 번 불러 가린 줄을 받는다 (답을 흘리는 줄은 버린다)
   const bare = mem.pledges.filter(p => p.kind === 'author_plan' && p.status === 'active' && !p.veil).length;
@@ -184,15 +192,16 @@ export function World({ st }: { st: StOpen }) {
     try { const r = await Memory.veilPlans(st.chat, mem); await M.save(mem); st.draw(); toast(t('memoria.world.pledge.veilDone', { made: r.made, rejected: r.rejected }), r.made ? 'ok' : 'err'); }
     catch (e) { toast(t('memoria.world.pledge.veilFail', { error: (e as Error).message }), 'err'); }
   };
-  const pledgeSec = <Sec title={t('memoria.world.pledge.title')} desc={t('memoria.world.pledge.desc')} tools={<>{bare ? <Btn label={t('memoria.world.pledge.veilBtn', { n: bare })} ic="sparkle" cls="ghost" title={t('memoria.world.pledge.veilBtnTitle')} onClick={() => void makeVeils()} /> : null}<Btn label={t('common.add')} ic="plus" cls="ghost" title={t('memoria.world.pledge.add')} onClick={() => void editPledge()} /></>}>
-    <div className="mm-rows">{[...mem.pledges].sort((a, b) => rank(a) - rank(b) || (a.priority || 2) - (b.priority || 2)).map(p => row(p.id, p.status === 'resolved' ? 'done' : p.status === 'dormant' ? 'mm-dormant' : '', <><em className={`mm-lock l-${safe(p.kind)}`}>{LOCK_KO[p.kind] || p.kind}</em>
+  const pledgeSec = <Sec title={t('memoria.world.pledge.title')} desc={t('memoria.world.pledge.desc')} tools={<>{bare ? <Btn label={t('memoria.world.pledge.veilBtn', { n: bare })} ic="sparkle" cls="ghost" title={t('memoria.world.pledge.veilBtnTitle')} onClick={() => void makeVeils()} /> : null}{mem.pledges.some(p => p.status === 'active' && p.kind !== 'author_plan') ? <Btn label={t('memoria.world.pledge.sweepBtn')} ic="search" cls="ghost" title={t('memoria.world.pledge.sweepBtnTitle')} onClick={() => void sweep()} /> : null}<Btn label={t('common.add')} ic="plus" cls="ghost" title={t('memoria.world.pledge.add')} onClick={() => void editPledge()} /></>}>
+    <div className="mm-rows">{[...mem.pledges].sort((a, b) => rank(a) - rank(b) || (a.priority || 2) - (b.priority || 2)).map(p => row(p.id, p.status === 'resolved' ? 'done' : p.status === 'dormant' || pledgeHeldBack(p) ? 'mm-dormant' : '', <><em className={`mm-lock l-${safe(p.kind)}`}>{LOCK_KO[p.kind] || p.kind}</em>
       {p.status === 'dormant' ? <em className="mm-tag dash" title={t('memoria.world.pledge.dormantTitle')}>{t('memoria.world.pledge.dormant')}</em> : null} <span className="mm-pledge-text"><Tr>{p.summary}</Tr></span><small>{` (P${p.priority || 2}${p.turn != null ? ` · t${p.turn + 1}` : ''}${p.manual ? t('memoria.world.pledge.manual') : ''})`}</small>
       {p.status !== 'resolved' && dueText(mem, p) ? <em className="mm-tag mm-due" title={t('memoria.world.pledge.dueTitle')}>{dueText(mem, p)}</em> : null}
       {p.kind === 'author_plan' && p.status === 'active' ? <small className="mm-lock-now" title={t('memoria.world.pledge.veilTitle')}>{` ${p.veil ? t('memoria.world.pledge.veilShown', { text: p.veil }) : t('memoria.world.pledge.veilNone')}`}</small> : null}
       {p.kind === 'feeling' && (p.cause || p.needs) ? <small className="mm-lock-now">{` ${[p.cause, p.needs].filter(Boolean).join(' → ')}`}</small> : null}
       {p.latest?.text && p.status !== 'resolved' ? <small className="mm-lock-now" title={t('memoria.world.pledge.nowTitle')}>{` ${t('memoria.world.pledge.now', { text: p.latest.text })}`}</small> : null}
       {p.resolution && p.status === 'resolved' ? <small className="mm-resolution" title={t('memoria.world.pledge.resolution')}>{` — ${p.resolution}`}</small> : null}
-      {p.suggestResolved && p.status === 'active' ? <em className="mm-suggest" title={p.suggestHow ? t('memoria.world.pledge.suggestHowTitle', { how: p.suggestHow }) : t('memoria.world.pledge.suggestTitle')}><Ico name="bell" size={12} />{t('memoria.world.pledge.suggest')}</em> : null}</>,
+      {p.suggestResolved && p.status === 'active' ? <><em className="mm-suggest" title={(p.suggestHow ? t('memoria.world.pledge.suggestHowTitle', { how: p.suggestHow }) : t('memoria.world.pledge.suggestTitle')) + (pledgeHeldBack(p) ? t('memoria.world.pledge.heldNote') : '')}><Ico name="bell" size={12} />{pledgeHeldBack(p) ? t('memoria.world.pledge.suggestHeld') : t('memoria.world.pledge.suggest')}</em>
+        <button type="button" className="mm-tag dash mm-revive" title={t('memoria.world.pledge.stillValidTitle')} onClick={() => void uphold(p)}>{t('memoria.world.pledge.stillValid')} ↺</button></> : null}</>,
       <Ib name={p.status === 'active' ? 'check' : 'refresh'} title={p.status === 'active' ? t('memoria.world.pledge.markResolved') : p.status === 'dormant' ? t('memoria.world.pledge.wake') : t('memoria.world.pledge.reactivate')} onClick={() => flip(p)} />, <Ib name="edit" title={t('common.edit')} onClick={() => editPledge(p)} />, <Del st={st} arr="pledges" x={p} what={t('memoria.world.pledge.what')} />))}
       {!mem.pledges.length ? <None text={t('memoria.world.pledge.empty')} /> : null}</div>
   </Sec>;

@@ -2,9 +2,11 @@
 import { S, uid, now } from '../../lib/core';
 import type { MemoryApi } from './api';
 import type { Bond, CastCard, ChatM, Mem, MemItem, Msg, Pledge, StatusRow, Tracker } from '../types';
-import { ekey, low, cleanStr, normLockKind } from './base';
+import { ekey, low, cleanStr, normLockKind, parseLoose } from './base';
 import { parseStoryDate, storyDatesOf, isIsoDate, trackerText, trackerLineOf, veilLeaks } from '../calendar';
-import { VEIL_PROMPT } from '../directives';
+import { VEIL_PROMPT, SWEEP_PROMPT } from '../directives';
+import { groundedIn, soundsHedged, threadTouched } from '../craft';
+import { t as tr } from '../../i18n';
 
 /** 인물 한 사람에 얽힌 기록을 모은 것 (인물별 화면용) */
 export interface PersonView {
@@ -43,11 +45,17 @@ export interface Part6 {
   /** 아는 사람 · 짐작하는 사람을 손으로 정한다 — 그 뒤로 사서가 덮어쓰지 않는다 */
   setKnowers(mem: Mem, id: string, who: { knowers?: string[]; guessers?: string[] } | null): boolean;
   personView(mem: Mem, name: string): PersonView;
+  /** 서약 훑기 — 오래된 서약을 지금까지의 요약과 견주어 끝난 것에 "풀린 듯" 의견을 붙인다 (모델 호출 1번 · 닫거나 지우지 않는다). 반환 { checked(본 서약 수), flagged(의견을 붙인 수) } */
+  sweepPledges(chat: ChatM, mem: Mem, signal?: AbortSignal): Promise<{ checked: number; flagged: number }>;
+  /** 대화마다 한 번, 그 뒤로는 정해 둔 턴 수(pledgeSweepTurns)마다 서약을 훑는다. 실패해도 다음 주기까지 기다린다 */
+  maybeSweepPledges(chat: ChatM, mem: Mem, signal?: AbortSignal): Promise<void>;
   /** "이 말을 보내면 무엇이 떠오르나" — 장부를 짓지 않고 회상만 해 본다 (학습 · 쉬어가기 기록에 남지 않는다) */
   recallTest(chat: ChatM, text: string, msgs?: Msg[] | null): RecallTest;
 }
 
 const TRACKER_MAX = 30;
+/** 서약 훑기가 한 번에 보는 서약 수 · 요약에 싣는 글자 수 */
+const SWEEP_MAX = 20, SWEEP_STORY = 30000;
 function cleanTracker(input: Partial<Tracker>, base?: Tracker): Tracker | null {
   const t = { ...(base || {}), ...input } as Tracker, type = (['count', 'until', 'cycle'] as const).find(x => x === t.type) || 'count', label = cleanStr(t.label, 40);
   if (!label) return null;
@@ -123,6 +131,37 @@ export const part6: Part6 & ThisType<MemoryApi> = {
       pledges: mem.pledges.filter(p => p.status !== 'resolved' && (is(p.owner) || hay.some(n => low(`${p.summary} ${p.latest?.text || ''}`).includes(n)))),
       trackers: (mem.trackers || []).filter(t => any(t.people)).map(tracker => ({ tracker, text: trackerText(tracker, today) })),
     };
+  },
+  /**
+   * 서약 훑기. 묶음 요약의 떡밥 점검은 그 구간에서 풀린 것만 본다 — 풀린 대목이 요약된 뒤에 적힌 서약, 드러난 적 없이 그 대목 자체가 끝나 버린 비밀은 끝내 닫히지 않고 "지켜야 할 것"으로 남는다.
+   * 그래서 요약이 다룬 구간보다 앞서 적힌 서약을 지금까지의 요약 전체와 한 번 견준다 (가장 오래 살펴보지 않은 것부터 SWEEP_MAX 개).
+   * 요약에서 글자 그대로 옮긴 근거 글귀가 있고 말끝을 흐리지 않은 판정에만 "풀린 듯" 의견을 붙인다 — 닫거나 지우지 않는다 (의견이 붙은 서약을 실을지는 장부가 가린다: 직접 적은 것 · 최우선은 그대로 실린다).
+   * 볼 서약이나 요약이 없으면 모델을 부르지 않는다
+   */
+  async sweepPledges(chat, mem, signal) {
+    const T = mem.turns.length, covered = this.summaryCoveredTurn(mem);
+    const story = [...mem.arcs.filter(a => a.carried), ...[...mem.arcs.filter(a => !a.carried), ...mem.chunks].sort((a, b) => a.from - b.from)].map(s => String(s.text || '').trim()).filter(Boolean).join('\n\n').slice(-SWEEP_STORY);
+    const rows = mem.pledges.filter(l => l.status === 'active' && !l.suggestResolved && !l.upheld && normLockKind(l.kind) !== 'author_plan' && threadTouched(l) < covered)
+      .sort((a, b) => (a.checkedTurn ?? -1) - (b.checkedTurn ?? -1) || threadTouched(a) - threadTouched(b)).slice(0, SWEEP_MAX), tags = new Map(rows.map((l, i) => [`p${i + 1}`, l]));
+    mem.pledgeSweepAt = T;
+    if (!rows.length || !story) return { checked: 0, flagged: 0 };
+    const parsed = parseLoose(await this.call(chat, `${SWEEP_PROMPT}${this.langLine()}`, `The story so far:\n${story}\n\nPledges on file:\n${[...tags].map(([tag, l]) => `[${tag}] (${normLockKind(l.kind)}) ${l.summary}${l.latest?.text ? ` — now: ${l.latest.text}` : ''}`).join('\n')}`, 1500, signal, 'summary')) as { done?: { tag?: unknown; how?: unknown; said?: unknown }[] } | null;
+    if ((this.get(mem.id) || mem) !== mem) return { checked: 0, flagged: 0 };   // 기다리는 사이 서고가 바뀌었다 (되돌리기 · 불러오기) — 낡은 판정은 버린다
+    let flagged = 0;
+    for (const d of Array.isArray(parsed?.done) ? parsed!.done! : []) {
+      const l = tags.get(String(d?.tag || '').trim().toLowerCase().replace(/[\[\]]/g, '')), how = cleanStr(d?.how, 200);
+      if (!l || l.status !== 'active' || l.suggestResolved || !groundedIn(d?.said, story) || soundsHedged(how)) continue;
+      l.suggestResolved = true; l.suggestTurn = Math.max(0, covered - 1); l.suggestBy = ''; l.suggestHow = how || null; flagged++;
+    }
+    for (const l of rows) l.checkedTurn = Math.max(l.checkedTurn ?? -1, T - 1);
+    return { checked: rows.length, flagged };
+  },
+  async maybeSweepPledges(chat, mem, signal) {
+    const every = Math.round(Number(this.cfg().pledgeSweepTurns) || 0), T = mem.turns.length; if (every < 1) return;
+    if (mem.pledgeSweepAt != null && mem.pledgeSweepAt > T) mem.pledgeSweepAt = T;   // 기록이 걷혀 턴 수가 줄었으면 그때부터 다시 센다
+    if (mem.pledgeSweepAt != null ? T - mem.pledgeSweepAt < every : !(mem.chunks.length + mem.arcs.length)) return;   // 첫 훑기는 요약이 하나라도 생긴 뒤에
+    try { const r = await this.sweepPledges(chat, mem, signal); if (r.flagged) this.logActivity('summary', tr('memoria.engine.log.pledgeSweep', { n: r.flagged })); }
+    catch (e: any) { if (e?.name === 'AbortError' || signal?.aborted) throw e; mem.pledgeSweepAt = T; console.warn('[장기기억] 서약 훑기 실패 (다음 주기에 재시도)', e); }
   },
   recallTest(chat, text, msgs) {
     const mem = this.get(chat.id), q = String(text || '').trim(); if (!mem || !q) return { rows: [], chapter: '', cards: [], transcript: [] };

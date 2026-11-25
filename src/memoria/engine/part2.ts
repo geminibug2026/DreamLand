@@ -858,6 +858,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     await this.maybeConsolidate(chat, mem, signal);
     await this.maybeConsolidateArcs(chat, mem, signal);
     await this.maybeFoldEras(chat, mem, signal);
+    await this.maybeSweepPledges(chat, mem, signal);
     if (mem.chunks.length + mem.arcs.length !== before) this.logActivity('summary', tr('memoria.engine.log.summaryUpdated'));
     await this.save(mem);
     return made;

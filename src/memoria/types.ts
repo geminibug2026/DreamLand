@@ -72,6 +72,8 @@ export interface Pledge { id: string; kind: string; summary: string; status: str
   /** 이 떡밥이 마지막으로 언급된 턴과 그 답변, 그 전 값 · 언급으로 깨어난 턴과 그 답변 (계산으로 적는다) */
   /** 사서 · 요약이 이 서약을 마지막으로 살펴본 턴 (점검 차례를 돌리는 데 쓴다) */
   checkedTurn?: number | null;
+  /** 사용자가 "아직 유효"라고 한 서약 — 서약 훑기가 옛 요약만 보고 다시 "풀린 듯"을 붙이지 않는다 */
+  upheld?: boolean;
   /** 풀리지 않은 감정(feeling): 왜 생겼는지 · 풀리려면 무엇이 필요한지 */
   cause?: string; needs?: string;
   /** 작가 계획(author_plan): answer = 정해 둔 답(인물은 모른다), veil = 답을 가린 한 줄 (이것만 싣는다) */
@@ -108,6 +110,8 @@ export interface Mem {
   nameApart?: string[];
   /** 날 세기 · D-day · 주기 */
   trackers?: Tracker[];
+  /** 서약 훑기를 마지막으로 한 때 (그때까지의 턴 수) */
+  pledgeSweepAt?: number;
   /** 작중 날짜 직접 고침 — 그 메시지부터 그 날짜로 이어진다 */
   dateFix?: { msgId: string; date: string }[];
   /** 옛 서고의 이름 (chunks · chunked 로 옮긴다) */
@@ -143,6 +147,7 @@ export interface Cfg {
   /** 지난 일을 꺼내는 정도: quiet | natural | active */ recallVoice?: string;
   /** 작중 날짜를 상태창에서 읽어 턴에 적는다 */ storyDates?: boolean;
   bannedPhrases: string; banInChat: boolean; banTell: boolean; threadSleepTurns: number; eraKeep: number;
+  /** 서약 훑기 주기(턴) — 오래된 서약을 요약과 견주어 끝난 것에 "풀린 듯" 의견을 붙인다 (0 = 끔) */ pledgeSweepTurns?: number;
   statusMode: string; statusPattern: string; statusInject: boolean; qrMode: string; replyCheck: boolean;
   bundles: Record<string, Record<string, unknown>>; bundleByOwner: Record<string, string>; activeBundle: string; bundleBase: Record<string, unknown> | null;
   noticed: Record<string, unknown>; promptRev: number; settingsRev: number; promptOutdated: Record<string, number>;

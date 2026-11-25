@@ -315,13 +315,15 @@ export const part4: Part4 & ThisType<MemoryApi> = {
         // 장면 사람들과의 사이 — 장면 사람이 이 사람을 어떻게 대하고 부르는지가 먼저, 그다음 이 사람 쪽
         const tie = (b: Bond) => { const n = this.bondNow(b)!; return `${b.from} → ${b.to}: ${n.stage}${n.calls ? ` | calls them: ${n.calls}` : ''}`; };
         const ties = (mem.bonds || []).filter(b => !b.disabled && this.bondNow(b) && ((is(b.to) && around.has(ekey(b.from))) || (is(b.from) && around.has(ekey(b.to))))).sort((a, z) => +is(a.from) - +is(z.from) || String(a.from).localeCompare(String(z.from)) || String(a.to).localeCompare(String(z.to))).slice(0, 4).map(tie);
-        const fixed = (c.relationships || []).filter(r => around.has(ekey(this.canonName(mem, r.target)))).slice(0, 2).map(r => `${c.name} is to ${r.target}: ${r.relation}`);
-        // 마지막으로 있었던 일 — 이 사람이 든 공개 기억 가운데 가장 늦은 것 (이미 회상으로 실린 것은 다시 싣지 않는다), 없으면 마지막으로 나온 턴의 기록
-        const lastMem = mem.memories.filter(m => !m.disabled && !m.retired && m.visibility === 'public' && m.turn != null && !(m.tags || []).includes('episode_raw') && (m.entities || []).some(is) && !shownIds.has(m.id) && !mute.some(w => low(m.summary).includes(w))).sort((a, z) => (z.turn ?? 0) - (a.turn ?? 0))[0];
-        const days = storyAges?.get(lastMem?.turn ?? at) ?? 0, last = cleanStr(lastMem?.summary || (at >= 0 ? mem.turns[at]?.digest : '') || '', 240);
-        returning.push({ name: c.name, who: this.formatCharacterLine({ ...c, sceneNow: false, brief: true }), ties: [...ties, ...fixed], last: last ? `${last}${days >= 1 ? ` (~${ago(days)} ago in-story)` : ''}` : '', away });
-        // 이 사람이 든 옛 기억이 회상으로 함께 실리면 "그때 기준"임을 붙인다 — 숨긴 일 · 다툼이 아직 그대로인 것처럼 읽히지 않게 (고정 · 직접 적은 기억은 그대로)
-        for (const m of [...publicRecallDeduped, ...protectedRecall]) if (!notes.has(m.id) && !m.retired && !m.pinned && !m.manual && ((m.entities || []).some(is) || is(m.owner))) notes.set(m.id, `from before ${c.name}'s long absence; it may no longer hold`);
+        const fixed = (c.relationships || []).filter(r => around.has(ekey(this.canonName(mem, r.target)))).slice(0, 3).map(r => `${r.target}: ${r.relation}`);
+        // 마지막으로 있었던 일 — 이 사람이 든 공개 기억 가운데 가장 늦은 것, 없으면 마지막으로 나온 턴의 기록 (그 기억이 이미 회상으로 실렸으면 한 번 더 적지 않는다 — 두 번 실린 일은 모델이 자꾸 꺼낸다)
+        const lastMem = mem.memories.filter(m => !m.disabled && !m.retired && m.visibility === 'public' && m.turn != null && !(m.tags || []).includes('episode_raw') && (m.entities || []).some(is) && !mute.some(w => low(m.summary).includes(w))).sort((a, z) => (z.turn ?? 0) - (a.turn ?? 0))[0];
+        const days = storyAges?.get(lastMem?.turn ?? at) ?? 0, last = lastMem && shownIds.has(lastMem.id) ? '' : cleanStr(lastMem?.summary || (at >= 0 ? mem.turns[at]?.digest : '') || '', 240);
+        returning.push({ name: c.name, who: this.formatCharacterLine({ ...c, sceneNow: false, brief: true }), ties: [...ties, ...(fixed.length ? [`${c.name}'s standing ties — ${fixed.join('; ')}`] : [])], last: last ? `${last}${days >= 1 ? ` (~${ago(days)} ago in-story)` : ''}` : '', away });
+        // 이 사람이 든 옛 기억이 회상으로 함께 실리면 "그때 기준"임을 붙인다 — 숨긴 일 · 약속 · 사이가 아직 그대로인 것처럼 읽히지 않게 (있었던 일 자체는 그대로다. 고정 · 직접 적은 기억도 그대로)
+        for (const m of [...publicRecallDeduped, ...protectedRecall]) if (!notes.has(m.id) && !m.retired && !m.pinned && !m.manual && !(m.kind === 'event' && m.visibility === 'public') && ((m.entities || []).some(is) || is(m.owner))) notes.set(m.id, `from before ${c.name}'s long absence; it may no longer hold`);
+        // "이 사람은 모른다" 꼬리표도 이 사람 몫은 뗀다 — 다시 나온 바로 그 순간에 옛 비밀이 모두 "지금 이 사람에게 숨겨야 할 것"이 되어, 끝난 비밀을 모델이 무대에 올린다 (비밀 줄 자체는 그대로 "드러내 말하지 않을 것"으로 실린다)
+        for (const [id, blind] of unaware) { const rest = blind.filter(n => !is(n)); if (rest.length) unaware.set(id, rest); else unaware.delete(id); }
       }
     }
     return { absent, cards, minds, plans, trackerLine, returning, voice: String(cfg.recallVoice || 'natural'), bonds, voices, banned, styleGuard: cfg.styleGuard !== false, recallQuotes: cfg.recallQuotes !== false, banTell: cfg.banTell === true,

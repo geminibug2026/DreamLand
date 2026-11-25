@@ -250,12 +250,15 @@ const TITLE_TAIL = '(?:에게서|한테서|이라고|께서|에게|한테|이랑
 
 /** 관계선의 "부르는 말" 한 칸에서 호칭만 골라낸다 — "민준 형" → 형, "선배 / 형" → 선배 · 형. 이름 · 대명사 · 풀어 쓴 설명은 버린다. nameForms: 불리는 사람의 이름들 */
 export function titlesInCalls(calls: unknown, nameForms: string[] = []): string[] {
-    const forms = nameForms.map(lowc).filter(f => f.length >= 2).sort((a, b) => b.length - a.length), out = new Set<string>();
+    const forms = nameForms.map(lowc).filter(f => f.length >= 2), out = new Set<string>();
     for (const raw of String(calls ?? '').split(/[,，、/·|;()（）→]+|\s+(?:or|또는|혹은)\s+/)) {
-        let t = lowc(raw).replace(/^["“”'‘’「」『』\s]+|["“”'‘’「」『』\s.]+$/g, '');
-        const f = forms.find(x => t.startsWith(x));
-        if (f) { t = t.slice(f.length).trim(); if (!isTitleWord(t) && t.startsWith('이')) t = t.slice(1).trim(); }   // "민준 형" · "민준이 형" → 형
-        if (isTitleWord(t)) out.add(t);
+        const t = lowc(raw).replace(/^["“”'‘’「」『』\s]+|["“”'‘’「」『』\s.]+$/g, '');
+        if (isTitleWord(t)) { out.add(t); continue; }
+        // 이름 뒤에 붙은 호칭: "민준 형" · "민준이 형" · "태호형" → 형 (앞부분이 그 사람 이름의 일부일 때만 — "예전에는 오빠" 같은 풀이는 받지 않는다)
+        for (let i = 2; i < t.length; i++) {
+            const head = t.slice(0, i).trim().replace(/이$/, ''), tail = t.slice(i).trim();
+            if (head.length >= 2 && isTitleWord(tail) && forms.some(f => f.includes(head))) { out.add(tail); break; }
+        }
     }
     return [...out];
 }

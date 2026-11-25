@@ -26,8 +26,21 @@ const here = () => chatApi.current().chat;
 export function showStage(chat: Chat) {
   const g = (chat as GameChat).game; if (!g?.on) return;
   if (g.stage === false) { g.stage = true; void S.save('chats', chat, true); }
-  openStage(chat.id, () => { const c = S.chats.find(x => x.id === chat.id) as GameChat | undefined; if (c?.game) { c.game.stage = false; void S.save('chats', c, true); } closeStage(); redrawGame(); });
+  openStage(chat.id, () => { const c = S.chats.find(x => x.id === chat.id) as GameChat | undefined; if (c?.game) { c.game.stage = false; void S.save('chats', c, true); } closeStage(); redrawGame(); behind.now(); });
 }
+/** 게임 화면에 가려진 대화 화면을 나중에 고친다. 게임 화면과 한 번에 그리면 들어가는 동안 화면이 멈추니, 게임 화면이 뜨고 한숨 돌린 뒤 틈날 때 한다.
+ *  그 전에 대화 화면으로 돌아오면(now) 바로 고치고, 그사이 방이나 모드가 바뀌면(drop) 그만둔다 */
+const behind = {
+  job: null as (() => void) | null, tm: 0,
+  later(chat: Chat) {
+    this.drop();
+    const run = this.job = () => { if (this.job !== run) return; this.drop(); if (here()?.id === chat.id) drawMain(); };
+    const idle = () => { if ('requestIdleCallback' in window) requestIdleCallback(run, { timeout: 1500 }); else run(); };
+    this.tm = window.setTimeout(idle, 600);
+  },
+  now() { this.job?.(); },
+  drop() { clearTimeout(this.tm); this.job = null; },
+};
 function setup() {
   useCss('gm2.css');
   on<Chat>('chat:open', chat => { const g = gameOf(chat); if (g && g.stage !== false) showStage(chat); else if (stageOpenFor()) closeStage(); });
@@ -38,11 +51,14 @@ function setup() {
   on<Chat>('game:enter', chat => {
     const g = (chat as GameChat).game;
     if (!g) return openGame(chat);
-    if (!g.on) { g.on = true; g.stage = true; if (chat.mode !== 'rp') { g.prev = chat.mode; chat.mode = 'rp'; } void S.save('chats', chat, true); drawMain(); toast(t('game.resumed'), 'ok'); }
+    // 이어 하기: 게임 화면부터 띄우고, 그 뒤에 가려진 대화 화면(모드 · 표시 가림이 달라졌다)은 나중에 고친다
+    const resumed = !g.on;
+    if (resumed) { g.on = true; g.stage = true; if (chat.mode !== 'rp') { g.prev = chat.mode; chat.mode = 'rp'; } void S.save('chats', chat, true); toast(t('game.resumed'), 'ok'); }
     showStage(chat); redrawGame();
+    if (resumed) { if (stageOpenFor() === chat.id) behind.later(chat); else drawMain(); }
   });
   // 잠시 멈추기: 시트 · 지도 · 일지는 그대로 두고 규칙과 표시 읽기만 끈다
-  on<Chat>('game:pause', chat => { const g = (chat as GameChat).game; if (!g?.on) return; g.on = false; void S.save('chats', chat, true); closeStage(); redrawGame(); toast(t('game.paused')); });
+  on<Chat>('game:pause', chat => { const g = (chat as GameChat).game; if (!g?.on) return; behind.drop(); g.on = false; void S.save('chats', chat, true); closeStage(); redrawGame(); toast(t('game.paused')); });
   // 답변을 받으면 표시를 읽어 변화와 맡긴 일을 그 답변에 붙이고, 글에서는 지운다 (기다림 없이 — 뒤이어 도는 기억 기록 · 번역이 깨끗한 글을 보도록)
   on('message:received', data => {
     const { msg, chat } = data as { msg: Msg; chat: Chat };
