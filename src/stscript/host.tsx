@@ -31,11 +31,13 @@ function range(spec: string, n: number): number[] {
 }
 // 물음에 HTML 이 들어 있으면(실리태번처럼) 정화해서 그려 준다
 const hasHtml = (s: string) => /<[a-z][^>]*>/i.test(s);
-const choose = (text: string, labels: string[]) => new Promise<string>(res => {
+// 닫기(×) · 바깥 누르기 · Esc 는 '고르지 않음': /input 처럼 스크립트를 조용히 멈춘다 (빈 값으로 이어 가면 「(을)를 행동했습니다」 같은 글이 보내진다)
+// 고를 것은 테두리 있는 단추로: 짧으면 두 줄씩, 하나라도 길면 한 줄에 하나씩
+const choose = (text: string, labels: string[]) => new Promise<string>((res, rej) => {
   let done = false;
-  const rich = hasHtml(text || '');
-  const m = openModal({ title: rich ? t('qr.run.choose') : text || t('qr.run.choose'), onClose: () => { if (!done) res(''); },
-    body: <>{rich ? <div className="qr-ask" dangerouslySetInnerHTML={{ __html: sanitize(text) }} /> : null}<div className="row wrap">{labels.map(l => <button key={l} type="button" className="btn ghost" onClick={() => { done = true; res(l); m.close(); }}>{l}</button>)}</div></> });
+  const rich = hasHtml(text || ''), one = labels.length < 2 || labels.some(l => [...l].length > 12);
+  const m = openModal({ title: rich ? t('qr.run.choose') : text || t('qr.run.choose'), onClose: () => { if (!done) rej(new Abort(true)); },
+    body: <>{rich ? <div className="qr-ask" dangerouslySetInnerHTML={{ __html: sanitize(text) }} /> : null}<div className={'qr-choices' + (one ? ' one' : '')}>{labels.map((l, i) => <button key={i} type="button" className="qr-choice" onClick={() => { done = true; res(l); m.close(); }}>{l}</button>)}</div></> });
 });
 
 export function appHost(started = Date.now()): Host {

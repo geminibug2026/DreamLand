@@ -226,8 +226,8 @@ const need = (c: Ctx, name: string): HostFn => { const f = c.host[name]; if (typ
 const call = async (c: Ctx, name: string, ...xs: unknown[]) => { const r = await need(c, name)(...xs); return r == null ? '' : String(r); };
 def('echo', { help: '알림으로 보여 준다', args: '[severity=info|warning|error|success] 글', run: (a, c) => { const s = str(a.unnamed); c.host.echo(s, S(a, 'severity', 'info')); return s; } });
 def('popup', { help: '창으로 보여 준다', run: (a, c) => call(c, 'popup', str(a.unnamed)) });
-def('input', { help: '사용자에게 글을 받는다', args: '[default=] 물음', run: (a, c) => call(c, 'input', str(a.unnamed), S(a, 'default')) });
-def('buttons', { help: '단추 가운데 하나를 고르게 한다', args: 'labels=["a","b"] 물음', run: (a, c) => call(c, 'buttons', str(a.unnamed), listOf(a.named.labels ?? '[]', c, false)) });
+def('input', { help: '사용자에게 글을 받는다 (닫으면 스크립트를 멈춘다)', args: '[default=] 물음', run: (a, c) => call(c, 'input', str(a.unnamed), S(a, 'default')) });
+def('buttons', { help: '단추 가운데 하나를 고르게 한다 (고르지 않고 닫으면 스크립트를 멈춘다)', args: 'labels=["a","b"] 물음', run: (a, c) => call(c, 'buttons', str(a.unnamed), listOf(a.named.labels ?? '[]', c, false)) });
 def('setinput', { help: '입력창 글을 바꾼다', run: (a, c) => call(c, 'setInput', str(a.unnamed)) });
 def('send', { help: '내 메시지로 보낸다 (답을 받지는 않는다)', run: (a, c) => call(c, 'send', str(a.unnamed)) });
 def('sendas', { help: '캐릭터 메시지로 넣는다', args: 'name= 글', run: (a, c) => call(c, 'sendAs', S(a, 'name'), str(a.unnamed)) });
