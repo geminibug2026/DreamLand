@@ -257,6 +257,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
   // 이 브라우저의 쓰기는 모두 줄(q)에 남으므로, 줄에 없고 지난번 서버와 같았던(base) 것은 그대로라고 본다. 열쇠만 읽어 지운 것은 알아챈다.
   // 그래도 혹시 모를 어긋남을 위해 사흘에 한 번, 그리고 사용자가 '지금 맞추기'를 누르면 전부 읽는다.
   const HEAVY = new Set(['assets', 'msgs', 'chars', 'chats', 'lore', 'mem', 'personas']), FULL_EVERY = 3 * 864e5;   // 페르소나도 초상이 들어 있어 무겁다
+  const LIGHT_READ = new Set(['assets']);   // 전부 읽을 때도 값을 들고 있지 않는 저장소 (그림 · 영상 — 하나가 수 MB, 수천 개일 수 있다)
   let wantFull = false;
   function reconcile(full = false): Promise<void> { if (full) wantFull = true; return syncing ||= locked(reconcileOnce).finally(() => { syncing = null; }); }
   async function reconcileOnce() {
@@ -287,9 +288,20 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
             if (skip(s, id)) continue; const k = keyOf(s, id), b = base.get(k);
             if (b != null && !inQueue.has(k)) { local.set(k, { store: s, id, hash: b }); continue; }
             const v = await raw.get(s, id); if (v === undefined) continue;
-            const p = await pack(s, v); local.set(k, { store: s, id, v, hash: p.hash, json: p.json });
+            // 그림은 해시만 남긴다 (서버가 꺼져 있는 동안 그린 그림이 수백 장 쌓여 있어도 한꺼번에 메모리에 들지 않게 — 올릴 때 다시 읽는다)
+            const p = await pack(s, v); local.set(k, LIGHT_READ.has(s) ? { store: s, id, hash: p.hash } : { store: s, id, v, hash: p.hash, json: p.json });
           }
           await sleep(0); continue;
+        }
+        // 그림 저장소는 전부 읽을 때도 한 장씩 읽어 해시만 남긴다 — 통째로 읽으면 그림이 많을 때 수백 MB 가 한꺼번에 메모리에 올라 폰에서 창이 죽는다.
+        // 값은 들고 있지 않는다: 올리거나 견줄 때만 그 한 장을 다시 읽는다 (아래 later · decide)
+        if (LIGHT_READ.has(s) && raw.keys) {
+          let ids: unknown[] | null = null; try { ids = await raw.keys(s); } catch { ids = null; }
+          if (ids) {
+            known.add(s);
+            for (const id of ids) { if (skip(s, id)) continue; const v = await raw.get(s, id); if (v === undefined) continue; const p = await pack(s, v); local.set(keyOf(s, id), { store: s, id, hash: p.hash }); }
+            await sleep(0); continue;
+          }
         }
         const rows = await localRows(s); if (!rows) continue; known.add(s);
         for (const v of rows) { const id = idOf(v); if (skip(s, id)) continue; const p = await pack(s, v); local.set(keyOf(s, id), { store: s, id, v, hash: p.hash, json: p.json }); }
@@ -297,7 +309,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
       }
       const empty = ['chars', 'chats', 'msgs', 'lore', 'assets', 'mem'].every(s => ![...local.values()].some(l => l.store === s));
       const fresh = !base.size && empty && server.size > 0;   // 브라우저가 비었다 (지워졌거나 다른 기기): 서버 것을 따른다
-      const later: { store: string; id: unknown }[] = [];
+      const later: { store: string; id: unknown; base?: string | null }[] = [];
       const pulls: Meta[] = [], pushes: Op[] = [], asides: { store: string; id: unknown; value: Json; note: string }[] = [], decide: string[] = [], nb: [string, string | null][] = [];
       for (const k of new Set([...local.keys(), ...server.keys()])) {
         const L = local.get(k), R = server.get(k), B = base.has(k) ? base.get(k) : undefined;
@@ -311,15 +323,21 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
         }
         if (!L || !R) continue;
         if (B === L.hash) { pulls.push(R); continue; }
-        if (B === R.hash) { pushes.push({ op: 'put', store: L.store, id: L.id, value: L.json as Json, base: B }); continue; }
+        if (B === R.hash) { if (L.json === undefined) { later.push({ store: L.store, id: L.id, base: B }); continue; } pushes.push({ op: 'put', store: L.store, id: L.id, value: L.json as Json, base: B }); continue; }
         decide.push(k);
       }
-      for (const L of later) { const v = await raw.get(L.store, L.id); if (v === undefined) continue; const p = await pack(L.store, v); pushes.push({ op: 'put', store: L.store, id: L.id, value: p.json }); }
+      for (const L of later) {
+        const base0 = L.base !== undefined ? { base: L.base } : {};
+        if (pusher() && WORKER_STORES.has(L.store)) { pushes.push({ op: 'put', store: L.store, id: L.id, ...base0 }); continue; }   // 값은 일꾼이 읽는다 (아래 '올리기')
+        const v = await raw.get(L.store, L.id); if (v === undefined) continue; const p = await pack(L.store, v); pushes.push({ op: 'put', store: L.store, id: L.id, value: p.json, ...base0 });
+      }
       // 양쪽이 다 바뀌었거나 이전 기록이 없다: 고친 시각으로 고르고, 밀려난 쪽은 _conflicts 에 남긴다
       if (decide.length) {
         const sv = await fetchValues(decide.map(k => { const m = server.get(k)!; return { store: m.store, id: m.id }; }));
         for (const k of decide) {
-          const L = local.get(k)!, R = server.get(k)!, got = sv.get(k); if (!got) { pushes.push({ op: 'put', store: L.store, id: L.id, value: L.json as Json }); continue; }
+          const L = local.get(k)!, R = server.get(k)!, got = sv.get(k);
+          if (L.json === undefined) { const v = await raw.get(L.store, L.id); if (v === undefined) continue; L.v = v; L.json = (await pack(L.store, v)).json; }   // 해시만 들고 있던 그림: 견줄 때만 읽는다
+          if (!got) { pushes.push({ op: 'put', store: L.store, id: L.id, value: L.json as Json }); continue; }
           const tl = timeOf(L.store, L.v), tr = timeOf(R.store, decode(got.value));
           const serverWins = fresh ? true : tl != null && tr != null && tr > tl;
           if (serverWins) { asides.push({ store: L.store, id: L.id, value: L.json as Json, note: '서버 판이 더 새로워 브라우저 판을 남겨 둠' }); pulls.push(R); }
@@ -346,6 +364,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
         if (r.same) { nb.push([keyOf(p.store, p.id), r.hash || null]); continue; }
         if (r.result?.ok) nb.push([keyOf(p.store, p.id), r.result.hash || r.hash || null]);
       }
+      for (let i = rest.length - 1; i >= 0; i--) { const p = rest[i]; if (p.op !== 'put' || p.value !== undefined) continue; const v = await raw.get(p.store, p.id); if (v === undefined) { rest.splice(i, 1); continue; } p.value = (await pack(p.store, v)).json; }
       const res = await sendOps(rest);
       res.forEach((r, i) => { const p = rest[i]; if (r.ok) nb.push([keyOf(p.store, p.id), p.op === 'del' ? null : r.hash || null]); });
       await setBases(nb);
