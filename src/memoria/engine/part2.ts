@@ -7,12 +7,12 @@ import type { Part1 } from './part1';
 import type { Part3 } from './part3';
 import type { Turn, Mem, Msg, ChatM, CastCard, Bond, BondStep, MemItem, MemDim, Beat, Pledge, Relation, StatusRow } from '../types';
 import { ago, SCOPES, NARRATOR, MEMORY_DEFAULTS, STANDING_KINDS, CHARACTER_LINES_MAX, CHARACTER_GROWTH_MAX, BOND_LOG_MAX, BOND_SETTLE_TURNS, cache, mesHashOf, list, low, cleanStr, clipStr, toSnake, num01, firstSentence, canonSlot, na, visibleProse, ekey, overlap, parseDurationDays, normKind, normLockKind, normVisibility, pledgeId, upsertRow } from './base';
-import { THREAD_KINDS, ungroundedFigures, roughTokens, groundedIn, soundsHedged, noteThreadSightings, threadTouched, pickPledgesToCheck, ensembleLabel, crossScriptPairs } from '../craft';
+import { THREAD_KINDS, SECRET_KINDS, mentionsThread, ungroundedFigures, roughTokens, groundedIn, soundsHedged, noteThreadSightings, threadTouched, pickPledgesToCheck, ensembleLabel, crossScriptPairs } from '../craft';
 import { attributeQuote, type AddressPerson } from '../stage';
 import { parseStoryDate, syncDaysToDates } from '../calendar';
 import * as MP from '../prompts';
 import { KNOW_DIRECTIVE, LEARN_DIRECTIVE, BEATS_DIRECTIVE, FEELING_DIRECTIVE } from '../directives';
-import { chunkTurnsOf } from './base';
+import { chunkTurnsOf, repliesOf } from './base';
 import { snapUndo, diffUndo, trimUndo, mergeUndo, type Undo } from './undo';
 import { t as tr } from '../../i18n';
 
@@ -83,6 +83,8 @@ export interface Part2 {
   commitOne(chat: ChatM, msgs: Msg[], ai: Msg, opts?: CommitOpts): Promise<Mem>;
   commitTurn(chat: ChatM, msgs: Msg[], ai: Msg, opts?: CommitOpts): Promise<Mem>;
   sleepStaleThreads(mem: Mem, after?: number): number;
+  /** 아주 오래 아무도 건드리지 않은 비밀 · 정보 격차를 잠재운다. 반환: 잠재운 수 */
+  sleepStaleSecrets(mem: Mem, after?: number): number;
   upsertWorldRule(mem: Mem, rule: RuleInput, turn: number, msgId?: string): void;
   upsertEntityState(mem: Mem, state: StateInput, turn: number, msgId?: string): void;
   upsertLock(mem: Mem, lock: LockInput, turn: number, msgId?: string): Pledge;
@@ -550,8 +552,10 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     if (!failed) await this.embedMemories(chat, mem, { signal }).catch(e => console.warn('[장기기억] 임베딩', e));
     await this.waitForChatIdle('요약·서고 정리');   // 요약 · 정리는 급하지 않다 — 그사이 새 답변을 생성하기 시작했으면 끝난 뒤에 한다
     await this.housekeeping(chat, mem, signal);
-    const slept = this.sleepStaleThreads(mem);
-    if (slept) { this.logActivity('summary', tr('memoria.engine.log.slept', { n: slept })); await this.save(mem); }
+    const slept = this.sleepStaleThreads(mem), hushed = this.sleepStaleSecrets(mem);
+    if (slept) this.logActivity('summary', tr('memoria.engine.log.slept', { n: slept }));
+    if (hushed) this.logActivity('summary', tr('memoria.engine.log.sleptSecrets', { n: hushed }));
+    if (slept || hushed) await this.save(mem);
     return mem;
   },
   commitTurn(chat, msgs, ai, opts) { return this.commitOne(chat, msgs, ai, opts); },
@@ -587,6 +591,26 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     for (const l of mem.pledges || []) {
       if (l.status !== 'active' || l.manual || !THREAD_KINDS.includes(l.kind) || (l.priority ?? 2) <= 1) continue;
       if (turnNow - threadTouched(l) < after) continue;   // 다시 적힌 때 · 언급된 때 · "지금"이 바뀐 때 가운데 가장 늦은 것부터 센다
+      l.status = 'dormant'; l.sleptTurn = turnNow; slept++;
+    }
+    return slept;
+  },
+  /**
+   * 아주 오래 아무도 건드리지 않은 비밀 · 정보 격차를 잠재운다 (지우지 않는다 — 다시 언급되면 깨어나고, 세계 탭에서 깨울 수 있다).
+   * 비밀은 떡밥과 달리 저절로 닫히지 않아, 그 비밀이 걸린 대목이 오래전에 끝났어도 "지켜야 할 것"으로 매 턴 실렸다 — 모델이 끝난 비밀을 지금 일처럼 꺼낸다.
+   * 조용히 지켜지는 비밀도 있으므로 떡밥보다 훨씬 오래(2.5배, 적어도 150) 기다린다 — 기록 수가 아니라 그사이 답변 수로 센다 (묶어 기록하면 기록 하나가 답변 여러 개다). 직접 적은 것과 최우선(P1)은 건드리지 않는다.
+   * 잠재우기 전에 그사이의 턴 기록 · 기억을 한 번 훑는다 — 이야기에서 계속 오간 비밀이면 "본 턴"만 적고 그대로 둔다 (비밀의 언급을 적어 두지 않던 옛 서고에서도 맞게 가린다). 반환: 잠재운 수
+   */
+  sleepStaleSecrets(this: MemoryApi, mem, after = Math.max(150, Math.round((Number(this.cfg().threadSleepTurns) || 0) * 2.5))) {
+    if (!(Number(this.cfg().threadSleepTurns) > 0) || !(after > 0)) return 0;   // 떡밥 잠재우기를 꺼 두었으면 비밀도 잠재우지 않는다
+    const turnNow = mem.turns.length - 1; let slept = 0;
+    for (const l of mem.pledges || []) {
+      if (l.status !== 'active' || l.manual || !SECRET_KINDS.includes(normLockKind(l.kind)) || (l.priority ?? 2) <= 1) continue;
+      const since = threadTouched(l); if (repliesOf(mem.turns, since + 1) < after) continue;
+      const text = `${l.summary} ${l.latest?.text || ''}`; let seen = -1;
+      for (let i = turnNow; i > since && seen < 0; i--) if (mentionsThread(text, mem.turns[i]?.digest)) seen = i;
+      seen = mem.memories.reduce((a, m) => (m.turn != null && m.turn > Math.max(a, since) && m.turn <= turnNow && !m.manual && mentionsThread(text, m.summary) ? m.turn : a), seen);
+      if (seen >= 0) { l.seenPrev = l.seenTurn ?? null; l.seenTurn = seen; l.seenBy = ''; if (repliesOf(mem.turns, seen + 1) < after) continue; }
       l.status = 'dormant'; l.sleptTurn = turnNow; slept++;
     }
     return slept;
@@ -834,6 +858,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     await this.maybeConsolidate(chat, mem, signal);
     await this.maybeConsolidateArcs(chat, mem, signal);
     await this.maybeFoldEras(chat, mem, signal);
+    await this.maybeSweepPledges(chat, mem, signal);
     if (mem.chunks.length + mem.arcs.length !== before) this.logActivity('summary', tr('memoria.engine.log.summaryUpdated'));
     await this.save(mem);
     return made;

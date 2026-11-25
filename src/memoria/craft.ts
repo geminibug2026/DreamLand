@@ -42,7 +42,7 @@ export interface ActivityLog {
     readonly size: number;
 }
 /** 떡밥 관리가 보는 서약 칸 (턴 번호는 t1부터) */
-export interface ThreadLock { status: string; kind: string; summary: string; manual?: boolean; priority?: number; turnIndex?: number; sleptTurn?: number | null; latest?: { text: string } | null }
+export interface ThreadLock { status: string; kind: string; summary: string; manual?: boolean; priority?: number; turnIndex?: number; sleptTurn?: number | null; latest?: { text: string } | null; suggestResolved?: boolean }
 export interface PickPledgesOptions { turnNow?: number; sceneText?: string; overlap?: (a: string, b: string) => number; cap?: number; threadCap?: number; fresh?: number }
 
 /* ------------------------------------------------------------
@@ -398,6 +398,16 @@ export function findRivalExtensions(names: unknown[] | null | undefined, disable
  * ------------------------------------------------------------ */
 
 export const THREAD_KINDS = Object.freeze(['keep_unresolved', 'loose_end', 'foreshadow', 'feeling']);
+/** 숨겨야 하는 것(비밀 · 정보 격차) — 떡밥처럼 저절로 닫히지 않는다. 끝난 뒤에도 "지켜야 할 것"으로 남으면 모델이 옛 비밀을 지금 일처럼 꺼낸다 */
+export const SECRET_KINDS = Object.freeze(['keep_secret', 'knowledge_gap']);
+
+/**
+ * 사서가 "풀린 듯"이라고 본 서약은 사용자가 확정하기 전에도 싣지 않는다 — 끝난 비밀을 확정을 기다리며 매 턴 "지킬 것"으로 싣는 쪽이 더 해롭다.
+ * 지우지 않는다 (세계 탭에서 확정하거나 "아직 유효"로 되돌린다). 직접 적은 서약과 최우선(P1)은 그대로 싣는다
+ */
+export function pledgeHeldBack(l: { status?: string; manual?: boolean; priority?: number; suggestResolved?: boolean } | null | undefined): boolean {
+    return !!l && l.status === 'active' && l.suggestResolved === true && !l.manual && (l.priority ?? 2) > 1;
+}
 
 /**
  * 요약 응답 끝의 "CLOSED: o2, o5" 줄을 떼어 낸다.
@@ -485,7 +495,7 @@ export function sleepStaleThreads(locks: ThreadLock[] | null | undefined, turnNo
  * overlap(a, b): 두 글의 겹침(0~1)
  */
 export function pickPledges<L extends ThreadLock>(locks: L[] | null | undefined, { turnNow = 0, sceneText = '', overlap = () => 0, cap = 8, threadCap = 4, fresh = 24 }: PickPledgesOptions = {}): L[] {
-    const active = (locks || []).filter(l => l.status === 'active').sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
+    const active = (locks || []).filter(l => l.status === 'active' && !pledgeHeldBack(l)).sort((a, b) => (a.priority ?? 2) - (b.priority ?? 2));
     const standing = active.filter(l => !THREAD_KINDS.includes(l.kind));
     const threads = active.filter(l => THREAD_KINDS.includes(l.kind)).map((l) => {
         const age = turnNow - (l.turnIndex || 0);
@@ -624,7 +634,7 @@ export function noteThreadSightings(locks: SightedLock[] | null | undefined, tex
     let seen = 0, woke = 0;
     if (!String(text ?? '').trim()) return { seen, woke };
     for (const l of locks || []) {
-        if (!THREAD_KINDS.includes(l.kind) || !['active', 'dormant'].includes(l.status)) continue;
+        if (!(THREAD_KINDS.includes(l.kind) || SECRET_KINDS.includes(l.kind)) || !['active', 'dormant'].includes(l.status)) continue;   // 잠든 비밀 · 정보 격차도 다시 언급되면 깨운다
         if (!mentionsThread(`${l.summary} ${l.latest?.text || ''}`, text)) continue;
         if (l.seenTurn !== turn) { l.seenPrev = l.seenTurn ?? null; l.seenTurn = turn; l.seenBy = by; seen++; }
         if (l.status === 'dormant') { l.status = 'active'; l.wokeTurn = turn; l.wokeBy = by; l.sleptTurn = null; woke++; }

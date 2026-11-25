@@ -8,13 +8,13 @@ import type { CastCard, Cfg, ChatM, Mem, MemItem, Msg, Summary, SummarySrc, Turn
 import { G, NARRATOR, PUBLIC_ONLY, PAST_QUERY_RE, str, list, clip, low, cleanStr, visibleProse, sanitizeRecord, ekey, vec, cos, cueText, indexText, vecOf, cleanMultiline, normScope, sameKnowledgeScope, storyFossilWeight, grams, lexical, gramOverlap, calibrate, parseLoose, toDays, ago, dcache, dvec, normLockKind, normVisibility, overrides, pendingEmbeds, queryEmbedCache, preps, overlap, canonSlot, VOLATILE, STANDING_KINDS, SETTLED_AT_SUMMARY, recallRuns } from './base';
 import * as MP from '../prompts';
 import { chunkTurnsOf } from './base';
-import { THREAD_KINDS, withDeadline, hasPhrase, splitClosedLine, isEndedValue, ungroundedFigures, recallCooldown, rareQueryWords, rareStrong, strayHidden, pickTranscript, transcriptTerms } from '../craft';
+import { THREAD_KINDS, SECRET_KINDS, withDeadline, hasPhrase, splitClosedLine, isEndedValue, ungroundedFigures, recallCooldown, rareQueryWords, rareStrong, strayHidden, pickTranscript, transcriptTerms } from '../craft';
 import type { TranscriptHit } from '../craft';
 import { prose, clipStr } from './base';
 import { t as tr } from '../../i18n';
 import { THREAD_KIND_NOTE } from '../directives';
 /** 묶음 요약 때 함께 살펴보지만 저절로 닫지는 않는 서약 종류 · 목록에 붙이는 표시 */
-const SOFT_KINDS = ['keep_secret', 'knowledge_gap'], KIND_MARK: Record<string, string> = { keep_secret: ' (secret)', knowledge_gap: ' (gap)', feeling: ' (feeling)' };
+const SOFT_KINDS: readonly string[] = SECRET_KINDS, KIND_MARK: Record<string, string> = { keep_secret: ' (secret)', knowledge_gap: ' (gap)', feeling: ' (feeling)' };
 
 type Chat = ChatM | null | undefined;
 type Progress = (done: number, total: number) => void;

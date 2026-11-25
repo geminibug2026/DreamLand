@@ -1,1 +1,0 @@
-export{y as download}from"./core-D9QNCzOc.js";

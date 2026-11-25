@@ -200,6 +200,7 @@ export function Config({ st }: { st: St }) {
         <Num k="maxPerTurn" label={t('memoria.config.inject.maxPerTurn.label')} title={t('memoria.config.inject.maxPerTurn.title')} min={1} max={30} step={1} />
         <Num k="arcMergeAt" label={t('memoria.config.inject.arcMergeAt.label')} title={t('memoria.config.inject.arcMergeAt.title')} min={3} max={40} step={1} />
         <Num k="threadSleepTurns" label={t('memoria.config.inject.threadSleepTurns.label')} title={t('memoria.config.inject.threadSleepTurns.title')} min={0} max={1000} step={1} />
+        <Num k="pledgeSweepTurns" label={t('memoria.config.inject.pledgeSweepTurns.label')} title={t('memoria.config.inject.pledgeSweepTurns.title')} min={0} max={1000} step={10} />
         <Num k="eraKeep" label={t('memoria.config.inject.eraKeep.label')} title={t('memoria.config.inject.eraKeep.title')} min={3} max={50} step={1} />
         {typeof (m.fossil as unknown) === 'number' ? <Num k="fossil" label={t('memoria.config.inject.fossil.label')} title={t('memoria.config.inject.fossil.title')} min={5} max={1000} step={1} /> : null}</Grid></details>
       <Note><b>{t('memoria.config.inject.note.b1')}</b>{t('memoria.config.inject.note.t1')}<b>{t('memoria.config.inject.note.b2')}</b>{t('memoria.config.inject.note.t2')}</Note>

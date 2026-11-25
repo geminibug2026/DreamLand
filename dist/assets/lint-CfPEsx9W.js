@@ -1,0 +1,1 @@
+export{r as similar}from"./lint-DVywXu3D.js";
