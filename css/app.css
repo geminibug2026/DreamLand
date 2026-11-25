@@ -140,6 +140,11 @@ button.chip:hover { color: var(--text); background: var(--surface2); }
 /* 창 안의 사실 표 (무엇이 얼마나 있는지) */
 .facts { display: grid; gap: 0; margin: 12px 0; border-top: 1px solid var(--ink-line, var(--line)); } .facts > div { display: grid; grid-template-columns: minmax(96px, 34%) minmax(0, 1fr); gap: 10px; padding: 8px 2px; border-bottom: 1px solid var(--ink-line, var(--line)); font-size: .93em; }
 .facts dt { color: var(--dim); } .facts dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; } .facts dd small { font-weight: 400; color: var(--dim); white-space: nowrap; } .facts + p { margin-bottom: 6px; }
+/* 누르면 펼쳐지는 줄과 그 아래 자세히 보기 */
+.facts-tap { cursor: pointer; } .facts-tap:hover, .facts-tap:focus-visible { background: var(--surface2); outline: none; } .facts-more { display: block; margin-top: 3px; font-style: normal; font-weight: 600; font-size: .86em; color: var(--accent); }
+.facts-detail { display: grid; gap: 0; margin: -4px 0 12px; padding: 8px 10px 4px; border: 1px solid var(--ink-line, var(--line)); background: var(--surface2); } .facts-detail > .hint { margin-bottom: 4px; }
+.facts-item { display: grid; grid-template-columns: minmax(84px, 34%) minmax(0, 1fr); gap: 10px; padding: 6px 0; border-top: 1px dashed var(--ink-line, var(--line)); font-size: .9em; } .facts-item.long { grid-template-columns: 1fr; gap: 3px; }
+.facts-item b { font-weight: 600; overflow-wrap: anywhere; } .facts-item span { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--dim); }
 .menu { position: fixed; z-index: 80; min-width: 200px; padding: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); box-shadow: var(--shadow); animation: pop .18s var(--ease); max-height: 70vh; overflow: auto; }
 .menu-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; padding: 7px 12px; border-radius: var(--r-xs); text-align: left; font-size: .94em; }
 .menu-item:hover { background: var(--surface2); } .menu-item.danger { color: var(--bad); } .menu-item small { margin-left: auto; color: var(--faint); font-size: .82em; padding-left: 14px; }

@@ -107,20 +107,32 @@ export function MvuPanel({ chat }: { chat: Chat; msgs: Msg[] }) {
 
 /** 오래 이어진 대화를 처음 열 때: 옛 메시지의 변수를 정리할지 (정리만 · 받아 두고 정리 · 다시 묻지 않기) */
 export function askLegacyCleanup(info: A.LegacyInfo): Promise<'clean' | 'backup' | 'never' | null> {
-  const size = info.size >= 1048576 ? `${(info.size / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(info.size / 1024))}KB`;
-  const shown = info.names.slice(0, 4), more = info.names.length - shown.length;
   return new Promise(res => {
     let done = false; const fin = (v: 'clean' | 'backup' | 'never' | null) => { if (!done) { done = true; res(v); } };
     openModal({ title: t('mvu.legacy.title'), onClose: () => fin(null), actions: [{ label: t('mvu.legacy.never'), onclick: () => fin('never') }, { label: t('mvu.legacy.backup'), onclick: () => fin('backup') }, { label: t('mvu.legacy.clean'), cls: 'primary', onclick: () => fin('clean') }] },
-      () => <>
-        <p>{info.name ? t('mvu.legacy.what', { name: info.name }) : t('mvu.legacy.whatPlain')}</p>
-        <dl className="facts">
-          <div><dt>{t('mvu.legacy.f.held')}</dt><dd>{t('mvu.legacy.f.heldValue', { n: info.held })} <small>{t('mvu.legacy.f.ofTotal', { n: info.total })}</small></dd></div>
-          <div><dt>{t('mvu.legacy.f.size')}</dt><dd>{t('mvu.legacy.f.sizeValue', { size })}</dd></div>
-          {shown.length ? <div><dt>{t('mvu.legacy.f.names')}</dt><dd>{shown.join(' · ')}{more > 0 ? <small>{t('mvu.legacy.f.more', { n: more })}</small> : null}</dd></div> : null}
-        </dl>
-        <p>{t('mvu.legacy.plan', { recent: info.recent, every: info.every, drop: info.drop })}</p>
-        <p className="hint">{t('mvu.legacy.safe')}</p>
-      </>);
+      () => <LegacyBody info={info} />);
   });
+}
+/** 정리 창의 안쪽: 무엇이 얼마나 남아 있는지. "적혀 있는 값" 줄을 누르면 값 하나하나를 펼쳐 보여 준다 */
+function LegacyBody({ info }: { info: A.LegacyInfo }) {
+  const [open, setOpen] = useState(false);
+  const size = info.size >= 1048576 ? `${(info.size / 1048576).toFixed(1)}MB` : `${Math.max(1, Math.round(info.size / 1024))}KB`;
+  const shown = info.names.slice(0, 4), more = info.names.length - shown.length, flip = () => setOpen(o => !o);
+  // 값 한 칸: 글 · 숫자는 그대로, 묶음(목록 · 여러 칸)은 줄을 나눠서
+  const show = (v: unknown) => { const s = v !== null && typeof v === 'object' ? formatVar(v, '') || (Array.isArray(v) ? '[]' : '{}') : v === undefined || v === null || v === '' ? '—' : String(v); return short(s, 1500); };
+  return <>
+    <p>{info.name ? t('mvu.legacy.what', { name: info.name }) : t('mvu.legacy.whatPlain')}</p>
+    <dl className="facts">
+      <div><dt>{t('mvu.legacy.f.held')}</dt><dd>{t('mvu.legacy.f.heldValue', { n: info.held })} <small>{t('mvu.legacy.f.ofTotal', { n: info.total })}</small></dd></div>
+      <div><dt>{t('mvu.legacy.f.size')}</dt><dd>{t('mvu.legacy.f.sizeValue', { size })}</dd></div>
+      {shown.length ? <div className="facts-tap" role="button" tabIndex={0} aria-expanded={open} title={open ? t('mvu.legacy.f.fold') : t('mvu.legacy.f.unfold')} onClick={flip} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } }}>
+        <dt>{t('mvu.legacy.f.names')}</dt><dd>{shown.join(' · ')}{more > 0 ? <small>{t('mvu.legacy.f.more', { n: more })}</small> : null}<em className="facts-more">{open ? t('mvu.legacy.f.fold') : t('mvu.legacy.f.unfold')}</em></dd></div> : null}
+    </dl>
+    {open && info.data ? <div className="facts-detail">
+      <small className="hint">{t('mvu.legacy.detailNote')}</small>
+      {info.names.map(k => { const s = show(info.data![k]); return <div key={k} className={'facts-item' + (s.includes('\n') ? ' long' : '')}><b>{k}</b><span>{s}</span></div>; })}
+    </div> : null}
+    <p>{t('mvu.legacy.plan', { recent: info.recent, every: info.every, drop: info.drop })}</p>
+    <p className="hint">{t('mvu.legacy.safe')}</p>
+  </>;
 }

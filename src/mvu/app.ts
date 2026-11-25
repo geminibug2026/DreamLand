@@ -316,10 +316,10 @@ export function deleted(chat: Chat | null | undefined) {
   restoreTimer = window.setTimeout(() => { const msgs = cur.msgs; if (cur.chat !== chat) return; void enqueue(chat, async () => { const R = await runtime(); if (live(chat, msgs) && await restore(R, chat, msgs)) await commit(chat, msgs); }); }, 2000);
 }
 /** 정리 창에 보여 줄 것: 변수가 적힌 메시지 수 · 차지하는 글자 수 · 어떤 값인지 · 정리하면 몇 개가 지워지는지 (아무것도 바꾸지 않는다) */
-export interface LegacyInfo { name: string; held: number; total: number; size: number; names: string[]; drop: number; recent: number; every: number }
+export interface LegacyInfo { name: string; held: number; total: number; size: number; names: string[]; drop: number; recent: number; every: number; /** 마지막으로 적힌 값 (자세히 보기용 — 읽기만 한다) */ data?: Record<string, unknown> }
 export function legacyInfo(chat: Chat, msgs: Msg[]): LegacyInfo {
   const E = eff(chat), every = Math.max(1, E.snapEvery), end = msgs.length - 1 - E.keepRecent;
-  let held = 0, size = 0, drop = 0, names: string[] = [];
+  let held = 0, size = 0, drop = 0, names: string[] = [], data: Record<string, unknown> | undefined;
   msgs.forEach((m, i) => {
     let has = false, goes = false;
     m.swipes.forEach((_s, k) => {
@@ -327,10 +327,10 @@ export function legacyInfo(chat: Chat, msgs: Msg[]): LegacyInfo {
       has = true; for (const key of KEYS) if (v[key] !== undefined) { try { size += JSON.stringify(v[key]).length; } catch { } }
       if (i >= 1 && i <= end && v.snapshot !== true && i % every !== 0) goes = true;
     });
-    if (has) { held++; const d = varsOf(m)?.stat_data; if (d && typeof d === 'object') names = Object.keys(d as object); }
+    if (has) { held++; const d = varsOf(m)?.stat_data; if (d && typeof d === 'object') { data = d as Record<string, unknown>; names = Object.keys(d as object); } }
     if (goes) drop++;
   });
-  return { name: charsOf(chat)[0]?.name || chat.name || '', held, total: msgs.length, size, names: names.filter(n => !/^[$_]/.test(n)), drop, recent: E.keepRecent, every };
+  return { name: charsOf(chat)[0]?.name || chat.name || '', held, total: msgs.length, size, names: names.filter(n => !/^[$_]/.test(n)), drop, recent: E.keepRecent, every, data };
 }
 /** 옛 대화(오래 이어진 대화)를 처음 열 때 한 번: 정리할지 묻는다 */
 async function legacyCleanup(chat: Chat, msgs: Msg[]): Promise<boolean> {
