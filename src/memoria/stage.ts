@@ -236,6 +236,47 @@ export function pickAddressLines(rows: AddressRow[], present: Set<string>, { min
 }
 
 /* ------------------------------------------------------------
+ * 호칭만으로 부른 사람 — 이름 없이 "형, 오랜만이에요" (모델을 부르지 않는다)
+ *
+ * 오래 안 나온 사람은 이름 대신 호칭으로만 불리며 돌아오곤 한다. 이름이 없으면 장면에 온 줄 모르고, 그 사람의 카드와 관계가 장부에서 빠진다.
+ * 말한 사람의 관계선에 적힌 "부르는 말"로 보아 그 호칭이 꼭 한 사람만 가리킬 때만 그 사람으로 본다 — 같은 호칭으로 부르는 사람이 둘 이상이면 누구인지 알 수 없다.
+ * ------------------------------------------------------------ */
+
+/** 누구인지 가리키지 못하는 부름말 — 호칭 낱말이어도 이것만으로는 사람을 짚지 않는다 */
+const VAGUE_TITLES = new Set(['당신', '자기', '자기야', '바보', '멍청아', '아기', '애기', 'baby', 'babe', 'dear', 'love', 'honey', 'darling', 'sweetheart', 'kid']);
+const isTitleWord = (t: string) => !!t && !VAGUE_TITLES.has(t) && (TITLE_WORDS.has(t) || /^[가-힣]{1,5}님$/.test(t));
+/** 호칭 뒤에 붙을 수 있는 조사 · 부름 꼬리 ("형이" · "형한테" · "형아") */
+const TITLE_TAIL = '(?:에게서|한테서|이라고|께서|에게|한테|이랑|하고|이야|라고|으로|부터|까지|처럼|보다|이|가|은|는|을|를|도|의|와|과|랑|야|아|께|로|만)?';
+
+/** 관계선의 "부르는 말" 한 칸에서 호칭만 골라낸다 — "민준 형" → 형, "선배 / 형" → 선배 · 형. 이름 · 대명사 · 풀어 쓴 설명은 버린다. nameForms: 불리는 사람의 이름들 */
+export function titlesInCalls(calls: unknown, nameForms: string[] = []): string[] {
+    const forms = nameForms.map(lowc).filter(f => f.length >= 2).sort((a, b) => b.length - a.length), out = new Set<string>();
+    for (const raw of String(calls ?? '').split(/[,，、/·|;()（）→]+|\s+(?:or|또는|혹은)\s+/)) {
+        let t = lowc(raw).replace(/^["“”'‘’「」『』\s]+|["“”'‘’「」『』\s.]+$/g, '');
+        const f = forms.find(x => t.startsWith(x));
+        if (f) { t = t.slice(f.length).trim(); if (!isTitleWord(t) && t.startsWith('이')) t = t.slice(1).trim(); }   // "민준 형" · "민준이 형" → 형
+        if (isTitleWord(t)) out.add(t);
+    }
+    return [...out];
+}
+/** 글에 그 호칭이 낱말로 나오는가 — 앞은 글머리나 글자가 아닌 것, 뒤는 문장부호 · 띄어쓰기 · 조사 ("형, " · "형이 " · "선배님!"). "인형" · "형편" 은 아니다 */
+export function saysTitle(text: unknown, title: string): boolean {
+    const t = lowc(title); if (!t) return false;
+    return new RegExp(`(?:^|[^\\p{L}\\p{N}])${esc(t)}${[...t].length >= 2 && !t.endsWith('님') ? '님?' : ''}${TITLE_TAIL}(?![\\p{L}\\p{N}])`, 'u').test(lowc(text));
+}
+/**
+ * 글에 나온 호칭이 가리키는 사람들. bonds: 말한 사람에게서 나가는 관계선 [{ to, calls(부르는 말), forms(그 사람의 다른 이름) }].
+ * 호칭 하나가 두 사람 이상에게 적혀 있으면 고르지 않는다. 반환: [{ to, title }]
+ */
+export function titleTargets(text: unknown, bonds: { to: string; calls: string; forms?: string[] }[]): { to: string; title: string }[] {
+    const by = new Map<string, Map<string, string>>();
+    for (const b of bonds) for (const t of titlesInCalls(b.calls, [b.to, ...(b.forms || [])])) { if (!by.has(t)) by.set(t, new Map()); by.get(t)!.set(lowc(b.to), b.to); }
+    const out: { to: string; title: string }[] = [];
+    for (const [title, tos] of by) if (tos.size === 1 && saysTitle(text, title)) out.push({ to: [...tos.values()][0], title });
+    return out;
+}
+
+/* ------------------------------------------------------------
  * 약속 · 기한 — 작중 시간으로 센다
  *
  * 기한은 { turn: 그 말이 나온 턴, in: 그때부터 며칠 뒤 } 로 둔다. 날짜는 턴마다 흐른 시간(이야기 시계)으로 잰다 —
