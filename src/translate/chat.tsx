@@ -9,6 +9,7 @@ import { langLabel } from './lang';
 import { artOf, busy, cfg, persist, translate, translateMsg } from './logic';
 import { toast } from '../ui';
 import { X } from '../lib/hooks';
+import { esc } from '../lib/core';
 import { chatApi } from '../chat/actions';
 import { t } from '../i18n';
 
@@ -65,27 +66,52 @@ async function quickTranslate(b: HTMLButtonElement) {
 }
 
 // ── 메시지마다 단추 달기 ──
-interface BtnDef { cls: string; d: string; title: string; mark: string; fn: (m: Msg) => void }
-function MsgBtns({ id, list }: { id: string; list: BtnDef[] }) {
-  return <>{list.map(b => <button key={b.cls} type="button" className={`ibtn trx-btn ${b.cls} ${b.mark}`.trim()} title={b.title} aria-label={b.title}
-    onClick={() => { const cur = chatApi.current().msgs.find(x => x.id === id); if (cur) b.fn(cur); }}><PathIcon d={b.d} /></button>)}</>;
+// 단추는 React 뿌리 없이 그대로 만들어 끼운다 (메시지마다 뿌리를 하나씩 세우면 목록을 새로 그릴 때마다 수백 개가 생겨 화면이 멈춘다). 누름은 문서에서 한 번에 받는다
+interface BtnDef { act: 'go' | 're' | 'ed'; d: string; title: string; mark: string }
+const ACTS: Record<BtnDef['act'], (m: Msg) => void> = { go: m => void translateMsg(m), re: m => void translateMsg(m, true), ed: m => editTranslation(m) };
+const btnHtml = (b: BtnDef) => `<button type="button" class="${`ibtn trx-btn trx-${b.act} ${b.mark}`.trim()}" title="${esc(b.title)}" aria-label="${esc(b.title)}" data-trx-act="${b.act}"><svg viewBox="0 0 24 24" width="18" height="18" class="ic"><path d="${b.d}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
+// 같은 꼴의 단추 묶음은 한 번만 만들어 두고 베껴 쓴다 (칸마다 HTML 을 새로 읽으면 메시지 수백 개에서 느리다)
+const btnTpl = new Map<string, HTMLTemplateElement>();
+function btnsOf(list: BtnDef[]): Node {
+  const key = list.map(b => `${b.act}|${b.mark}|${b.title}`).join('\n'); let tp = btnTpl.get(key);
+  if (!tp) { tp = document.createElement('template'); tp.innerHTML = list.map(btnHtml).join(''); if (btnTpl.size > 60) btnTpl.clear(); btnTpl.set(key, tp); }
+  return tp.content.cloneNode(true);
 }
-function decorate() {
-  const c = cfg(), { msgs } = chatApi.current();
+let wired = false;
+function wire() {
+  if (wired) return; wired = true;
+  document.addEventListener('click', e => {
+    const b = e.target instanceof Element ? e.target.closest<HTMLElement>('.trx-btn[data-trx-act]') : null; if (!b) return;
+    const id = b.closest<HTMLElement>('article.msg')?.dataset.id, m = id ? chatApi.current().msgs.find(x => x.id === id) : undefined;
+    if (m) ACTS[b.dataset.trxAct as BtnDef['act']]?.(m);
+  }, true);
+}
+/** 꾸밀 단추 칸. within 이 있으면 그 노드들 안에서만 찾는다 */
+function toolsIn(within?: Iterable<Element>): HTMLElement[] {
+  if (!within) return [...document.querySelectorAll<HTMLElement>('article.msg[data-id] .msg-tools:not([data-trx])')];
+  const out = new Set<HTMLElement>();
+  for (const n of within) { if (!n.isConnected) continue;
+    if (n.matches('.msg-tools:not([data-trx])')) { if (n.closest('article.msg[data-id]')) out.add(n as HTMLElement); }
+    else for (const x of n.querySelectorAll<HTMLElement>('.msg-tools:not([data-trx])')) if (x.closest('article.msg[data-id]')) out.add(x); }
+  return [...out];
+}
+function decorate(within?: Iterable<Element>) {
+  wire();
+  const c = cfg(), { msgs } = chatApi.current(), moreTitle = t('chat.msg.more');
   let byId: Map<string, (typeof msgs)[number]> | null = null;   // 메시지가 수천 개여도 칸마다 처음부터 찾지 않게 (꾸밀 칸이 있을 때만 만든다)
-  for (const tools of document.querySelectorAll<HTMLElement>('article.msg[data-id] .msg-tools:not([data-trx])')) {
+  for (const tools of toolsIn(within)) {
     tools.dataset.trx = '1';
     const art = tools.closest<HTMLElement>('article.msg'); if (!art || art.classList.contains('sys')) continue;
     const m = (byId ||= new Map(msgs.map(x => [x.id, x]))).get(art.dataset.id || ''), s = m?.swipes?.[m.sw]; if (!m || !s) continue;
     const wait = busy.has(m.id) ? 'busy' : '';
     const add: BtnDef[] = [];
-    if (c.btnTranslate !== false) add.push({ cls: 'trx-go', d: GLOBE, title: s.tr ? (s.showTr ? t('chat.msgMenu.original') : t('chat.msgMenu.showTr')) : t('chat.msgMenu.translate'), mark: [wait, s.tr ? (s.showTr ? 'on' : 'has') : ''].filter(Boolean).join(' '), fn: x => void translateMsg(x) });
-    if (c.btnRe !== false) add.push({ cls: 'trx-re', d: SPIRAL, title: t('chat.msgMenu.retranslate'), mark: wait, fn: x => void translateMsg(x, true) });
-    if (c.btnEdit !== false) add.push({ cls: 'trx-ed', d: SHEET, title: t('chat.translate.edit'), mark: s.tr ? '' : 'idle', fn: editTranslation });
+    if (c.btnTranslate !== false) add.push({ act: 'go', d: GLOBE, title: s.tr ? (s.showTr ? t('chat.msgMenu.original') : t('chat.msgMenu.showTr')) : t('chat.msgMenu.translate'), mark: [wait, s.tr ? (s.showTr ? 'on' : 'has') : ''].filter(Boolean).join(' ') });
+    if (c.btnRe !== false) add.push({ act: 're', d: SPIRAL, title: t('chat.msgMenu.retranslate'), mark: wait });
+    if (c.btnEdit !== false) add.push({ act: 'ed', d: SHEET, title: t('chat.translate.edit'), mark: s.tr ? '' : 'idle' });
     if (!add.length) continue;
-    const host = slot(), more = [...tools.children].find(x => (x as HTMLElement).title === t('chat.msg.more'));
+    const host = slot(), more = [...tools.children].find(x => (x as HTMLElement).title === moreTitle);
+    host.append(btnsOf(add));
     if (more) more.before(host); else tools.append(host);
-    createRoot(host).render(<MsgBtns id={m.id} list={add} />);
     if (s.tr && s.showTr) art.classList.add('trx-shown');
   }
   const box = document.querySelector('.composer-box'), have = box?.querySelector('.trx-quick');
@@ -106,9 +132,14 @@ export function redecorate() {
 let queued = false;
 /** 대화 화면이 다시 그려질 때마다 단추를 단다 */
 export function watchChat() {
-  // 다음 그림 때 한 번. 그림이 멈춘 창(뒤에 숨은 탭)에서도 단추가 빠지지 않게 잠깐 뒤에도 한 번 본다
-  const run = () => { if (!queued) return; queued = false; try { decorate(); } catch (e) { console.warn('[번역 단추]', e); } };
+  // 새로 생긴 노드를 모아 두었다가 다음 그림 때 그 안에서만 꾸민다. 그림이 멈춘 창(뒤에 숨은 탭)에서도 단추가 빠지지 않게 잠깐 뒤에도 한 번 본다
+  let fresh = new Set<Element>();
+  const run = () => { if (!queued) return; queued = false; const got = fresh; fresh = new Set(); try { decorate(got); } catch (e) { console.warn('[번역 단추]', e); } };
   // 단추 칸(.msg-tools) · 입력창 틀이 새로 생겼을 때만 (답변이 흘러나오며 본문 글이 바뀔 때마다 문서 전체를 뒤지지 않게)
-  const has = (n: Node) => n.nodeType === 1 && ((n as Element).matches('article.msg, .msg-tools, .composer-box, .send') || !!(n as Element).querySelector('.msg-tools, .composer-box'));
-  new MutationObserver(recs => { if (queued) return; for (const r of recs) for (const n of r.addedNodes) if (has(n)) { queued = true; requestAnimationFrame(run); setTimeout(run, 100); return; } }).observe(document.documentElement, { childList: true, subtree: true });
+  const has = (n: Node): n is Element => n.nodeType === 1 && ((n as Element).matches('article.msg, .msg-tools, .composer-box, .send') || !!(n as Element).querySelector('.msg-tools, .composer-box'));
+  new MutationObserver(recs => {
+    let hit = false;
+    for (const r of recs) for (const n of r.addedNodes) if (has(n)) { fresh.add(n); hit = true; }
+    if (hit && !queued) { queued = true; requestAnimationFrame(run); setTimeout(run, 100); }
+  }).observe(document.documentElement, { childList: true, subtree: true });
 }

@@ -125,7 +125,7 @@
 @keyframes call-dot { 0%, 60%, 100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
 /* 말풍선 아래 작은 도구 줄: ‹ 1/2 › · 다른 답 · 다시 듣기 · 고치기 — 한 덩어리로 붙인다 */
 .call-acts { display: inline-flex; align-items: center; max-width: 100%; padding: 1px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--dim); font-size: .72rem; font-variant-numeric: tabular-nums; }
-.call-acts > * + * { border-left: 1px solid var(--line); }
+.call-acts > :where(:not(:first-child)) { border-left: 1px solid var(--line); }
 .call-alt { display: inline-flex; align-items: center; }
 .call-alt > span { min-width: 2.2em; text-align: center; }
 .call-acts button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 30px; min-width: 32px; padding: 0 9px; background: none; border: 0; border-radius: 999px; color: var(--dim); font: inherit; cursor: pointer; }

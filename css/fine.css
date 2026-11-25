@@ -61,8 +61,8 @@
 .fx-kv > i { flex: 1; min-width: 14px; border-bottom: 1px dotted var(--line-2); transform: translateY(-3px); }
 .fx-kv > b { font: 400 12.5px var(--fx-mono); font-variant-numeric: tabular-nums; }
 /* 줄 목록: 사이에만 선 */
-.fx-rows > * + * { border-top: 1px solid var(--line-3); }
-.fx-rows.dash > * + * { border-top-style: dashed; }
+.fx-rows > :where(:not(:first-child)) { border-top: 1px solid var(--line-3); }
+.fx-rows.dash > :where(:not(:first-child)) { border-top-style: dashed; }
 
 /* ── 계기 ── 가는 궤도 · 조금 굵은 채움 · 끝의 고리. --p 는 0~1 */
 .fx-meter { --p: 0; position: relative; height: 9px; background: linear-gradient(var(--line-3) 0 0) 0 50% / 100% 1px no-repeat; }

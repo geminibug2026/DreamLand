@@ -1,6 +1,6 @@
 // ── Dreamland format: 마크다운 + RP 말풍선 렌더러 + HTML 정화 ──
 import { esc, S } from './core';
-import { t as tr } from '../i18n';
+import { t as tr, getLang } from '../i18n';
 import { Server } from './server';
 
 const BAD_TAGS = new Set(['script', 'iframe', 'object', 'embed', 'link', 'meta', 'base', 'form', 'input', 'button', 'textarea', 'select', 'frame', 'frameset', 'applet', 'title', 'head', 'html', 'body', 'noscript', 'noembed', 'noframes', 'xmp', 'plaintext', 'template', 'math', 'portal']);
@@ -245,4 +245,21 @@ export function render(text: unknown, { bubbles = true, style, prose = true }: R
     html += paragraph(line, style); i++;
   }
   return sanitize(html);
+}
+
+// 다 쓴 글의 화면 꼴을 기억해 둔다: 같은 글 · 같은 모양이면 마크다운 풀이와 정화를 다시 하지 않는다
+// (모드를 오가거나 목록을 새로 그릴 때마다 그려 둔 메시지 100개를 처음부터 꾸미지 않게). 받는 중인 글은 매번 달라지니 넣지 않는다
+const kept = new Map<string, string>(); let keptSize = 0;
+const KEEP_MAX = 600, KEEP_CHARS = 3_000_000;
+export function renderKept(text: unknown, opts: RenderOpts = {}): string {
+  if (!text) return '';
+  const src = String(text);
+  if (src.length > 60_000) return render(src, opts);   // 그림을 통째로 품은 아주 큰 글은 기억하지 않는다 (자리만 차지한다)
+  const key = `${opts.style || (opts.bubbles === false ? 'plain' : 'bubbles')}|${opts.prose === false ? 0 : 1}${blockRemote() ? 1 : 0}${noFrames() ? 1 : 0}|${getLang()}|${src}`;
+  const hit = kept.get(key);
+  if (hit !== undefined) { kept.delete(key); kept.set(key, hit); return hit; }   // 방금 쓴 것을 맨 뒤로 (오래 안 쓴 것부터 버린다)
+  const html = render(src, opts);
+  kept.set(key, html); keptSize += key.length + html.length;
+  for (const [k, v] of kept) { if (kept.size <= KEEP_MAX && keptSize <= KEEP_CHARS) break; kept.delete(k); keptSize -= k.length + v.length; }
+  return html;
 }

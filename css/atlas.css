@@ -114,7 +114,7 @@
 .at-rmeta { display: grid; justify-items: end; gap: 4px; font-size: 11.5px; white-space: nowrap; }
 .at-rmeta .fx-pips i { width: 6px; height: 6px; }
 /* 넓은 자리에서는 도판 옆에 목록을 둔다 */
-@container at (min-width: 1040px) { .at-lower .at-rows { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; } .at-lower .at-rows > * + * { border-top: 0; } .at-lower .at-rows > * { border-bottom: 1px solid var(--line-3); } }
+@container at (min-width: 1040px) { .at-lower .at-rows { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; } .at-lower .at-rows > :where(:not(:first-child)) { border-top: 0; } .at-lower .at-rows > * { border-bottom: 1px solid var(--line-3); } }
 
 .at-side { display: grid; gap: 12px; min-width: 0; } .at-side h3 { margin: 6px 0 0; }
 .at-big { display: flex; align-items: baseline; gap: 8px; } .at-big b { font: 300 46px/1 var(--fx-mono); letter-spacing: -.02em; } .at-big .fx-lbl { margin-left: auto; }

@@ -18,7 +18,7 @@ import { Assets } from '../lib/assets';
 import { Memory } from '../lib/memory';
 import { Illust, translateText } from '../lib/illust';
 import { Clock } from '../lib/clock';
-import { render } from '../lib/format';
+import { render, renderKept } from '../lib/format';
 import { t, getLang, fmtDate, has as hasKey } from '../i18n';
 import { COMMANDS as ST_COMMANDS } from '../stscript/run';
 import '../stscript/commands';
@@ -174,7 +174,8 @@ export function pinBottom(ms = 1400) {
   // 바로 앞에서 '고친 메시지의 자리 지키기'가 예약해 둔 되돌림(다음 프레임 · 80ms 뒤)보다 나중에 한 번 더 내려간다
   requestAnimationFrame(down); setTimeout(down, 120); setTimeout(down, 300);
 }
-export function drawMain({ lazy = false } = {}) {
+/** 대화 화면을 새로 그리고 맨 아래로 간다. 보이는 끝부분부터 그리고 위쪽은 틈나는 대로 잇는다 (모드를 바꾸거나 배경 · 등장인물을 고칠 때 수십 개를 한 번에 그리느라 화면이 멈추지 않게) */
+export function drawMain({ lazy = true } = {}) {
   // 등장인물이 바뀌었으면(초대 등) 새로 온 사람의 초상도 통째로 올려 둔다
   const c0 = cur.chat; if (c0 && c0.charIds.some(id => isAvTok(S.get('chars', id)?.avatar))) void S.holdAvatars(c0.charIds).then(() => { if (cur.chat === c0) bump('top', 'dossier'); }).catch(() => { });
   bump('main', 'top', 'hud', 'composer', 'dossier');
@@ -195,9 +196,11 @@ export function shownText(m: Msg) {
   const text = runFilters(applyRegex(raw, { who: m.role === 'user' ? 'user' : 'ai', target: 'display', depth, charId: m.charId, chat: cur.chat }), { role: m.role, msg: m, chat: cur.chat });
   return Illust.strip(text);
 }
-export function bodyHtml(m: Msg) {
+/** 메시지 본문 HTML. keep: 다 쓴 글이면 꾸민 결과를 기억해 두었다 다시 쓴다 (받는 중인 글은 매번 달라지니 켜지 않는다) */
+export function bodyHtml(m: Msg, keep = false) {
   const style = m.role === 'system' ? 'plain' : modeOf(cur.chat) === 'talk' && !m.scene ? 'chat' : S.settings.rpBubbles ? 'bubbles' : 'novel';
-  return render(Assets.inline(Assets.expand(shownText(m), assetOwners(), `${m.id}:${m.sw}`), assetOwners()), { style, prose: m.role !== 'user' });
+  const owners = assetOwners();
+  return (keep ? renderKept : render)(Assets.inline(Assets.expand(shownText(m), owners, `${m.id}:${m.sw}`), owners), { style, prose: m.role !== 'user' });
 }
 /** 메시지 옆에 적는 시각: 이야기 시계를 쓰는 방은 이야기 시각, 시각을 쓰지 않는 방은 비움 */
 export const msgClock = (m: Msg, s: Swipe) => { const k = Clock.mode(cur.chat); return k === 'none' ? '' : k === 'story' ? fmtTime(Clock.timeOf(cur.chat, m)) : fmtTime(s.ts || m.ts); };
@@ -207,7 +210,7 @@ export function fillLate(had: { assets: boolean; illust: boolean }, owners: stri
   const fillAssets = !had.assets && Assets.count(owners) > 0;
   for (let i = cur.head; i < cur.msgs.length; i++) {
     const m = cur.msgs[i], s = m.swipes[m.sw]; if (!s || (m.role === 'system' && (m.dice || m.curtain))) continue;
-    if (!((!had.illust && s.illust?.length) || (fillAssets && bodyHtml(m).includes('asset-frame')))) continue;
+    if (!((!had.illust && s.illust?.length) || (fillAssets && bodyHtml(m, true).includes('asset-frame')))) continue;
     cur.revs.set(m.id, (cur.revs.get(m.id) || 0) + 1);
   }
   flush('msgs'); drawHud(); drawDossier(); if (cur.drawer) drawDrawer();
@@ -665,8 +668,11 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
 
   let acc = '', raf = 0, apiThink = false, bodyEl: Element | null = null, reasonLen = -1;
   const talkStagger = !!built.talk && S.settings.modes.stagger !== false && type !== 'continue';
+  // 느린 기기에서는 받는 글을 그릴 때마다 한 화면이 넘게 걸린다. 그리는 데 걸린 시간을 재서, 오래 걸리면 그만큼 띄엄띄엄 그린다 (스크롤 · 누름이 끼어들 틈을 남긴다). 빠른 기기는 그대로 매 화면 그린다
+  let paintAt = 0, paintMs = 0, paintTm = 0;
   const paint = () => {   // 이 메시지 하나만 고친다
     raf = 0; if (!target) return;
+    const began = paintAt = performance.now(); requestAnimationFrame(() => { paintMs = performance.now() - began; });   // 다음 화면이 시작될 때까지 = 꾸미기 + 배치 + 그리기
     const html = (talkStagger ? '' : bodyHtml(target)) || TYPING;
     cur.paint.set(target.id, html);
     // 본문만 바뀌었으면 React 를 거치지 않고 그 자리의 글만 바꾼다 (생각 글이 늘었거나 아직 그리지 않았으면 메시지를 다시 그린다)
@@ -679,7 +685,12 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
     if (inVars !== varsNote) { varsNote = inVars; setStatus(inVars ? t('chat.status.vars') : ''); }
   };
   let varsNote = false;
-  const schedule = () => { if (!raf) raf = requestAnimationFrame(paint); };
+  const schedule = () => {
+    if (raf || paintTm) return;
+    const wait = paintMs > 40 ? paintAt + Math.min(300, paintMs * 2) - performance.now() : 0;
+    if (wait > 8) paintTm = window.setTimeout(() => { paintTm = 0; if (!raf) raf = requestAnimationFrame(paint); }, wait);
+    else raf = requestAnimationFrame(paint);
+  };
   const abort = cur.abort = new AbortController(); setBusy(true); cur.gen = { chat, msgs }; try { paint(); } catch (e) { console.warn(e); } emit('generate:start', { chat, type });
   if (built.talk && pres && mo('presenceDelay') && type === 'normal' && !opt.proactive && !opt.chime) {
     // 상태에 따라 답장이 늦게 온다. 내가 이름을 불렀으면 서둘러 본다
@@ -700,7 +711,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
   } catch (e) {
     if (!(e instanceof Error && e.name === 'AbortError')) { console.error(e); toast(errMsg(e), 'err'); }
   } finally {
-    if (raf) cancelAnimationFrame(raf);
+    if (raf) cancelAnimationFrame(raf); clearTimeout(paintTm);
     // 답변이 끝날 때 맨 아래를 보고 있었는지 (끝난 뒤 붙는 버튼 줄 · 한 줄씩 뜨는 말풍선까지 따라 내려간다).
     // 자동 스크롤을 꺼 두었어도, 맨 아래에서 시작했고 위로 올려 보지 않았으며 답변이 한 화면에 다 들어오면 끝까지 내려간다 (넘기기가 화면 밖에 걸리지 않게)
     const scEnd = ui.scroll, elEnd = target && ui.msgs?.querySelector<HTMLElement>(`article.msg[data-id="${CSS.escape(target.id)}"]`);

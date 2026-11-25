@@ -19,7 +19,7 @@
 .gd-u { display: grid; gap: 5px; padding-left: 11px; border-left: 1px solid var(--line-1); } .gd-u p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.6; }
 .gd-refs { display: flex; flex-wrap: wrap; gap: 5px; } .gd-refs .fx-pill { height: 22px; font-size: 11px; gap: 5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; } .gd-refs button.fx-pill:hover { border-color: var(--line-1); }
 .gd-a { min-width: 0; } .gd-a.live { min-height: 20px; }
-.gd-md { font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; } .gd-md > * { margin: 0; } .gd-md > * + * { margin-top: .7em; }
+.gd-md { font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; } .gd-md > * { margin: 0; } .gd-md > :where(:not(:first-child)) { margin-top: .7em; }
 .gd-md h4 { font: 500 15px/1.4 var(--fx-serif); letter-spacing: .03em; } .gd-md ul, .gd-md ol { padding-left: 1.25em; display: grid; gap: .25em; } .gd-md li::marker { color: var(--dim); font-family: var(--fx-mono); font-size: .85em; }
 .gd-md code { font: 400 .88em var(--fx-mono); padding: 1px 4px; border: 1px solid var(--line-3); border-radius: 2px; } .gd-md pre { font: 400 12px/1.55 var(--fx-mono); padding: 10px 12px; border: 1px solid var(--line-3); border-radius: 2px; overflow-x: auto; white-space: pre-wrap; }
 .gd-code { position: relative; } .gd-code pre { padding-right: 38px !important; margin: 0; } .gd-ccopy { position: absolute; top: 5px; right: 5px; width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid var(--line-3); border-radius: 3px; background: var(--surface); color: var(--dim); } .gd-ccopy:hover { color: var(--fx-ink); border-color: var(--line-1); }

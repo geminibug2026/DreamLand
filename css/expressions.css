@@ -65,7 +65,7 @@
 .exs-tabs button + button { border-left: 1px solid var(--ink); }
 .exs-tabs button:hover { color: var(--text); } .exs-tabs button.on { background: var(--ink); color: var(--bg); }
 .exs-stack { display: flex; flex-direction: column; gap: 14px; }
-.card.exs-card { display: flex; flex-direction: column; gap: 24px; } .card.exs-card > * + * { margin-top: 0; }
+.card.exs-card { display: flex; flex-direction: column; gap: 24px; } .card.exs-card > :where(:not(:first-child)) { margin-top: 0; }
 .exs-sec { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .exs-sec-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .exs-sec-head > div:first-child { flex: 1 1 260px; min-width: 0; }

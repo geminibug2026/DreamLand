@@ -230,7 +230,7 @@
 
 /* 목록 항목 · 카드 간격 · 페르소나 연결 */
 .lib-text { display: flex; flex-direction: column; min-width: 0; flex: 1; } .lib-item.has-thumb { flex-direction: row; align-items: center; gap: 11px; }
-.card > * + * { margin-top: 14px; } .card > .row.wrap { row-gap: 10px; } .ext-list { margin-top: 4px; }
+.card > :where(:not(:first-child)) { margin-top: 14px; } .card > .row.wrap { row-gap: 10px; } .ext-list { margin-top: 4px; }
 .sheet-pane .row > .ibtn { border: 1px solid var(--ink); color: var(--text); width: 38px; height: 38px; }
 .links { display: flex; flex-direction: column; } .link-row { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: start; padding-top: 12px; border-top: 1px solid var(--line); }
 .link-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; } .chip.with-av { display: inline-flex; align-items: center; gap: 6px; padding-left: 5px; } .chip.with-av small { opacity: .6; font-size: .8em; }
@@ -403,7 +403,7 @@ button.top-room:hover { text-decoration: underline dotted; text-underline-offset
 
 /* 긴 대화: 화면 밖 메시지는 배치 · 그리기를 건너뛴다 (본 적 있는 높이는 기억해 자리를 지킨다). 메시지가 수천 개여도 입력 · 스크롤이 무겁지 않게 */
 .msgs > article.msg, .msgs > .msg { content-visibility: auto; contain-intrinsic-size: auto 260px; }
-.msgs > article.msg:last-of-type, .msgs > article.msg.streaming, .msgs > article.msg:focus-within, .msgs > article.msg:hover, .msgs > article.msg.picked { content-visibility: visible; }   /* 떠오르는 도구 상자가 메시지 밖으로 나오므로, 보고 있는 메시지는 잘라 그리지 않는다 */
+.msgs > article.msg.is-last, .msgs > article.msg.streaming, .msgs > article.msg:focus-within, .msgs > article.msg:hover, .msgs > article.msg.picked { content-visibility: visible; }   /* 떠오르는 도구 상자가 메시지 밖으로 나오므로, 보고 있는 메시지는 잘라 그리지 않는다 */
 
 /* Cloudflare 중계 안내 */
 .cf-guide { gap: 12px; } .cf-steps { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 8px; line-height: 1.6; }

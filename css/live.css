@@ -77,7 +77,7 @@ button.hud-cell { text-align: left; cursor: pointer; } button.hud-cell:hover { b
 .hud-k { display: flex; align-items: center; gap: 4px; } .hud-k .ic, .pcard-k .ic { flex: none; color: var(--text); }
 .hud-cell.locked .hud-v { text-decoration: underline dotted var(--faint); text-underline-offset: 3px; }
 .hud-none { align-self: center; padding: 0 14px; font-size: .8em; color: var(--faint); white-space: nowrap; }
-.hud-side { flex: none; display: flex; align-items: stretch; border-left: 1px solid var(--ink-line); } .hud-side > * + * { border-left: 1px solid var(--line); } .hud-side .hud-edit { border-left: 1px solid var(--line); }
+.hud-side { flex: none; display: flex; align-items: stretch; border-left: 1px solid var(--ink-line); } .hud-side > :where(:not(:first-child)) { border-left: 1px solid var(--line); } .hud-side .hud-edit { border-left: 1px solid var(--line); }
 .hud-nav { display: flex; align-items: stretch; } .hud-nav button { display: flex; align-items: center; gap: 4px; padding: 0 7px; color: var(--dim); } .hud-nav button:hover:not(:disabled) { background: var(--ink); color: var(--bg); } .hud-nav button:disabled { opacity: .3; cursor: default; }
 .hud-when { font: 700 .72em var(--display); letter-spacing: .06em; min-width: 46px; justify-content: center; } .hud-when small { font-weight: 500; opacity: .7; }
 .hud-people { display: flex; align-items: center; gap: 5px; padding: 0 10px; font: 600 .72em var(--display); letter-spacing: .04em; color: var(--dim); white-space: nowrap; } .hud-people i { font-style: normal; color: var(--accent); } .hud-people:hover, .hud-people.on { color: var(--text); background: var(--surface2); }
