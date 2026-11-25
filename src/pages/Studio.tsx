@@ -14,7 +14,7 @@ interface StudioSettings { illust: { backend: string } }
 
 // 화면을 떠났다 돌아와도 남는 탭
 let tab = '번역';
-const TAB_ORDER = ['번역', '삽화', '에셋', '보조 연결', '일정', '표정', '벡터 검색', '장기기억'];
+const TAB_ORDER = ['번역', '장기기억', '삽화', '에셋', '보조 연결', '일정', '표정', '벡터 검색'];   // 자주 여는 장기기억은 번역 바로 뒤
 
 export const page = { name: 'studio', Component: Studio };
 
