@@ -1,7 +1,7 @@
 // ── Dreamland boot: 시작 절차 · 내비게이션 목록 · 빠른 이동 단축키 ── (옛 js/boot.js 의 화면 밖 부분)
 // start(shell) 로 시작한다. 옆 내비 · 빠른 이동 · 화면 등록은 React 판(src/Shell.tsx · src/main.tsx)이 shell 로 건넨다
 // 기능은 src/features/*.tsx 가 shell.pages 안에서 등록한다
-import { S, h, on, Vault, Secrets, debounce } from './core';
+import { S, h, on, Vault, Secrets, debounce, isNetFail } from './core';
 import { PROVIDERS } from './engine';
 import { go, route } from './router';
 import { applyTheme, initFx } from './theme';
@@ -32,7 +32,15 @@ function unlockPrompt() {
 }
 
 addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); palette(); } });
-addEventListener('unhandledrejection', e => { console.error(e.reason); toast(String(e.reason?.message || e.reason).slice(0, 200), 'err'); });
+// 아무도 기다리지 않은 실패. 멈춘 요청은 알리지 않고, 뒤에서 돌던 요청이 네트워크 때문에 실패한 것은 빨간 오류가 아니라 보통 알림으로 한 번만 (같은 글은 30초에 한 번)
+const toldAt = new Map<string, number>();
+addEventListener('unhandledrejection', e => {
+  const r = e.reason as { name?: string; message?: string } | null; console.error(r);
+  if (r?.name === 'AbortError') return;
+  const msg = String(r?.message || r).slice(0, 240), now = Date.now(); if (now - (toldAt.get(msg) || 0) < 30000) return;
+  if (toldAt.size > 50) toldAt.clear(); toldAt.set(msg, now);
+  toast(msg, isNetFail(r) ? '' : 'err');
+});
 
 export async function start(opts: Shell = {}) {
   shell = opts;

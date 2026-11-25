@@ -361,8 +361,21 @@ if (typeof window !== 'undefined' && !window.__dlFetch) {
         if (SEC_RE.test(input) || SEC_RE.test(JSON.stringify(hs)) || (body && SEC_RE.test(body))) return Server.proxy({ url: input, method: init.method || 'GET', headers: hs, body }, init.signal);
       }
     } catch { }
-    return raw(input, init);
+    return raw(input, init).catch((e: unknown) => { throw netError(e, input); });
   };
+}
+/** 브라우저가 요청을 아예 못 보냈을 때의 오류인지 (크롬 'Failed to fetch' · 사파리 'Load failed' · 파이어폭스 'NetworkError…') */
+export const isNetFail = (e: unknown) => { const x = e as { name?: string; message?: string; net?: boolean } | null; return !!x && (x.net === true || (x.name === 'TypeError' && /^(Failed to fetch|Load failed|NetworkError|network error|The network connection was lost)/i.test(String(x.message || '')))); };
+/** 'Failed to fetch' 같은 브라우저 문구만으로는 무엇이 안 됐는지 알 수 없다. 어디에 닿지 못했는지와 해 볼 일을 적은 오류로 바꾼다.
+ *  원래 문구는 끝의 괄호와 raw 에 남긴다 (문구로 가리는 옛 코드가 그대로 돌게). 멈춘 요청(AbortError)과 그 밖의 오류는 그대로 둔다 */
+function netError(e: unknown, input: RequestInfo | URL): unknown {
+  if (!isNetFail(e) || (e as { net?: boolean }).net) return e;
+  const rawMsg = String((e as Error).message || ''), url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url || '';
+  let host = ''; try { host = new URL(url, location.href).host; } catch { /* 주소를 못 읽으면 비운다 */ }
+  const mine = Server.isApi(url) || (!!host && host === location.host);
+  const msg = typeof navigator !== 'undefined' && navigator.onLine === false ? tr('core.net.offline', { raw: rawMsg })
+    : mine ? tr('core.net.server', { raw: rawMsg }) : tr('core.net.host', { host: host || url.slice(0, 60), raw: rawMsg });
+  return Object.assign(new TypeError(msg), { net: true, raw: rawMsg, host, cause: e });
 }
 
 // ── 금고: 암호를 걸면 API 키·서비스 계정·NovelAI 키를 암호화해서 저장한다 ──

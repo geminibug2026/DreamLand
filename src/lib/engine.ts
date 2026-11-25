@@ -1093,7 +1093,7 @@ async function callOnce(conn: Conn, url: string, { method = 'POST', headers = {}
   } catch (e) {
     if (errName(e) === 'AbortError') throw e;
     if (!conn.proxy && !(conn.via || '').trim()) { try { res = await Server.proxy({ url, method, headers, body }, signal); } catch (e2) { if (errName(e2) === 'AbortError') throw e2; res = null; } }
-    if (!res) throw Object.assign(new Error(tr(Server.web && !Server.app ? 'engine.err.connectWeb' : 'engine.err.connect', { why: errMsg(e) })), { net: true });   // net · status: 대체 연결로 넘길지 가리는 꼬리표 (src/reach/fallback.ts)
+    if (!res) throw Object.assign(new Error(tr(Server.web && !Server.app ? 'engine.err.connectWeb' : 'engine.err.connect', { why: (e as { raw?: string }).raw || errMsg(e) })), { net: true });   // net · status: 대체 연결로 넘길지 가리는 꼬리표 (src/reach/fallback.ts)
   }
   const r = res as Response;
   if (!r.ok) {
@@ -1113,7 +1113,10 @@ async function callOnce(conn: Conn, url: string, { method = 'POST', headers = {}
 async function* sse(res: Response): AsyncGenerator<unknown> {
   const reader = (res.body as ReadableStream<Uint8Array>).getReader(); const dec = new TextDecoder(); let buf = '';
   for (;;) {
-    const { done, value } = await reader.read();
+    let step: ReadableStreamReadResult<Uint8Array>;
+    // 받는 도중에 연결이 끊기면 브라우저는 'network error' 라고만 한다. 무슨 일인지 적어서 알린다 (멈춘 것은 그대로)
+    try { step = await reader.read(); } catch (e) { if (errName(e) === 'AbortError') throw e; throw new Error(tr('engine.err.cut', { why: String(errMsg(e) || e) })); }
+    const { done, value } = step;
     if (done) break;
     buf += dec.decode(value, { stream: true });
     let i;
