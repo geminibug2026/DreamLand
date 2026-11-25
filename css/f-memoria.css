@@ -74,6 +74,10 @@
 /* 작은 부품 */
 .mm-chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
 .mm-chip { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border: 1px solid var(--ink-line, var(--line)); background: var(--surface); font-size: .76em; color: var(--dim); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; } .mm-chip small { color: var(--faint); font-variant-numeric: tabular-nums; }
+/* 긴 글이 든 칩은 잘라내지 않고 줄을 바꾼다 (짧은 칩은 그대로 한 줄) */
+.mm-chips > .mm-chip, .mm-bond-hop > .mm-chip { white-space: normal; overflow-wrap: anywhere; text-align: left; min-width: 0; } .mm-chip > svg, .mm-chip > .ic { flex: none; }
+.mm-bond-hop { display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; max-width: 100%; }
+.mm-tag.free { display: inline-block; max-width: 100%; white-space: normal; overflow-wrap: anywhere; vertical-align: baseline; }
 .mm-chip.ent { color: var(--text); border-color: var(--ink, var(--text)); } .mm-chip.hint { border-style: dashed; } .mm-chip.trig, .mm-chip.rel { color: var(--text); border-color: color-mix(in srgb, var(--accent) 60%, transparent); } .mm-chip.rel .ic { color: var(--accent); }
 .mm-chip.add { border-color: var(--ok); color: var(--ok); } .mm-chip.del { border-color: var(--bad); color: var(--bad); } .mm-chip.chg { border-color: var(--accent); color: var(--accent); }
 .mm-kind { font-style: normal; font-size: .74em; font-weight: 700; padding: 1px 8px; border: 1px solid var(--ink, var(--text)); white-space: nowrap; letter-spacing: .02em; }
@@ -373,7 +377,7 @@
 .mm-pp-sec { display: flex; flex-direction: column; min-width: 0; }
 .mm-pp-h { display: flex; align-items: center; gap: 6px; min-height: 40px; } .mm-pp-h .fx-head { flex: 1; } .mm-pp-h h4 { font: 600 15.5px/1.3 var(--fx-serif); letter-spacing: .04em; white-space: nowrap; } .mm-pp-h .fx-head > b { font-size: 12px; font-weight: 400; color: var(--dim); }
 .mm-pp-kv { display: grid; grid-template-columns: 78px minmax(0, 1fr) auto; align-items: baseline; gap: 10px; min-height: 40px; padding: 7px 0 7px 2px; font-size: .9em; } .mm-pp-kv + .mm-pp-kv { border-top: 1px solid var(--line-3); }
-.mm-pp-kv > .fx-lbl { display: inline-flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .mm-pp-kv > .ibtn { align-self: center; }
+.mm-pp-kv > .fx-lbl { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow-wrap: anywhere; } .mm-pp-kv > .fx-lbl > svg { flex: none; } .mm-pp-kv > .ibtn { align-self: center; }
 .mm-pp-val { min-width: 0; line-height: 1.6; overflow-wrap: anywhere; } .mm-pp-val small { color: var(--faint); font-size: 11px; } .mm-pp-kv.empty .mm-pp-val { color: var(--faint); } .mm-pp-kv.belief .mm-pp-val { font-style: italic; }
 .mm-pp-lines { display: flex; flex-direction: column; gap: 3px; } .mm-pp-lines q { font-family: var(--fx-serif); quotes: "“" "”"; } .mm-pp-lines q.pin { text-decoration: underline dotted var(--line-2); text-underline-offset: 4px; }
 .mm-pp-row { display: flex; align-items: center; gap: 2px; padding: 8px 0 8px 2px; font-size: .9em; } .mm-pp-row + .mm-pp-row, .mm-pp-sub + .mm-pp-row { border-top: 1px solid var(--line-3); } .mm-pp-row.off { opacity: .55; } .mm-pp-row.done .mm-pp-main > p { text-decoration: line-through; opacity: .6; }

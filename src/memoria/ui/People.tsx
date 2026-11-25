@@ -56,7 +56,7 @@ function Person({ st, row }: { st: StOpen; row: PersonRow }) {
     const rows = page.now.filter(x => x.kind === kind);
     if (!rows.length) return kind === 'other' ? [] : [<div key={kind} className="mm-pp-kv empty"><span className="fx-lbl kr">{t(NOW_LABEL[kind])}</span><span className="mm-pp-val">—</span><Ib name="plus" title={t('memoria.world.status.add')} onClick={() => addStatus(kind)} /></div>];
     return rows.map(({ row: s }) => <div key={s.id} className={`mm-pp-kv${s.claim === 'belief' ? ' belief' : ''}`}><span className="fx-lbl kr" title={s.slot}>{kind === 'other' ? s.slot : t(NOW_LABEL[kind])}</span>
-      <span className="mm-pp-val"><Tr>{s.value}</Tr>{s.claim === 'belief' ? <em className="mm-tag dash">{`${t('memoria.world.status.belief')}${s.owner ? ':' + s.owner : ''}`}</em> : null}{s.turn != null ? <small className="fx-num">{` t${s.turn + 1}`}</small> : null}</span>
+      <span className="mm-pp-val"><Tr>{s.value}</Tr>{s.claim === 'belief' ? <em className="mm-tag dash free">{`${t('memoria.world.status.belief')}${s.owner ? ':' + s.owner : ''}`}</em> : null}{s.turn != null ? <small className="fx-num">{` t${s.turn + 1}`}</small> : null}</span>
       <Ib name="edit" title={t('common.edit')} onClick={() => editStatusBox(st, s)} /></div>);
   });
 
