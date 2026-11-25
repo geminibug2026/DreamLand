@@ -6,6 +6,8 @@ import { unzip } from './assets';
 import { parseLoose } from './memory';
 import * as SB from '../scenebook/prompts';
 import { orientation, sizeFor, LOOKS, withLook, parsePlanText } from '../scenebook/framing';
+import { bucketFromPadded } from '../scenebook/refimg';
+import { leadingKind, sceneHint, withoutTitle, writingRule } from '../scenebook/tagrules';
 import { t } from '../i18n';
 import { dataToBlob } from './blobUrl';
 import { Server } from './server';
@@ -46,8 +48,10 @@ export type CompiledChar = IllustDraftChar;
 export type Compiled = IllustDraft;
 export type Version = IllustVersion;
 export type Slot = IllustItem;
-export interface AssetRec { id: string; owner?: string; kind?: string; name?: string; data: string; width?: number; height?: number; vibes?: Record<string, string>; review?: unknown; scene?: Bag; config?: Bag | null; seed?: number; ts?: number; title?: string; prompt?: string; [k: string]: unknown }
-export interface Ref { id: string; kind: 'vibe' | 'precise' | string; mode?: string; strength?: number; fidelity?: number; information?: number }
+export interface AssetRec { id: string; owner?: string; kind?: string; name?: string; data: string; width?: number; height?: number; vibes?: Record<string, string>; /** V5 용 참조 사본 (dataURL) */ v5?: string; review?: unknown; scene?: Bag; config?: Bag | null; seed?: number; ts?: number; title?: string; prompt?: string; [k: string]: unknown }
+export interface Ref { id: string; kind: 'vibe' | 'precise' | string; mode?: string; strength?: number; fidelity?: number; information?: number; /** 참조 그림의 옷차림도 따라 그린다 (V5 의 인물 참조) */ sameOutfit?: boolean }
+/** 모델 계열이 받는 참조: Vibe 가능 여부 · 한 장에 실을 Precise 수 · 합계 · 의상 참조 · 충실도 조절 · 강도 상한 · V5 용 사본을 쓰는지 */
+export interface RefSupport { vibe: boolean; precise: number; total: number; outfit: boolean; fidelity: boolean; strengthMax: number; bucket: boolean }
 /** 삽화 설정 (core 기본값 + ILLUST_EXTRA) */
 export interface IllustCfg {
   auto?: boolean; automatic?: string | null; mode?: string; every?: number; maxScenes?: number; backend: string; naiKey?: string; connId?: string; a1111?: string; model: string; imgModel?: string;
@@ -82,12 +86,54 @@ export const LEAN_PROMPT = SB.LEAN_INJECTION_PROMPT;
 export const ANALYSIS_PROMPT = SB.DEFAULT_ANALYSIS_PROMPT;
 /** 저장한 지시문이 아직 JSON 을 요구하면 JSON 규칙을, 아니면 짧은 줄 단위 규칙을 붙인다 */
 export const usesJsonPlan = (template?: string | null) => /"scenes"\s*:/.test(template ?? '');
-export const MODELS: Readonly<Record<string, { label: string; family: number; characters: number; references: boolean }>> = Object.freeze({
-  'nai-diffusion-5-full': { label: 'V5 Full', family: 5, characters: 32, references: false },
-  'nai-diffusion-5-curated': { label: 'V5 Curated', family: 5, characters: 32, references: false },
-  'nai-diffusion-4-5-full': { label: 'V4.5 Full', family: 4.5, characters: 6, references: true },
-  'nai-diffusion-4-5-curated': { label: 'V4.5 Curated', family: 4.5, characters: 6, references: true },
+// V5 는 Precise Reference 만: 여러 장 · 의상 유형 · 강도 5 까지 · 충실도 조절 없음. V4.5 는 분위기(Vibe)와 Precise 한 장
+const REF_V5: RefSupport = Object.freeze({ vibe: false, precise: 8, total: 8, outfit: true, fidelity: false, strengthMax: 5, bucket: true });
+const REF_V45: RefSupport = Object.freeze({ vibe: true, precise: 1, total: 4, outfit: false, fidelity: true, strengthMax: 1, bucket: false });
+/** quality: NovelAI 가 그 모델에 기본으로 붙이는 품질 태그 */
+export const MODELS: Readonly<Record<string, { label: string; family: number; characters: number; references: RefSupport; quality: string }>> = Object.freeze({
+  'nai-diffusion-5-full': { label: 'V5 Full', family: 5, characters: 32, references: REF_V5, quality: 'very aesthetic, masterpiece, no text' },
+  'nai-diffusion-5-curated': { label: 'V5 Curated', family: 5, characters: 32, references: REF_V5, quality: 'very aesthetic, masterpiece, no text' },
+  'nai-diffusion-4-5-full': { label: 'V4.5 Full', family: 4.5, characters: 6, references: REF_V45, quality: 'location, very aesthetic, masterpiece, no text' },
+  'nai-diffusion-4-5-curated': { label: 'V4.5 Curated', family: 4.5, characters: 6, references: REF_V45, quality: 'location, masterpiece, no text, -0.8::feet::, rating:general' },
 });
+export const REFERENCE_MODES = ['character', 'style', 'character&style', 'outfit'];
+/** 저장해 둘 수 있는 참조 수 (모델과 상관없이 간직한다. 한 장에 실리는 수는 모델이 정한다) */
+export const REFERENCE_LIMIT = 12;
+/** 참조 한 줄을 고른 값으로 맞춘다. NovelAI 기본처럼 '인물 + 그림체'는 옷차림을 따르고 '인물'은 따르지 않는다 */
+export function normalizeRef(r: Ref | null | undefined): Ref {
+  if (!r?.id || !['vibe', 'precise'].includes(r.kind)) throw new Error(t('illust.v.refBad'));
+  const mode = r.mode ?? 'character'; if (!REFERENCE_MODES.includes(mode)) throw new Error(t('illust.v.refMode'));
+  const n = (v: unknown, d: number, hi: number) => { const x = typeof v === 'number' && Number.isFinite(v) ? v : d; return Math.max(0, Math.min(hi, x)); };
+  return { id: r.id, kind: r.kind, strength: n(r.strength, 0.6, 5), fidelity: n(r.fidelity, 1, 1), information: n(r.information, 1, 1), mode, sameOutfit: typeof r.sameOutfit === 'boolean' ? r.sameOutfit : mode === 'character&style' };
+}
+/** 저장한 참조마다: 이 모델이 쓸 수 없으면 까닭(skip) */
+export function referencePlan(model: string, references: Ref[] = []): { ref: Ref; skip: string }[] {
+  const m = MODELS[model]; if (!m) return references.map(ref => ({ ref, skip: '' }));
+  const sp = m.references; let precise = 0, used = 0;
+  return references.map(ref => {
+    let skip = '';
+    if (ref.kind === 'vibe' && !sp.vibe) skip = t('illust.ref.skipVibe', { model: m.label });
+    else if (ref.kind === 'precise' && ref.mode === 'outfit' && !sp.outfit) skip = t('illust.ref.skipOutfit');
+    else if (ref.kind === 'precise' && precise >= sp.precise) skip = t('illust.ref.skipPrecise', { model: m.label, n: sp.precise });
+    else if (used >= sp.total) skip = t('illust.ref.skipTotal', { model: m.label, n: sp.total });
+    if (!skip) { used++; if (ref.kind === 'precise') precise++; }
+    return { ref, skip };
+  });
+}
+/** 이 모델이 실제로 쓸 참조 (강도는 그 모델의 범위 안으로) */
+export function usableReferences(model: string, references: Ref[] = []): Ref[] {
+  const m = MODELS[model]; if (!m) return [];
+  const limit = (ref: Ref) => ref.kind === 'precise' ? m.references.strengthMax : 1;
+  return referencePlan(model, references).filter(x => !x.skip).map(({ ref }) => (ref.strength ?? 0.6) > limit(ref) ? { ...ref, strength: limit(ref) } : ref);
+}
+/** NovelAI 가 부르는 참조 유형 이름 */
+export function referenceCaption(ref: Ref, model: string): string {
+  if (ref.mode === 'outfit') return 'costume';
+  if (ref.mode === 'style') return 'style';
+  if (!MODELS[model].references.outfit) return ref.mode || 'character';
+  if ((ref.mode || 'character') === 'character') return ref.sameOutfit ? 'character_mainoutfit' : 'character';
+  return ref.sameOutfit ? 'character&style' : 'character&style_anyoutfit';
+}
 export const NAI_MODELS = Object.keys(MODELS);
 export const SAMPLERS = ['k_euler_ancestral', 'k_euler', 'k_dpmpp_2m', 'k_dpmpp_2m_sde', 'k_dpmpp_sde', 'k_dpmpp_2s_ancestral'];
 export const SCHEDULERS = ['karras', 'exponential', 'polyexponential', 'native'];
@@ -284,7 +330,8 @@ export const Illust = {
   },
   rules(chat: IChat | null | undefined) {
     const c = this.cfg(), v = this.visual(chat), nai = c.backend === 'nai', m = MODELS[c.model], max = nai ? (m?.characters || 6) : 4, user = SS().persona(chat)?.name || 'the player';
-    const modelRule = `The image model can depict at most ${max} featured characters in one image. ${!nai ? 'Write one vivid English description per field; coordinates are only framing hints.' : m?.family === 5 ? 'Use concise natural English for spatial relationships with useful tags; coordinates may use any value from 0 to 1.' : 'Prefer concise English image tags, keeping relationships unambiguous; coordinates use grid centers.'}`;
+    // NovelAI: 지금 고른 모델의 작성 규칙만 보낸다 (V4.5 는 태그만, V5 는 태그 + 짧은 문장)
+    const modelRule = nai && m ? `${writingRule(m.family, max)} Use one slot per identity, and count partial participants consistently.` : `The image model can depict at most ${max} featured characters in one image. Write one vivid English description per field; coordinates are only framing hints.`;
     const pm = v.playerMode;
     const playerRule = pm === 'never' || pm === 'pov' ? `${user} (the player's character) is off-camera: never give them a visible character slot; frame scenes without them.` : pm === 'always' || pm === 'visible' ? `${user} (the player's character) may be depicted whenever present in the moment.` : `Depict ${user} (the player's character) only when the reply itself shows them visibly taking part in the chosen moment.`;
     return { modelRule, playerRule };
@@ -347,7 +394,6 @@ export const Illust = {
     const plan = this.readPlan(text), max = this.cfg().maxScenes || 1;
     if (plan.scenes.length > max) plan.warnings!.push(t('illust.plan.overMax', { max, n: plan.scenes.length - max }));
     const scenes = plan.scenes.slice(0, max);
-    scenes.forEach((sc, i) => { if (!str(sc.title)) sc.title = t('illust.sceneN', { n: i + 1 }); });   // 지시문은 더 이상 제목을 요구하지 않는다
     for (const sc of scenes) markAuto(sc);   // 답변과 함께 온 계획이라는 표시
     lastPlan = { ...plan, scenes: clone(scenes), asked: !!askedAt && startedAt >= askedAt && startedAt - askedAt < 5000, ts: now() }; askedAt = 0;
     if (!plan.found) return { text, scenes: [] as Bag[] };
@@ -376,12 +422,12 @@ export const Illust = {
       for (const it of raw.initial) { const p = ok(it); if (!p) continue; st.set(p.id as string, it.basis === 'history' && norm(it.evidence) && hist.includes(norm(it.evidence)) ? { outfit: it.outfit as string, profileId: it.profileId || '' } : { outfit: p.outfit || '', profileId: '' }); }
       for (const it of raw.changes.filter(x => ok(x) && blocks.some(b => b.index === x.at && norm(x.evidence) && norm(b.content).includes(norm(x.evidence)))).sort((a, b) => (a.at as number) - (b.at as number))) st.set(it.id as string, { ...st.get(it.id as string), outfit: it.outfit as string, profileId: it.profileId || st.get(it.id as string)?.profileId || '' });
     }
-    const data = { world: v.world || '', library: fullLib, history, TARGET: blocks, existing: existing || null };
+    const data = { world: v.world || '', library: fullLib, history, TARGET: blocks, existing: existing ? existing.map(withoutTitle) : null };   // 제목은 그림의 일부가 아니라 모델에 넘기지 않는다
     const out = await ask(`${this.fill(c.analysisPrompt || SB.DEFAULT_ANALYSIS_PROMPT, chat, { data, direction: JSON.stringify(direction || v.direction || '') })}\n\n${this.analysisRules(c)}`, Math.min(8000, Math.max(2500, 1800 * (c.maxScenes || 1))));
     const plan = shapePlan(loose(out) || (() => { try { return JSON.parse(out); } catch { return null; } })());
     if (!plan) throw new Error(t('illust.err.analysis'));
     const scenes = plan.scenes.filter(usable).slice(0, existing ? existing.length : (c.maxScenes || 1));
-    scenes.forEach((sc, i) => { if (!str(sc.title)) sc.title = str(existing?.[i]?.title) || t('illust.sceneN', { n: i + 1 }); });
+    scenes.forEach((sc, i) => { if (!str(sc.title)) sc.title = str(existing?.[i]?.title); });   // 자리표시 제목("장면 1")은 만들지 않는다. 직접 적어 둔 제목만 이어받는다
     if (states) for (const sc of scenes) for (const ch of (sc.characters as Bag[] | undefined) || []) { const p = lib.find(x => x.id === ch.id) || lib.find(x => x.name === ch.name), st = p && states.get(p.id as string); if (st) { ch.outfit = st.outfit || ch.outfit; if (st.profileId) ch.profileId = st.profileId; } }
     if (existing) {
       if (scenes.length !== existing.length) throw new Error(t('illust.err.sceneCount'));
@@ -412,7 +458,9 @@ export const Illust = {
     const p = lib.find(l => l.id && l.id === x.id) || lib.find(l => l.name === xn) || lib.find(l => xn && l.name && (l.name.includes(xn) || xn.includes(l.name)));
     if (p?.player && (playerMode === 'never' || playerMode === 'pov')) return null;
     const prof = p?.profiles?.find(f => f.id === x.profileId || (x.profileId && f.name === x.profileId));
-    return { name: p?.name || xn || '', prompt: [(prof?.appearance || p?.appearance) || str(x.appearance), str(x.outfit) || prof?.outfit || p?.outfit, str(x.action) || str(x.prompt)].filter(Boolean).join(', '), negative: [p?.negative, str(x.negative)].filter(Boolean).join(', '), x: clamp01(x.x), y: clamp01(x.y) };
+    // NovelAI 는 인물 프롬프트가 girl · boy · other 로 (숫자 없이) 시작하길 바란다. 외형과 동작 어느 쪽에 적혀 있든 맨 앞에 한 번만 둔다
+    const [stated, look] = leadingKind((prof?.appearance || p?.appearance) || str(x.appearance)), [acted, action] = leadingKind(str(x.action) || str(x.prompt));
+    return { name: p?.name || xn || '', prompt: [stated || acted, look, str(x.outfit) || prof?.outfit || p?.outfit, action].filter(Boolean).join(', '), negative: [p?.negative, str(x.negative)].filter(Boolean).join(', '), x: clamp01(x.x), y: clamp01(x.y) };
   },
   /** 계획 장면 → 편집·생성에 쓰는 꼴 { title, camera, prompt, negative, finalPrompt, anchor, characters:[{ name, prompt, negative, x, y }] } */
   compileScene(chat: IChat | null | undefined, scene: Bag): Compiled {
@@ -422,19 +470,24 @@ export const Illust = {
     return { title: str(scene.title).slice(0, 150), camera: str(scene.camera), prompt: str(scene.prompt), negative: str(scene.negative), finalPrompt: scene.finalPrompt === true, anchor: str(scene.anchor) || str(scene.evidence), characters: list.map(x => this.compileCharacter(x, lib, pm)).filter((x): x is CompiledChar => !!x), ...(size ? { size } : {}) };
   },
   /** 그림체 프리셋의 태그를 메인 프롬프트 앞에 붙인다 (이미 붙어 있으면 그대로) */
-  withLook<T extends { style?: string; negative?: string }>(config: T, id0?: string): T { const id = id0 === undefined ? this.cfg().look as string : id0, look = LOOKS.find(x => x[0] === id); return !look || !look[0] || String(config.style || '').startsWith(look[2]) ? config : withLook(config, id); },
+  withLook<T extends { style?: string; negative?: string }>(config: T, id0?: string): T { const id = id0 === undefined ? this.cfg().look as string : id0; return LOOKS.some(x => x[0] === id) ? withLook(config, id) : config; },
   /** 장면 → 그림 엔진에 보낼 프롬프트: [화풍, 카메라, 공유 장면, 품질] + 인물별 묘사 */
   compose(chat: IChat | null | undefined, scene: Bag, cfg0?: GenCfg): Composed {
     const cfg: GenCfg = cfg0 === undefined ? this.cfg() : cfg0;
     const s = this.compileScene(chat, scene), nai = cfg.backend === 'nai', v5 = MODELS[cfg.model as string]?.family === 5;
-    const quality = !cfg.quality ? '' : nai ? (v5 ? 'very aesthetic, masterpiece, no text' : 'very aesthetic, best quality') : cfg.backend === 'a1111' ? 'masterpiece, best quality' : '';
+    const quality = !cfg.quality ? '' : nai ? (MODELS[cfg.model as string]?.quality || 'very aesthetic, masterpiece, no text') : cfg.backend === 'a1111' ? 'masterpiece, best quality' : '';
     const base = s.finalPrompt ? s.prompt : [cfg.style, s.camera, s.prompt, quality, nai && v5 && cfg.transparent ? 'transparent background, has alpha' : ''].filter(Boolean).join(', ');
     const negative = s.finalPrompt ? s.negative : [cfg.negative, s.negative].filter(Boolean).join(', ');
     const looks = s.characters.filter(l => l.prompt).map(l => ({ name: l.name, caption: l.prompt, negative: l.negative || '', x: l.x, y: l.y }));
     return { base, full: [base, ...looks.map(l => l.caption)].join(', '), looks, negative, coords: cfg.useCoords !== false && looks.length > 0, order: cfg.useOrder !== false, scene: s };
   },
   /** 지금 설정에서 그림 한 장에 필요한 값만 (over 로 덮어쓴다) */
-  genConfig(over?: Bag | null): GenCfg { return { ...pick(this.cfg(), RENDER_KEYS), ...pick(over || {}, RENDER_KEYS) }; },
+  genConfig(over?: Bag | null): GenCfg {
+    const c: GenCfg = { ...pick(this.cfg(), RENDER_KEYS), ...pick(over || {}, RENDER_KEYS) };
+    // 이 모델이 쓸 수 있는 참조만 그림 한 장의 설정에 싣는다 (못 쓰는 것은 참조 탭에서 까닭과 함께 보인다)
+    if (c.backend === 'nai' && MODELS[c.model as string] && c.references?.length) { try { c.references = usableReferences(c.model as string, c.references.map(normalizeRef)); } catch { /* 검사에서 알린다 */ } }
+    return c;
+  },
   /** 생성 설정 검사 — 맞지 않으면 이유를 던진다 */
   validate(c: GenCfg): GenCfg {
     const num = (v: unknown, a: number, b: number, name: string, int?: boolean) => { if (typeof v !== 'number' || !Number.isFinite(v) || v < a || v > b || (int && !Number.isInteger(v))) throw new Error(t(int ? 'illust.v.rangeInt' : 'illust.v.range', { name, a, b })); };
@@ -450,11 +503,10 @@ export const Illust = {
       if (!SCHEDULERS.includes(c.scheduler as string)) throw new Error(t('illust.v.scheduler'));
       if (m.family === 5 && c.scheduler !== 'karras') throw new Error(t('illust.v.v5karras'));
       if (c.transparent && m.family !== 5) throw new Error(t('illust.v.transparent'));
+      // 저장한 참조 목록은 모델과 상관없이 간직한다 (모델을 바꿔도 잃지 않게). 그 모델이 못 쓰는 것은 요청을 만들 때 걸러진다
       const refs = c.references || [];
-      if (refs.length > 4) throw new Error(t('illust.v.refMax'));
-      if (refs.some(r => !r?.id || !['vibe', 'precise'].includes(r.kind))) throw new Error(t('illust.v.refBad'));
-      if (refs.length && !m.references) throw new Error(t('illust.v.refV5'));
-      if (refs.filter(r => r.kind === 'precise').length > 1) throw new Error(t('illust.v.precise1'));
+      if (refs.length > REFERENCE_LIMIT) throw new Error(t('illust.v.refMax', { n: REFERENCE_LIMIT }));
+      c.references = refs.map(normalizeRef);
       if (c.budgetGuard && (W * H > 1048576 || (c.steps as number) > 28)) throw new Error(t('illust.v.budget'));
     } else if (c.backend === 'a1111') { num(c.steps, 1, 150, 'Steps', true); num(c.scale, 0, 30, t('illust.v.scale')); }
     return c;
@@ -495,7 +547,7 @@ export const Illust = {
       // 지시가 고른 화면 비율(세로 · 가로 · 정사각)과 그림체는 새로 그릴 때만 적용한다. 다시 그리기는 그 그림에 기록된 설정을 그대로 쓴다
       const base = this.genConfig(opts.config), shape = !opts.exact && c.autoSize !== false ? orientation(compiled.size) : '';
       const config = this.validate({ ...(opts.exact ? base : this.withLook(base, c.look)), ...(shape ? sizeFor(base as unknown as { width: number; height: number }, shape) : {}) });
-      Q.items.push({ id: uid(), chat, msg, sw, scene: compiled, slot: opts.slot || null, config, automatic: auto, label: compiled.title || t('illust.label'), state: 'waiting', onDone, ts: now() });
+      Q.items.push({ id: uid(), chat, msg, sw, scene: compiled, slot: opts.slot || null, config, automatic: auto, label: sceneHint(compiled) || t('illust.label'), state: 'waiting', onDone, ts: now() });
     } catch (e) { if (auto) draft(); return later(e); }
     this.changed(); void this.pump();
   },
@@ -595,15 +647,30 @@ export const Illust = {
     if (v5) parameters.straight_alpha = !!c.transparent;
     return { input: p.base, model: c.model, action: 'generate', parameters };
   },
-  /** 참조 이미지(Vibe · Precise)를 요청에 싣는다. 하나라도 없으면 유료 요청을 보내기 전에 멈춘다 */
+  /** 참조 이미지(Vibe · Precise)를 요청에 싣는다. 하나라도 없거나 이 모델이 못 쓰면 유료 요청을 보내기 전에 멈춘다 (말없이 빼거나 약하게 하지 않는다) */
   async applyRefs(parameters: Bag, c: GenCfg, headers: Record<string, string>, signal?: AbortSignal) {
+    const model = c.model as string, sp = MODELS[model].references, refs = (c.references || []).map(normalizeRef);
+    const refused = referencePlan(model, refs).find(x => x.skip); if (refused) throw new Error(refused.skip);
+    if (refs.some(r => (r.strength ?? 0.6) > (r.kind === 'precise' ? sp.strengthMax : 1))) throw new Error(t('illust.v.refStrength', { model: MODELS[model].label, max: sp.strengthMax }));
     const inputs: { ref: Ref; rec: AssetRec; image: string }[] = [];
-    for (const ref of c.references || []) { const rec = await db().get('assets', ref.id); if (rec?.kind !== 'illust-ref') throw coded(t('illust.ref.missing'), 'REFERENCE_NOT_FOUND'); inputs.push({ ref, rec: rec!, image: rec!.data.split(',')[1] }); }
+    for (const ref of refs) {
+      const rec = await db().get('assets', ref.id); if (rec?.kind !== 'illust-ref') throw coded(t('illust.ref.missing'), 'REFERENCE_NOT_FOUND');
+      let data = rec!.data;
+      if (ref.kind === 'precise' && sp.bucket) {   // V5: 약 1 메가픽셀 사본. 예전에 등록한 참조는 여기서 한 번 만들어 둔다
+        if (!rec!.v5) { rec!.v5 = await bucketFromPadded(rec!.data); await db().put('assets', rec!); }
+        data = rec!.v5 as string;
+      } else if (ref.kind === 'precise' && ![[1024, 1536], [1536, 1024], [1472, 1472]].some(([w, hh]) => w === rec!.width && hh === rec!.height)) throw new Error(t('illust.ref.preciseSize'));
+      inputs.push({ ref, rec: rec!, image: data.split(',')[1] });
+    }
+    const push = (k: string, v: unknown) => { ((parameters[k] ||= []) as unknown[]).push(v); };
     for (const { ref, rec, image } of inputs) {
-      if (ref.kind === 'precise') {
-        if (![[1024, 1536], [1536, 1024], [1472, 1472]].some(([w, hh]) => w === rec.width && hh === rec.height)) throw new Error(t('illust.ref.preciseSize'));
-        Object.assign(parameters, { director_reference_images: [image], director_reference_descriptions: [{ caption: { base_caption: ref.mode || 'character', char_captions: [] }, use_coords: false, use_order: false, legacy_uc: false }],
-          director_reference_strength_values: [ref.strength ?? 0.6], director_reference_secondary_strength_values: [1 - (ref.fidelity ?? 1)], director_reference_information_extracted: [1] });
+      if (ref.kind === 'precise') {   // Precise 여러 장은 나란한 목록으로 한 칸씩 간다
+        const caption = { base_caption: referenceCaption(ref, model), char_captions: [] };
+        push('director_reference_images', image);
+        push('director_reference_descriptions', sp.bucket ? { caption, legacy_uc: false } : { caption, use_coords: false, use_order: false, legacy_uc: false });
+        push('director_reference_strength_values', ref.strength ?? 0.6);
+        push('director_reference_secondary_strength_values', sp.fidelity ? 1 - (ref.fidelity ?? 1) : 0);   // V5 에는 충실도 조절이 없다 (가득으로 보낸다)
+        push('director_reference_information_extracted', 1);
       } else {
         const key = `${c.model}:${ref.information ?? 1}`; let enc = rec.vibes?.[key];
         if (!enc) {
@@ -612,7 +679,7 @@ export const Illust = {
           enc = toURL(new Uint8Array(await r.arrayBuffer()), 'application/octet-stream').split(',')[1];
           rec.vibes = { ...(rec.vibes || {}), [key]: enc }; await db().put('assets', rec);
         }
-        ((parameters.reference_image_multiple ||= []) as unknown[]).push(enc); ((parameters.reference_information_extracted_multiple ||= []) as unknown[]).push(ref.information ?? 1); ((parameters.reference_strength_multiple ||= []) as unknown[]).push(ref.strength ?? 0.6);
+        push('reference_image_multiple', enc); push('reference_information_extracted_multiple', ref.information ?? 1); push('reference_strength_multiple', ref.strength ?? 0.6);
       }
     }
   },

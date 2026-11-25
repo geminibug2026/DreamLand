@@ -28,7 +28,8 @@ export interface Persona { id: string; name: string; visual?: { appearance?: str
 export type Card = (Char | Persona) & { visual?: { appearance?: string; outfit?: string; negative?: string } };
 export interface Composed { base: string; negative: string; coords: boolean; looks: { name: string; caption: string; negative: string; x: number; y: number }[] }
 export interface PlanRead { found: boolean; scenes: Scene[]; raw: string; error?: string; repairs?: string[]; warnings?: string[]; asked?: boolean }
-export interface ModelInfo { label: string; family: number; characters: number; references: boolean }
+export interface RefSupport { vibe: boolean; precise: number; total: number; outfit: boolean; fidelity: boolean; strengthMax: number; bucket: boolean }
+export interface ModelInfo { label: string; family: number; characters: number; references: RefSupport; quality: string }
 export type { Char, Chat };
 
 // ── 삽화 엔진(src/lib/illust.ts 의 Illust)을 이 묶음이 보는 꼴 ──

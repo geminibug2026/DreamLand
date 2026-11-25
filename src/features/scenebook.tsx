@@ -4,7 +4,8 @@ import { make, mountNode } from '../scenebook/parts';
 import { Frames } from '../scenebook/frames';
 import { Panel, Studio, openStudio } from '../scenebook/Studio';
 import { schedule } from '../scenebook/decorate';
-import { compose, flow, quickDraw } from '../scenebook/work';
+import { compose, flow } from '../scenebook/work';
+import { manualDialog } from '../scenebook/slot';
 import type { Msg } from '../scenebook/types';
 
 import { toast } from '../ui';
@@ -26,8 +27,8 @@ function setup() {
   x.studio = x.studio.filter(t => t.owner !== OWNER); x.actions = x.actions.filter(a => a.owner !== OWNER); x.composer = x.composer.filter(a => a.owner !== OWNER); x.panels = x.panels.filter(p => p.owner !== OWNER);
   x.studio.push({ owner: OWNER, get title() { return t('scenebook.illust'); }, render: () => mountNode(make('div', 'card sb-studio'), <Studio />) });
   x.actions.push(
-    { owner: OWNER, id: 'sb-draw', get label() { return t('scenebook.action.autoDraw'); }, icon: 'image', run: guard(async (m: Msg) => { if (m.role !== 'assistant') throw new Error(t('scenebook.err.notReply')); await quickDraw(m); }) },
-    { owner: OWNER, id: 'sb-analyze', get label() { return t('scenebook.analyze'); }, icon: 'sparkle', run: guard((m: Msg) => compose(m, { manual: false })) },
+    // 수동 생성: 저장된 장면 · AI 가 장면 쓰기 · 직접 쓰기 + 화면 비율을 한 창에서 고른다 (예전의 "자동으로 그리기" · "장면 분석"을 모았다)
+    { owner: OWNER, id: 'sb-manual', get label() { return t('scenebook.manualDlg.title'); }, icon: 'image', run: guard((m: Msg) => manualDialog(m)) },
     { owner: OWNER, id: 'sb-compose', get label() { return t('scenebook.compose'); }, icon: 'sliders', run: guard((m: Msg) => compose(m)) });
   x.composer.push({ owner: OWNER, id: 'sb-studio', get label() { return t('scenebook.action.studio'); }, icon: 'image', run: () => openStudio() });
   for (const name of ['/scenebook', '/삽화']) x.commands.set(name, { owner: OWNER, get help() { return t('scenebook.cmd.help'); }, run: arg => openStudio(TAB_WORDS[String(arg || '').trim()]) });

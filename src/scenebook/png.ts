@@ -80,7 +80,7 @@ export function normalizeMeta(fields: Bag, dim: { width?: number; height?: numbe
   if (p.strength || p.noise || p.image || /img2img|inpaint|infilling/i.test(String(p.request_type ?? ''))) skipped.push(t('scenebook.png.img2img'));
   if (['reference_image_multiple', 'director_reference_images'].some(k => { const v = p[k]; return Array.isArray(v) && v.length; })) skipped.push(t('scenebook.png.refs'));
   if (skipped.length) warnings.push(t('scenebook.png.skipped', { list: skipped.join(', ') }));
-  return { patch, warnings, source: String(fields.Source ?? p.model ?? t('scenebook.png.noModelInfo')).slice(0, 300), scene: { ...blankScene(), title: typeof fields.Title === 'string' && fields.Title ? fields.Title.slice(0, 150) : t('scenebook.png.importedScene'), prompt, negative: (caption(p.v4_negative_prompt) ?? p.uc ?? p.negative_prompt ?? '') as string } };
+  return { patch, warnings, source: String(fields.Source ?? p.model ?? t('scenebook.png.noModelInfo')).slice(0, 300), scene: { ...blankScene(), title: '', prompt, negative: (caption(p.v4_negative_prompt) ?? p.uc ?? p.negative_prompt ?? '') as string } };
 }
 export async function readNaiImage(file: File): Promise<NaiMeta> {
   if (!file || file.size > MAX_FILE) throw new Error(t('scenebook.png.pickUnder32'));
@@ -102,6 +102,6 @@ export function importedConfig(base: GenConfig, result: NaiMeta, { model, relax,
   const next: GenConfig = { ...base, ...patch, backend: 'nai', model, budgetGuard: relax ? false : base.budgetGuard };
   if (v5) next.scheduler = 'karras'; else if (patch.transparent === undefined || !v5) next.transparent = false;
   if (forScene) Object.assign(next, { style: '', negative: '', quality: false, references: [] });   // 펼쳐진 프롬프트에는 품질 태그가 이미 들어 있다
-  else { Object.assign(next, { style: result.scene.prompt, negative: result.scene.negative, quality: false }); if (!MODELS[model].references && base.references?.length) throw new Error(t('scenebook.png.clearRefs')); }
+  else Object.assign(next, { style: result.scene.prompt, negative: result.scene.negative, quality: false });   // 저장해 둔 참조는 그대로 둔다 (이 모델이 못 쓰는 것은 그릴 때 걸러진다)
   return Illust.validate(next);
 }

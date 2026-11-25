@@ -199,3 +199,7 @@
 .sb-pendings { margin: 14px 4px 4px; }
 .sb-pending { flex: 0 1 auto; width: 100%; margin-bottom: 35px; }
 .illust:not([data-sb]) { max-width: min(100%, var(--sb-w, 400px)); } .illust:not([data-sb]) figcaption { min-height: 34px; box-sizing: border-box; }
+/* 참조 이미지: 지금 설정으로 실제 쓰이는 장수와 값, 못 쓰는 까닭 */
+.sb-ref-cost { margin: 0; padding: 6px 10px; border-left: 2px solid var(--accent); background: var(--surface); font-size: .86em; color: var(--dim); overflow-wrap: anywhere; }
+.sb-ref-skip { margin: 0; padding: 5px 8px; border: 1px dashed var(--bad); color: var(--bad); font-size: .84em; overflow-wrap: anywhere; }
+.sb-ref > .col { justify-content: flex-start; align-self: start; } .sb-manual .sb-seg { display: flex; width: 100%; }

@@ -3,13 +3,13 @@ import { useState } from 'react';
 import type { MenuItem } from '../ui';
 import { Btn, Fld, IBtn, Sel, Seg, openModal, type Box } from './parts';
 import { CAMERA_TAGS, orientations, hasCameraTag, sizeFor, toggleCameraTag } from './framing';
-import { compose, draw, regen } from './work';
+import { analyzeInto, compose, draw, regen } from './work';
 import type { Chat, GenConfig, Msg, Review, Scene, Slot, Swipe, Version } from './types';
 
 import { confirmBox, menu, toast } from '../ui';
 import { chatApi } from '../chat/actions';
 import * as C from '../lib/core';
-import { clone, configLine, cur, errText, guard, mustBeOpen, saveImage, when } from './util';
+import { blankScene, clone, configLine, cur, errText, guard, mustBeOpen, saveImage, when } from './util';
 import { Illust } from './illust';
 import { t } from '../i18n';
 
@@ -114,4 +114,41 @@ export function quickEdit(m: Msg, it: Slot) {
     { label: t('scenebook.quick.detail'), ic: 'sliders', cls: 'ghost', onclick: () => { try { check(); const scene = hold.read(); compose(m, { initial: [scene], slot: it.slotId, config: { ...(v.config || {}), seed: v.seed ?? -1 } as GenConfig, preview: Illust.data(v.id) }).catch(e => toast(errText(e), 'err')); } catch (e) { toast(errText(e), 'err'); return false; } } },
     { label: t('scenebook.regen'), ic: 'refresh', cls: 'primary', onclick: () => { try { check(); const base = v.config || Illust.genConfig(); draw(m, [hold.read()], { ...base, seed: -1, ...(hold.size ? sizeFor(base, hold.size) : {}) }, it.slotId, true); } catch (e) { toast(errText(e), 'err'); return false; } } }] },
     () => <QuickEdit m={m} chat={chat as Chat} start={start} hold={hold} check={check} />);
+}
+
+/** 수동 생성: 고른 답변의 그림을 지금 만든다 (자동 삽화가 꺼져 있어도). 저장된 장면 · AI 가 장면 쓰기 · 직접 쓰기 가운데 고르고 화면 비율을 정한다 */
+export function manualDialog(m: Msg) {
+  const { chat } = cur(); if (!chat) throw new Error(t('scenebook.err.openChatFirst'));
+  if (m.role !== 'assistant') throw new Error(t('scenebook.err.notReply'));
+  mustBeOpen(m);
+  const sw = m.swipes[m.sw], saved = sw.illustDraft?.length || 0, st = { src: saved ? 'saved' : 'ai', size: '', text: '', busy: false };
+  const scenesNow = async (): Promise<{ scenes: Scene[]; config: GenConfig | null }> => {
+    mustBeOpen(m);
+    if (st.src === 'saved') return { scenes: (sw.illustDraft || []) as Scene[], config: (sw.illustDraftConfig as GenConfig) || null };
+    if (st.src === 'ai') return { scenes: await analyzeInto(m), config: (sw.illustDraftConfig as GenConfig) || null };   // 뽑은 장면은 초안으로도 남는다
+    const p = st.text.trim(); if (!p) throw new Error(t('scenebook.manualDlg.needText'));
+    return { scenes: [Illust.compileScene(chat as Chat, { ...blankScene(), prompt: p }) as Scene], config: null };
+  };
+  const go = async (edit: boolean) => {
+    const { scenes, config } = await scenesNow(); if (!scenes.length) throw new Error(t('scenebook.manualDlg.noScene'));
+    // 화면 비율을 골랐으면 장면이 적어 둔 비율 대신 그것을 쓴다
+    const base = Illust.genConfig(config), cfg = st.size ? { ...base, ...sizeFor(base, st.size) } as GenConfig : config, list = st.size ? scenes.map(sc => ({ ...sc, size: '' })) as Scene[] : scenes;
+    if (edit) { await compose(m, { initial: list, config: cfg }); return; }
+    draw(m, list, cfg);
+    if (st.src !== 'write') { sw.illustDraft = []; delete sw.illustDraftConfig; await chatApi.save(); }
+  };
+  const act = (edit: boolean) => async () => { if (st.busy) return false; st.busy = true; try { await go(edit); } catch (e) { toast(errText(e), 'err'); return false; } finally { st.busy = false; } };
+  openModal({ title: t('scenebook.manualDlg.title'), cls: 'col sb-manual', actions: [
+    { label: t('scenebook.compose'), ic: 'sliders', cls: 'ghost', onclick: act(true) },
+    { label: t('scenebook.draw'), ic: 'image', cls: 'primary', onclick: act(false) }] },
+    () => <ManualBody st={st} saved={saved} />);
+}
+function ManualBody({ st, saved }: { st: { src: string; size: string; text: string }; saved: number }) {
+  const [, bump] = useState(0), re = () => bump(n => n + 1);
+  return <>
+    <p className="hint">{t('scenebook.manualDlg.intro')}</p>
+    <div className="field"><span className="field-label">{t('scenebook.manualDlg.source')}</span><Seg label={t('scenebook.manualDlg.source')} choices={[...(saved ? [['saved', t('scenebook.manualDlg.saved', { n: saved })] as [string, string]] : []), ['ai', t('scenebook.manualDlg.ai')], ['write', t('scenebook.manualDlg.write')]]} value={st.src} onChange={v => { st.src = v; re(); }} /><small className="hint">{t('scenebook.manualDlg.help.' + st.src)}</small></div>
+    {st.src === 'write' ? <Fld label={t('scenebook.scene')}><textarea className="inp" rows={4} spellCheck={false} defaultValue={st.text} placeholder={t('scenebook.manualDlg.writePh')} onChange={e => { st.text = e.target.value; }} /></Fld> : null}
+    <div className="field"><span className="field-label">{t('scenebook.manualDlg.size')}</span><Seg label={t('scenebook.manualDlg.size')} choices={[['', t('scenebook.manualDlg.sizeAuto')], ...orientations().filter(([id]) => id)]} value={st.size} onChange={v => { st.size = v; re(); }} /></div>
+  </>;
 }

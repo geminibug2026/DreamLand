@@ -10,7 +10,7 @@ export interface IllustWho { name?: string; outfit?: string; action?: string }
 export interface IllustPerson { name?: string; prompt?: string; negative?: string; x?: number; y?: number; id?: string }
 /** 편집 · 생성에 쓰는 장면 */
 export interface IllustScene { title?: string; prompt?: string; camera?: string; negative?: string; anchor?: string; finalPrompt?: boolean; characters: IllustPerson[]; size?: string }
-export interface IllustRefUse { id: string; kind: string; mode?: string; strength?: number; fidelity?: number; information?: number }
+export interface IllustRefUse { id: string; kind: string; mode?: string; strength?: number; fidelity?: number; information?: number; /** 참조 그림의 옷차림도 따라 그린다 (V5 의 인물 참조) */ sameOutfit?: boolean }
 /** 그림 한 장에 얼려 두는 생성 설정 */
 export interface IllustGenConfig {
   backend: string; model: string; width: number; height: number; steps: number; scale: number; seed?: number;

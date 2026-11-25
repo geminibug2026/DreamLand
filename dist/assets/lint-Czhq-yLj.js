@@ -1,1 +1,0 @@
-export{r as similar}from"./lint-B-_BN6g0.js";

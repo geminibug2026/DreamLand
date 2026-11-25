@@ -5,6 +5,8 @@ import { Form, type FieldDef, confirmBox, menu, toast } from '../ui';
 import { Area, Btn, Chk, Empty, Fld, Group, IBtn, Sel, Text, openModal, useBump } from './parts';
 import { Frames, frameChoices, frameLayout, validFrame, type FrameLayout } from './frames';
 import { LOOKS } from './framing';
+import { prepareReference } from './refimg';
+import { UC_PRESETS, mergeTags } from './tagrules';
 import { INKS } from './ornaments';
 import { fixModel } from './Composer';
 import { guide, imageImport, promptEditor, showPlans, exportChat } from './dialogs';
@@ -16,6 +18,7 @@ import { go } from '../lib/router';
 import { chatApi } from '../chat/actions';
 import * as IL from '../lib/illust';
 import * as C from '../lib/core';
+import { dataToBlob } from '../lib/blobUrl';
 import { blankScene, clone, configLine, cur, errText, guard, lastReply, pickKeys, when } from './util';
 import { Illust } from './illust';
 import { locale, t, tn } from '../i18n';
@@ -120,6 +123,7 @@ function GenPage({ reopen }: { reopen: () => void }) {
       { k: 'look', label: t('scenebook.studio.look'), type: 'select', opts: LOOKS.map(([id, label]): [string, string] => [id, label]), hint: t('scenebook.studio.lookHint') }])}</Group>
     <Group title={t('scenebook.prompt')}>{f([{ k: 'style', label: t('scenebook.studio.styleLabel'), type: 'area', rows: 3, ph: 'watercolor, soft lighting …' }, { k: 'negative', label: t('scenebook.uc'), type: 'area', rows: 2 }, { k: 'quality', label: t('scenebook.qualityAuto'), type: 'check' },
       { k: 'leanPrompt', label: t('scenebook.studio.lean'), type: 'check', hint: t('scenebook.studio.leanHint') }])}
+      <div className="row wrap">{UC_PRESETS.map(([id, text]) => <Btn key={id} label={t('scenebook.studio.uc.' + id)} ic="plus" cls="ghost" title={t('scenebook.studio.uc.hint')} onClick={() => { Illust.saveCfg({ negative: mergeTags(text, String(Illust.cfg().negative || '')) }); reopen(); }} />)}</div>
       <div className="row"><Btn label={t('scenebook.studio.editShare')} ic="edit" cls="ghost" onClick={() => promptEditor(0, reopen)} /><small className="hint">{t('scenebook.studio.editShareHint')}</small></div></Group>
     <Group title={t('scenebook.manual')}><Form obj={S.settings} defs={[{ k: 'helpers.illust', label: t('scenebook.guide.topic.conn.title'), type: 'select', opts: [['', t('scenebook.studio.chatConn')], ...C.chatConns().map((x): [string, string] => [x.id, `${x.name}${x.model ? ' · ' + x.model : ''}`])], hint: t('scenebook.studio.analysisConnHint') }]} onChange={() => S.set({})} />
       {f([{ k: 'analysisMode', label: t('scenebook.guide.topic.analysis.title'), type: 'select', opts: [['quick', t('scenebook.studio.quick')], ['precise', t('scenebook.studio.precise')]], half: true }, { k: 'contextMessages', label: t('scenebook.guide.topic.context.title'), type: 'num', min: 0, max: 30, step: 1, half: true }])}
@@ -221,48 +225,74 @@ function CastPage({ reopen }: { reopen: () => void }) {
 }
 
 // ════════ 참조 탭 ════════
-async function prepareReference(file: File) {
-  if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) throw new Error(t('scenebook.studio.refs.pickFile'));
-  const bmp = await createImageBitmap(file);
-  try {
-    const ratio = bmp.width / bmp.height, [width, height] = ratio > 1.2 ? [1536, 1024] : ratio < 0.83 ? [1024, 1536] : [1472, 1472];
-    const cv = document.createElement('canvas'); cv.width = width; cv.height = height;
-    const ctx = cv.getContext('2d')!; ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, width, height);
-    const k = Math.min(width / bmp.width, height / bmp.height); ctx.drawImage(bmp, (width - bmp.width * k) / 2, (height - bmp.height * k) / 2, bmp.width * k, bmp.height * k);
-    return { data: cv.toDataURL('image/png'), width, height };
-  } finally { bmp.close(); }
-}
-type RefRow = RefUse & { enabled: boolean; strength: number; fidelity: number; information: number };
-function Slider({ row, k, label, later }: { row: RefRow; k: 'strength' | 'fidelity' | 'information'; label: string; later: () => void }) {
-  const bump = useBump();
-  return <Fld label={label} cls="third"><div className="range"><input type="range" min={0} max={1} step={0.05} defaultValue={row[k]} onChange={e => { row[k] = +e.target.value; bump(); later(); }} /><output>{Number(row[k]).toFixed(2)}</output></div></Fld>;
+/** 용도: 분위기(Vibe) 또는 Precise 의 유형 */
+const USES: [id: string, label: string, help: string][] = [['character&style', 'scenebook.studio.refs.use.charStyle', 'scenebook.studio.refs.use.charStyleHelp'], ['character', 'scenebook.studio.refs.use.char', 'scenebook.studio.refs.use.charHelp'], ['style', 'scenebook.studio.refs.use.style', 'scenebook.studio.refs.use.styleHelp'], ['outfit', 'scenebook.studio.refs.use.outfit', 'scenebook.studio.refs.use.outfitHelp'], ['vibe', 'scenebook.studio.refs.use.vibe', 'scenebook.studio.refs.use.vibeHelp']];
+type RefRow = { id: string; enabled: boolean; use: string; sameOutfit: boolean; strength: number; fidelity: number; information: number };
+const rowRef = (r: RefRow): RefUse => { const vibe = r.use === 'vibe'; return { id: r.id, kind: vibe ? 'vibe' : 'precise', mode: vibe ? 'character' : r.use, sameOutfit: r.sameOutfit, strength: r.strength, fidelity: r.fidelity, information: r.information }; };
+function Slider({ row, k, label, max = 1, hint, later }: { row: RefRow; k: 'strength' | 'fidelity' | 'information'; label: string; max?: number; hint?: string; later: () => void }) {
+  const bump = useBump(), v = Math.min(row[k], max);
+  return <Fld label={label} cls="third" hint={hint}><div className="range"><input type="range" min={0} max={max} step={0.05} value={v} onChange={e => { row[k] = +e.target.value; bump(); later(); }} /><output>{Number(v).toFixed(2)}</output></div></Fld>;
 }
 function RefsPage({ reopen, refs }: { reopen: () => void; refs: Asset[] }) {
-  const bump = useBump(), c = Illust.cfg(), { MODELS, REF_OWNER } = IL;
-  const [m] = useState(() => { const chosen = new Map((c.references || []).map(r => [r.id, { ...r }]));
-    return { state: t('scenebook.studio.autoSaved'), bad: false, rows: new Map(refs.map((r): [string, RefRow] => [r.id, { id: r.id, enabled: chosen.has(r.id), kind: 'vibe', mode: 'character', strength: 0.6, fidelity: 1, information: 1, ...(chosen.get(r.id) || {}) }])) }; });
+  const bump = useBump(), S = C.S, c = Illust.cfg(), { MODELS, REF_OWNER, REFERENCE_LIMIT, referencePlan } = IL;
+  const nai = c.backend === 'nai', sp = nai ? MODELS[c.model]?.references : undefined, fresh = sp?.bucket ? 'character&style' : 'vibe';
+  const [m] = useState(() => { const chosen = new Map((c.references || []).map(r => [r.id, r]));
+    return { state: t('scenebook.studio.autoSaved'), bad: false, rows: new Map(refs.map((r): [string, RefRow] => { const sv = chosen.get(r.id), use = sv ? (sv.kind === 'vibe' ? 'vibe' : sv.mode || 'character') : fresh;
+      return [r.id, { id: r.id, enabled: !!sv, use, sameOutfit: sv?.sameOutfit ?? use === 'character&style', strength: sv?.strength ?? (use === 'vibe' ? 0.6 : 1), fidelity: sv?.fidelity ?? 1, information: sv?.information ?? 1 }]; })) }; });
+  const active = () => [...m.rows.values()].filter(r => r.enabled);
   const [act] = useState(() => {
-    const commit = () => { const references = [...m.rows.values()].filter(r => r.enabled).map(({ enabled: _e, ...r }) => r); Illust.saveCfg({ references });
+    const commit = () => { Illust.saveCfg({ references: active().map(rowRef) });
       try { Illust.validate(Illust.genConfig()); m.state = t('scenebook.studio.autoSaved'); m.bad = false; } catch (e) { m.state = t('scenebook.studio.needCheck', { error: errText(e) }); m.bad = true; } bump(); };
     return { commit, later: C.debounce(commit, 300) };
   });
   const { commit, later } = act;
-  const upload = guard(async () => { const [f] = await C.pickFiles({ accept: 'image/png,image/jpeg,image/webp' }); if (!f) return; const img = await prepareReference(f); await C.DB.put('assets', { id: C.uid(), owner: REF_OWNER, kind: 'illust-ref', name: f.name.replace(/\.[a-z0-9]+$/i, '').slice(0, 100), ...img, ts: C.now() }); toast(t('scenebook.studio.refs.added'), 'ok'); reopen(); });
+  const store = async (blob: Blob, name: string, extra: object = {}) => { const img = await prepareReference(blob), id = C.uid(); await C.DB.put('assets', { id, owner: REF_OWNER, kind: 'illust-ref', name: name.slice(0, 100), ...img, ts: C.now(), ...extra }); return id; };
+  const upload = guard(async () => { const [f] = await C.pickFiles({ accept: 'image/png,image/jpeg,image/webp' }); if (!f) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(f.type) || f.size > 10 * 1024 * 1024) throw new Error(t('scenebook.studio.refs.pickFile'));
+    await store(f, f.name.replace(/\.[a-z0-9]+$/i, '')); toast(t('scenebook.studio.refs.added'), 'ok'); reopen(); });
+  // 이 대화 캐릭터의 초상을 인물 참조로: 같은 얼굴이 그림마다 이어지게. 이미 가져온 초상은 건너뛴다
+  const fromAvatars = guard(async () => {
+    const chat = cur().chat; if (!chat) throw new Error(t('scenebook.studio.refs.needChat'));
+    const have = new Set(refs.map(r => String((r as { src?: string }).src || ''))), added: string[] = [];
+    for (const cid of chat.charIds || []) {
+      const ch = S.get('chars', cid); if (!ch || have.has('avatar:' + cid)) continue;
+      const data = await S.avatarData(ch).catch(() => ''); if (!data || !/^data:image\//.test(data)) continue;
+      const blob = dataToBlob(data); if (!blob) continue;
+      added.push(await store(blob, ch.name || t('scenebook.person'), { src: 'avatar:' + cid }));
+    }
+    if (!added.length) { toast(t('scenebook.studio.refs.avatarsNone')); return; }
+    // 인물 참조로 바로 켠다 (옷차림은 따르지 않는다: 장면마다 옷이 달라질 수 있다)
+    const now0 = Illust.cfg(), room = Math.max(0, REFERENCE_LIMIT - (now0.references || []).length);
+    Illust.saveCfg({ references: [...(now0.references || []), ...added.slice(0, room).map((id): RefUse => ({ id, kind: 'precise', mode: 'character', sameOutfit: false, strength: 1, fidelity: 1, information: 1 }))] });
+    toast(t('scenebook.studio.refs.avatarsAdded', { n: added.length }), 'ok'); reopen();
+  });
   const remove = (r: Asset) => guard(async () => {
     if (!(await confirmBox(t('scenebook.studio.refs.deleteAsk', { name: r.name }), t('scenebook.delete'), true))) return;
     await C.DB.del('assets', r.id); Illust.cancelWaiting(j => j.config.references?.some(x => x.id === r.id));
     const now0 = Illust.cfg(); Illust.saveCfg({ references: (now0.references || []).filter(x => x.id !== r.id), presets: now0.presets.map(p => ({ ...p, config: { ...p.config, references: (p.config.references || []).filter(x => x.id !== r.id) } })) });
     toast(t('scenebook.studio.refs.deleted')); reopen(); });
-  const off = c.backend !== 'nai' || !MODELS[c.model]?.references;
+  // 지금 모델이 못 쓰는 참조와 그 까닭, 그리고 더 드는 값
+  const on = active(), plan = sp ? referencePlan(c.model, on.map(rowRef)) : [], skipOf = new Map(plan.map((x, i) => [on[i].id, x.skip]));
+  const applied = plan.filter(x => !x.skip), precise = applied.filter(x => x.ref.kind === 'precise').length;
   return <div className="sb-refs">
     <p className="hint">{t('scenebook.studio.refs.intro')}</p>
-    {off ? <div className="sb-note"><Icon name="image" size={15} /><span>{c.backend !== 'nai' ? t('scenebook.studio.refs.offEngine') : t('scenebook.studio.refs.offModel')}</span></div> : null}
-    <div className="row wrap"><Btn label={t('scenebook.studio.refs.add')} ic="plus" onClick={upload} />{refs.length ? <Btn label={t('scenebook.studio.refs.clearAll')} cls="ghost" onClick={() => { Illust.saveCfg({ references: [] }); reopen(); }} /> : null}<span className="sb-grow" /><span className={'sb-state' + (m.bad ? ' bad' : '')}>{m.state}</span></div>
-    {!refs.length ? <Empty>{t('scenebook.studio.refs.empty')}</Empty> : <div className="sb-ref-grid">{refs.map(r => { const row = m.rows.get(r.id) as RefRow;
+    {!nai ? <div className="sb-note"><Icon name="image" size={15} /><span>{t('scenebook.studio.refs.offEngine')}</span></div> : null}
+    <div className="row wrap"><Btn label={t('scenebook.studio.refs.add')} ic="plus" onClick={upload} /><Btn label={t('scenebook.studio.refs.fromAvatars')} ic="user" cls="ghost" onClick={fromAvatars} />{refs.length ? <Btn label={t('scenebook.studio.refs.clearAll')} cls="ghost" onClick={() => { Illust.saveCfg({ references: [] }); reopen(); }} /> : null}<span className="sb-grow" /><span className={'sb-state' + (m.bad ? ' bad' : '')}>{m.state}</span></div>
+    <small className="hint">{t('scenebook.studio.refs.fromAvatarsHint')}</small>
+    {nai && refs.length ? <p className="sb-ref-cost" role="status">{!applied.length ? t('scenebook.studio.refs.costNone') : t('scenebook.studio.refs.cost', { n: applied.length }) + (precise ? t('scenebook.studio.refs.costPrecise', { n: precise, anlas: precise * 5 }) : '') + t('scenebook.studio.refs.costOpus')}</p> : null}
+    {!refs.length ? <Empty>{t('scenebook.studio.refs.empty')}</Empty> : <div className="sb-ref-grid">{refs.map(r => { const row = m.rows.get(r.id) as RefRow, vibe = row.use === 'vibe', skip = row.enabled ? skipOf.get(r.id) : '';
+      const pickUse = (val: string) => { row.use = val; if (val === 'character' || val === 'character&style') row.sameOutfit = val === 'character&style'; if (val === 'vibe') row.strength = Math.min(row.strength, 1); commit(); };
+      const toggle = (val: boolean) => { if (val && active().length >= REFERENCE_LIMIT) { toast(t('scenebook.studio.refs.limit', { n: REFERENCE_LIMIT })); return; } row.enabled = val; commit(); };
       return <div key={r.id} className={'sb-ref' + (row.enabled ? ' on' : '')}><div className="sb-ref-img"><img src={r.data} alt={r.name} loading="lazy" /></div>
-        <div className="col"><div className="row"><b className="sb-grow">{r.name}</b><IBtn ic="trash" title={t('scenebook.studio.refs.delete')} cls="tiny" onClick={remove(r)} /></div><Chk label={t('scenebook.studio.refs.use')} checked={row.enabled} onChange={val => { row.enabled = val; commit(); }} />
-          <div className="form"><Fld label={t('scenebook.studio.refs.kind')} cls="half"><Sel opts={[['vibe', t('scenebook.studio.refs.kindVibe')], ['precise', t('scenebook.studio.refs.kindPrecise')]]} value={row.kind} onChange={val => { row.kind = val; commit(); }} /></Fld><Fld label={t('scenebook.studio.refs.preciseMode')} cls="half"><Sel opts={[['character', t('scenebook.person')], ['style', t('scenebook.studio.refs.style')], ['character&style', t('scenebook.studio.refs.charStyle')]]} value={row.mode} onChange={val => { row.mode = val; commit(); }} /></Fld>
-            <Slider row={row} k="strength" label={t('scenebook.studio.refs.strength')} later={later} /><Slider row={row} k="fidelity" label={t('scenebook.studio.refs.fidelity')} later={later} /><Slider row={row} k="information" label={t('scenebook.studio.refs.information')} later={later} /></div></div></div>; })}</div>}
+        <div className="col"><div className="row"><b className="sb-grow">{r.name}</b><IBtn ic="trash" title={t('scenebook.studio.refs.delete')} cls="tiny" onClick={remove(r)} /></div><Chk label={t('scenebook.studio.refs.use')} checked={row.enabled} onChange={toggle} />
+          {row.enabled ? <div className="form">
+            <Fld label={t('scenebook.studio.refs.kind')} hint={t(USES.find(u => u[0] === row.use)?.[2] || USES[0][2])}><Sel opts={USES.map(([id, label]): [string, string] => [id, t(label)])} value={row.use} onChange={pickUse} /></Fld>
+            {sp?.outfit && (row.use === 'character' || row.use === 'character&style') ? <Chk label={t('scenebook.studio.refs.sameOutfit')} checked={row.sameOutfit} onChange={val => { row.sameOutfit = val; commit(); }} /> : null}
+            <Slider row={row} k="strength" label={t('scenebook.studio.refs.strength')} max={vibe ? 1 : Math.max(1, sp?.strengthMax || 1)} later={later} />
+            {!vibe && sp?.fidelity ? <Slider row={row} k="fidelity" label={t('scenebook.studio.refs.fidelity')} hint={t('scenebook.studio.refs.fidelityHelp')} later={later} /> : null}
+            {vibe ? <Slider row={row} k="information" label={t('scenebook.studio.refs.information')} hint={t('scenebook.studio.refs.informationHelp')} later={later} /> : null}
+          </div> : null}
+          {skip ? <p className="sb-ref-skip" role="status">{t('scenebook.studio.refs.skipped', { why: skip })}</p> : null}</div></div>; })}</div>}
   </div>;
 }
 

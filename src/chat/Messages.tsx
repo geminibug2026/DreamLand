@@ -130,7 +130,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
       s.tr && { label: t('chat.translate.edit'), ic: 'edit', onclick: () => void editTranslation(m) },
       { label: t('chat.msgMenu.speak'), ic: 'volume', onclick: () => speak(s.text, m.charId, 'msg:' + m.id) },
       '-',
-      sub(t('chat.msgMenu.gLook'), 'image', [{ label: t('chat.illustDlg.title'), ic: 'image', onclick: () => illustDialog(m) }, ...of('look')]),
+      sub(t('chat.msgMenu.gLook'), 'image', [...(X.actions.some(a => a.id === 'sb-manual') ? [] : [{ label: t('chat.illustDlg.title'), ic: 'image', onclick: () => illustDialog(m) }]), ...of('look')]),
       sub(t('chat.msgMenu.gRecord'), 'note', of('record')),
       sub(t('chat.msgMenu.gRewrite'), 'refresh', of('rewrite')),
       sub(t('chat.msgMenu.gMore'), 'sparkle', of('more')),
