@@ -128,7 +128,7 @@ export interface Cfg {
   chunkTurns: number; /** 대화 모드 방의 요약 주기 (0 = chunkTurns 그대로) */ chunkTurnsTalk: number; /** 대화 모드: 답장 몇 개를 모아 한 번에 기록하나 (1 = 답장마다) */ talkBatch: number; /** RP: 답장 몇 개를 모아 한 번에 기록하나 */ rpBatch: number; arcMergeAt: number; consolidateEvery: number; arcConsolidateEvery: number; maxMemories: number; responseTokens: number; summaryContextCount: number;
   fossil: { settling: number; fossilized: number; deep: number }; language: string;
   cast: boolean; lockEdited: boolean; items: boolean; milestones: boolean; storyClock: boolean; refProfile: boolean; refLore: boolean;
-  trim: boolean; keepRecent: number; autoHide: boolean; preserveRecent: number;
+  trim: boolean; keepRecent: number; /** 자동 숨김: 늘 원문으로 둘 최근 답변 수 · 그보다 옛것을 몇 개씩 묶어 숨기나 */ keepTurns: number; hideUnit: number; /** 옛 묶음 떠올리기 (기본 끔) */ chapterRecall: boolean; autoHide: boolean; preserveRecent: number;
   supervisor: boolean; associative: boolean; authorizePrivate: boolean; perspective: string; audit: boolean; reasoningHeadroom: number;
   position: string; depth: number; prompt: string;
   embed: { mode: string; connId: string; model: string; floor: number; kind?: string; [k: string]: unknown };
@@ -241,6 +241,7 @@ export interface MemoryUi {
   recalClock(chat: ChatM, mem: Mem, o?: { signal?: AbortSignal; onProgress?: (done: number, total: number) => void }): Promise<{ before: number; after: number; failed?: number } | null>;
   add(chatId: string, rec: Partial<MemItem>): Promise<unknown>;
   autoHide(chat: ChatM, msgs: Msg[]): number;
+  syncHidden(chat: ChatM, msgs: Msg[]): number;
   post(chat: ChatM, msgs: Msg[], signal?: AbortSignal): Promise<unknown>;
   received(chat: ChatM, msg: Msg, msgs?: Msg[] | null): Promise<unknown>;
   prepare(chat: ChatM, msgs: Msg[], o?: { type?: string; background?: boolean }): unknown;

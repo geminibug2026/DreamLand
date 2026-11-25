@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Btn } from '../../kit';
 import type { ChatM, Mem } from '../types';
 import { BundleBar, Grid, Ico, M, Note, Num, SX, SearchBox, Sel, Tb, Tog, Txt, applySearch, bundleDefaults, bundleOwner, get, openRepeatFinder, openSideSorter, put, reinject, searchInput, useNative } from './ConfigParts';
-import { Sec, busyBtn, ensureCfg, persistMsgs, saveCfg, useBump, type St } from './parts';
+import { Sec, busyBtn, ensureCfg, saveCfg, useBump, type St } from './parts';
 import { S } from '../../lib/core';
 import { toast } from '../../ui';
 import { tokens } from '../../lib/engine';
@@ -111,13 +111,15 @@ export function Config({ st }: { st: St }) {
       <PerspBox st={st} />
       <Tog k="associative" label={t('memoria.config.basic.associative.label')} hint={t('memoria.config.basic.associative.hint')} />
       <Tog k="autoHide" label={t('memoria.config.basic.autoHide.label')} hint={<>{t('memoria.config.basic.autoHide.hintBefore')}<b>{t('memoria.config.basic.autoHide.hintBold')}</b>{t('memoria.config.basic.autoHide.hintAfter')}</>}
-        after={async on => { if (!on) return; if (chat && mem) { const n = Mm.autoHide(chat, st.msgs); if (n) await persistMsgs(chat, st.msgs); } toast(t('memoria.config.basic.autoHide.done')); }} />
+        after={on => { if (on) toast(t('memoria.config.basic.autoHide.done')); }} />
       <Tog k="refProfile" label={t('memoria.config.basic.refProfile.label')} hint={t('memoria.config.basic.refProfile.hint')} />
       <Tog k="refLore" label={t('memoria.config.basic.refLore.label')} hint={t('memoria.config.basic.refLore.hint')} />
       <Tog k="audit" label={t('memoria.config.basic.audit.label')} hint={t('memoria.config.basic.audit.hint')} />
       <Tog k="trim" label={t('memoria.config.basic.trim.label')} hint={t('memoria.config.basic.trim.hint')} />
       <Sel k="language" label={t('memoria.config.basic.language.label')} title={t('memoria.config.basic.language.title')} opts={langs} />
       <Num k="summaryContextCount" label={t('memoria.config.basic.summaryContextCount.label')} title={t('memoria.config.basic.summaryContextCount.title')} min={-1} max={50} step={1} />
+      <Num k="keepTurns" label={t('memoria.config.basic.keepTurns.label')} title={t('memoria.config.basic.keepTurns.title')} min={1} max={1000} step={1} />
+      <Num k="hideUnit" label={t('memoria.config.basic.hideUnit.label')} title={t('memoria.config.basic.hideUnit.title')} min={1} max={500} step={1} />
       <Num k="preserveRecent" label={t('memoria.config.basic.preserveRecent.label')} title={t('memoria.config.basic.preserveRecent.title')} min={1} max={500} step={1} />
       <Num k="recordDelay" label={t('memoria.config.basic.recordDelay.label')} title={t('memoria.config.basic.recordDelay.title')} min={0} max={20} step={1} />
       <Num k="keepRecent" label={t('memoria.config.basic.keepRecent.label')} title={t('memoria.config.basic.keepRecent.title')} min={2} max={2000} step={1} /></Grid>
@@ -137,11 +139,11 @@ export function Config({ st }: { st: St }) {
       <Tog k="skipOoc" label={t('memoria.config.aid.skipOoc.label')} hint={t('memoria.config.aid.skipOoc.hint')} after={re} />
       <Tog k="dueDates" label={t('memoria.config.aid.dueDates.label')} hint={t('memoria.config.aid.dueDates.hint')} after={re} />
       <Tog k="presentNow" label={t('memoria.config.aid.presentNow.label')} hint={t('memoria.config.aid.presentNow.hint')} after={re} />
-      <Tog k="addressTerms" label={t('memoria.config.aid.addressTerms.label')} hint={t('memoria.config.aid.addressTerms.hint')} after={re} />
       <Tog k="guardSecrets" label={t('memoria.config.aid.guardSecrets.label')} hint={t('memoria.config.aid.guardSecrets.hint')} after={re} />
       <Tog k="storyDates" label={t('memoria.config.aid.storyDates.label')} hint={t('memoria.config.aid.storyDates.hint')} after={re} />
       <Num k="sceneCards" label={t('memoria.config.aid.sceneCards.label')} title={t('memoria.config.aid.sceneCards.title')} min={0} max={2} step={1} after={re} />
-      <Num k="mindLines" label={t('memoria.config.aid.mindLines.label')} title={t('memoria.config.aid.mindLines.title')} min={0} max={3} step={1} after={re} /></Grid>
+      <Num k="mindLines" label={t('memoria.config.aid.mindLines.label')} title={t('memoria.config.aid.mindLines.title')} min={0} max={3} step={1} after={re} />
+      <Tog k="chapterRecall" label={t('memoria.config.aid.chapterRecall.label')} hint={t('memoria.config.aid.chapterRecall.hint')} after={re} /></Grid>
     </Sec>
 
     <Sec title={t('memoria.config.model.title')} desc={t('memoria.config.model.desc')}

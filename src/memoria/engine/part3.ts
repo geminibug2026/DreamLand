@@ -101,6 +101,8 @@ export interface Part3 {
   recalClock(chat: Chat, mem: Mem, opts?: { signal?: AbortSignal; onProgress?: Progress | null }): Promise<ClockRecalResult | null>;
   recalibrateStoryClock(chat: Chat, mem: Mem, opts?: { signal?: AbortSignal; onProgress?: Progress | null }): Promise<ClockRecalResult | null>;
   autoHide(chat: ChatM, msgs: Msg[]): number;
+  autoHideEnd(mem: Mem, msgs: Msg[]): number;
+  syncHidden(chat: ChatM, msgs: Msg[]): number;
   applyAutoHide(chat: ChatM, msgs: Msg[]): number;
   unhideAllMessages(chat: Chat, msgs: Msg[] | null | undefined, opts?: { all?: boolean }): number;
   embedSig(): string;
@@ -460,21 +462,40 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     } finally { G.clockRecalBusy = false; }
   },
   recalibrateStoryClock(chat, mem, opts) { return this.recalClock(chat, mem, opts); },
-  /** 요약이 맡은 옛 메시지를 숨긴다 (최근 preserveRecent 개는 남긴다). 반환: 숨긴 수 — 저장은 부른 쪽이 */
-  autoHide(chat, msgs) {
-    const cfg = this.cfg(), mem = this.get(chat.id); if (!mem) return 0;
-    const covered = Math.max(-1, ...mem.chunks.map(c => c.to), ...mem.arcs.filter(a => !a.carried).map(a => a.to)); if (covered < 0) return 0;
+  /**
+   * 자동 숨김이 숨길 마지막 메시지 번호 (-1 = 숨길 것 없음).
+   * 요약이 다룬 것을 다 숨기지 않는다 — 최근 keepTurns 개 답변은 늘 원문으로 두고, 그보다 오래된 답변을 hideUnit 개씩 묶어서 숨긴다
+   * (기본 40 · 20: 60개면 20개, 80개면 40개를 숨겨 보이는 답변이 40~59개 사이를 오간다. 답변마다 숨김이 바뀌지 않아 프롬프트 캐시도 덜 깨진다).
+   * 요약이 덮은 것을 전부 숨기면 모델이 최근 몇 개와 요약에만 기대게 되고, 요약이 흔들리면(다시 색인했을 때처럼) 이야기를 통째로 잃고 시작 설정으로 돌아간다.
+   * 요약이 아직 다루지 않은 것과 끝의 preserveRecent 개는 숨기지 않는다
+   */
+  autoHideEnd(mem, msgs) {
+    const cfg = this.cfg();
+    const covered = Math.max(-1, ...mem.chunks.map(c => c.to), ...mem.arcs.filter(a => !a.carried).map(a => a.to)); if (covered < 0) return -1;
     const order = new Map(msgs.map((m, i) => [m.id, i]));
-    const last = Math.max(-1, ...mem.turns.slice(0, covered + 1).map(t => order.get(t.msgId) ?? -1));
-    const end = Math.min(last, msgs.length - Math.max(1, +cfg.preserveRecent || 6) - 1); let n = 0;
-    for (let i = 0; i <= end; i++) if (!msgs[i].hidden && !msgs[i].pin) { msgs[i].hidden = true; msgs[i].memHidden = true; n++; }   // 고정한 메시지는 숨기지 않는다
+    const last = Math.max(-1, ...mem.turns.slice(0, covered + 1).map(t => order.get(t.msgId) ?? -1)); if (last < 0) return -1;
+    const replies: number[] = []; msgs.forEach((m, i) => { if (m && m.role === 'assistant' && !this.isSideMessage(m) && (!m.hidden || m.memHidden)) replies.push(i); });
+    const keep = Math.max(1, Math.round(Number(cfg.keepTurns) || 40)), unit = Math.max(1, Math.round(Number(cfg.hideUnit) || 20));
+    const hideTurns = replies.length > keep ? Math.floor((replies.length - keep) / unit) * unit : 0; if (!hideTurns) return -1;
+    const keepFrom = msgs.length - Math.max(1, +cfg.preserveRecent || 6);
+    return Math.min(replies[hideTurns - 1], last, keepFrom - 1);
+  },
+  /** 자동 숨김을 맞춘다: 숨길 범위는 숨기고, 그 밖인데 이 기능이 숨겨 둔 것은 되돌린다 (예전 규칙으로 더 많이 숨겼거나 · 요약이 걷혔거나 · 설정을 줄였을 때).
+   *  고정한 메시지와 직접 숨긴 메시지는 건드리지 않는다. 반환: 바꾼 수(숨김 + 되돌림) — 저장은 부른 쪽이 */
+  autoHide(chat, msgs) {
+    const mem = this.get(chat.id); if (!mem) return 0;
+    const end = this.autoHideEnd(mem, msgs); let n = 0;
+    for (let i = Math.max(0, end + 1); i < msgs.length; i++) { const m = msgs[i]; if (m?.hidden && m.memHidden) { m.hidden = false; delete m.memHidden; S.touchMsgs(m); n++; } }
+    for (let i = 0; i <= end; i++) if (!msgs[i].hidden && !msgs[i].pin) { msgs[i].hidden = true; msgs[i].memHidden = true; S.touchMsgs(msgs[i]); n++; }
     return n;
   },
-
+  /** 설정대로 맞춘다: 장기기억과 자동 숨김이 켜져 있으면 단계대로 숨기고, 하나라도 꺼져 있으면 이 기능이 숨긴 것을 모두 되돌린다
+   *  (숨김은 대화에 남는다 — 꺼도 숨은 채면 모델은 요약도 장부도 없이 최근 몇 개만 보고 이야기 첫머리로 돌아간다). 반환: 바꾼 수 */
+  syncHidden(chat, msgs) { const cfg = this.cfg(); return cfg.enabled && cfg.autoHide ? this.autoHide(chat, msgs) : this.unhideAllMessages(chat, msgs); },
   applyAutoHide(chat, msgs) { const cfg = this.cfg(); return cfg.enabled && cfg.autoHide ? this.autoHide(chat, msgs) : 0; },
   /** 자동 숨김으로 가린 메시지를 다시 보인다 (all: 직접 숨긴 것까지 전부). 반환: 보이게 한 수 — 저장은 부른 쪽이 */
   unhideAllMessages(chat, msgs, { all = false } = {}): Keep<typeof chat, number> {
-    let n = 0; for (const m of msgs || []) if (m?.hidden && (all || m.memHidden)) { m.hidden = false; delete m.memHidden; n++; }
+    let n = 0; for (const m of msgs || []) if (m?.hidden && (all || m.memHidden)) { m.hidden = false; delete m.memHidden; S.touchMsgs(m); n++; }
     return n;
   },
   /**
@@ -487,7 +508,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     const covered = Math.max(-1, ...mem.chunks.map(c => c.to), ...mem.arcs.filter(a => !a.carried).map(a => a.to)), order = new Map(msgs.map((m, i) => [m.id, i]));
     const last = covered < 0 ? -1 : Math.max(-1, ...mem.turns.slice(0, covered + 1).map(t => order.get(t.msgId) ?? -1));
     const back = strayHidden(msgs.map(m => !!(m?.hidden && m.memHidden)), last, keep ?? (+this.cfg().preserveRecent || 6));
-    for (const i of back) { msgs[i].hidden = false; delete msgs[i].memHidden; }
+    for (const i of back) { msgs[i].hidden = false; delete msgs[i].memHidden; S.touchMsgs(msgs[i]); }
     if (back.length) this.logActivity('update', tr('memoria.engine.log.unhid', { n: back.length }));
     return back.length;
   },
@@ -875,9 +896,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     const back = Math.max(0, T - 1 - (m.turn ?? T)), fresh = back <= 40 || m.pinned || (m.importance ?? 0) >= 0.8;
     const quote = withExcerpt && !(m.tags || []).includes('episode_raw') && fresh && m.quote && m.quote.length <= 160 && !(banned?.length && hasPhrase(m.quote, banned)) ? m.quote : null;
     const d = ages?.get(m.turn!) ?? 0;
-    // 오래된 속마음은 그때의 감정이다 — 그 뒤 사정이 바뀌었을 수 있다 (경멸당할까 두렵던 때의 마음이 연인이 된 뒤에도 "지금 숨기는 것"으로 읽히지 않게)
-    const pastFeeling = m.kind === 'impression' && visNorm !== 'public' && !m.pinned && m.turn != null && (d >= 14 || back >= 40);
-    const dated = m.retired ? ` [no longer current${m.retired.now ? ` — now: ${m.retired.now}` : ''}]` : notes?.has(m.id) ? ` [as of then — ${notes.get(m.id)}]` : pastFeeling ? ' [how they felt back then — things have moved on since; not a present secret]' : '';
+    const dated = m.retired ? ` [no longer current${m.retired.now ? ` — now: ${m.retired.now}` : ''}]` : notes?.has(m.id) ? ` [as of then — ${notes.get(m.id)}]` : '';
     const agoNote = d >= 1 ? ` · ~${ago(d)} ago in-story` : '';   // 이야기 속에서 하루 넘게 지난 기억은 얼마나 옛일인지
     const when = m.manual || m.turn == null ? 'noted' : back <= 0 ? 'this exchange' : back === 1 ? 'last exchange' : `${back} exchanges back`;   // 절대 턴 번호 대신 상대 최신성
     const core = (m.importance ?? 0) >= 0.8 || m.pinned ? ' · core' : '';   // 오래돼도 무거운 기억에는 core 표시
@@ -891,14 +910,15 @@ export const part3: Part3 & ThisType<MemoryApi> = {
       return `- ${c.name}${akaBrief}${head ? ` (${head})` : ''}${gist ? ` — ${gist}` : ''}`;
     }
     const bits = [];
-    if (c.appearance && (c.sceneNow || c.provisional)) bits.push(c.appearance);   // 외형은 지금 장면에 있는 인물(묘사에 필요)과 이름 없는 인물(외형이 곧 식별자)만
+    if (c.appearance) bits.push(c.appearance);   // 장면에 누가 있는지는 모델이 가린다 — 외형도 늘 싣는다
     // 바탕은 변하지 않는 기준, 달라진 점은 그 위에 천천히 얹히는 것 — 둘을 따로 적어야 모델이 장면 하나의 기분을 성격으로 굳히지 않는다
-    // 달라진 점이 적혀 있으면 그쪽이 지금이다 — 바탕을 "바뀌지 않는다"고만 적으면, 이야기가 뒤집은 처음의 태도(혐오 · 불신)가 지금 것처럼 읽힌다
+    // 바탕은 이야기를 시작할 때의 기질이다. 이야기가 그 사람을 바꿔 놓았으면(달라진 점) 그쪽이 지금이다 —
+    // 바탕을 "바뀌지 않는다"고만 적으면, 이야기가 뒤집은 처음의 태도(혐오 · 확신)를 모델이 지금 것으로 읽고 그 시절로 되돌아간다
     const grown = (c.growth || []).slice(-3).map(g => g.text).filter(Boolean).join('; ');
-    if (c.core) bits.push(grown ? `core (the temperament they began with — where "changed in this story" says otherwise, that is who they are now): ${c.core}` : `core (constant — the story does not rewrite this): ${c.core}`);
+    if (c.core) bits.push(grown ? `core (how they were when the story began — where "changed in this story" differs, that is how they are now): ${c.core}` : `core (constant — the story does not rewrite this): ${c.core}`);
     if (c.voice) bits.push(`voice: ${c.voice}`);
     if (c.traits?.length) bits.push(mergeTraits([], c.traits, 10).join(', '));   // 직접 적거나 잠근 카드에 겹친 칸이 있어도 장부에는 한 번만
-    if (grown) bits.push(`changed in this story (how they stand now — this outranks the core and the original description): ${grown}`);
+    if (grown) bits.push(`changed in this story (how they are now — this outranks the core): ${grown}`);
     if (c.relationships?.length) bits.push(c.relationships.map(r => `${r.target}: ${r.relation}`).join('; '));
     return `- ${c.name}${c.aka?.length ? ` (aka ${c.aka.join(', ')})` : ''}${head ? ` (${head})` : ''}${c.provisional ? ' [not yet named in-story — refer to them only by this handle]' : ''}${bits.length ? ` — ${bits.join(' | ')}` : ''}`;
   },

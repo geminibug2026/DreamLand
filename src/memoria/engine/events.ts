@@ -27,10 +27,26 @@ on<ChatM | null | undefined>('chat:open', async chat => {
     const mem = await Memory.load(chat.id), msgs = await S.msgsFast(chat.id);   // 방금 연 방의 목록 (메모리에 있으면 다시 읽지 않는다 — 긴 대화를 두 번 읽지 않게)
     if (!Array.isArray(msgs) || (!msgs.length && mem.turns.length)) return;   // 메시지를 읽지 못했을 때 기록을 통째로 걷어내지 않는다
     if (Memory.reconcile(mem, msgs)) await Memory.save(mem);
-    // 분기한 방 · 밖에서 메시지가 지워진 방: 요약이 걷혔는데 숨김만 남은 원문을 되돌린다. 대화 끝의 몇 개(4)는 어떤 경우에도 숨겨 두지 않는다 — 설정 세트가 아직 갈아 끼워지기 전이라 보존 수는 작게 잡는다
-    if (Memory.cfg().enabled && Memory.restoreHidden(chat, mem, msgs, 4)) { await S.saveMsgs(chat, msgs); emit('memory:msgs', chat); }
+    openChat = chat.id;
+    // 숨김을 설정대로 맞춘다: 켜져 있으면 단계대로(예전 규칙으로 너무 많이 숨겨 둔 것 · 요약이 걷혔는데 숨김만 남은 것은 되돌린다), 장기기억이나 자동 숨김이 꺼져 있으면 숨겨 둔 것을 모두 되돌린다.
+    // 이 대화의 설정 세트로 갈아 끼우면 아래 'settings' 에서 한 번 더 맞춘다
+    if (Memory.syncHidden(chat, msgs)) { await S.saveMsgs(chat, msgs); emit('memory:msgs', chat); }
   } catch (e: any) { console.warn('[장기기억]', e); Memory.logActivity('error', tr('memoria.engine.log.eventError', { why: e?.message || e })); }
 });
+// 장기기억 · 자동 숨김을 켜고 끄거나 숨김 단계를 바꾸면 지금 대화에 바로 맞춘다 (끄면 숨겨 둔 원문을 되돌린다 — 끈 뒤에도 숨은 채면 모델이 이야기를 잃는다)
+let openChat = '', hideSig = '';
+const hideSigOf = () => { const c = Memory.cfg(); return [c.enabled, c.autoHide, c.preserveRecent, c.keepTurns, c.hideUnit].join('|'); };
+on<{ memory?: unknown } | undefined>('settings', async patch => {
+  if (patch && !('memory' in patch)) return;
+  const sig = hideSigOf(); if (sig === hideSig) return; const first = !hideSig; hideSig = sig; if (first || !openChat) return;
+  try {
+    const chat = S.get('chats', openChat) as ChatM | undefined, msgs = chat ? S.msgsCached(openChat) : undefined; if (!chat || !Array.isArray(msgs)) return;
+    const shownBefore = msgs.filter(m => m?.memHidden).length, n = Memory.syncHidden(chat, msgs); if (!n) return;
+    await S.saveMsgs(chat, msgs); emit('memory:msgs', chat);
+    const back = shownBefore - msgs.filter(m => m?.memHidden).length; if (back > 0) emit('memory:unhid', { chat, n: back });
+  } catch (e: any) { console.warn('[장기기억] 숨김 맞추기', e); }
+});
+setTimeout(() => { if (!hideSig) hideSig = hideSigOf(); });
 // 메시지를 보냈으면 입력 칸은 비었다 — "쓰는 중"이 아니다
 on('message:sent', () => { G.typingText = false; });
 // 대화 화면이 메시지를 고치거나(수정 · 스와이프 · 삭제 · 다른 기능의 갱신) 알려 올 때 — { chat, msg, msgs }. msgs 가 없으면 저장된 대화에서 찾는다

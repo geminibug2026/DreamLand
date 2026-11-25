@@ -172,7 +172,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
    * 저장은 다음 설정 저장 때 함께 된다 (그전까지는 열 때마다 같은 판정을 다시 한다)
    */
   migrateSettings(s = S.settings.memory) {
-    if (!s || typeof s !== 'object' || ((s.promptRev || 1) >= MP.PROMPT_REV && (s.settingsRev || 1) >= 4)) return false;
+    if (!s || typeof s !== 'object' || ((s.promptRev || 1) >= MP.PROMPT_REV && (s.settingsRev || 1) >= 5)) return false;
     if ((s.promptRev || 1) < MP.PROMPT_REV) {
       if (!s.promptOutdated || typeof s.promptOutdated !== 'object') s.promptOutdated = {};
       for (const k of PROMPT_KEYS) {
@@ -187,7 +187,9 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     //  · 기록 지연 0 → 1: 답변을 받자마자 적으면 다시 받을(리롤) 때마다 그 기록을 걷고 다시 적는다 — 내가 다음 말을 보내 그 답변을 받아들인 뒤에 적는다
     //  · 전환점 기록 끔 → 켬: 기록 호출에 함께 받아 호출은 늘지 않는다. 전환점이 없으면 캐릭터 설명의 시작 설정이 뒤집힌 것을 장부가 붙들지 못한다
     //  · 자동 숨김 때 남기는 메시지 6 → 20: 세 번 주고받은 것만 남기면 방금 일의 결이 끊긴다
-    if ((s.settingsRev || 1) < 4) { if (s.recordDelay === 0) s.recordDelay = 1; if (s.milestones === false) s.milestones = true; if (s.preserveRecent === 6) s.preserveRecent = 20; s.settingsRev = 4; }
+    if ((s.settingsRev || 1) < 4) { if (s.preserveRecent === 6) s.preserveRecent = 20; s.settingsRev = 4; }
+    // rev 5: 옛 기록을 최근 대화 옆에 끌어오는 회상 덧붙이기를 기본으로 끈다 — 켜 두면 모델이 끝난 시절(이야기 첫머리)로 되돌아갔다 (옛 기본값 그대로인 것만 · 직접 바꾼 값은 둔다)
+    if ((s.settingsRev || 1) < 5) { if (s.rawRecall === 'auto') s.rawRecall = 'off'; if (s.sceneCards === 1) s.sceneCards = 0; if (s.mindLines === 2) s.mindLines = 0; s.settingsRev = 5; }
     return true;
   },
   /** 기본 프롬프트 글 (key: archivist · supervisor · chunk · arc) */
@@ -875,11 +877,11 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     const cfg = this.cfg();
     if (!cfg.enabled) return;
     if (cfg.autoHide) {
-      const n = this.autoHide(chat, msgs);
+      const before = msgs.filter(m => m?.memHidden).length, n = this.autoHide(chat, msgs), hid = msgs.filter(m => m?.memHidden).length;
       if (n) {
         await S.saveMsgs(chat, msgs); emit('memory:msgs', chat);
         // 이 대화에서 처음 숨겼으면 한 번 알린다 (지운 게 아니라 숨긴 것 · 되돌릴 수 있다)
-        const mem = this.get(chat.id); if (mem && !mem.hideNoticed) { mem.hideNoticed = true; await this.save(mem); emit('memory:hidden-first', { chat, n }); }
+        const mem = this.get(chat.id); if (hid > before && mem && !mem.hideNoticed) { mem.hideNoticed = true; await this.save(mem); emit('memory:hidden-first', { chat, n: hid }); }
       }
     }
     if (cfg.embed.mode === 'api') await this.embedQuery(chat, msgs, signal).catch(e => console.warn('[장기기억] 질의 임베딩', e));

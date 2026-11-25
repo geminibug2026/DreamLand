@@ -60,10 +60,11 @@ export const chunkTurnsOf = (cfg: Pick<Cfg, 'chunkTurns' | 'chunkTurnsTalk'>, ch
 /** 그 턴 뒤로(from 번째 기록부터) 기록된 답변 수 — 묶음 기록은 기록 하나가 답변 여러 개를 덮으므로(span) 기록 수가 아니라 덮은 답변 수로 센다 */
 export const repliesOf = (turns: Pick<Turn, 'span'>[], from = 0) => { let n = 0; for (let i = Math.max(0, from); i < turns.length; i++) n += Math.max(1, Math.round(Number(turns[i]?.span) || 1)); return n; };
 export const MEMORY_DEFAULTS: Cfg = {
-  enabled: false, auto: true, recordDelay: 1, tokenBudget: 8000, topK: 10, minScore: 0.12, minCosine: 0.08, mmrLambda: 0.74, maxPerKind: 3, maxPerTurn: 2, multiQueryRecent: 3,
+  enabled: false, auto: true, recordDelay: 0, tokenBudget: 8000, topK: 10, minScore: 0.12, minCosine: 0.08, mmrLambda: 0.74, maxPerKind: 3, maxPerTurn: 2, multiQueryRecent: 3,
   chunkTurns: 30, chunkTurnsTalk: 0, talkBatch: 5, rpBatch: 10, arcMergeAt: 6, consolidateEvery: 30, arcConsolidateEvery: 100, maxMemories: 400, responseTokens: 24000, summaryContextCount: 3, fossil: { settling: 12, fossilized: 40, deep: 120 }, language: 'auto',
-  cast: true, lockEdited: true, items: false, milestones: true, storyClock: true, refProfile: true, refLore: false,
-  trim: false, keepRecent: 20, autoHide: true, preserveRecent: 20,   // 요약된 옛 메시지는 기본으로 AI 에게서 숨긴다 (요약이 대신한다 — 긴 대화의 프롬프트가 일정하게 유지된다)
+  cast: true, lockEdited: true, items: false, milestones: false, storyClock: true, refProfile: true, refLore: false,
+  trim: false, keepRecent: 20, autoHide: true, preserveRecent: 20, keepTurns: 40, hideUnit: 20, chapterRecall: false,   // 자동 숨김: 최근 40답변은 늘 원문, 그 앞은 20개씩 묶어 숨긴다 · 옛 묶음 떠올리기는 기본 끔
+    // 요약된 옛 메시지는 기본으로 AI 에게서 숨긴다 (요약이 대신한다 — 긴 대화의 프롬프트가 일정하게 유지된다)
   supervisor: false, associative: true, authorizePrivate: true, perspective: '', audit: true, reasoningHeadroom: 8000,
   position: 'split', depth: 1, prompt: '',
   embed: { mode: 'off', connId: '', model: 'text-embedding-3-small', floor: 0.35 },
@@ -80,12 +81,12 @@ export const MEMORY_DEFAULTS: Cfg = {
   dueDates: true,           // 약속 · 기한을 작중 시간으로 센다 ("D-2", "3일 지남") — 사서 지시에 한 줄이 붙을 뿐 호출은 늘지 않는다
   presentNow: true,         // 장면에 있는 인물의 위치 · 옷차림 · 다친 곳 · 가진 것 · 기분을 사람마다 한 줄로 (모델 호출 없음)
   addressTerms: true,       // 대사에서 누가 누구를 어떻게 부르는지 모아 장면에 함께 있는 둘 사이의 것만 싣는다 (모델 호출 없음)
-  sceneCards: 1,            // 떠올린 옛 묶음을 장면 카드(순서대로의 일 · 원문 대사)로 펼치는 수 — 묶음 요약 호출에 함께 받아 두므로 호출은 늘지 않는다 (0 = 끔)
-  mindLines: 2,             // 장면 속 인물마다 그 인물이 마음에 둔 것(속마음 기억)을 이 줄 수까지 따로 싣는다 (0 = 끔 · 모델 호출 없음)
+  sceneCards: 0,            // (기본 끔: 옛 장면을 펼쳐 최근 대화 옆에 실으면 모델이 그 시절로 되돌아간다) 떠올린 옛 묶음을 장면 카드(순서대로의 일 · 원문 대사)로 펼치는 수 — 묶음 요약 호출에 함께 받아 두므로 호출은 늘지 않는다 (0 = 끔)
+  mindLines: 0,             // (기본 끔: 오래된 속마음이 지금 마음처럼 실린다) 장면 속 인물마다 그 인물이 마음에 둔 것(속마음 기억)을 이 줄 수까지 따로 싣는다 (0 = 끔 · 모델 호출 없음)
   recallVoice: 'natural',   // 지난 일을 꺼내는 정도: quiet 조용히 | natural 자연스럽게 | active 적극적으로
   storyDates: true,         // 상태창의 달력 날짜를 턴에 적어 "며칠째 · D-3"을 실제 날짜로 센다 (모델 호출 없음)
   guardSecrets: true,       // 비밀을 아는 사람은 그 자리에 있던 사람만 · 장면에 있지만 모르는 사람을 이름으로 짚는다 (모델 호출 없음)
-  rawRecall: 'auto',        // 원문 회상 — 옛일을 되짚는 말일 때만 숨긴 옛 대화에서 그 대목을 한 곳 찾아 「지금」 쪽에 싣는다 (모델 호출 없음. 'off' = 끔)
+  rawRecall: 'off',        // (기본 끔: 옛 원문을 통째로 최근 대화 옆에 실으면 모델이 그 시절로 되돌아간다) 원문 회상 — 옛일을 되짚는 말일 때만 숨긴 옛 대화에서 그 대목을 한 곳 찾아 「지금」 쪽에 싣는다 (모델 호출 없음. 'off' = 끔)
   checkConfirm: true,       // 연속성 검사가 경고를 냈을 때만 한 번 더 따져 확실한 것만 남긴다 (경고가 없으면 호출 없음, 있으면 1회)
   forgetHidden: false,      // 기록한 뒤에 직접 숨긴 메시지의 기록을 걷어 낸다 (자동 숨김 · 일부러 색인한 숨긴 메시지는 그대로)
   waitTyping: true,         // 입력 칸에 글을 쓰는 중이면 요약 · 서고 정리를 시작하지 않고 기다린다 (곧 올 답변과 겹치지 않게)

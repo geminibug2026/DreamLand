@@ -407,14 +407,9 @@ export function findRivalExtensions(names: unknown[] | null | undefined, disable
  * 떡밥(미해결 서약) 관리 — 끝난 일이 "미해결"로 남아 계속 실리지 않게
  * ------------------------------------------------------------ */
 
-/**
- * 오래돼도 장부에서 밀려나지 않게 지킬 전환점: 직접 고정한 것(여섯까지)이 먼저, 모자란 자리는 처음의 큰 전환으로 셋까지 채운다.
- * "정체가 드러났다" 같은 처음의 큰 전환은 캐릭터 설명의 시작 설정이 뒤집혔음을 붙드는 닻이다 — 최근 것만 실으면 그 줄이 빠진다. 반환: 턴 순서대로
- */
+/** 오래돼도 장부에서 밀려나지 않게 지킬 전환점: 이야기 탭에서 직접 고정한 것 (여섯까지). 반환: 턴 순서대로 */
 export function keptMilestones<M extends { turn?: number | null; grade?: string; pinned?: unknown }>(list: M[] | null | undefined): M[] {
-    const byTurn = (a: M, b: M) => (a.turn || 0) - (b.turn || 0);
-    const pinned = (list || []).filter(e => !!e.pinned).sort(byTurn).slice(0, 6);
-    return [...pinned, ...(list || []).filter(e => !e.pinned && e.grade !== 'minor').sort(byTurn).slice(0, Math.max(0, 3 - pinned.length))].sort(byTurn);
+    return (list || []).filter(e => !!e.pinned).sort((a, b) => (a.turn || 0) - (b.turn || 0)).slice(0, 6);
 }
 
 export const THREAD_KINDS = Object.freeze(['keep_unresolved', 'loose_end', 'foreshadow', 'feeling']);
