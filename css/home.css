@@ -16,7 +16,7 @@
 .hm-tw.b { background: radial-gradient(circle at 57px 163px, #ece7da 0 .6px, transparent 1.1px), radial-gradient(circle at 176px 71px, #c9b27c 0 .7px, transparent 1.2px), radial-gradient(circle at 109px 9px, #ece7da 0 .5px, transparent 1px); background-size: 211px 211px; animation-duration: 11s; animation-delay: -4s; }
 @keyframes hm-tw { 0%, 100% { opacity: .12; } 50% { opacity: .62; } }
 @media (prefers-reduced-motion: reduce) { .hm-tw { animation: none; opacity: .3; } }
-.hm-hero { position: relative; min-height: 452px; border-radius: 10px; overflow: hidden; color: var(--n-ink); border: 1px solid var(--h-hair);
+.hm-hero { position: relative; isolation: isolate; min-height: 452px; border-radius: 10px; overflow: hidden; color: var(--n-ink); border: 1px solid var(--h-hair);
   background: radial-gradient(520px 520px at 76% 50%, rgba(201, 178, 124, .12), transparent 70%), radial-gradient(900px 500px at 20% 0, #15171c, transparent 70%), var(--n-bg); }
 .hm-tx { position: relative; z-index: 2; box-sizing: border-box; min-height: 452px; width: min(560px, 54%); padding: 40px 0 40px 48px; display: flex; flex-direction: column; }
 .hm-day { display: flex; align-items: center; gap: 9px; font: 400 10px var(--h-mono); letter-spacing: .2em; color: var(--n-sub); } .hm-day b { font: 400 12px var(--font); letter-spacing: .04em; padding-left: 9px; border-left: 1px solid var(--line-2); }
@@ -139,7 +139,7 @@
 /* 휴대폰의 캐릭터 머리: 정렬은 제목 줄의 글자 탭, 검색 옆에 새로 · 가져오기, 즐겨찾기와 폴더는 한 줄 칩 (폴더 추가 · 크기는 오른쪽에 고정) */
 @media (max-width: 700px) {
   .hm-sh .hm-seg { height: auto; border: 0; border-radius: 0; overflow: visible; flex: none; }
-  .hm .hm-sh .hm-seg button { padding: 6px 8px; border: 0; border-bottom: 1px solid transparent; font-size: 12.5px; color: var(--dim); background: none; font-weight: 400; }
+  .hm .hm-sh .hm-seg button { padding: 6px 8px; border: 0; border-bottom: 1px solid transparent; font-size: 12.5px; color: var(--dim); background: none; font-weight: 400; white-space: nowrap; flex: none; }   /* 아래 검색 줄의 탭(같은 폭으로 늘이기 flex: 1)이 여기까지 닿아, 굵게 된 '최근' 이 제 폭보다 좁게 잡혀 세로로 쪼개지던 것 — 글자 폭 그대로, 줄바꿈 없이 */
   .hm .hm-sh .hm-seg button.on { color: var(--text); font-weight: 700; border-bottom-color: var(--line-1); background: none; }
   .hm .hm-bar.hm-nb { flex-wrap: nowrap; gap: 6px; } .hm .hm-nb .hm-find { flex: 1 1 0; min-width: 0; width: auto; border-radius: 3px; }
   .hm .hm-nb .btn.hm-line, .hm .hm-nb .ibtn.hm-line { flex: none; padding: 0 10px; border-radius: 3px; background: var(--surface); font-size: 12.5px; gap: 5px; white-space: nowrap; } .hm .hm-nb .ibtn.hm-line { width: 36px; padding: 0; }

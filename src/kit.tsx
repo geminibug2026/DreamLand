@@ -1,5 +1,5 @@
 // 기본 부품: 아이콘 · 달 · 엠블럼 · 버튼 · 초상 + 화면을 다시 그리게 하는 훅
-import { useEffect, useReducer, useSyncExternalStore, type CSSProperties, type HTMLAttributes, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useReducer, useState, useSyncExternalStore, type CSSProperties, type HTMLAttributes, type MouseEvent, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { on } from './lib/core';
@@ -47,8 +47,25 @@ export const artStyle = (c?: { avatar?: string } | null): CSSProperties => { con
 export function ArtImg({ src, className }: { src?: string | null; className?: string }) { const u = useArt(src); return u ? <img className={className} src={u} alt="" /> : null; }
 /** 원본 초상을 바탕으로 건 칸. 초상을 꼬리표로만 들고 있으면(src/lib/avatars.ts) 꺼내 오는 대로 다시 그린다 */
 export function Art({ o, tag = 'div', children, ...rest }: { o?: { avatar?: string } | null; tag?: 'div' | 'button' | 'i' | 'span'; children?: ReactNode } & Omit<HTMLAttributes<HTMLElement>, 'style'>) {
-  const u = useArt(o?.avatar), Tag = tag as 'div';
+  const u = useDecodedArt(o?.avatar), Tag = tag as 'div';
   return <Tag {...(rest as HTMLAttributes<HTMLDivElement>)} style={u ? { backgroundImage: `url("${u}")` } : undefined}>{children}</Tag>;
+}
+/** 큰 초상 주소. 작은 그림을 걸어 둔 채 원본이 오면, 원본이 다 풀린(decode) 뒤에 바꾼다 —
+ *  안 풀린 큰 그림으로 바로 바꾸면 휴대폰에서 그 자리가 잠깐 비어 깜빡인다 (캐릭터 정보 창이 올라온 뒤 깜빡이던 것). 다른 그림으로 바뀔 때는 바로 건다 */
+function useDecodedArt(src?: string | null): string {
+  const u = useArt(src);
+  const [held, setHeld] = useState<{ src?: string | null; u: string }>(() => ({ src, u }));
+  const same = held.src === src;
+  useEffect(() => {
+    if (!same) { setHeld({ src, u }); return; }
+    if (!u || u === held.u) return;
+    if (!held.u) { setHeld({ src, u }); return; }   // 앞에 걸린 그림이 없으면 기다릴 것 없이
+    let live = true; const im = new Image(); im.src = u;
+    const done = () => { if (live) setHeld({ src, u }); };
+    (typeof im.decode === 'function' ? im.decode() : Promise.resolve()).then(done, done);
+    return () => { live = false; };
+  }, [src, u, same, held.u]);
+  return !same ? u : held.u || u;
 }
 /** 작게 그리는 자리(목록 · 동그라미)용: 큰 초상은 줄인 그림으로. 쓰는 컴포넌트는 useThumbs() 를 불러 준비되면 다시 그린다 */
 export const thumbStyle = (c?: { avatar?: string } | null): CSSProperties => { if (!c?.avatar) return {}; const u = thumbUrl(c.avatar); return u ? { backgroundImage: `url("${u}")` } : {}; };

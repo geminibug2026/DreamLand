@@ -367,7 +367,7 @@ button.chip:hover { color: var(--text); background: var(--surface2); }
   .home-head .btn span { display: none; } .home-head .btn { padding: 7px 12px; }
   .field.half, .field.third { flex: 1 1 100%; }
   .modal-wrap { padding: 0; place-items: end stretch; }
-  .modal-wrap { animation: dim .22s; } .modal-wrap:not(.dialog) .modal { animation: sheet-up .28s var(--ease); }
+  .modal-wrap { animation: dim .22s; } .modal-wrap:not(.dialog) .modal { animation: sheet-up .28s var(--ease); will-change: transform; }   /* 올라온 뒤에도 따로 그린 층을 지켜, 애니메이션이 끝나는 순간 다시 그리며 깜빡이지 않게 */
   .modal, .modal.wide { width: 100%; max-height: 92dvh; border-radius: calc(var(--r) + 4px) calc(var(--r) + 4px) 0 0; padding-bottom: var(--safe-b); }
   .modal-body { padding: 8px 18px 20px; } .modal-head { padding-left: 18px; }
   .sheet { grid-template-columns: 1fr; gap: 16px; } .sheet-art { max-width: 170px; margin: 0 auto; width: 100%; }
