@@ -2893,7 +2893,7 @@
   "memoria.config.inject.arcMergeAt.label": "청크 안전 상한",
   "memoria.config.inject.arcMergeAt.title": "서고 정리를 못 기다릴 만큼 청크가 이 개수 넘게 쌓이면 즉시 재그룹핑합니다",
   "memoria.config.inject.threadSleepTurns.label": "떡밥 잠재우기(턴)",
-  "memoria.config.inject.threadSleepTurns.title": "이 턴 수 동안 진전 없는 떡밥은 잠재웁니다 (서고에는 남고, 다시 언급되면 깨어납니다. 0 = 끔). 비밀·정보 격차는 이 값의 2.5배(적어도 150턴) 동안 아무도 건드리지 않으면 잠재웁니다",
+  "memoria.config.inject.threadSleepTurns.title": "이 턴 수 동안 진전 없는 떡밥은 잠재웁니다 (서고에는 남고, 다시 언급되면 깨어납니다. 0 = 끔). 비밀·정보 격차는 답변이 이 값의 2.5배(적어도 150개) 쌓이도록 아무도 건드리지 않으면 잠재웁니다",
   "memoria.config.inject.eraKeep.label": "연대기 보관 수",
   "memoria.config.inject.eraKeep.title": "연대기를 이 개수까지만 따로 두고, 넘치면 가장 오래된 것부터 하나의 '옛 이야기'로 접습니다 (최소 3)",
   "memoria.config.inject.fossil.label": "옛일로 물러나는 턴 수",
@@ -10757,5 +10757,6 @@
   "memoria.engine.log.sleptSecrets": "아주 오래 아무도 건드리지 않은 비밀·정보 격차 {n}개를 잠재웠어요 (세계 탭에서 깨울 수 있어요)",
   "memoria.engine.log.pledgeSweep": "서약을 훑어 이미 끝난 듯한 {n}개에 ‘해소된 듯’ 표시를 붙였어요 (세계 탭에서 확정하거나 ‘아직 유효’로 되돌릴 수 있어요)",
   "memoria.config.inject.pledgeSweepTurns.label": "서약 훑기(턴)",
-  "memoria.config.inject.pledgeSweepTurns.title": "대화마다 한 번, 그 뒤로 이 턴 수마다 오래된 서약을 지금까지의 요약과 견주어 이미 끝난 것에 ‘해소된 듯’ 표시를 붙입니다 (모델 호출 1번. 표시가 붙은 서약은 확정 전에도 싣지 않습니다. 0 = 끔)"
+  "memoria.config.inject.pledgeSweepTurns.title": "대화마다 한 번, 그 뒤로 답변이 이만큼 쌓일 때마다 오래된 서약을 지금까지의 요약과 견주어 이미 끝난 것에 ‘해소된 듯’ 표시를 붙입니다 (모델 호출 1번. 표시가 붙은 서약은 확정 전에도 싣지 않습니다. 0 = 끔)",
+  "memoria.overview.sec.returning": "오랜만에 돌아온 사람"
 }

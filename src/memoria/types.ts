@@ -110,7 +110,7 @@ export interface Mem {
   nameApart?: string[];
   /** 날 세기 · D-day · 주기 */
   trackers?: Tracker[];
-  /** 서약 훑기를 마지막으로 한 때 (그때까지의 턴 수) */
+  /** 서약 훑기를 마지막으로 한 때 (그때까지 기록된 답변 수) */
   pledgeSweepAt?: number;
   /** 작중 날짜 직접 고침 — 그 메시지부터 그 날짜로 이어진다 */
   dateFix?: { msgId: string; date: string }[];
@@ -147,7 +147,7 @@ export interface Cfg {
   /** 지난 일을 꺼내는 정도: quiet | natural | active */ recallVoice?: string;
   /** 작중 날짜를 상태창에서 읽어 턴에 적는다 */ storyDates?: boolean;
   bannedPhrases: string; banInChat: boolean; banTell: boolean; threadSleepTurns: number; eraKeep: number;
-  /** 서약 훑기 주기(턴) — 오래된 서약을 요약과 견주어 끝난 것에 "풀린 듯" 의견을 붙인다 (0 = 끔) */ pledgeSweepTurns?: number;
+  /** 서약 훑기 주기(답변 수) — 오래된 서약을 요약과 견주어 끝난 것에 "풀린 듯" 의견을 붙인다 (0 = 끔) */ pledgeSweepTurns?: number;
   statusMode: string; statusPattern: string; statusInject: boolean; qrMode: string; replyCheck: boolean;
   bundles: Record<string, Record<string, unknown>>; bundleByOwner: Record<string, string>; activeBundle: string; bundleBase: Record<string, unknown> | null;
   noticed: Record<string, unknown>; promptRev: number; settingsRev: number; promptOutdated: Record<string, number>;

@@ -11,7 +11,7 @@ import { t } from '../../i18n';
 import type { RecallTest } from '../engine/part6';
 
 // 장부 절 이름(엔진의 영어 이름) → 화면 이름 키
-const SEC_KEY: Record<string, string> = { Canon: 'canon', Cast: 'cast', Bonds: 'bonds', 'Notable Items': 'items', 'Turning Points': 'turningPoints', 'Story So Far': 'storySoFar', Pledges: 'pledges', 'Recent Turns': 'recentTurns', 'Recalled Moments': 'recalled', 'Hidden Knowledge': 'hidden', 'Source Excerpts': 'sources', 'Scene Now': 'sceneNow', 'Status Board': 'status', Direction: 'direction', 'People in the Scene Now': 'peopleNow', 'Promises with a Date': 'promises', 'How They Address Each Other': 'address', 'Recalled Scene': 'sceneCard', 'On Their Minds': 'minds', 'Where the Story Is Heading': 'plans' };
+const SEC_KEY: Record<string, string> = { Canon: 'canon', Cast: 'cast', Bonds: 'bonds', 'Notable Items': 'items', 'Turning Points': 'turningPoints', 'Story So Far': 'storySoFar', Pledges: 'pledges', 'Recent Turns': 'recentTurns', 'Recalled Moments': 'recalled', 'Hidden Knowledge': 'hidden', 'Source Excerpts': 'sources', 'Scene Now': 'sceneNow', 'Status Board': 'status', Direction: 'direction', 'People in the Scene Now': 'peopleNow', 'Promises with a Date': 'promises', 'How They Address Each Other': 'address', 'Recalled Scene': 'sceneCard', 'On Their Minds': 'minds', 'Where the Story Is Heading': 'plans', 'Back After a Long Absence': 'returning' };
 const secName = (n: string) => SEC_KEY[n] ? t('memoria.overview.sec.' + SEC_KEY[n]) : n;
 const PLEDGE_ST: Record<string, string> = { active: 'memoria.overview.pledge.active', resolved: 'memoria.overview.pledge.resolved', dormant: 'memoria.overview.pledge.dormant' };
 /** 사서가 제안한 정정 한 건을 사람이 읽는 글로 */

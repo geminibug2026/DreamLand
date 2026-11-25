@@ -12,7 +12,7 @@ import { attributeQuote, type AddressPerson } from '../stage';
 import { parseStoryDate, syncDaysToDates } from '../calendar';
 import * as MP from '../prompts';
 import { KNOW_DIRECTIVE, LEARN_DIRECTIVE, BEATS_DIRECTIVE, FEELING_DIRECTIVE } from '../directives';
-import { chunkTurnsOf } from './base';
+import { chunkTurnsOf, repliesOf } from './base';
 import { snapUndo, diffUndo, trimUndo, mergeUndo, type Undo } from './undo';
 import { t as tr } from '../../i18n';
 
@@ -598,7 +598,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
   /**
    * 아주 오래 아무도 건드리지 않은 비밀 · 정보 격차를 잠재운다 (지우지 않는다 — 다시 언급되면 깨어나고, 세계 탭에서 깨울 수 있다).
    * 비밀은 떡밥과 달리 저절로 닫히지 않아, 그 비밀이 걸린 대목이 오래전에 끝났어도 "지켜야 할 것"으로 매 턴 실렸다 — 모델이 끝난 비밀을 지금 일처럼 꺼낸다.
-   * 조용히 지켜지는 비밀도 있으므로 떡밥보다 훨씬 오래(2.5배, 적어도 150턴) 기다린다. 직접 적은 것과 최우선(P1)은 건드리지 않는다.
+   * 조용히 지켜지는 비밀도 있으므로 떡밥보다 훨씬 오래(2.5배, 적어도 150) 기다린다 — 기록 수가 아니라 그사이 답변 수로 센다 (묶어 기록하면 기록 하나가 답변 여러 개다). 직접 적은 것과 최우선(P1)은 건드리지 않는다.
    * 잠재우기 전에 그사이의 턴 기록 · 기억을 한 번 훑는다 — 이야기에서 계속 오간 비밀이면 "본 턴"만 적고 그대로 둔다 (비밀의 언급을 적어 두지 않던 옛 서고에서도 맞게 가린다). 반환: 잠재운 수
    */
   sleepStaleSecrets(this: MemoryApi, mem, after = Math.max(150, Math.round((Number(this.cfg().threadSleepTurns) || 0) * 2.5))) {
@@ -606,11 +606,11 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     const turnNow = mem.turns.length - 1; let slept = 0;
     for (const l of mem.pledges || []) {
       if (l.status !== 'active' || l.manual || !SECRET_KINDS.includes(normLockKind(l.kind)) || (l.priority ?? 2) <= 1) continue;
-      const since = threadTouched(l); if (turnNow - since < after) continue;
+      const since = threadTouched(l); if (repliesOf(mem.turns, since + 1) < after) continue;
       const text = `${l.summary} ${l.latest?.text || ''}`; let seen = -1;
-      for (let i = turnNow; i > since && i > turnNow - after && seen < 0; i--) if (mentionsThread(text, mem.turns[i]?.digest)) seen = i;
-      if (seen < 0) seen = mem.memories.reduce((a, m) => (m.turn != null && m.turn > Math.max(a, since, turnNow - after) && m.turn <= turnNow && !m.manual && mentionsThread(text, m.summary) ? m.turn : a), -1);
-      if (seen >= 0) { l.seenPrev = l.seenTurn ?? null; l.seenTurn = seen; l.seenBy = ''; continue; }
+      for (let i = turnNow; i > since && seen < 0; i--) if (mentionsThread(text, mem.turns[i]?.digest)) seen = i;
+      seen = mem.memories.reduce((a, m) => (m.turn != null && m.turn > Math.max(a, since) && m.turn <= turnNow && !m.manual && mentionsThread(text, m.summary) ? m.turn : a), seen);
+      if (seen >= 0) { l.seenPrev = l.seenTurn ?? null; l.seenTurn = seen; l.seenBy = ''; if (repliesOf(mem.turns, seen + 1) < after) continue; }
       l.status = 'dormant'; l.sleptTurn = turnNow; slept++;
     }
     return slept;

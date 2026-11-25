@@ -2939,7 +2939,7 @@
   "memoria.config.inject.arcMergeAt.label": "Chunk safety cap",
   "memoria.config.inject.arcMergeAt.title": "If chunks pile up past this count before archive cleanup, they're regrouped immediately",
   "memoria.config.inject.threadSleepTurns.label": "Plot thread sleep (turns)",
-  "memoria.config.inject.threadSleepTurns.title": "Plot threads with no progress for this many turns go to sleep (they stay in the archive and wake when mentioned again; 0 = off). Secrets and knowledge gaps go to sleep when nobody has touched them for 2.5 times this (at least 150 turns)",
+  "memoria.config.inject.threadSleepTurns.title": "Plot threads with no progress for this many turns go to sleep (they stay in the archive and wake when mentioned again; 0 = off). Secrets and knowledge gaps go to sleep when nobody has touched them for 2.5 times this many replies (at least 150)",
   "memoria.config.inject.eraKeep.label": "Chronicles to keep",
   "memoria.config.inject.eraKeep.title": "Keeps up to this many chronicles separately; beyond that, the oldest are folded into one 'old story' (min 3)",
   "memoria.config.inject.fossil.label": "Turns until memories recede",
@@ -10837,5 +10837,6 @@
   "memoria.engine.log.sleptSecrets": "Put {n} secrets or knowledge gaps nobody has touched for a very long time to sleep (wake them in the World tab)",
   "memoria.engine.log.pledgeSweep": "Swept the pledges and marked {n} that seem to be over as ‘seems resolved’ (confirm them or press ‘Still valid’ in the World tab)",
   "memoria.config.inject.pledgeSweepTurns.label": "Pledge sweep (turns)",
-  "memoria.config.inject.pledgeSweepTurns.title": "Once per chat, then every this many turns, old pledges are compared with the story summary so far and the ones already over are marked ‘seems resolved’ (1 model call. Marked pledges are not sent even before you confirm. 0 = off)"
+  "memoria.config.inject.pledgeSweepTurns.title": "Once per chat, then every this many replies, old pledges are compared with the story summary so far and the ones already over are marked ‘seems resolved’ (1 model call. Marked pledges are not sent even before you confirm. 0 = off)",
+  "memoria.overview.sec.returning": "Back after a long absence"
 }

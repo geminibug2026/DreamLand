@@ -2893,7 +2893,7 @@
   "memoria.config.inject.arcMergeAt.label": "片段安全上限",
   "memoria.config.inject.arcMergeAt.title": "片段在书库整理前堆积超过此数量时立即重新分组",
   "memoria.config.inject.threadSleepTurns.label": "伏笔休眠（回合）",
-  "memoria.config.inject.threadSleepTurns.title": "此回合数内没有进展的伏笔将休眠（仍保留在书库中，再次提及时唤醒。0 = 关闭）。秘密·信息差在此数值的 2.5 倍（至少 150 回合）内无人触及时休眠",
+  "memoria.config.inject.threadSleepTurns.title": "此回合数内没有进展的伏笔将休眠（仍保留在书库中，再次提及时唤醒。0 = 关闭）。秘密·信息差在回复数达到此数值的 2.5 倍（至少 150 条）仍无人触及时休眠",
   "memoria.config.inject.eraKeep.label": "编年史保留数",
   "memoria.config.inject.eraKeep.title": "编年史单独保留到此数量，超出时从最旧的开始折叠为一条“往事”（最少 3）",
   "memoria.config.inject.fossil.label": "退为往事的回合数",
@@ -10757,5 +10757,6 @@
   "memoria.engine.log.sleptSecrets": "已让 {n} 条很久无人触及的秘密·信息差休眠（可在世界标签页唤醒）",
   "memoria.engine.log.pledgeSweep": "梳理誓约后，给 {n} 条看似已结束的标上了“似乎已解决”（可在世界标签页确认，或点“仍然有效”恢复）",
   "memoria.config.inject.pledgeSweepTurns.label": "誓约梳理（回合）",
-  "memoria.config.inject.pledgeSweepTurns.title": "每个对话一次，此后每隔此回合数，把较早的誓约与至今的摘要对照，给已经结束的标上“似乎已解决”（调用模型 1 次。带标记的誓约在确认前也不会注入。0 = 关闭）"
+  "memoria.config.inject.pledgeSweepTurns.title": "每个对话一次，此后每累积此数量的回复，把较早的誓约与至今的摘要对照，给已经结束的标上“似乎已解决”（调用模型 1 次。带标记的誓约在确认前也不会注入。0 = 关闭）",
+  "memoria.overview.sec.returning": "久别归来的人"
 }

@@ -57,6 +57,8 @@ export const BATCH_TOKENS = 12000;
 /** 이 방의 요약 주기(턴): 대화 모드 방은 따로 정한 값이 있으면 그것 (대화 모드는 한 턴이 짧다) */
 export const chunkTurnsOf = (cfg: Pick<Cfg, 'chunkTurns' | 'chunkTurnsTalk'>, chat?: { mode?: string } | null) =>
   Math.max(3, +(chat?.mode === 'talk' && +cfg.chunkTurnsTalk > 0 ? cfg.chunkTurnsTalk : cfg.chunkTurns) || 8);
+/** 그 턴 뒤로(from 번째 기록부터) 기록된 답변 수 — 묶음 기록은 기록 하나가 답변 여러 개를 덮으므로(span) 기록 수가 아니라 덮은 답변 수로 센다 */
+export const repliesOf = (turns: Pick<Turn, 'span'>[], from = 0) => { let n = 0; for (let i = Math.max(0, from); i < turns.length; i++) n += Math.max(1, Math.round(Number(turns[i]?.span) || 1)); return n; };
 export const MEMORY_DEFAULTS: Cfg = {
   enabled: false, auto: true, recordDelay: 0, tokenBudget: 8000, topK: 10, minScore: 0.12, minCosine: 0.08, mmrLambda: 0.74, maxPerKind: 3, maxPerTurn: 2, multiQueryRecent: 3,
   chunkTurns: 30, chunkTurnsTalk: 0, talkBatch: 5, rpBatch: 10, arcMergeAt: 6, consolidateEvery: 30, arcConsolidateEvery: 100, maxMemories: 400, responseTokens: 24000, summaryContextCount: 3, fossil: { settling: 12, fossilized: 40, deep: 120 }, language: 'auto',
@@ -95,7 +97,7 @@ export const MEMORY_DEFAULTS: Cfg = {
   banTell: false,           // 삼갈 표현 목록을 모델에게 직접 알려준다 (모델에 따라 역효과)
   threadSleepTurns: 60,     // 이 턴 수 동안 진전 없는 떡밥은 잠재운다 (서고에는 남고, 다시 언급되면 깨어남. 0 = 끔)
   eraKeep: 8,               // 연대기를 이 개수까지만 따로 두고, 넘치면 가장 오래된 것부터 하나의 '옛 이야기'로 접는다
-  pledgeSweepTurns: 150,    // 서약 훑기 — 대화마다 한 번, 그 뒤로 이 턴 수마다 오래된 서약을 지금까지의 요약과 견주어 끝난 것에 "풀린 듯" 의견을 붙인다 (호출 1회. 0 = 끔)
+  pledgeSweepTurns: 150,    // 서약 훑기 — 대화마다 한 번, 그 뒤로 답변이 이만큼 쌓일 때마다 오래된 서약을 지금까지의 요약과 견주어 끝난 것에 "풀린 듯" 의견을 붙인다 (호출 1회. 0 = 끔)
   statusMode: 'auto',       // 상태창 읽기: 'auto' 자동으로 찾기 | 'custom' 직접 정한 모양 | 'off'
   statusPattern: '',        // 직접 정한 모양(정규식) — 괄호로 묶은 부분을 상태창 내용으로 읽는다
   statusInject: true,       // 가장 최근 상태창을 AI 에게 알려 시간 · 날짜 · 장소를 잇는다

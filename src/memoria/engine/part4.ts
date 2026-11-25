@@ -3,8 +3,8 @@ import { S, now, emit, msgText } from '../../lib/core';
 import { tokens } from '../../lib/engine';
 import type { MemoryApi } from './api';
 import type { DossierExcerpt, HistoryMsg, LatestStatus, RecallOpts, RecallTrace, SceneSnapshot } from './part3';
-import type { Bond, CanonRow, CastCard, ChatM, Item, Mem, MemItem, Milestone, Msg, Plan, Pledge, StatusRow, Summary, Turn } from '../types';
-import { G, NARRATOR, VOLATILE, list, low, getStringHash, canonSlot, ekey, cleanStr, cleanMultiline, visibleProse, overlap, ago, packetSections, normLockKind, overrides, audits, lasts, freezes, preps, PACKET_HEADER, PACKET_FOOTER, NOW_HEADER, NOW_FOOTER, STABLE_OPT_KEYS } from './base';
+import type { Bond, CanonRow, CastCard, ChatM, Item, Mem, MemItem, Milestone, Msg, Plan, Pledge, StatusRow, Summary } from '../types';
+import { G, NARRATOR, VOLATILE, list, low, getStringHash, canonSlot, ekey, cleanStr, cleanMultiline, visibleProse, overlap, ago, packetSections, normLockKind, overrides, audits, lasts, freezes, preps, repliesOf, PACKET_HEADER, PACKET_FOOTER, NOW_HEADER, NOW_FOOTER, STABLE_OPT_KEYS } from './base';
 import * as MP from '../prompts';
 import { t as tr } from '../../i18n';
 import { statusOneLine } from '../scene';
@@ -119,8 +119,8 @@ export interface Part4 {
   addressRows(chat: ChatM, mem: Mem, msgs: Msg[]): AddressRow[];
   /** 이 사람이 기록에 마지막으로 나온 턴 (0부터 · 없으면 -1) */
   lastSeenTurn(mem: Mem, c: CastCard): number;
-  /** 최근 글에서 이름 없이 호칭만으로 불린 사람들 (인물 카드 이름의 열쇠) */
-  calledByTitle(chat: ChatM | null | undefined, mem: Mem, msgs: Msg[], type?: string): Set<string>;
+  /** 최근 글에서 이름 없이 호칭만으로 불린 사람들 (인물 카드 이름의 열쇠 → 그 호칭) */
+  calledByTitle(chat: ChatM | null | undefined, mem: Mem, msgs: Msg[], type?: string): Map<string, string>;
   /** 아직 원문으로 프롬프트에 실릴 메시지에서 나온 기록 턴들 (회상에서 뺀다) */
   visibleTurns(chat: ChatM | null | undefined, mem: Mem, msgs?: Msg[] | null): Set<number>;
   /** 아직 원문으로 프롬프트에 실릴 메시지들 (id) */
@@ -133,6 +133,8 @@ export interface Part4 {
 const ADDRESS_SPAN = 80;
 /** 기록에 마지막으로 나온 뒤 이만큼(답변 수) 넘게 지나 다시 나온 사람은 "오랜만에 돌아온 사람"으로 따로 짚는다 */
 const RETURN_AFTER = 12;
+/** "방금 다시 나왔다"를 가리는 범위(메시지 수) — 최근 RETURN_FRESH 개보다 앞선 RETURN_QUIET 개에 이름이 없어야 한다 */
+const RETURN_FRESH = 8, RETURN_QUIET = 24;
 /** 메시지 → 그 메시지에서 찾은 부름말 (본문 · 화자 · 상대 · 인물 명단이 같을 때만 다시 쓴다) */
 const addressCache = new WeakMap<Msg, { key: string; hits: AddressHit[] }>();
 
@@ -177,7 +179,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     // 사서가 적어 둔 "지금 장면에 있는 사람들"도 함께 본다 — 최근 몇 메시지에 이름이 안 불려도 자리에 있는 사람
     const sceneHay = `${inp.recentText || ''}\n${low(scene.present || '')}`;
     // 호칭만으로 부른 사람: 이름 없이 "형, 오랜만이에요"라고만 해도, 말한 사람의 관계선으로 보아 그 호칭이 한 사람만 가리키면 장면에 있는 것으로 친다 (모델 호출 없음)
-    const called = Array.isArray(opt.msgs) && opt.query == null ? this.calledByTitle(chat, mem, opt.msgs, opt.type) : new Set<string>();
+    const called = Array.isArray(opt.msgs) && opt.query == null ? this.calledByTitle(chat, mem, opt.msgs, opt.type) : new Map<string, string>();
     const inScene: (c: CastCard) => boolean = c => sceneHay.includes(low(c.name)) || (c.aka || []).some(a => a.length >= 2 && sceneHay.includes(low(a))) || called.has(ekey(c.name));
     // 상태 보드: 지금 장면과 닿는 것부터, 그다음 최근에 바뀐 것. 예전에는 저장 순서의 끝 10개를 실어 장면과 무관한 인물의 묵은 상태가 자리를 차지하고 정작 눈앞 인물의 상태가 밀려났다
     const stateInScene = (s: StatusRow) => {
@@ -303,14 +305,19 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     // 오랜만에 돌아온 사람: 기록에 마지막으로 나온 지 오래된 사람이 최근 글에 이름 · 호칭으로 다시 나왔을 때, 누구인지 · 장면 사람들과의 사이와 부르는 말 · 마지막으로 있었던 일을 따로 짚는다.
     // 장부에서 밀려났거나 한 줄로 줄어 있던 사람이라, 짚어 주지 않으면 모델이 처음 보는 사람처럼 쓰거나 호칭을 지어내거나 그때 끝난 일을 지금 일처럼 꺼낸다 (모델 호출 없음 · 매 턴 바뀌는 구간에만 싣는다)
     const returning: PacketReturn[] = [];
-    if (opt.query == null && T > RETURN_AFTER) {
-      const spanOf = (t: Turn) => Math.max(1, Math.round(Number(t.span) || 1)), named = (c: CastCard) => [c.name, ...(c.aka || [])].some(n => n.length >= 2 && String(inp.recentText || '').includes(low(n))) || called.has(ekey(c.name));
+    if (opt.query == null && T) {
+      const named = (c: CastCard) => [c.name, ...(c.aka || [])].some(n => n.length >= 2 && String(inp.recentText || '').includes(low(n))) || called.has(ekey(c.name));
+      // 방금 다시 나온 사람만 짚는다: 최근 몇 메시지보다 앞선 대화(숨긴 것 포함)에 이미 나오던 사람은 기록이 늦었을 뿐(묶어 기록 · 직접 기록) 돌아온 사람이 아니다
+      const all = Array.isArray(opt.msgs) ? opt.msgs : [], tail: Msg[] = [];   // 끝에서부터 필요한 만큼만 (최신이 앞)
+      for (let i = all.length - ((opt.type === 'regen' || opt.type === 'swipe') && all[all.length - 1]?.role === 'assistant' ? 2 : 1); i >= 0 && tail.length < RETURN_FRESH + RETURN_QUIET; i--) { const m = all[i]; if (m && (m.role === 'user' || m.role === 'assistant') && !this.isSideMessage(m)) tail.push(m); }
+      const before = low(tail.slice(RETURN_FRESH).map(m => msgText(m)).join('\n'));
+      const lately = (c: CastCard) => [c.name, ...(c.aka || [])].some(n => n.length >= 2 && before.includes(low(n))) || (called.has(ekey(c.name)) && saysTitle(before, called.get(ekey(c.name))!));
       const leads = new Set((chat?.charIds || []).map(id => ekey(this.canonName(mem, S.get('chars', id)?.name || ''))).filter(Boolean)), around = new Set([...sceneNames, meKey, ...leads]), shownIds = new Set(publicRecallDeduped.map(m => m.id));
       const mute = list<string>(mem.recallMute).map(w => low(w)).filter(w => w.length >= 2);
       for (const c of inSceneCast) {
         if (returning.length >= 2) break;
-        if (leads.has(ekey(c.name)) || !named(c)) continue;
-        const at = this.lastSeenTurn(mem, c), away = mem.turns.slice(at + 1).reduce((a, t) => a + spanOf(t), 0) + lag; if (away <= RETURN_AFTER) continue;
+        if (leads.has(ekey(c.name)) || !named(c) || lately(c)) continue;
+        const at = this.lastSeenTurn(mem, c), away = repliesOf(mem.turns, at + 1) + lag; if (away <= RETURN_AFTER) continue;
         const keys = new Set([c.name, ...(c.aka || [])].map(ekey)), is = (n?: string | null) => !!n && keys.has(ekey(n));
         // 장면 사람들과의 사이 — 장면 사람이 이 사람을 어떻게 대하고 부르는지가 먼저, 그다음 이 사람 쪽
         const tie = (b: Bond) => { const n = this.bondNow(b)!; return `${b.from} → ${b.to}: ${n.stage}${n.calls ? ` | calls them: ${n.calls}` : ''}`; };
@@ -453,7 +460,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     if (stableMode) { const looks = chars.filter(c => c.sceneNow && c.appearance && !c.provisional); if (looks.length) lines.push(`(Looks of those in the scene — ${looks.map(c => `${c.name}: ${c.appearance}`).join(' | ')})`); }   // 안정 구간에서 뺀 "지금 장면에 있는 인물의 외형"
     if (P.returning?.length && stateLimit > 0) {
       // 오랜만에 돌아온 사람 — 첫 만남이 아니고, 부르는 말은 적힌 그대로이며, 그때의 일은 서약에 남아 있지 않으면 끝난 일이다
-      lines.push('## Back After a Long Absence (named or called again in the latest messages after a long gap — whether they are here in person or only talked about is for the visible chat to say. This is NOT a first meeting: the people listed with them already know them and stand with them as written here. Address them only as written here — a form of address from an earlier phase of the story is not current. Whatever was going on around them back then has long since ended unless Pledges still lists it: do not bring an old matter back up unless the user does)');
+      lines.push('## Back After a Long Absence (named or called again in the latest messages after a long gap; the visible chat says whether they are here in person or only talked about. NOT a first meeting — the people listed with them know them and stand with them as written here. Address them only in the forms written here: a form of address from an earlier phase of the story is no longer current. Whatever was going on around them back then is over unless Pledges still lists it — do not bring an old matter back up unless the user does)');
       for (const r of P.returning) {
         lines.push(`${r.who} [last in these notes ${r.away} replies ago]`);
         for (const t of r.ties) lines.push(`  · ${t}`);
@@ -710,24 +717,27 @@ export const part4: Part4 & ThisType<MemoryApi> = {
   /**
    * 호칭만으로 부른 사람 — 최근 4개 메시지(회상이 보는 범위와 같다)에 나온 호칭이, 그 말을 한 사람의 관계선에 적힌 "부르는 말"로 보아 꼭 한 사람만 가리킬 때 그 사람.
    * 말한 사람은 메시지를 쓴 사람으로 본다 (내 메시지 = 페르소나, 답변 = 그 캐릭터). 같은 호칭으로 부르는 사람이 둘 이상이면 고르지 않는다.
-   * 그 사람이 기록에 마지막으로 나온 뒤로도 말한 사람이 그 호칭을 계속 써 왔다면(그보다 앞선 메시지 둘 이상) 곁에 있는 다른 사람을 부르는 말이다 — 관계선에 적히지 않았을 뿐이므로 고르지 않는다.
-   * 모델을 부르지 않는다
+   * 그 사람이 기록에 마지막으로 나온 뒤로도 말한 사람이 그 호칭을 계속 써 왔다면(메시지 둘 이상 · 숨긴 메시지도 센다) 곁에 있는 다른 사람을 부르는 말이다 — 관계선에 적히지 않았을 뿐이므로 고르지 않는다.
+   * 이때 세는 것은 이미 기록된 메시지(그 호칭이 오갔는데도 사서가 그 사람을 적지 않았다)와 한참 전 메시지뿐이다 — 아직 기록 전인 최근 대화에서 쓴 것은 바로 그 사람이 돌아와 불린 것일 수 있다.
+   * 모델을 부르지 않는다. 반환: 인물 카드 이름의 열쇠 → 그 호칭
    */
   calledByTitle(chat, mem, msgs, type) {
-    const out = new Set<string>(), bonds = (mem.bonds || []).filter(b => !b.disabled && this.bondNow(b)?.calls); if (!bonds.length) return out;
-    const src = (type === 'regen' || type === 'swipe') && msgs[msgs.length - 1]?.role === 'assistant' ? msgs.slice(0, -1) : msgs;
-    const me = this.canonName(mem, personaNameOf(chat)), lead = S.get('chars', chat?.charIds?.[0])?.name || '', order = new Map(src.map((m, i) => [m.id, i]));
+    const out = new Map<string, string>(), bonds = (mem.bonds || []).filter(b => !b.disabled && this.bondNow(b)?.calls); if (!bonds.length) return out;
+    const end = (type === 'regen' || type === 'swipe') && msgs[msgs.length - 1]?.role === 'assistant' ? msgs.length - 1 : msgs.length;   // 다시 쓰는 마지막 답변은 뺀다
+    const me = this.canonName(mem, personaNameOf(chat)), lead = S.get('chars', chat?.charIds?.[0])?.name || '';
     const speakerOf = (m: Msg) => m.role === 'user' ? me : this.canonName(mem, m.name || S.get('chars', m.charId)?.name || lead);
-    const usable = (m?: Msg) => !!m && (m.role === 'user' || m.role === 'assistant') && !m.hidden && !this.isSideMessage(m), cardOf = (n: string) => mem.cast.find(c => ekey(c.name) === ekey(this.canonName(mem, n)));
-    const recent: number[] = []; for (let i = src.length - 1; i >= 0 && recent.length < 4; i--) if (usable(src[i])) recent.push(i);
+    const story = (m?: Msg) => !!m && (m.role === 'user' || m.role === 'assistant') && !this.isSideMessage(m), usable = (m?: Msg) => story(m) && !m!.hidden, cardOf = (n: string) => mem.cast.find(c => ekey(c.name) === ekey(this.canonName(mem, n)));
+    const recent: number[] = []; for (let i = end - 1; i >= 0 && recent.length < 4; i--) if (usable(msgs[i])) recent.push(i);
+    let order: Map<string, number> | null = null, lastRec = -1;   // 호칭이 걸렸을 때만 센다
     for (const i of recent) {
-      const m = src[i], who = speakerOf(m); if (!who) continue;
+      const m = msgs[i], who = speakerOf(m); if (!who) continue;
       const mine = bonds.filter(b => ekey(b.from) === ekey(who)).map(b => { const card = cardOf(b.to); return { to: card?.name || b.to, calls: String(this.bondNow(b)!.calls), forms: card?.aka || [] }; });
       for (const hit of mine.length ? titleTargets(visibleProse(msgText(m)), mine) : []) {
         const card = cardOf(hit.to); if (!card || card.disabled || out.has(ekey(card.name))) continue;
+        if (!order) { order = new Map(msgs.map((x, k) => [x.id, k])); lastRec = mem.turns.reduce((a, t) => Math.max(a, order!.get(t.msgId) ?? -1), -1); }
         const seenAt = order.get(mem.turns[this.lastSeenTurn(mem, card)]?.msgId) ?? -1; let used = 0;
-        for (let k = Math.max(seenAt + 1, src.length - ADDRESS_SPAN, 0); k < recent[recent.length - 1] && used < 2; k++) { const o = src[k]; if (usable(o) && o.role === m.role && ekey(speakerOf(o)) === ekey(who) && saysTitle(msgText(o), hit.title)) used++; }
-        if (used < 2) out.add(ekey(card.name));
+        for (let k = Math.max(seenAt + 1, end - ADDRESS_SPAN, 0); k < recent[recent.length - 1] && used < 2; k++) { const o = msgs[k]; if ((k <= lastRec || k < end - RETURN_QUIET) && story(o) && o.role === m.role && ekey(speakerOf(o)) === ekey(who) && saysTitle(msgText(o), hit.title)) used++; }
+        if (used < 2) out.set(ekey(card.name), hit.title);
       }
     }
     return out;
