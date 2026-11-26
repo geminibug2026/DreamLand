@@ -42,7 +42,7 @@ const normWhen = (v: unknown): MemWhen | null => { const s = String(v ?? '').tri
 export interface ExtBeat { text: string; major: boolean; with: string[]; quote: string | null; by: string | null; to: string | null }
 export interface RuleInput { scope: string; scopeName?: string; key: string; value: string }
 export interface StateInput { entity: string; slot: string; value: string; claim?: string; owner?: string; /** 근거 글귀 (원문에 그대로 있어야 한다) */ said?: string }
-export interface LockInput { kind: string; summary: string; status: string; priority?: number; owner?: string; manual?: boolean; /** 기한 — 이 교환이 끝난 때부터 작중 며칠 뒤 (0 = 없음) */ dueIn?: number; /** 풀리지 않은 감정(feeling)의 원인 · 풀리려면 필요한 것 */ cause?: string; needs?: string }
+export interface LockInput { kind: string; summary: string; status: string; priority?: number; owner?: string; manual?: boolean; /** 기한 — 이 교환이 끝난 때부터 작중 며칠 뒤 (0 = 없음) */ dueIn?: number; /** 맺힌 마음(feeling)의 까닭 · 응어리를 풀 실마리 */ cause?: string; needs?: string }
 /** upsertCast 가 받는 인물 정보 — 사서의 답 · 화면의 직접 입력 둘 다 */
 export interface CastInput {
   name?: string; aka?: string[]; aliases?: string[]; provisional?: boolean; locked?: boolean; traits?: string[]; relationships?: Relation[];

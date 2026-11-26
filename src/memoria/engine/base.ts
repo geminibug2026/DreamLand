@@ -44,7 +44,7 @@ type Norm = (k?: unknown) => string;
 export type Unused<_T> = void;
 
 export const KINDS: Record<string, string> = { event: '사건', relationship: '관계', fact: '사실', preference: '취향', promise: '약속', goal: '목표', item: '물건', place: '장소', secret: '비밀', impression: '인상' };
-export const LOCKS: Record<string, string> = { keep_unresolved: '미해결 유지', keep_secret: '비밀 유지', knowledge_gap: '정보 격차', consent: '동의 경계', world_limit: '세계 제약', loose_end: '열린 떡밥', foreshadow: '복선', feeling: '풀리지 않은 감정', author_plan: '작가 계획' };
+export const LOCKS: Record<string, string> = { keep_unresolved: '미해결 유지', keep_secret: '비밀 유지', knowledge_gap: '정보 격차', consent: '동의 경계', world_limit: '세계 제약', loose_end: '열린 떡밥', foreshadow: '복선', feeling: '맺힌 마음', author_plan: '작가 계획' };
 export const VIS: Record<string, string> = { public: '공개', private: '개인', secret: '비밀' };
 export const SCOPES: string[] = ['session', 'world', 'region', 'location', 'faction', 'system'];
 export const LIBRARIAN_PROMPT = MP.DEFAULT_ARCHIVIST_PROMPT;
