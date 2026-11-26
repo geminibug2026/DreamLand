@@ -153,7 +153,7 @@ function ConnEditor({ c, api }: { c: Conn; api: EditorApi }) {
     {def.kind === 'vertex' && <div className="card sa-box"><h3 className="form-sec">{t('conns.sa.section')}</h3>
       <p className="hint">{t('conns.sa.sectionHint')}</p>
       <SaField c={c} api={api} />
-      <div className="row cf-row"><Btn label={/\.(workers\.dev|vercel\.app)\//i.test(c.baseUrl || '') ? t('conns.cf.openOn') : t('conns.cf.open')} ic="sparkle" cls="ghost" onClick={() => cfRelayGuide(c, sv)} /><small className="hint">{t('conns.cf.openHint')}</small></div>
+      <div className="row cf-row"><Btn label={/\.(workers\.dev|vercel\.app|supabase\.co)\//i.test(c.baseUrl || '') ? t('conns.cf.openOn') : t('conns.cf.open')} ic="sparkle" cls="ghost" onClick={() => cfRelayGuide(c, sv)} /><small className="hint">{t('conns.cf.openHint')}</small></div>
       <Form obj={c} defs={[{ k: 'region', label: t('conns.region'), type: 'select', opts: ['global', 'us-central1', 'us-east5', 'us-east4', 'us-west1', 'europe-west1', 'europe-west4', 'asia-northeast1', 'asia-northeast3', 'asia-southeast1'], half: true }, { k: 'project', label: t('conns.project'), half: true, ph: t('conns.projectPh') }]} onChange={sv} />
       <Form obj={c} defs={[{ k: 'regions', label: t('conns.regions'), ph: 'us-central1, europe-west4, asia-northeast1', hint: t('conns.regionsHint') },
         { el: <div className="row wrap"><Btn label={t('conns.regionsPick')} ic="plus" cls="ghost sm" onClick={() => { c.regions = REGION_PICK.filter(r => r !== (c.region || 'global')).join(', '); sv(); redraw(); }} />{c.regions ? <Btn label={t('conns.regionsClear')} cls="ghost sm" onClick={() => { c.regions = ''; sv(); redraw(); }} /> : null}</div> }]} onChange={sv} /></div>}

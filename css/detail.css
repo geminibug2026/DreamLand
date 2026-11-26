@@ -451,3 +451,45 @@ button.top-room:hover { text-decoration: underline dotted; text-underline-offset
 /* 위쪽 줄: 이름은 명조로 (휴대폰 · PC 같은 글씨), 방 정보 앞에 혼자 남는 가운뎃점은 뺀다 */
 .top-title b { font: 600 1.02em var(--fx-serif); letter-spacing: .05em; }
 .top-meta > .top-room:first-child::before { content: none; }
+
+/* ── 중계로 429 피하기 창 (pages/cfRelay) ── 고르기 → 단계 → 암호 · 주소 → 쓰기. 휴대폰 기준 */
+.rl { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.rl-lead { margin: 0; color: var(--dim); font-size: .92em; line-height: 1.6; }
+.rl-kinds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.rl-kind { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; min-height: 56px; padding: 9px 10px; border: 1px solid var(--line-2, var(--line)); border-radius: var(--r-xs, 8px); background: none; text-align: left; color: var(--text); transition: border-color .15s, background .15s; }
+.rl-kind b { font-size: .95em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.rl-kind span { font-size: .76em; color: var(--dim); line-height: 1.35; }
+.rl-kind.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.rl-kind.on b { color: var(--accent); }
+.rl-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.rl-step { display: flex; gap: 12px; padding: 0 0 14px; position: relative; }
+.rl-step:not(:last-child)::before { content: ""; position: absolute; left: 11px; top: 26px; bottom: 2px; width: 1px; background: var(--line-2, var(--line)); }
+.rl-n { flex: none; width: 23px; height: 23px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); background: var(--surface, var(--bg)); position: relative; z-index: 1; }
+.rl-step-b { min-width: 0; flex: 1; padding-top: 1px; }
+.rl-step-b p { margin: 0; font-size: .92em; line-height: 1.6; overflow-wrap: anywhere; }
+.rl-act { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+.rl-act .btn, .rl-old + .btn { min-height: 34px; }
+.rl-act a.btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.rl-fields { display: flex; flex-direction: column; gap: 12px; padding: 14px 0 0; border-top: 1px solid var(--line-2, var(--line)); }
+.rl-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.rl-field > span { font-size: .84em; font-weight: 600; color: var(--dim); }
+.rl-field > small { font-size: .8em; color: var(--dim); line-height: 1.5; }
+.rl-inrow { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.rl-inrow .inp { flex: 1; min-width: 0; }
+.rl-inrow .inp.mono { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .9em; letter-spacing: .02em; }
+.rl-inrow .ibtn { flex: none; width: 38px; height: 38px; }
+.rl-inrow .btn { flex: none; min-height: 38px; }
+.rl-out { display: flex; align-items: flex-start; gap: 6px; margin: 0; padding: 8px 10px; border-radius: var(--r-xs, 8px); font-size: .86em; line-height: 1.5; }
+.rl-out .ic { flex: none; margin-top: 3px; }
+.rl-out.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 9%, transparent); }
+.rl-out.bad { color: var(--bad-ink, var(--bad)); background: color-mix(in srgb, var(--bad) 8%, transparent); }
+.rl-foot { display: flex; flex-wrap: wrap; gap: 8px; }
+.rl-foot .btn.primary { flex: 1 1 auto; justify-content: center; min-height: 42px; }
+.rl-more { border-top: 1px solid var(--line-2, var(--line)); padding-top: 10px; }
+.rl-more > summary { cursor: pointer; font-size: .86em; color: var(--dim); list-style: none; min-height: 30px; display: flex; align-items: center; gap: 6px; }
+.rl-more > summary::-webkit-details-marker { display: none; }
+.rl-more > summary::before { content: "›"; display: inline-block; transition: transform .15s; }
+.rl-more[open] > summary::before { transform: rotate(90deg); }
+.rl-old, .rl-notes { margin: 6px 0 10px; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; font-size: .86em; line-height: 1.6; color: var(--text); }
+@media (max-width: 420px) { .rl-kind { padding: 8px; } .rl-kind span { font-size: .72em; } }
+.rl-act .btn.ghost { border: 1px solid var(--line-2, var(--line)); padding-left: 12px; padding-right: 12px; }
