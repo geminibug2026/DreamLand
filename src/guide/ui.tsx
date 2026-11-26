@@ -5,7 +5,8 @@ import { Icon, useEvents } from '../kit';
 import { S, pickFiles } from '../lib/core';
 import { go, route } from '../lib/router';
 import { confirmBox, menu, openModal, toast } from '../ui';
-import { fmtDate, has, t, useLang } from '../i18n';
+import { fmtDate, t, useLang } from '../i18n';
+import { fieldLabel, valueLabel } from './labels';
 import { cur } from '../chat/store';
 import { G, apply, applyAll, autoOn, setAuto, branchAt, closeGuide, discard, editFrom, newTalk, openTalk, poke, regen, removeTalks, restoreTalks, resume, retry, send, stop, undo, type RemovedTalks } from './agent';
 import { ACCEPT, MAX_FILES, sizeText } from './attach';
@@ -56,7 +57,7 @@ const KIND_KEY: Record<string, string> = { chars: 'guide.kind.chars', personas: 
 const PAGE_OF: Record<string, string> = { chars: 'home', personas: 'personas', lore: 'lore', presets: 'presets', regex: 'regex', theme: 'themes', qr: 'qr', vars: 'chat', settings: 'settings', ext: 'exts', chats: 'chat', msgs: 'chat', mem: 'chat', switch: 'conns', cmd: 'chat' };
 const kindLabel = (ch: Change) => ch.op.type === 'ext' ? t(ch.op.target === 'st' ? 'guide.ext.kind.st' : 'guide.ext.kind.dl') : t(KIND_KEY[ch.kind] || 'guide.kind.chars');
 /** 칸 이름을 사람 말로 (모르는 칸은 그대로) */
-const fieldName = (n: string) => { const m = /^([\w.]+)(.*)$/.exec(n), k = m ? m[1].replace(/\./g, '_') : ''; return k && has('guide.f.' + k) ? t('guide.f.' + k) + (m![2] || '') : n; };
+const fieldName = fieldLabel;
 const isHex = (s: string) => /^#[0-9a-f]{6}$/i.test(s);
 
 /** 아직 적용하지 않은 캐릭터 · 페르소나 카드의 한 칸을 다시 써 달라고 입력창을 채운다 */
@@ -78,14 +79,14 @@ function FieldView({ f, ch }: { f: FieldChange; ch?: Change }) {
       : <div key={i} className={'gd-ln' + (r.t === '+' ? ' t-add' : r.t === '-' ? ' t-del' : '')}><i>{fresh ? r.b ?? r.a : r.a ?? ''}</i><i>{fresh ? '' : r.b ?? ''}</i><b>{r.t === '+' ? '+' : r.t === '-' ? '−' : ''}</b><span>{r.s || ' '}</span></div>)}</div>;
   } else
   if (isHex(f.after)) body = <span className="gd-sw"><i style={{ background: f.after }} /><code>{f.after}</code></span>;
-  else if (short) body = <span className="gd-short">{f.before ? <><del>{f.before}</del><svg className="fx-art gd-arrow" viewBox="0 0 16 8" width="16" height="8" aria-hidden="true"><path d="M1 4h13M11 1l3 3-3 3" /></svg></> : null}<ins>{f.after || '∅'}</ins></span>;
+  else if (short) body = <span className="gd-short">{f.before ? <><del>{valueLabel(f.name, f.before)}</del><svg className="fx-art gd-arrow" viewBox="0 0 16 8" width="16" height="8" aria-hidden="true"><path d="M1 4h13M11 1l3 3-3 3" /></svg></> : null}<ins>{f.after ? valueLabel(f.name, f.after) : '∅'}</ins></span>;
   else if (segs) body = <div className={'gd-diff' + (open ? ' open' : long ? ' long' : '')}>{(open ? segs : fold(segs)).map((s, i) => s.t === '=' ? <span key={i}>{s.s}</span> : s.t === '+' ? <ins key={i}>{s.s}</ins> : <del key={i}>{s.s}</del>)}</div>;
   else body = <div className={'gd-diff new' + (open ? ' open' : long ? ' long' : '')}>{open || !long ? f.after : f.after.slice(0, 380) + ' ⋯'}</div>;
   return <div className="gd-f">
     <div className="gd-fh"><span className="fx-lbl kr ink">{fieldName(f.name)}</span>
       {isHex(f.after) ? null : <span className="fx-num gd-cnt" title={t('guide.card.count')}>{n.add ? <b>+{n.add}</b> : null}{n.del ? <s>−{n.del}</s> : null}</span>}
       {long ? <button type="button" className="gd-more" onClick={() => setOpen(!open)}>{open ? t('guide.card.less') : t('guide.card.all')}</button> : null}
-      {ch && ch.state === 'pending' && (ch.kind === 'chars' || ch.kind === 'personas') && !G.busy ? <button type="button" className="gd-more gd-redo" title={t('guide.card.redoHint')} onClick={() => redoField(ch, f)}>{t('guide.card.redo')}</button> : null}</div>
+      {ch && ch.state === 'pending' && (ch.kind === 'chars' || ch.kind === 'personas') && ch.op.type !== 'action' && !G.busy ? <button type="button" className="gd-more gd-redo" title={t('guide.card.redoHint')} onClick={() => redoField(ch, f)}>{t('guide.card.redo')}</button> : null}</div>
     {body}
   </div>;
 }

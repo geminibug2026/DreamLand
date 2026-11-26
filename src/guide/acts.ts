@@ -2,6 +2,7 @@
 // apply 는 되돌릴 때 쓸 사본(before)을 돌려준다. undo 가 없는 행동(명령 실행)은 되돌릴 수 없다고 카드가 알린다.
 // 이 파일은 changes.ts 를 부르지 않는다 (changes.ts 가 이것을 부른다)
 import { DB, S, emit } from '../lib/core';
+import { qrSave, qrStore } from '../lib/qr-data';
 import type { Msg } from '../lib/types';
 
 type Obj = Record<string, unknown>;
@@ -177,6 +178,15 @@ export const ACTS: Record<string, Act> = {
     },
     async undo(b, chatId) { const { Memory } = await import('../lib/memory'), mem = await Memory.load(chatId), g = b as { at: number; m: { id: string } }; if (!mem.memories.some(x => x.id === g.m.id)) mem.memories.splice(Math.min(g.at, mem.memories.length), 0, structuredClone(g.m) as never); await Memory.save(mem); },
   },
+  /** 말로 되돌리기: 앱의 되돌리기 장부로 돌린다 (그 카드는 '되돌림'이 된다). 되돌리기를 되돌리지는 않는다 */
+  undo: {
+    async apply(a) {
+      const { undoChange } = await import('./changes'), id = String(a.undoId);
+      if (!(await undoChange(id))) throw new Error('it can no longer be undone');
+      emit('guide:undone', id);
+      return { before: null, targetId: id, out: 'undone' };
+    },
+  },
   /** STscript 실행 (퀵 리플라이 버튼을 누른 것과 같다). 되돌릴 수 없다 */
   run: {
     async apply(a) {
@@ -185,6 +195,57 @@ export const ACTS: Record<string, Act> = {
       return { before: null, targetId: 'run', out: String(out ?? '').slice(0, 4000) };
     },
   },
+};
+
+// ── 한꺼번에 바꾸기: 검색이 훑는 칸 모두에서 찾아 바꾼다. 제안할 때 미리 보고, 적용할 때 같은 규칙으로 다시 계산한다 ──
+export interface ReplaceRule { find: string; replace: string; regex?: boolean; kinds?: string[]; charIds?: string[] }
+export interface ReplaceHit { kind: string; coll: 'chars' | 'personas' | 'lore' | 'presets' | 'regex' | 'qr'; id: string; name: string; field: string; before: string; after: string; n: number }
+const CHAR_FIELDS = ['name', 'description', 'personality', 'scenario', 'firstMes', 'mesExample', 'systemPrompt', 'postHistory', 'creatorNotes', 'depthPrompt.prompt'];
+const getP = (o: unknown, p: string) => p.split('.').reduce<unknown>((t, k) => (t && typeof t === 'object' ? (t as Obj)[k] : undefined), o);
+const setP = (o: Obj, p: string, v: unknown) => { const ks = p.split('.'); let t = o; for (const k of ks.slice(0, -1)) t = (t[k] && typeof t[k] === 'object' ? t[k] : (t[k] = {})) as Obj; t[ks[ks.length - 1]] = v; };
+export function ruleRe(r: ReplaceRule): RegExp { return r.regex ? new RegExp(r.find, 'g') : new RegExp(r.find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'); }
+/** 바뀔 칸들 (실제로 고치지는 않는다). edit 를 주면 그 자리에서 고친다 */
+export function planReplace(r: ReplaceRule, edit = false): ReplaceHit[] {
+  const re = ruleRe(r), out: ReplaceHit[] = [], kinds = r.kinds?.length ? r.kinds : ['characters', 'personas', 'lorebooks', 'presets', 'regex', 'quick_replies'];
+  const only = r.charIds?.length ? new Set(r.charIds) : null, books = only ? new Set(S.chars.filter(c => only.has(c.id)).flatMap(c => c.loreIds || [])) : null;
+  const one = (text: string) => { re.lastIndex = 0; const n = (text.match(re) || []).length; if (!n) return null; re.lastIndex = 0; return { after: r.regex ? text.replace(re, r.replace) : text.replace(re, () => r.replace), n }; };
+  const field = (hit: Omit<ReplaceHit, 'field' | 'before' | 'after' | 'n'>, obj: Obj, path: string) => {
+    const v = getP(obj, path);
+    if (Array.isArray(v)) { let n = 0; const after = v.map(x => { if (typeof x !== 'string') return x; const k = one(x); if (!k) return x; n += k.n; return k.after; }); if (n) { out.push({ ...hit, field: path, before: v.join(' | '), after: after.join(' | '), n }); if (edit) setP(obj, path, after); } return; }
+    if (typeof v !== 'string' || !v) return; const k = one(v); if (!k) return;
+    out.push({ ...hit, field: path, before: v, after: k.after, n: k.n }); if (edit) setP(obj, path, k.after);
+  };
+  if (kinds.includes('characters')) for (const c of S.chars) { if (only && !only.has(c.id)) continue; const h = { kind: 'character', coll: 'chars' as const, id: c.id, name: c.name }; for (const f of [...CHAR_FIELDS, 'altGreetings']) field(h, c as unknown as Obj, f); }
+  if (kinds.includes('personas') && !only) for (const x of S.personas) { const h = { kind: 'persona', coll: 'personas' as const, id: x.id, name: x.name }; field(h, x as unknown as Obj, 'name'); field(h, x as unknown as Obj, 'description'); }
+  if (kinds.includes('lorebooks')) for (const b of S.lore) { if (books && !books.has(b.id)) continue; b.entries.forEach((e, i) => { const h = { kind: 'lore_entry', coll: 'lore' as const, id: b.id, name: `${b.name} › ${e.name || (e.keys || []).join(', ')}` }; for (const f of ['name', 'keys', 'content']) field(h, b as unknown as Obj, `entries.${i}.${f}`); }); }
+  if (kinds.includes('presets') && !only) for (const p of S.presets) p.blocks.forEach((bl, i) => { const h = { kind: 'preset_block', coll: 'presets' as const, id: p.id, name: `${p.name} › ${bl.name || bl.kind}` }; for (const f of ['name', 'content']) field(h, p as unknown as Obj, `blocks.${i}.${f}`); });
+  if (kinds.includes('regex')) for (const x of S.regex) { if (only && !only.has(String(x.scope))) continue; const h = { kind: 'regex', coll: 'regex' as const, id: x.id, name: x.name }; for (const f of ['name', 'find', 'replace']) field(h, x as unknown as Obj, f); }
+  if (kinds.includes('quick_replies')) for (const st of qrStore().sets) { if (only && !(st.charIds || []).some(id => only.has(id))) continue; st.items.forEach((it, i) => { const h = { kind: 'qr', coll: 'qr' as const, id: st.id, name: `${st.name} › ${it.label}` }; for (const f of ['label', 'text']) field(h, st as unknown as Obj, `items.${i}.${f}`); }); }
+  return out;
+}
+async function putColl(coll: ReplaceHit['coll'], obj: Obj) { if (coll === 'qr') { const q = qrStore(), i = q.sets.findIndex(x => x.id === obj.id); if (i >= 0) q.sets[i] = obj as never; qrSave(); } else await S.save(coll, obj as never); }
+const findColl = (coll: ReplaceHit['coll'], id: string): Obj | undefined => coll === 'qr' ? qrStore().sets.find(x => x.id === id) as unknown as Obj : S.get(coll, id) as unknown as Obj;
+ACTS.bulkreplace = {
+  async apply(a) {
+    const rule = a.rule as ReplaceRule, hits = planReplace(rule);
+    if (!hits.length) throw new Error('nothing matches any more');
+    const touched = [...new Map(hits.map(h => [h.coll + ':' + h.id, { coll: h.coll, id: h.id }])).values()];
+    const before = touched.map(t => ({ ...t, obj: structuredClone(findColl(t.coll, t.id)) }));
+    planReplace(rule, true);   // 그 자리에서 고친다
+    for (const t of touched) { const o = findColl(t.coll, t.id); if (o) await putColl(t.coll, o); }
+    return { before, targetId: 'bulk', out: `${hits.reduce((n, h) => n + h.n, 0)} replacements in ${touched.length} items` };
+  },
+  async undo(b) { for (const t of b as { coll: ReplaceHit['coll']; id: string; obj: Obj }[]) if (t.obj) await putColl(t.coll, structuredClone(t.obj)); },
+};
+/** 여러 캐릭터의 태그 더하기 · 빼기 */
+ACTS.tags = {
+  async apply(a) {
+    const ids = a.charIds as string[], add = (a.add as string[]) || [], del = new Set(((a.remove as string[]) || []).map(x => x.toLowerCase()));
+    const before = ids.map(id => ({ id, tags: [...(S.get('chars', id)?.tags || [])] }));
+    for (const id of ids) { const c = S.get('chars', id); if (!c) continue; const keep = (c.tags || []).filter(t => !del.has(t.toLowerCase())); for (const t of add) if (!keep.some(x => x.toLowerCase() === t.toLowerCase())) keep.push(t); c.tags = keep; await S.save('chars', c); }
+    return { before, targetId: 'tags' };
+  },
+  async undo(b) { for (const r of b as { id: string; tags: string[] }[]) { const c = S.get('chars', r.id); if (c) { c.tags = r.tags; await S.save('chars', c); } } },
 };
 
 /** 지우려는 방이 열려 있으면 먼저 다른 화면으로 (열린 채 지우면 화면이 없는 방을 붙잡는다) */

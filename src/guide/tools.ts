@@ -13,7 +13,7 @@ import { varsOf } from '../chat/msgVars';
 import { safeCss } from '../modules/logic';
 import { cur } from '../chat/store';
 import { buildNow } from '../chat/Inspector';
-import type { Char, Chat, Msg, Persona, Preset } from '../lib/types';
+import type { Char, Chat, LoreEntry, Msg, Persona, Preset } from '../lib/types';
 import { checkChar, checkPersona, checkPreset, type Finding } from './check';
 import { current, getPath } from './changes';
 import { searchHelp, topicText } from './handbook';
@@ -57,15 +57,16 @@ type FType = 's' | 'n' | 'b' | 'list' | string[];
 const F: Record<string, Record<string, FType>> = {
   chars: { name: 's', description: 's', personality: 's', scenario: 's', firstMes: 's', mesExample: 's', systemPrompt: 's', postHistory: 's', creatorNotes: 's', creator: 's', tags: 'list', altGreetings: 'list', talk: 'n', 'depthPrompt.prompt': 's', 'depthPrompt.depth': 'n' },
   personas: { name: 's', description: 's' },
-  lore: { name: 's', description: 's', scanDepth: 'n', tokenBudget: 'n', recursive: 'b' },
-  entry: { name: 's', keys: 'list', keys2: 'list', content: 's', constant: 'b', enabled: 'b', position: ['before', 'after', 'depth'], depth: 'n', order: 'n', probability: 'n', description: 's', group: 's' },
+  lore: { name: 's', description: 's', scanDepth: 'n', tokenBudget: 'n', recursive: 'b', caseSensitive: 'b', wholeWord: 'b' },
+  entry: { name: 's', keys: 'list', keys2: 'list', logic: 'n', content: 's', constant: 'b', enabled: 'b', position: ['before', 'after', 'depth', 'an_top', 'an_bottom', 'em_top', 'em_bottom', 'outlet'], depth: 'n', role: ['system', 'user', 'assistant'], outlet: 's', order: 'n', probability: 'n', description: 's', group: 's', groupWeight: 'n', groupOverride: 'b',
+    sticky: 'n', cooldown: 'n', delay: 'n', scanDepth: 'n', caseSensitive: 'b', wholeWord: 'b', useRegex: 'b', noRecurse: 'b', excludeRecursion: 'b', delayUntilRecursion: 'n', ignoreBudget: 'b', ask: 's', askMode: ['off', 'need', 'wake'] },
   block: { name: 's', role: ['system', 'user', 'assistant'], content: 's', enabled: 'b', depth: 'n', when: 's' },
   regex: { name: 's', find: 's', replace: 's', onUser: 'b', onAI: 'b', onSlash: 'b', onLore: 'b', onReason: 'b', mode: ['display', 'prompt', 'both', 'store'], enabled: 'b', scope: 's', minDepth: 'n', maxDepth: 'n', trim: 'list', runOnEdit: 'b' },
   /** 프리셋의 샘플러 · 생성 설정 (params.<이름> 으로 쓴다) */
   params: { temperature: 'n', topP: 'n', topK: 'n', minP: 'n', topA: 'n', freqPen: 'n', presPen: 'n', repPen: 'n', seed: 'n', maxTokens: 'n', contextSize: 'n', stream: 'b', effort: ['', 'low', 'medium', 'high'], squash: 'b', prefill: 's', stop: 'list' },
 };
 /** 비워(null) 둘 수 있는 숫자 칸 */
-const NULLABLE = new Set(['depth', 'minDepth', 'maxDepth', 'temperature', 'topP', 'topK', 'minP', 'topA', 'freqPen', 'presPen', 'repPen', 'seed']);
+const NULLABLE = new Set(['depth', 'minDepth', 'maxDepth', 'temperature', 'topP', 'topK', 'minP', 'topA', 'freqPen', 'presPen', 'repPen', 'seed', 'sticky', 'cooldown', 'delay', 'scanDepth']);
 /** 받은 칸을 꼴에 맞춰 고른다. 모르는 칸 · 틀린 값은 까닭과 함께 거절한다 */
 function fields(kind: keyof typeof F, raw: unknown, need: string[] = []): Obj {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) fail('"fields" must be an object of field → new value.');
@@ -79,6 +80,11 @@ function fields(kind: keyof typeof F, raw: unknown, need: string[] = []): Obj {
     else { if (!t.includes(str(v))) fail(`"${k}" must be one of: ${t.join(', ')}.`); out[k] = v; }
   }
   for (const k of need) if (!str(out[k]).trim()) fail(`"${k}" is required.`);
+  if (kind === 'entry') {   // 항목의 숫자 칸은 뜻이 있는 범위만
+    if ('logic' in out && ![0, 1, 2, 3].includes(out.logic as number)) fail('"logic" must be 0 (AND ANY: one of keys2 too), 1 (NOT ALL), 2 (NOT ANY) or 3 (AND ALL).');
+    if ('probability' in out && ((out.probability as number) < 0 || (out.probability as number) > 100)) fail('"probability" is a percentage from 0 to 100.');
+    for (const k of ['sticky', 'cooldown', 'delay', 'scanDepth', 'delayUntilRecursion', 'depth']) if (typeof out[k] === 'number' && (out[k] as number) < 0) fail(`"${k}" cannot be negative.`);
+  }
   if (!Object.keys(out).length) fail('No fields given.');
   return out;
 }
@@ -119,6 +125,19 @@ function mustHaveRead(kind: keyof typeof READERS, id: string, ...refKeys: string
   if (!ok) fail(`Read it first: call ${READERS[kind][0]} on this item in this conversation before proposing changes, so you edit what is really there.`);
 }
 
+/** 장기기억 설정 가운데 조수가 바꿔도 되는 것 (범위는 장기기억 설정 화면과 같다). 사서 연결 · 임베딩 연결 · 프롬프트 · 세트 관리는 넣지 않는다.
+ *  세트가 적용 중인 대화에서 바꾸면 그 세트의 값이 바뀐다 (장기기억 설정 화면과 같다) */
+export const MEM_SETTINGS: Record<string, 'b' | 's' | [number, number] | string[]> = Object.fromEntries(Object.entries({
+  supervisor: 'b', autoHide: 'b', keepTurns: [1, 1000], hideUnit: [1, 500], preserveRecent: [1, 500], recordDelay: [0, 20], trim: 'b', keepRecent: [2, 2000], summaryContextCount: [-1, 50],
+  associative: 'b', audit: 'b', refProfile: 'b', refLore: 'b', cast: 'b', lockEdited: 'b', items: 'b', milestones: 'b', storyClock: 'b',
+  skipOoc: 'b', dueDates: 'b', presentNow: 'b', guardSecrets: 'b', timeRoles: 'b', evidence: 'b', recallTune: 'b', storyDates: 'b', sceneCards: [0, 2], mindLines: [0, 3], chapterRecall: 'b',
+  responseTokens: [256, 65536], reasoningHeadroom: [0, 32768],
+  tokenBudget: [200, 24000], position: ['split', 'chat', 'before'], depth: [0, 10000], topK: [1, 30], chunkTurns: [3, 200], chunkTurnsTalk: [0, 200], rpBatch: [1, 50], talkBatch: [1, 50],
+  maxMemories: [50, 2000], consolidateEvery: [0, 200], arcConsolidateEvery: [0, 500], threadSleepTurns: [0, 1000], pledgeSweepTurns: [0, 1000], eraKeep: [3, 50],
+  statusMode: ['auto', 'custom', 'off'], statusInject: 'b', qrMode: ['side', 'all', 'keep'], replyCheck: 'b', checkMode: ['off', 'each', 'batch'], checkEvery: [1, 50], checkConfirm: 'b', driftNote: 'b', gradeMode: ['manual', 'flagged', 'every'], gradeEvery: [1, 50], forgetHidden: 'b',
+  styleGuard: 'b', recallCooldown: 'b', recallVoice: ['quiet', 'natural', 'active'], recallQuotes: 'b', rawRecall: ['auto', 'off'], voiceSamples: [0, 4], feelingLines: [0, 3], tieNotes: 'b', bannedPhrases: 's', banInChat: 'b', banTell: 'b',
+  recallWaitSec: [0, 60], stableRefreshTurns: [0, 200], yieldToChat: 'b', waitTyping: 'b', watchUpdates: 'b', splitInjection: 'b', lowThink: 'b',
+} as Record<string, 'b' | 's' | [number, number] | string[]>).map(([k, v]) => ['memory.' + k, v]));
 /** 조수가 바꿔도 되는 앱 설정 (점으로 이은 길 → 꼴). 키 · 연결 · 서버 · 보안 · 저장 위치는 넣지 않는다 */
 const SETTINGS: Record<string, 'b' | 's' | [number, number] | string[]> = {
   theme: 's', font: 's', chatFont: 's', fontSize: [12, 24], lineHeight: [1.2, 2.4], chatWidth: [480, 1600], bubbles: 'b', rpBubbles: 'b', motion: 'b', autoScroll: 'b', showMeta: 'b', enterSend: ['true', 'false', 'auto'], defaultMode: ['rp', 'talk'],
@@ -126,6 +145,7 @@ const SETTINGS: Record<string, 'b' | 's' | [number, number] | string[]> = {
   'memory.enabled': 'b', 'memory.auto': 'b', 'tracker.enabled': 'b', 'tracker.hud': 'b',
   'illust.auto': 'b', 'illust.every': [1, 20], 'illust.maxScenes': [1, 4],
   'mvu.mode': ['inline', 'extra'],
+  ...MEM_SETTINGS,
   'modes.choices': 'b', 'modes.choiceCount': [2, 5], 'modes.stagger': 'b', 'modes.together': 'b', 'modes.scenes': 'b', 'modes.presenceDelay': 'b', 'modes.talkTokens': [100, 4000],
 };
 /** 정규식의 바꿀 글(replace)에 든 HTML 을 살핀다: 화면(```html 로 감싼 한 장의 문서)의 스크립트 문법, 인라인 HTML 에서 지워지는 것, 테마를 따르는지.
@@ -311,6 +331,17 @@ const LISTS: Record<string, (a: Args) => unknown[]> = {
   connections: () => chatConns().map(c => ({ name: c.name, provider: c.provider, model: c.model, active: S.settings.activeConn === c.id })),
 };
 
+/** 장기기억 설정의 지금 값 (적용 중인 세트가 있으면 그 값이다) */
+async function memSettings(): Promise<Obj> {
+  const { Memory } = await import('../lib/memory'), c = Memory.cfg() as unknown as Obj, raw = (S.settings.memory || {}) as unknown as Obj;
+  const values: Obj = {}; for (const k of Object.keys(MEM_SETTINGS)) values[k.slice(7)] = c[k.slice(7)] ?? null;
+  const helper = (S.settings.helpers as Obj | undefined)?.memory, conn = S.conns.find(x => x.id === helper)?.name;
+  return { enabled: c.enabled, auto: c.auto, activeSet: str(raw.activeBundle) || null, ...(raw.activeBundle ? { note: 'A settings set is active for this chat or character: changes go into that set, not the default settings.' } : {}),
+    librarianConnection: conn || '(same as chat)', embeddings: (c.embed as Obj | undefined)?.mode === 'api' ? 'on' : 'off', values, howTo: 'Change with update_settings fields={"memory.<key>": value}. Meanings in playbook "memory".' };
+}
+/** 항목에서 기본값과 다른 칸만 (목록을 짧게: 기본값은 뜻이 없다) */
+const ENTRY_DEF: Obj = { keys2: [], logic: 0, role: 'system', outlet: '', sticky: null, cooldown: null, delay: null, scanDepth: null, caseSensitive: null, wholeWord: null, useRegex: false, noRecurse: false, excludeRecursion: false, delayUntilRecursion: 0, ignoreBudget: false, group: '', groupWeight: 100, groupOverride: false, ask: '', askMode: 'off', probability: 100 };
+const entryExtras = (e: LoreEntry): Obj => { const o: Obj = {}; for (const [k, d] of Object.entries(ENTRY_DEF)) { const v = (e as unknown as Obj)[k] ?? d; if (JSON.stringify(v) !== JSON.stringify(d) && !(k === 'askMode' && !e.ask)) o[k] = v; } return o; };
 const R: ToolDef[] = [
   { name: 'list', sig: '{kind: "characters"|"personas"|"lorebooks"|"presets"|"regex"|"themes"|"chats"|"quick_replies"|"connections", query?, offset?, character?}', desc: 'List items with ids. 20 per page. character= filters chats.',
     run: a => { const f = LISTS[str(a.kind)] || fail(`Unknown kind. One of: ${Object.keys(LISTS).join(', ')}.`); return page(f(a), a); } },
@@ -321,10 +352,10 @@ const R: ToolDef[] = [
   { name: 'get_persona', sig: '{id, field?}', desc: 'A persona (who the user plays).',
     run: a => { const p = find(S.personas, a.id ?? a.name, 'persona'); return a.field ? whole(getPath(p, str(a.field)), a) : { id: p.id, name: p.name, description: clip(p.description, 'description', 1200), default: S.settings.activePersona === p.id }; } },
   { name: 'get_lorebook', sig: '{id, query?, offset?}', desc: 'Lorebook settings and a page of entries (id, name, keys, short content). query= filters entries by words.',
-    run: a => { const b = find(S.lore, a.id ?? a.name, 'lorebook'); const rows = b.entries.filter(e => hit(a.query, e.name, e.keys, e.content)).map(e => ({ id: e.id, name: e.name, keys: e.keys, ...(e.constant ? { constant: true } : {}), ...(e.enabled ? {} : { enabled: false }), ...(e.locked ? { locked: true } : {}), position: e.position, tokens: tokens(e.content), content: clip(e.content, 'content (get_lore_entry)', 140) }));
-      return { id: b.id, name: b.name, description: clip(b.description, 'description', 300), scanDepth: b.scanDepth, tokenBudget: b.tokenBudget, recursive: b.recursive, global: S.settings.activeLore.includes(b.id), entries: page(rows, a) }; } },
+    run: a => { const b = find(S.lore, a.id ?? a.name, 'lorebook'); const rows = b.entries.filter(e => hit(a.query, e.name, e.keys, e.content)).map(e => ({ id: e.id, name: e.name, keys: e.keys, ...(e.constant ? { constant: true } : {}), ...(e.enabled ? {} : { enabled: false }), ...(e.locked ? { locked: true } : {}), position: e.position, ...(e.position === 'depth' ? { depth: e.depth } : {}), ...(e.order !== 100 ? { order: e.order } : {}), ...entryExtras(e), tokens: tokens(e.content), content: clip(e.content, 'content (get_lore_entry)', 140) }));
+      return { id: b.id, name: b.name, description: clip(b.description, 'description', 300), scanDepth: b.scanDepth, tokenBudget: b.tokenBudget, recursive: b.recursive, caseSensitive: !!b.caseSensitive, wholeWord: !!b.wholeWord, global: S.settings.activeLore.includes(b.id), entries: page(rows, a) }; } },
   { name: 'get_lore_entry', sig: '{book, entry}', desc: 'One lorebook entry in full.',
-    run: a => { const b = find(S.lore, a.book, 'lorebook'), e = find(b.entries, a.entry, 'entry'); return { book: b.id, id: e.id, name: e.name, keys: e.keys, keys2: e.keys2, constant: e.constant, enabled: e.enabled, locked: !!e.locked, position: e.position, depth: e.depth, order: e.order, probability: e.probability, group: e.group, description: e.description || '', content: whole(e.content, a) }; } },
+    run: a => { const b = find(S.lore, a.book, 'lorebook'), e = find(b.entries, a.entry, 'entry'); return { book: b.id, id: e.id, name: e.name, keys: e.keys, constant: e.constant, enabled: e.enabled, locked: !!e.locked, position: e.position, depth: e.depth, order: e.order, ...entryExtras(e), description: e.description || '', tokens: tokens(e.content), content: whole(e.content, a) }; } },
   { name: 'get_preset', sig: '{id}', desc: 'Preset sampler settings and its prompt blocks in order (short content).',
     run: a => { const p = find(S.presets, a.id ?? a.name, 'preset'); const { temperature, topP, topK, maxTokens, contextSize, effort, stream, squash, prefill, stop } = p.params;
       return { id: p.id, name: p.name, active: S.settings.activePreset === p.id, params: { temperature, topP, topK, maxTokens, contextSize, effort, stream, squash, prefill: clip(prefill, 'params.prefill', 120), stop }, blocks: p.blocks.map((b, i) => ({ no: i + 1, id: b.id, kind: b.kind, name: b.name, role: b.role, enabled: b.enabled, ...(b.depth != null && b.depth !== '' ? { depth: b.depth } : {}), ...(b.when ? { when: b.when } : {}), tokens: tokens(b.content), content: clip(b.content, 'content (get_preset_block)', 160) })) }; } },
@@ -363,8 +394,8 @@ const R: ToolDef[] = [
     run: async a => { if (!str(a.query).trim()) fail('"query" is required.'); const rooms = str(a.chat).trim() || cur.chat ? [openChat(a.chat)] : [...S.chats].sort((x, y) => y.updatedAt - x.updatedAt).slice(0, 30); const rows: Obj[] = [];
       for (const c of rooms) { const list = cur.chat?.id === c.id ? cur.msgs : await S.msgs(c.id); list.forEach((m, i) => { if (hit(a.query, msgText(m))) rows.push({ chat: c.id, title: chatTitle(c), ...msgRow(m, i, 220) }); }); if (rows.length > 200) break; }
       return page(rows, a, 12); } },
-  { name: 'get_settings', sig: '{}', desc: 'A safe subset of app settings (look, chat modes, tracker, translation, memory, helper tasks). Never includes keys or addresses.',
-    run: () => { const s = S.settings, name = (id: unknown) => S.conns.find(c => c.id === id)?.name || null, m = s.modes || {};
+  { name: 'get_settings', sig: '{part?: "memory"}', desc: 'A safe subset of app settings (look, chat modes, tracker, translation, memory, helper tasks). part="memory" instead returns every long-term memory setting you can change, with its current value. Never includes keys or addresses.',
+    run: async a => { if (str(a.part).toLowerCase() === 'memory') return memSettings(); const s = S.settings, name = (id: unknown) => S.conns.find(c => c.id === id)?.name || null, m = s.modes || {};
       return { language: document.documentElement.lang, theme: s.theme, font: s.font, fontSize: s.fontSize, defaultMode: s.defaultMode, enterSend: s.enterSend, activeConnection: name(s.activeConn), activePreset: S.get('presets', s.activePreset)?.name || null, defaultPersona: S.get('personas', s.activePersona)?.name || null, globalLorebooks: s.activeLore.map(i => S.get('lore', i)?.name),
         modes: { choices: m.choices, proactive: m.auto, scenes: m.scenes, notify: m.notify, stagger: m.stagger }, tracker: { enabled: s.tracker.enabled, mode: s.tracker.mode, fields: clip(s.tracker.fields, 'tracker.fields', 400) }, translate: { lang: s.translate.lang, auto: s.translate.auto, autoInput: s.translate.autoInput }, memory: { enabled: s.memory.enabled, auto: s.memory.auto }, mvu: { mode: (s as unknown as { mvu?: { mode?: string } }).mvu?.mode || 'inline' },
         illustration: { auto: s.illust.auto, mode: s.illust.mode, backend: s.illust.backend }, helperTasks: Object.fromEntries(Object.entries(s.helpers || {}).map(([k, v]) => [k, name(v) || '(same as chat)'])), counts: { characters: S.chars.length, chats: S.chats.length, lorebooks: S.lore.length, presets: S.presets.length, personas: S.personas.length, regex: S.regex.length } }; } },
@@ -487,7 +518,7 @@ const W: ToolDef[] = [
     run: a => { const o = fields('personas', a.fields ?? a, ['name']); return { ...created('personas', str(o.name), o), notes: personaNotes({}, o), warn: dupWarn(S.personas, str(o.name), 'persona', 'update_persona') }; } },
   { name: 'update_persona', write: true, sig: '{id, fields}', desc: 'Propose edits to a persona (name, description).',
     run: a => { const p = find(S.personas, a.id, 'persona'), f = fields('personas', a.fields); mustHaveRead('personas', p.id); return { ...propose('update', 'personas', p.name, { type: 'set', coll: 'personas', id: p.id, fields: f }, diffs(p, f)), notes: personaNotes(p as unknown as Obj, f) }; } },
-  { name: 'create_lorebook', write: true, sig: '{name, description?, character?: <character name or id>, entries?: [{name, keys: [..], content, constant?, enabled?, position?, depth?, order?}]}', desc: 'Propose a new lorebook, optionally with entries (at most 24 per call; add more with add_lore_entry). character= links the book to that character when the card is applied — it may be a character you are creating in this same message (give its exact name). An entry whose name contains [InitVar] is checked as MVU initial variables (errors refuse the proposal) and is saved disabled.',
+  { name: 'create_lorebook', write: true, sig: '{name, description?, character?: <character name or id>, entries?: [{name, keys: [..], content, constant?, enabled?, position?, depth?, order?, …any entry field}]}', desc: 'Propose a new lorebook, optionally with entries (at most 24 per call; add more with add_lore_entry). character= links the book to that character when the card is applied — it may be a character you are creating in this same message (give its exact name). An entry whose name contains [InitVar] is checked as MVU initial variables (errors refuse the proposal) and is saved disabled.',
     run: async a => { const name = str(a.name).trim() || fail('"name" is required.'); const es = (Array.isArray(a.entries) ? a.entries : []).slice(0, 24).map(e => fields('entry', e, ['content']));
       const notes: Obj = {};
       for (const e of es) if (/\[initvar\]/i.test(str(e.name))) {   // 초기 변수 항목: 바로 점검하고, 모델에게 보내지 않게 꺼 둔다
@@ -503,12 +534,12 @@ const W: ToolDef[] = [
       if (a.unlink ? !has : has) fail(a.unlink ? `"${b.name}" is not linked to ${c.name}.` : `"${b.name}" is already linked to ${c.name}. If its entries still do not show up, test the keywords with lore_test.`);
       const ids = a.unlink ? (c.loreIds || []).filter(i => i !== b.id) : [...(c.loreIds || []), b.id], names = (l: string[]) => l.map(i => S.get('lore', i)?.name || i).join(', ');
       return propose('update', 'chars', `${c.name} › ${t('nav.lore')}`, { type: 'set', coll: 'chars', id: c.id, fields: { loreIds: ids } }, [{ name: 'lorebooks', before: names(c.loreIds || []), after: names(ids) }]); } },
-  { name: 'update_lorebook', write: true, sig: '{id, fields}', desc: 'Propose edits to lorebook settings (name, description, scanDepth, tokenBudget, recursive).',
+  { name: 'update_lorebook', write: true, sig: '{id, fields}', desc: 'Propose edits to lorebook settings (name, description, scanDepth, tokenBudget, recursive, caseSensitive, wholeWord).',
     run: a => { const b = find(S.lore, a.id, 'lorebook'), f = fields('lore', a.fields); mustHaveRead('lore', b.id, 'book'); return propose('update', 'lore', b.name, { type: 'set', coll: 'lore', id: b.id, fields: f }, diffs(b, f)); } },
-  { name: 'add_lore_entry', write: true, sig: '{book, name, keys: [..], content, constant?, position?: "before"|"after"|"depth", depth?, order?}', desc: 'Propose a new entry in an existing lorebook. keys are the words that wake it; constant=true means always on.',
+  { name: 'add_lore_entry', write: true, sig: '{book, name, keys: [..], content, constant?, position?, depth?, order?, …any entry field}', desc: 'Propose a new entry in an existing lorebook. keys are the words that wake it; constant=true means always on. It takes the same fields as update_lore_entry.',
     run: a => { const b = find(S.lore, a.book, 'lorebook'), { book: _b, ...rest } = a; void _b; const f = fields('entry', a.fields ?? rest, ['content']); if (!f.constant && !(f.keys as string[] | undefined)?.length) fail('Give "keys" (words that wake the entry) or set constant=true.');
       return propose('update', 'lore', `${b.name} › ${str(f.name) || show(f.keys)}`, { type: 'entry', loreId: b.id, entryId: uid(), fields: f }, diffs({}, f)); } },
-  { name: 'update_lore_entry', write: true, sig: '{book, entry, fields}', desc: 'Propose edits to one entry (name, keys, keys2, content, constant, enabled, position, depth, order, probability, description, group). Locked entries cannot be changed.',
+  { name: 'update_lore_entry', write: true, sig: '{book, entry, fields}', desc: `Propose edits to one entry. Fields: ${Object.keys(F.entry).join(', ')} (meanings in playbook "lore"). Locked entries cannot be changed.`,
     run: a => { const b = find(S.lore, a.book, 'lorebook'), e = find(b.entries, a.entry, 'entry'); if (e.locked) fail('This entry is locked by the user and cannot be changed. Tell them; they can unlock it in the lorebook editor.'); const f = fields('entry', a.fields); mustHaveRead('lore', b.id, 'book');
       return propose('update', 'lore', `${b.name} › ${e.name || show(e.keys)}`, { type: 'entry', loreId: b.id, entryId: e.id, fields: f }, diffs(e, f)); } },
   { name: 'add_preset_block', write: true, sig: '{preset, name, content, role?: "system"|"user"|"assistant", depth?, after?: <block id>, enabled?}', desc: 'Propose a new text block in a preset. Without after= it goes just before the chat history; depth=N instead injects it N messages from the end.',
@@ -559,7 +590,7 @@ const W: ToolDef[] = [
       (call![1].fields as Obj)[field!] = text;
       skipRead = true; try { return await toolDef(call![0])!.run(call![1]); } finally { skipRead = false; }
     } },
-  { name: 'update_settings', write: true, sig: `{fields: {<setting>: <value>}}`, desc: `Propose changing app settings (a change card the user approves; it can be undone). Settings: ${Object.entries(SETTINGS).map(([k, v]) => k + (v === 'b' ? ' (true/false)' : v === 's' ? '' : Array.isArray(v) && typeof v[0] === 'number' ? ` (${v[0]}–${v[1]})` : ` (${(v as string[]).join('|')})`)).join(', ')}. theme= takes a theme id or name (list kind="themes"); font= and chatFont= take a font key (${Object.keys(FONTS).slice(0, 6).join(', ')} …; chatFont "" follows the interface font). Read the current values with get_settings first when you are not sure. Connections, keys, server and security settings are out of reach.`,
+  { name: 'update_settings', write: true, sig: `{fields: {<setting>: <value>}}`, desc: `Propose changing app settings (a change card the user approves; it can be undone). Settings: ${Object.entries(SETTINGS).filter(([k]) => !(k in MEM_SETTINGS)).map(([k, v]) => k + (v === 'b' ? ' (true/false)' : v === 's' ? '' : Array.isArray(v) && typeof v[0] === 'number' ? ` (${v[0]}–${v[1]})` : ` (${(v as string[]).join('|')})`)).join(', ')}. theme= takes a theme id or name (list kind="themes"); font= and chatFont= take a font key (${Object.keys(FONTS).slice(0, 6).join(', ')} …; chatFont "" follows the interface font). Read the current values with get_settings first when you are not sure. Long-term memory has many more settings as memory.<key> (memory.autoHide, memory.rpBatch, memory.tokenBudget …): the keys, ranges and what each costs are in playbook "memory"; read their values with get_settings part="memory". Connections, keys, server and security settings are out of reach.`,
     run: a => {
       const raw = (a.fields && typeof a.fields === 'object' && !Array.isArray(a.fields) ? a.fields : fail('"fields" must be an object of setting → value.')) as Obj, out: Obj = {}, fs: FieldChange[] = [];
       for (const [k, v0] of Object.entries(raw)) {
@@ -712,7 +743,7 @@ const W: ToolDef[] = [
 // 예전 이름도 받는다 (지난 대화 기록 · 익숙한 이름)
 const ALIASES: Record<string, string> = { create_quick_reply: 'create_qr_set' };
 /** 대화방 · 메시지 · 연결 · 장기기억 · 명령 · 화면 · 지우기 (src/guide/reach.ts) */
-const X = reachTools({ str, num, clip, fail, find, propose, show, openChat, chatTitle, cur: cur as never, msgText, card: id => { for (const it of CTX.items()) if (it.k === 'change' && it.change.id === id) return it.change; return undefined; } });
+const X = reachTools({ str, num, clip, fail, find, propose, show, openChat, chatTitle, cur: cur as never, msgText, card: id => { for (const it of CTX.items()) if (it.k === 'change' && it.change.id === id) return it.change; return undefined; }, cards: () => CTX.items().flatMap(it => it.k === 'change' ? [it.change] : []) });
 const RX = [...R, ...X.read], WX = [...W, ...X.write];
 export const TOOLS: ToolDef[] = [...RX, ...WX];
 const BY = new Map(TOOLS.map(t => [t.name, t]));
@@ -725,6 +756,9 @@ function playbookFor(tool: string, a: Args): string {
   if (/^(create_character|add_greeting|create_persona|update_persona)$/.test(tool) || (tool === 'update_character' && a.fields && typeof a.fields === 'object' && ['description', 'firstMes', 'altGreetings', 'personality', 'scenario'].some(k => k in (a.fields as Obj)))) return 'cards';
   if (/^(create_regex|update_regex)$/.test(tool) && /<(div|table|section|details|body|style)\b|```html/i.test(str((a.fields as Obj | undefined)?.replace ?? a.replace))) return 'panels';
   if (tool === 'create_lorebook' && /\[initvar\]/i.test(JSON.stringify(a.entries ?? ''))) return 'mvu';
+  if (tool === 'create_lorebook' || tool === 'add_lore_entry' || tool === 'update_lorebook' || (tool === 'update_lore_entry' && a.fields && typeof a.fields === 'object' && Object.keys(a.fields as Obj).some(k => !['name', 'content', 'enabled', 'description'].includes(k)))) return 'lore';
+  if (/^(update_preset|update_preset_block|add_preset_block|create_preset)$/.test(tool)) return 'presets';
+  if (tool === 'update_settings' && a.fields && typeof a.fields === 'object' && Object.keys(a.fields as Obj).some(k => k.startsWith('memory.') && k !== 'memory.enabled' && k !== 'memory.auto')) return 'memory';
   if (/^(create_qr_set|add_qr|update_qr|update_qr_set|run_command)$/.test(tool) && /(^|[\s|{])\/(=|ife|elseif|foreach|map|filter|reduce|whilee|getat|setat|try|catch|switch|case|sorte|dict)\b/.test(JSON.stringify(a))) return 'lalib';
   return '';
 }

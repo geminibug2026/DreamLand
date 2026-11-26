@@ -9892,7 +9892,7 @@
   "guide.hb.backup.t": "Backup and restore",
   "guide.hb.backup.b": "Everything is stored in this browser. Under “{data}” in “{settings}”, “{export}” puts it all in one file and “{restore}” brings it back. Through the Dreamland server, data is also written to the data folder and backed up once a day; “{backupNow}” makes one immediately. Clearing the browser's site data erases it, so export now and then.",
   "guide.hb.guide.t": "The Lampkeeper",
-  "guide.hb.guide.b": "Open it from any screen with Ctrl J (⌘ J on a Mac) or the lamp button in the rail. Just say what you want and it does almost anything in the app for you: create, edit and duplicate characters, personas, lorebooks, presets, regex scripts, themes and quick replies; import a card from a link; test a character with a sample reply; start a new chat (greeting, persona and name included); change a chat's settings and author's note; edit, hide, pin or delete messages; add, edit or delete long-term memories; switch the connection, model, preset or connection profile in use and save profiles; change app settings and chat variables; run commands; build extensions; and open any screen. For longer jobs it plans first, reads before it changes anything, and checks its own work. Changes show up as cards and by default are saved when you press Apply. Turn on Apply at once with the ✓ button in its header and they are saved as soon as it proposes them (deleting, installing extensions and commands that generate replies still wait for you). Applied changes can be undone from their card for 14 days (running a command cannot be undone). It never asks for or touches API keys and addresses; it only picks among connections you made.",
+  "guide.hb.guide.b": "Open it from any screen with Ctrl J (⌘ J on a Mac) or the lamp button in the rail. Just say what you want and it does almost anything in the app for you: create, edit and duplicate characters, personas, lorebooks, presets, regex scripts, themes and quick replies; import a card from a link; test a character with a sample reply; start a new chat (greeting, persona and name included); change a chat's settings and author's note; edit, hide, pin or delete messages; add, edit or delete long-term memories; switch the connection, model, preset or connection profile in use and save profiles; change app settings (including detailed long-term memory settings) and chat variables; run commands; build extensions and test-run them; open any screen; rename or reword something everywhere at once; and tag many characters at once. Panels such as status windows are drawn at phone and desktop width after it makes them, and it fixes the errors, overflow and tiny text it finds. It also carries guides for tuning presets, designing lorebooks and setting up long-term memory. For longer jobs it plans first, reads before it changes anything, and checks its own work. Changes show up as cards and by default are saved when you press Apply. Turn on Apply at once with the ✓ button in its header and they are saved as soon as it proposes them (deleting, installing extensions and commands that generate replies still wait for you). Applied changes can be undone from their card for 14 days, or just ask (\"undo that\") (running a command cannot be undone). It never asks for or touches API keys and addresses; it only picks among connections you made.",
   "guide.hb.guideTips.t": "Getting more from the Lampkeeper",
   "guide.hb.guideTips.b": "Type @ in its input and pick a character, lorebook or preset to point at it (up to eight). Pick a command with the / button left of the input, or type /. /character turns an idea into a complete card (you can choose length, point of view and language), /persona makes the character you play, /QR makes and fixes quick reply buttons (their commands are checked before anything is proposed), and /MVU sets up status variables such as HP or affection. /check finds common problems in a card (too many tokens, empty greetings, broken macros, formatting marks, stock obsessive traits); /why explains why the last reply came out as it did. On a card that is not applied yet, “Redo this part” rewrites just that part. Choose its model in “{tabHp}” under “{studio}”.",
   "guide.hb.relay.t": "Frequent 429 errors (relay · auto-retry)",
@@ -11532,5 +11532,18 @@
   "guide.f.note_depth": "Author's note depth",
   "guide.f.note_role": "Author's note role",
   "guide.f.personaId": "Persona",
-  "guide.f.profileId": "Connection profile"
+  "guide.f.profileId": "Connection profile",
+  "guide.f.memoryPre": "Long-term memory · {name}",
+  "guide.f.memory_checkMode": "Continuity check mode",
+  "guide.f.memory_checkEvery": "Check every (replies)",
+  "guide.f.memory_driftNote": "Drift note",
+  "guide.f.memory_gradeMode": "Summary grading",
+  "guide.f.memory_gradeEvery": "Grade every (summaries)",
+  "guide.f.memory_feelingLines": "Current-bond lines",
+  "guide.f.memory_tieNotes": "Record bonds and turning points too",
+  "guide.f.memory_bannedPhrases": "Phrases to avoid",
+  "guide.f.summary": "Summary",
+  "guide.f.more": "More",
+  "guide.rep.count": "{n} replacements in {items} items",
+  "guide.rep.more": "{n} more fields"
 }

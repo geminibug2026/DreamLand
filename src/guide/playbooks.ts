@@ -53,7 +53,8 @@ QUICK-REPLY CONTROL BARS AND SCRIPTS FOR GAMES
 </body>
 \`\`\`
 - The button row above the input is part of the interface too: gather the game's verbs into a few clear buttons, use /buttons for menus of choices and /popup for rich readouts (it accepts HTML), and give each button a short title= hint.
-- create_regex and update_regex check the panel you send: broken JavaScript, or scripts and buttons placed outside a screen, refuse the proposal with the reason; other remarks come back under "check". Fix what they say.` },
+- create_regex and update_regex check the panel you send: broken JavaScript, or scripts and buttons placed outside a screen, refuse the proposal with the reason; other remarks come back under "check". Fix what they say.
+- Then look at it: preview_screen card="last" (in the same message as the proposal) draws the message with the new script at 360px and 800px, runs the screen's scripts and reports errors, anything wider than the screen, the height, text under 11px, tap targets under 32px, and undefined / NaN / null showing. Fix each issue with revise_card and preview again until it says none. html= previews a draft without a card; for a bot with no chat yet the proposal checks are all there is.` },
   motion: { what: 'making status panels, screens and extensions feel alive like an app: motion that explains change, sequences, live updates, in-story phone UIs', text: `LIVELY SCREENS AND EXTENSIONS: FEEL LIKE AN APP, NOT A POSTER
 Motion is for meaning: it shows what changed, what is happening and what just finished. Done well a status panel feels like a small app; done badly it is noise. Rules first:
 - Animate only change: a number moving from its old value to the new one, a new item sliding in, a step finishing, a pressed button answering. No decorative loops, nothing that blinks or spins forever.
@@ -192,4 +193,111 @@ COMMON FAULTS AND THEIR FIX
 - The model stops writing updates: make the [규칙] entry constant and concrete with one full example; if it still forgets, suggest update_settings mvu.mode="extra".
 - Rules leak into the story or the panel never appears: the update-hiding regex is missing, or the first message lacks <StatusPlaceHolderImpl/>.
 - [InitVar] entry enabled: it is sent to the model every turn — keep it disabled.` },
+  presets: { what: 'tuning a preset: reply length, repetition, character breaks, cut-off or thinking-only replies, samplers per model, block order and depth, prefill', text: `PRESET TUNING
+Work from the symptom. First read: get_preset (sampler settings and the list of blocks) and, when the complaint is about a real reply, diagnose_reply (what was actually sent: sizes by source, what was dropped, which lore fired, the samplers, the reply). Change one or two things per round, say why, and offer try_reply to test (one request) instead of guessing twice.
+
+HOW A PRESET BUILDS THE PROMPT
+- Blocks are sent top to bottom. Marker blocks pull in content: main (the main prompt), charDescription, charPersonality, scenario, personaDescription, dialogueExamples, worldInfoBefore / worldInfoAfter (lore entries at position before / after), summary, chatHistory, jailbreak (instructions after the chat history). {{slot}} inside a marker block is where that content goes — keep it when you edit the wrapper text. Custom text blocks are your own instructions.
+- A text block with depth=N is not sent in its place: it is inserted N messages from the end of the chat history (0 = after the last message, 1 = just before it). Depth 0-2 is the strongest spot for a short standing instruction; the top of the prompt is for stable facts. Blocks at the same depth follow their order.
+- role: system (default), user or assistant. Some models follow a short user-role reminder at depth 0-1 better than a system line far above.
+- when: a condition such as nsfw && style == "intense" (preset variables, chat variables, char, mode). Empty = always. It lets one preset carry optional parts instead of three near-copies.
+- A character's own systemPrompt / postHistory replace main / jailbreak while card overrides are on (the default), unless they contain {{original}}. When "my preset is ignored" for one character, check the card first.
+- add_preset_block puts a new block just before the chat history unless you give after= or depth=. Turn blocks off (enabled=false) rather than deleting them when testing.
+
+SETTINGS (update_preset fields)
+- maxTokens: the hard cap on one reply, not a target. It only cuts. For role-play 2000-4000; with a reasoning model the thinking counts against it too, so give 6000-8000 or lower effort.
+- contextSize: how much of the chat is kept. When it is full the oldest messages drop first (diagnose_reply shows "dropped"). Long chats with long-term memory on can stay moderate (32k-64k): old turns are summarised anyway. Raising it raises the cost of every request.
+- effort: "" (provider default), low, medium, high — reasoning strength for models that think. high is slower and pricier; low is fine for casual RP. A reply that is only thinking and no text usually means maxTokens ran out inside the thinking: raise maxTokens or lower effort.
+- temperature: 0.7-0.9 steadier, 1.0 default, 1.1-1.2 livelier. Above ~1.3 most models lose coherence.
+- topP / topK / minP / topA / freqPen / presPen / repPen / seed: leave null unless there is a reason; null means "not sent". What a provider honours differs: Claude takes temperature (send temperature or topP, not both); OpenAI-compatible APIs take freqPen / presPen (0.1-0.4 against repetition); local and OpenRouter models take minP (0.05-0.1) and repPen (1.05-1.12); many reasoning models reject samplers entirely — if a request errors after a sampler change, set it back to null.
+- prefill: text the reply is made to start with (sent as the start of the assistant turn). Strong for format or voice ("*" or the character's name and a quote), but some providers do not continue a prefill and some reject it. Keep it short.
+- stop: strings that end the reply. A stop string that occurs in normal prose cuts replies short — check this first when replies end abruptly.
+- squash: merges consecutive system messages into one. Leave on; turn off only if a provider needs separate messages.
+
+SYMPTOM → CAUSE → FIX
+- Cut off mid-sentence: maxTokens too low (or thinking eats it), or a stop string matched. Raise maxTokens, clear the stop string.
+- Too short or too long: length comes from instructions and from the pattern of earlier replies, not from maxTokens. Put one concrete length line in a depth-1 block ("Write 3-5 paragraphs, about 300-500 words") and check that the first message has the length you want — models copy it.
+- Repeats phrases, openings or structure: first an instruction (depth-1 block: "Do not reuse phrasing, sentence openings or structure from your last replies; move the scene forward"), then a small sampler change for that provider (temperature +0.1, or freqPen 0.2 / minP 0.05 / repPen 1.08). Cranking penalties hurts names and grammar. Long-term memory's banned phrases (memory.bannedPhrases) catch specific pet phrases.
+- Speaks or acts for {{user}}: main prompt rule plus a one-line reminder in jailbreak or at depth 0-1; check that the first message and examples do not write {{user}}'s actions (the check tool flags that).
+- Out of character or flat: the card is weak, missing or overridden — read the card; a block that duplicates or contradicts it; examples in another style. Fix the card before piling instructions on the preset.
+- Forgets setting details: lore not firing (playbook "lore", lore_test) or the facts sit only in old messages that dropped out (turn on long-term memory).
+- Refuses or softens: read the main and jailbreak text for hedging or safety lines and remove them; a short, plain statement of what the story is beats long pleading.
+- Mixed languages: say the output language once in main ("Write in Korean") and once at depth 0-1.
+- Same preset works on one model, not another: keep one preset, use when= conditions or a variable for the model-specific part, and samplers that model honours.
+
+WRITING PRESET TEXT
+Short, concrete, positive instructions ("Write …") beat long lists of "never". One topic per block, named clearly, so the user can switch parts on and off. No duplicates between main, jailbreak and blocks. Macros: {{char}}, {{user}}, {{getvar::name}}, {{random::a::b}}. Do not paste the card into the preset.` },
+  lore: { what: 'designing or fixing a lorebook: keys and logic, always-on versus keyed, position and depth, order and budget, recursion, groups, timed entries, probability, splitting a world into entries', text: `LOREBOOK DESIGN
+A lorebook keeps the prompt small: each entry is sent only in the turns where it matters. Read the book first (get_lorebook; get_lore_entry for one in full). Check wake-ups with lore_test text="…" and a real prompt with diagnose_reply. Write entry text the way card text is written: plain prose or tidy "Label: value" lines, third person, no markdown emphasis, no instructions to "remember".
+
+SPLITTING A WORLD INTO ENTRIES
+- One subject per entry: a place, a person, a faction, an item, a rule, a custom. 50-250 tokens each. A huge entry wakes on everything and wastes budget; a dozen tiny ones repeat context.
+- Always-on (constant=true) only for what every reply needs: the world's core premise, the narration contract, game rules. Keep the total of always-on entries small (a few hundred tokens). Everything else is keyed.
+- Each entry should make sense alone (name the subject in its first sentence) because it arrives without its neighbours.
+- People who are in every scene belong in the card, not in lore.
+
+KEYS
+- keys: the words that wake it — every way the story really refers to the subject: name, nickname, title, Korean and English spellings, inflected stems ("하린", "하린이", "Harin"). Matching is substring by default, so a short stem catches particles; for short Latin words that hide inside others turn wholeWord on (entry or book).
+- Avoid keys that occur everywhere ("the", "그", the user's name, the character's name) — the entry would always fire.
+- keys2 + logic narrow it: 0 AND ANY (one of keys and one of keys2), 3 AND ALL (all of keys2), 1 NOT ALL, 2 NOT ANY (e.g. keys ["왕궁"], keys2 ["밤", "night"], logic 0 = the night version of the palace).
+- useRegex=true makes each key a regular expression (/…/i) — for patterns only, not for lists of words.
+- scanDepth: how many recent messages are searched (book default 4). Raise it on an entry that must keep firing for a while, or use sticky.
+
+WHERE IT GOES (position) AND WHICH WINS (order, budget)
+- before / after: around the character description (the worldInfoBefore / worldInfoAfter blocks of the preset). Default for setting facts.
+- depth: inside the chat, depth messages from the end, as role= (system by default). Depth 1-4 for things that steer the current scene (a location's mood, a status reminder); strong, so keep such entries short.
+- an_top / an_bottom: around the Author's Note. em_top / em_bottom: around the example dialogues.
+- outlet: sent only where a preset block or card text writes {{outlet::<outlet name>}} — for putting a group of entries in one exact spot.
+- order: higher order goes later (nearer the chat, so stronger), and when the book's tokenBudget is exceeded, always-on entries are kept first and then higher order; the rest are dropped. Give core lore a high order and trivia a low one. ignoreBudget=true keeps one entry no matter what.
+- tokenBudget (book): the cap for all lore together. If entries silently vanish in long chats, raise it or trim entries.
+
+CHAINS (recursion)
+With the book's recursive=true, the text of woken entries is scanned too, so entries can wake each other (a city entry mentions its district, which wakes the district). noRecurse=true: this entry's text wakes nothing. excludeRecursion=true: this entry wakes only from the chat, never from other entries. delayUntilRecursion=N: only from the N-th level of chaining. Turn recursion on only when you designed chains; otherwise it bloats the prompt.
+
+VARIETY AND TIME
+- probability (0-100): chance to fire when woken — for flavour (rumours, weather, random encounters). Keep core facts at 100.
+- group="name": of the woken entries that share a group, only one is sent. An entry with groupOverride=true wins over the others (the highest order if several have it); otherwise one is picked at random, weighted by groupWeight (default 100). Use for alternatives: three versions of an event, mood variants of a place.
+- sticky=N: stays on for N messages after it fires (a poison that lasts, a scene that continues after the keyword stops appearing). cooldown=N: cannot fire again for N messages after it ends (stops a random event from repeating). delay=N: cannot fire before the chat has N messages (late-game reveals).
+- ask= with askMode: a yes/no question a helper model answers about the current scene ("Is {{char}} hurt?"). need = the keys wake it and the answer must also be yes; wake = a yes wakes it even without keys. It costs one helper call per turn while such entries exist, so use it only for situations keys cannot catch.
+
+FIXING "IT NEVER SHOWS UP"
+lore_test with a sentence from the chat → is it woken? If not: the key is not in the scanned messages (scanDepth), case or wholeWord blocks it, keys2/logic excludes it, probability, delay, cooldown or a group lost. If it is woken but missing from diagnose_reply: budget dropped it (raise order or tokenBudget), or the book is not linked to this chat or character (link_lorebook) or not active.
+
+VARIABLES AND GAMES
+[InitVar] entries stay disabled (they seed variables; playbook "mvu"). Game rules the model must follow every turn are one constant entry. Rules for one phase or place are keyed entries that wake with it.` },
+  memory: { what: 'long-term memory (the archive) settings: cost, how much is remembered and recalled, auto-hide of old messages, recording interval, recall style, continuity checks; and fixing "it forgot" or "it keeps bringing up the past"', text: `LONG-TERM MEMORY SETTINGS
+Long-term memory records the story as it goes (a librarian model reads new replies and writes turns, memories, a cast list, promises and secrets), summarises every so often, and before each reply recalls what fits and injects it. Read the current values with get_settings part="memory" first; change them with update_settings fields={"memory.<key>": value}. If a settings set is active (activeSet), changes go into that set — say so. The librarian connection, embeddings and prompts are set by the user in the long-term memory settings screen (help_search gives the exact path); never ask for keys.
+
+COST (each item is model calls)
+- Recording: rpBatch / talkBatch replies are collected and recorded in one call (default 10 in RP, 5 in talk mode). Higher = cheaper, slightly later; 1 = every reply (most precise, most calls). Very long replies are recorded early anyway.
+- Summaries: every chunkTurns replies (default 30; chunkTurnsTalk for talk mode, 0 = same).
+- Archive cleanup: consolidateEvery (default 30 turns) and arcConsolidateEvery (100); 0 = off.
+- Extra calls you can switch off: replyCheck / checkMode (continuity check, "each" = one call per reply, "batch" = every checkEvery replies), supervisor (scene director, one call per reply), gradeMode "every". Recall itself costs nothing unless embeddings are on.
+- lowThink=true keeps the librarian's reasoning low (reasoning tokens bill as output). yieldToChat and waitTyping keep memory calls from competing with your reply.
+- A cheaper librarian connection is the biggest saving; the user picks it in the settings screen.
+
+WHAT THE AI SEES
+- tokenBudget (default 8000): how much recalled memory goes into each prompt. 3000-5000 for small models or tight context, 8000-12000 for long epics.
+- topK (10): memories recalled per turn. maxMemories (400): archive size before low-importance ones are pruned.
+- position: split (default: the stable story up front, the changing scene near the chat — good for prompt caching), chat (one block at depth), before (before the main prompt). depth applies to chat.
+- splitInjection (fixed ledger, on) keeps the stable part unchanged between turns so providers can cache it; stableRefreshTurns rebuilds it.
+- autoHide (on): messages already covered by summaries are hidden from the AI, so long chats stay a steady size. keepTurns (40) recent replies always stay as text, then older ones are hidden hideUnit (20) at a time; preserveRecent always stay. Turn autoHide off only if the user wants the full raw chat sent (expensive, and the oldest messages still drop at the context limit).
+- trim + keepRecent: alternative to hiding — only the last keepRecent messages are sent.
+
+STORY QUALITY
+- recallVoice: quiet / natural (default) / active — how readily characters bring up the past themselves.
+- recallQuotes (on): recalled memories carry original lines. Turn off if old speech patterns keep returning. rawRecall "auto" carries one exact old passage only when the user asks about the past.
+- voiceSamples (2): real lines per character in the scene, for voice consistency.
+- bannedPhrases: phrases to strip from the ledger (comma or newline separated); banInChat also strips them from recent chat sent to the AI; banTell tells the model the list (can backfire).
+- styleGuard (on): the archive states facts only, so its wording does not leak into the prose.
+- cast, items, milestones, storyClock, dueDates, presentNow, guardSecrets, feelingLines, tieNotes: what is tracked and shown; most cost no calls.
+- sceneCards and mindLines stay 0 unless asked: they pull old scenes and old feelings into the present.
+
+COMMON REQUESTS
+- "It forgot X": get_memories query="…" — if it is there, raise tokenBudget or topK (or pin it with update_memory); if not, propose remember to add it (it may have happened before memory was on). Check enabled and auto.
+- "It keeps dragging up the past": recallVoice quiet, recallQuotes off, rawRecall off, lower topK.
+- "Too expensive": raise rpBatch (15-20), raise chunkTurns, turn off replyCheck/supervisor, lowThink on, cheaper librarian connection.
+- "Records are late": lower rpBatch; recordDelay 0.
+- "The chat got slow or huge": autoHide on, keepTurns 30-40.
+- Different needs per bot: the user can save settings sets and attach them to a character or chat in the settings screen.` },
 };
