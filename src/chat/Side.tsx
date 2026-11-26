@@ -1,7 +1,7 @@
 // 왼쪽 대화방 목록: 캐릭터(또는 그룹)별로 묶고, 방마다 분량 · 기간 · 분기 관계를 보여 준다
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Avatar, Icon, IconBtn } from '../kit';
-import { cur, ui, useCh } from './store';
+import { cur, runs, ui, useCh } from './store';
 import { ago, charsOf, daysOf, drawSide, groupKey, modeOf, renameRoom, roomName, setSide, titleOf } from './actions';
 import { usePaged } from '../ui/Pager';
 import { chatMenu, groupDialog } from './menus';
@@ -22,7 +22,7 @@ function room(c: Room, max: number, depth = 0, isFlat = false, tree: { last?: bo
   return <button key={c.id} className={['room', c.id === cur.chat?.id && 'on', depth > 0 && 'sub', depth > 0 && tree.last && 'last'].filter(Boolean).join(' ')}
     onClick={() => { setSide(false); go('chat', c.id); }} onContextMenu={e => { e.preventDefault(); chatMenu(e.currentTarget, c); }}>
     <div className="room-top">{depth ? null : <i className={'room-mode ' + mode}>{mode === 'talk' ? t('chat.side.talk') : 'RP'}</i>}<b>{isFlat ? `${titleOf(c)} · ${roomName(c)}` : roomName(c)}</b>
-      {c.temp ? <i className="room-scene">{t('chat.side.temp')}</i> : null}{c.pinned ? <i className="room-pin">✦</i> : null}{c.unread ? <i className="room-unread">{String(c.unread)}</i> : null}{c.scene?.on ? <i className="room-scene">{t('chat.side.scene')}</i> : null}<time>{ago(c.updatedAt)}</time>
+      {c.temp ? <i className="room-scene">{t('chat.side.temp')}</i> : null}{c.pinned ? <i className="room-pin">✦</i> : null}{runs.get(c.id)?.busy || runs.get(c.id)?.prep ? <i className="room-gen" title={t('chat.side.replying')} aria-label={t('chat.side.replying')}><span /><span /><span /></i> : null}{c.unread ? <i className="room-unread">{String(c.unread)}</i> : null}{c.scene?.on ? <i className="room-scene">{t('chat.side.scene')}</i> : null}<time>{ago(c.updatedAt)}</time>
       <span className="room-edit" role="button" tabIndex={0} title={t('chat.menu.rename')} aria-label={t('chat.menu.rename')} onClick={e => { e.stopPropagation(); void renameRoom(c); }} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); void renameRoom(c); } }}><Icon name="edit" size={13} /></span></div>
     <small className="room-prev">{c.preview || t('chat.side.noMsgs')}</small>
     <RoomMarks c={c} />

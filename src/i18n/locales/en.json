@@ -11155,5 +11155,6 @@
   "editors.sheet.del.done.other": "Deleted {name} and {count} chats",
   "home.bulk.deleteAsk": "Delete {count} characters?",
   "home.bulk.deleteRooms": "There are {rooms} chats with only these characters. Choose whether to delete them too. This cannot be undone.",
-  "home.bulk.deletedWith": "Deleted {count} characters and {rooms} chats"
+  "home.bulk.deletedWith": "Deleted {count} characters and {rooms} chats",
+  "chat.side.replying": "Getting a reply"
 }

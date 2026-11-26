@@ -3,14 +3,36 @@ import { useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 import type { Built, Msg, Room } from './types';
 
+/**
+ * 방마다 따로 도는 답변 · 답변 전 준비. 한 방에서 답을 기다리는 동안 다른 방은 따로 쓰고 따로 보낼 수 있다
+ * (예전엔 하나뿐이어서, 다른 방에 가도 '응답 중' 으로 보이고 거기서 보내지도 못했다).
+ * msgs 는 그 방의 메시지 목록 그 자체 — 답을 받는 동안 그 방을 다시 열면 이 목록을 그대로 보여 준다
+ */
+export interface RoomRun { chat: Room; msgs: Msg[]; busy: boolean; abort: AbortController | null; prep: boolean; prepAbort: AbortController | null }
+export const runs = new Map<string, RoomRun>();
+/** 이 방의 돌림 (없으면 만든다) */
+export function runFor(chat: Room, msgs: Msg[]): RoomRun {
+  let r = runs.get(chat.id);
+  if (!r) runs.set(chat.id, r = { chat, msgs, busy: false, abort: null, prep: false, prepAbort: null });
+  return r;
+}
+/** 다 끝난 돌림은 치운다 */
+export function runDone(chat: Room) { const r = runs.get(chat.id); if (r && !r.busy && !r.prep) runs.delete(chat.id); }
+const here = () => { const id = cur.chat?.id; return id ? runs.get(id) : undefined; };
+
 export const cur = {
-  chat: null as Room | null, msgs: [] as Msg[], busy: false, prep: false, abort: null as AbortController | null,
-  /** 답변 전 준비를 멈추는 것 · 돌고 있는 스크립트(QR · / 명령) 수 */
-  prepAbort: null as AbortController | null, qr: 0,
+  chat: null as Room | null, msgs: [] as Msg[],
+  /** 지금 보고 있는 방이 답을 받는 중인가 · 답변 전 준비 중인가 · 그 멈추개 (다른 방의 답은 runs 에) */
+  get busy() { return !!here()?.busy; },
+  get prep() { return !!here()?.prep; },
+  get abort() { return here()?.abort || null; },
+  get prepAbort() { return here()?.prepAbort || null; },
+  /** 돌고 있는 스크립트(QR · / 명령) 수 */
+  qr: 0,
   /** 답장 뒤에 제안하는 선택지 (그 답장의 id · 목록 · 만드는 중) */
   choices: null as { msgId: string; list: string[]; busy?: boolean } | null,
   lastPrompt: null as Built | null, shown: 60, drawer: false, status: '', attach: [] as string[],
-  gen: null as { chat: Room; msgs: Msg[] } | null, openedAt: 0, chimeRun: 0,
+  openedAt: 0, chimeRun: 0,
   fold: new Set<string>(), more: new Map<string, number>(),
   // ── 화면 ──
   sideOpen: false,

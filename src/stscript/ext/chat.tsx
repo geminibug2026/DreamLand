@@ -7,7 +7,7 @@ import { go } from '../../lib/router';
 import { Live } from '../../lib/live';
 import { Assets } from '../../lib/assets';
 import { confirmBox, openModal } from '../../ui';
-import { cur, ui } from '../../chat/store';
+import { cur, runs, ui } from '../../chat/store';
 import { startChat } from '../../chat/start';
 import { branch, chatApi, commandList, drawHud, drawMain, drawMsgs, drawSide, drawTop, drawDrawer, generate, roomName, setSide, swipe as swipeMsg } from '../../chat/actions';
 import { addCheckpoint, branchFromCheckpoint, cps, posOf, type Checkpoint } from '../../flow/logic';
@@ -156,7 +156,7 @@ def('newchat', {
   run: async a => {
     const { chat } = need(), del = yes(N(a, 'delete', 'false'));
     const fresh = await startChat(chat.charIds, { mode: chat.mode, open: !del, setup: false });
-    if (del && fresh) { if (cur.gen?.chat === chat) cur.abort?.abort(); await Assets.removeOwner('chat:' + chat.id); await S.remove('chats', chat.id); go('chat', fresh.id); }
+    if (del && fresh) { runs.get(chat.id)?.abort?.abort(); await Assets.removeOwner('chat:' + chat.id); await S.remove('chats', chat.id); go('chat', fresh.id); }
     return '';
   },
 });
@@ -165,7 +165,7 @@ def('delchat', {
   run: async () => {
     const { chat } = need();
     if (!(await confirmBox(t('chat.menu.deleteConfirm', { name: roomName(chat) }), t('common.delete'), true))) return '';
-    if (cur.gen?.chat === chat) cur.abort?.abort();
+    runs.get(chat.id)?.abort?.abort();
     await Assets.removeOwner('chat:' + chat.id); await S.remove('chats', chat.id);
     cur.chat = null; S.set({ lastChat: '' }); go('chat');
     return '';

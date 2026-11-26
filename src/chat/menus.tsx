@@ -2,7 +2,7 @@
 import { editSchedule } from '../schedule/Editor';
 import { useReducer, useState } from 'react';
 import { charPicker, confirmBox, menu, openModal, promptBox, toast, type MenuItem, type ModalHandle } from '../ui';
-import { cur, ui } from './store';
+import { cur, runs, ui } from './store';
 import { charsOf, drawMain, drawSide, jumpTo, modeOf, presenceOf, renameRoom, titleOf } from './actions';
 import { inspector } from './Inspector';
 import { liveSettings } from './LiveSettings';
@@ -70,7 +70,7 @@ export function chatMenu(anchor: Element, c: Room, top: TopHooks | null = null) 
     '-',
     { label: t('chat.menu.delete'), ic: 'trash', danger: true, onclick: async () => {
       if (!(await confirmBox(t('chat.menu.deleteConfirm', { name: titleOf(c) }), t('common.delete'), true))) return;
-      if (cur.gen?.chat === c) cur.abort?.abort();
+      runs.get(c.id)?.abort?.abort();
       await Assets.removeOwner('chat:' + c.id); await S.remove('chats', c.id);
       if (c.id === cur.chat?.id) { cur.chat = null; S.set({ lastChat: '' }); go('chat'); } else drawSide();
     } },

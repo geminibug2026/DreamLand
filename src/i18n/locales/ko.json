@@ -11073,5 +11073,6 @@
   "editors.sheet.del.done.other": "{name} 와(과) 대화 {count}개를 삭제했어요",
   "home.bulk.deleteAsk": "캐릭터 {count}명을 지울까요?",
   "home.bulk.deleteRooms": "이 캐릭터들만 나오는 대화방이 {rooms}개 있어요. 대화도 함께 지울지 골라 주세요. 지운 것은 되돌릴 수 없어요.",
-  "home.bulk.deletedWith": "캐릭터 {count}명과 대화방 {rooms}개를 지웠어요"
+  "home.bulk.deletedWith": "캐릭터 {count}명과 대화방 {rooms}개를 지웠어요",
+  "chat.side.replying": "답변 받는 중"
 }

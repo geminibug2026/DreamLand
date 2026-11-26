@@ -3,7 +3,7 @@ import { S, download } from './core';
 import { Assets, zip } from './assets';
 import { exportCharPng } from './cards';
 import type { Char } from './types';
-import { cur } from '../chat/store';
+import { cur, runs } from '../chat/store';
 
 const safeName = (s: string) => s.replace(/[\\/:*?"<>|]+/g, '_').trim().slice(0, 80) || 'character';
 /** 고른 캐릭터들을 PNG 카드로 만들어 ZIP 하나로 내려받는다. 반환: 담은 수 */
@@ -26,7 +26,7 @@ export const chatsWith = (ids: string[]) => { const set = new Set(ids); return S
 export async function deleteChars(ids: string[], { withChats = true }: { withChats?: boolean } = {}): Promise<{ chars: number; chats: number }> {
   let n = 0, rooms = 0;
   if (withChats) for (const chat of chatsOnlyOf(ids)) {
-    if (cur.chat?.id === chat.id) { cur.abort?.abort(); cur.chat = null; }
+    runs.get(chat.id)?.abort?.abort(); if (cur.chat?.id === chat.id) cur.chat = null;
     if (S.settings.lastChat === chat.id) S.set({ lastChat: '' });
     await Assets.removeOwner('chat:' + chat.id).catch(() => { }); await S.remove('chats', chat.id); rooms++;
   }

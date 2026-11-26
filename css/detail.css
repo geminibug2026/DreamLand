@@ -317,6 +317,9 @@
 .room { display: flex; flex-direction: column; gap: 3px; padding: 9px 11px 10px; text-align: left; min-width: 0; flex: none; border-bottom: 1px solid var(--line); } .cgroup-rooms .room:last-child { border-bottom: 0; } .chat-list > .room { border: 1px solid var(--ink-line); background: var(--surface); }
 .room:hover { background: var(--surface2); } .room.on { background: var(--ink); color: var(--bg); } .room.sub { border-left: 1px solid var(--ink-line); }
 .room-top { display: flex; align-items: center; gap: 7px; min-width: 0; } .room-top b { flex: 1; min-width: 0; font-weight: 600; font-size: .93em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .room-top time { flex: none; font-size: .72em; color: var(--faint); } .room-top .ic { flex: none; opacity: .6; }
+/* 답을 받는 중인 방: 이름 옆의 작은 점 셋 (다른 방에서 답을 기다리는 동안에도 목록에서 보인다) */
+.room-gen { flex: none; display: inline-flex; gap: 2px; align-items: center; } .room-gen span { width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: .3; animation: roomGen 1.2s infinite; } .room-gen span:nth-child(2) { animation-delay: .2s; } .room-gen span:nth-child(3) { animation-delay: .4s; }
+@keyframes roomGen { 30% { opacity: 1; } 60% { opacity: .3; } }
 .room-mode { flex: none; font: 600 9px var(--display); font-style: normal; letter-spacing: .08em; padding: 2px 5px 1px; border: 1px solid currentColor; } .room-mode.talk { border-radius: 999px; } .room-pin { font-style: normal; color: var(--accent); font-size: .8em; }
 .room-prev { color: var(--dim); font-size: .82em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .room-meta { display: flex; align-items: center; gap: 8px; font: 500 .7em var(--display); letter-spacing: .04em; color: var(--dim); min-width: 0; white-space: nowrap; overflow: hidden; } .room-meta span + span::before { content: "·"; margin-right: 8px; opacity: .5; } .room-meta .room-bar + span::before { content: none; }

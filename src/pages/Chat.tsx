@@ -4,7 +4,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Btn, Icon } from '../kit';
 import { orderHooks } from '../chat/order';
-import { cur, ui, useCh } from '../chat/store';
+import { bump, cur, runs, ui, useCh } from '../chat/store';
 import { onChatScroll, running, armAuto, assetOwners, catchUp, charsOf, drawDrawer, drawMain, drawSide, fillLate, modeOf, truncation } from '../chat/actions';
 import { Side, sideRef } from '../chat/Side';
 import { Dossier, Top } from '../chat/Top';
@@ -52,10 +52,12 @@ function ChatPage({ arg }: { arg?: unknown }) {
       if (!live) return;
       if (!chat) { setSt('none'); return; }
       // 등장인물의 초상은 통째로 올려 둔다 (상태창 · 확장처럼 그림 글자를 바로 쓰는 곳이 있다). 메시지와 나란히 읽는다
-      const [list] = await Promise.all([cur.gen?.chat === chat ? cur.gen.msgs : S.msgsFast(chat.id), S.holdAvatars(chat.charIds).catch(e => console.warn(e))]);
+      const [list] = await Promise.all([runs.get(chat.id)?.msgs ?? S.msgsFast(chat.id),   // 이 방이 답을 받는 중이면 받는 목록 그대로
+         S.holdAvatars(chat.charIds).catch(e => console.warn(e))]);
       if (!live) return;   // 읽는 사이 다른 화면으로 넘어갔다
       cur.chat = chat; cur.msgs = list; cur.shown = truncation(); cur.lastPrompt = null; cur.openedAt = Date.now(); cur.chimeRun = 0;
       cur.head = list.length; cur.from = 0; cur.revs.clear(); cur.fresh.clear();
+      bump('busy');   // 입력창의 보내기/멈추기를 이 방 기준으로
       if (!S.get('personas', chat.personaId)) {   // 정해 둔 페르소나가 없으면 이 방에서 마지막으로 쓴 이름, 그것도 없으면 지금 기본 페르소나로
         const last = [...list].reverse().find(m => m.role === 'user' && m.name), p = (last && S.personas.find(x => x.name === last.name)) || S.persona(chat);
         if (p) { chat.personaId = p.id; chat.personaAuto = true; S.save('chats', chat, true).catch(e => console.warn(e)); }
