@@ -1,0 +1,14 @@
+# DreamLand 중계 — Cloudflare 판 (워커 하나로 여러 지역)
+name = "dreamland-relay"
+main = "src/worker.js"
+compatibility_date = "2025-06-01"
+compatibility_flags = ["nodejs_compat"]
+
+# 지역마다 하나씩 뜨는 작은 일꾼(Durable Object). 구글로 가는 요청은 이 일꾼이 그 지역에서 보낸다
+[[durable_objects.bindings]]
+name = "HOP"
+class_name = "Hop"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Hop"]

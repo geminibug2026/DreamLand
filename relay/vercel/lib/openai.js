@@ -9,6 +9,7 @@
 //   STUDIO_1 …, 또는 STUDIO_ 로 시작하는 아무 이름   (선택) Google AI Studio(Gemini API) 키. Vertex 와 따로 매기는 몫이라, Vertex 키가 다 막히면 여기로 넘어간다
 //   WAIT_SEC    (선택) 모든 키 · 지역이 429 일 때 중계 안에서 버티며 다시 해 볼 시간(초). 기본 60, 0 이면 바로 429 를 돌려준다 (최대 240)
 //   FALLBACK_MODEL (선택) 그래도 막히면 이 모델로 한 번 답한다 (예: gemini-3.7-flash). 비우면 끔
+//   NEXT_RELAY  (선택) 이 중계의 지역이 다 막히면 넘겨 볼 다른 중계의 OpenAI 주소 (예: https://<워커>.workers.dev/v1). 암호가 다르면 NEXT_RELAY_KEY
 //   MODELS      (선택) 쉼표로 나눈 모델 이름
 //   VERTEX_LOCATION (선택) 기본 global
 //
@@ -16,6 +17,12 @@
 //   → ④ 그래도 다 막히면 연결을 열어 둔 채 잠깐씩 쉬며 키를 다시 돌린다(WAIT_SEC 동안) → ⑤ FALLBACK_MODEL 이 있으면 그 모델로
 // 구글 쪽 전체가 붐비는 429 는 몇 초 ~ 몇십 초 안에 풀리는 일이 많아, ④가 가장 자주 듣는다. 받는 프로그램은 첫 글자가 늦게 올 뿐 오류를 보지 않는다
 export const REGIONS = ['iad1', 'pdx1', 'cle1', 'sfo1', 'fra1', 'lhr1'];
+/** 다른 지역으로 넘기는 길. Vercel 은 같은 배포의 지역 함수(/<지역>/v1/…)로 넘긴다.
+ *  다른 곳에 올린 중계(Cloudflare 는 지역을 정한 Durable Object, Supabase 는 x-region 머리말)가 regions · send 를 바꿔 끼운다 */
+export const hop = {
+  regions: REGIONS,
+  send: (url, next, init) => fetch(`${url.origin}/${next}/v1/chat/completions`, init),
+};
 const DEFAULT_MODELS = ['gemini-4-hydrogen', 'gemini-4-neon', 'gemini-4-carbon', 'gemini-4-argon', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash'];
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Max-Age': '86400' };
 const enc = new TextEncoder();
@@ -235,10 +242,10 @@ async function openaiInner(request, region, parts, url, authed) {
     // 모든 열쇠가 구글 인증에서 막혔다 (429 가 아니다): 다른 지역으로 넘겨도 소용없으니 까닭을 그대로 알린다
     if (thrown === list.length) return fail(502, '구글 인증에 실패했어요. 서비스 계정 JSON 이 맞는지, 그 계정에 Vertex AI 사용자 권한이 있는지 확인하세요. (' + last + ')', 'auth_error');
     // 이 지역에서는 모든 키가 막혔다: 아직 안 가 본 지역의 함수에 넘긴다 (버티는 중의 다시 해 보기는 이 지역에서만 — 지역마다 함수를 또 부르지 않게)
-    const next = here || process.env.RELAY_HOPS === '0' ? null : REGIONS.find(x => x !== region && !tried.includes(x));   // 내 PC 중계처럼 지역 함수가 없는 곳은 넘기지 않는다
+    const next = here || process.env.RELAY_HOPS === '0' ? null : hop.regions.find(x => x !== region && !tried.includes(x));   // 내 PC 중계처럼 지역 함수가 없는 곳은 넘기지 않는다
     if (next) {
       try {
-        const sib = await fetch(`${url.origin}/${next}/v1/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + KEY, 'x-relay-tried': [...tried, region].join(','), ...(busy || request.headers.get('x-relay-busy') === '1' ? { 'x-relay-busy': '1' } : {}) }, body: JSON.stringify({ ...body, model: mdl }) });
+        const sib = await hop.send(url, next, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + KEY, 'x-relay-tried': [...tried, region].join(','), ...(busy || request.headers.get('x-relay-busy') === '1' ? { 'x-relay-busy': '1' } : {}) }, body: JSON.stringify({ ...body, model: mdl }) });
         const head = new Headers(CORS); for (const k of ['content-type', 'x-relay-region', 'x-relay-key', 'x-relay-model']) { const v = sib.headers.get(k); if (v) head.set(k, v); } head.set('Cache-Control', 'no-store');
         return new Response(sib.body, { status: sib.status, headers: head });
       } catch (e) { last = last || String(e && e.message || e); }
@@ -249,9 +256,19 @@ async function openaiInner(request, region, parts, url, authed) {
   };
   // Vercel Edge 는 25초 안에 답을 시작해야 끊지 않는다 (FUNCTION_INVOCATION_TIMEOUT). 생각이 긴 모델은 구글이 첫 글자를 25초 넘게 안 보내므로,
   // 8초 안에 끝나지 않으면 먼저 200 으로 답을 열고 5초마다 '아직 연결돼 있음' 신호를 보내며 기다린다 (스트리밍: SSE 주석 줄, 아니면 공백 — 둘 다 받는 쪽이 무시한다)
+  const chained = request.headers.get('x-relay-chain') === '1';
   return keepAlive(async () => {
     let r = await attempt(model, false);
     if (!entry) return r;   // 다른 지역에서 넘겨받은 요청은 버티지 않는다 (처음 받은 함수가 버틴다)
+    // 다른 중계로: 이 중계의 지역이 다 막혔으면, 다른 곳(예: Vercel ↔ Cloudflare ↔ Supabase)에 올린 중계의 지역들을 한 바퀴 더 (같은 계정 그대로, 나가는 곳만 바뀐다)
+    const nextRelay = String(process.env.NEXT_RELAY || '').trim().replace(/\/+$/, '').replace(/\/chat\/completions$/, '');
+    if ((r.status === 429 || r.status === 503) && nextRelay && !chained) {
+      try {
+        const r2 = await fetch(nextRelay + '/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (String(process.env.NEXT_RELAY_KEY || '').trim() || KEY), 'x-relay-chain': '1' }, body: JSON.stringify(body) });
+        if (r2.ok) { const head = new Headers(CORS); for (const k of ['content-type', 'x-relay-region', 'x-relay-key', 'x-relay-model']) { const v = r2.headers.get(k); if (v) head.set(k, v); } head.set('Cache-Control', 'no-store'); head.set('X-Relay-Via', 'next'); return new Response(r2.body, { status: 200, headers: head }); }
+      } catch { /* 다른 중계에 닿지 못했다: 이 중계에서 버틴다 */ }
+    }
+    if (chained) return r;   // 넘겨받은 요청은 버티지 않는다 (넘긴 쪽이 버틴다)
     // 버티기: 구글 쪽이 붐비는 429 · 503 은 금방 풀리는 일이 많다. 연결을 열어 둔 채 잠깐씩 쉬며 이 지역의 열쇠를 다시 돌린다
     const t0 = Date.now(), budget = Math.max(0, Math.min(240, Number(process.env.WAIT_SEC ?? 60) || 0)) * 1000; let delay = 3000, rounds = 0;
     while ((r.status === 429 || r.status === 503) && Date.now() - t0 + delay <= budget) {

@@ -142,6 +142,43 @@ Vertex 의 Gemini 는 리전마다 처리 용량을 따로 나눠 쓰므로, 이
 
 ---
 
+## 계정 하나로 나가는 곳(IP 지역)을 더 늘리기
+
+버텍스 429 는 요청이 **어느 지역에서 들어오느냐**를 탈 때가 있습니다 (global 주소는 요청이 들어온 곳 가까운 구글 쪽 처리 용량을 쓰는 것으로 보입니다).
+계정 · 프로젝트를 늘리지 않고도, 요청이 나가는 곳을 여러 지역으로 늘리면 한 지역이 막혀도 다른 지역에서 통할 수 있습니다. Vercel(6곳) 말고도 무료로 지역을 고를 수 있는 곳이 있습니다.
+
+| | 지역 | 고르는 방법 | 무료 · 카드 |
+|---|---|---|---|
+| Vercel (`relay/vercel`) | 미국 4 · 유럽 2 | 지역마다 함수 하나 | 무료 · 카드 없음 |
+| **Cloudflare (`relay/cloudflare`)** | 미국 동 · 서, 서유럽, 동유럽, 남미, 오세아니아, 아시아 (워커 하나로) | 지역을 정해 띄운 Durable Object 가 구글로 보냄 | 무료 · 카드 없음 |
+| **Supabase (`relay/supabase`)** | 미국 3 · 캐나다 · 유럽 4 · 남미 · 호주 · 인도 · 싱가포르 · 도쿄 (함수 하나로) | 요청마다 `x-region` 으로 지역 지정 | 무료 · 카드 없음 |
+| 내 PC (`relay/local`) + VPN | VPN 이 나가는 나라 | `VIA` 에 VPN 프로그램 주소 | — |
+
+셋 다 같은 OpenAI 호환 길(키 돌려쓰기 · AI Studio 키 · 버티기 · 대신 쓸 모델)을 쓰고, **`NEXT_RELAY`** 로 서로 이을 수 있습니다:
+한 중계의 지역이 다 막히면 다른 곳에 올린 중계의 지역들을 한 바퀴 더 돌고, 그래도 막히면 처음 중계에서 버팁니다.
+예) Supabase 중계의 `NEXT_RELAY` = `https://<워커>.workers.dev/v1` → Supabase 13곳 + Cloudflare 7곳을 한 계정으로.
+
+### Cloudflare: 워커 하나로 여러 지역
+
+- 배포 버튼: `https://deploy.workers.cloudflare.com/?url=https://github.com/geminibug2026/DreamLand/tree/main/relay/cloudflare`
+  (버튼이 안 되면 드림랜드 폴더에서 `cd relay/cloudflare` → `npx wrangler login` → `npx wrangler deploy`)
+- 배포한 뒤 워커 → 설정 → 변수 및 비밀에 `RELAY_KEY`(비밀), `API_1`(서비스 계정 JSON, 비밀) 등을 넣습니다. 나머지 변수는 Vercel 판과 같습니다. `HOP_REGIONS` 로 지역과 순서를 바꿉니다 (`enam wnam weur eeur sam oc apac`).
+- 실리태번 · 마리나라: `https://<워커>.<계정>.workers.dev/v1` + API 키 `RELAY_KEY`
+- 드림랜드 Vertex 연결: 주소 칸에 지역마다 `https://<워커>.<계정>.workers.dev/enam/<RELAY_KEY>` 처럼 적어 빈칸으로 나누면 429 때 다음 지역으로 넘깁니다 (이 길은 드림랜드의 키를 그대로 씁니다)
+- 지역 지정은 Cloudflare 가 "되도록 그 근처"로 맞추는 방식이라 정확한 도시는 보장되지 않습니다.
+
+### Supabase: 함수 하나로 여러 지역
+
+1. supabase.com 에서 프로젝트를 하나 만듭니다 (무료).
+2. Edge Functions → 새 함수 → 편집기에서 만들기. 이름은 `relay`. `relay/supabase/index.ts` 내용을 통째로 붙여 넣고 배포합니다.
+3. 그 함수의 설정에서 **Enforce JWT Verification(JWT 확인)을 끕니다.** (프로그램은 Supabase 토큰이 아니라 RELAY_KEY 를 보냅니다)
+4. Edge Functions → Secrets 에 `RELAY_KEY`, `API_1` 등을 넣습니다. `HOP_REGIONS` 로 지역과 순서를 바꿉니다.
+5. 실리태번 · 마리나라: `https://<프로젝트>.supabase.co/functions/v1/relay/v1` + API 키 `RELAY_KEY`
+
+`relay/cloudflare/src/openai.js` 와 `relay/supabase/index.ts` 는 `relay/vercel/lib/openai.js` 로 만든 사본입니다. 고칠 때는 원본을 고치고 `node relay/check-copies.mjs --fix`.
+
+---
+
 ## 클라우드 없이: 내 PC 중계 (`relay/local`)
 
 Vercel · Cloudflare 에 아무것도 올리지 않고, **내 컴퓨터(또는 안드로이드 Termux)에서** 같은 일을 하는 중계입니다. 실리태번 · 마리나라 · 드림랜드 모두에서 씁니다.
