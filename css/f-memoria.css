@@ -46,6 +46,7 @@
 .mm-points { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: .92em; line-height: 1.6; color: var(--dim); } .mm-points li::marker { color: var(--accent-ink); }
 /* 설정 탭 — 설정 찾기 · 설정 세트 · 칸 · 서술 방식 · 삼갈 표현 (memoria-settings.js) */
 .mm-persp { display: flex; flex-direction: column; gap: 8px; flex: 1 1 100%; min-width: 0; padding: 12px; border: 1px dashed var(--ink-line, var(--line)); background: var(--surface2); } .mm-persp > small.hint { font-size: .84em; line-height: 1.6; }
+.mm-stagebox .mm-st-seg { flex: none; align-self: stretch; } .mm-stagebox .mm-st-seg button { min-height: 38px; }   /* 「이 카드는」: 세로로 늘어나지 않게 */
 .mm-cfg-tools { display: grid; gap: 8px; }
 .mm-search { display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--ink-line, var(--line)); background: var(--surface); cursor: text; } .mm-search .ic { color: var(--dim); flex: none; } .mm-search:focus-within { border-color: var(--text); }
 .mm-search input { flex: 1; min-width: 0; min-height: 40px; border: 0; background: none; outline: none; font: inherit; color: inherit; padding: 0; } .mm-search input::placeholder { color: var(--faint); }

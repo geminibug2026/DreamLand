@@ -1,4 +1,4 @@
-// 장기기억 — 관계도: 이름 상자와 색 선, 선 위의 짧은 사이 이름. 인물 칩으로 한 사람을 가운데 두고, − / 맞춤 / + 로 키우고 끌어서 옮긴다
+// 장기기억 — 관계도: 이름 상자와 색 선, 선 위의 짧은 인연 한마디(없으면 대표 갈래). 선의 빛깔은 대표 갈래의 무리. 인물 칩으로 한 사람을 가운데 두고, − / 맞춤 / + 로 키우고 끌어서 옮긴다
 import { useRef, type PointerEvent as RPointerEvent } from 'react';
 import { t, tn } from '../../i18n';
 import { layoutTies, rankPeople, type TieEdge } from '../ties';
@@ -31,12 +31,12 @@ export function TieMap({ edges, v, redraw }: { edges: TieEdge[]; v: TieMapView; 
   const up = (e: RPointerEvent<SVGSVGElement>) => { const d = drag.current; if (d && d.id === e.pointerId) { drag.current = null; if (d.moved) e.preventDefault(); } };
   const picked = L.lines.find(l => l.id === v.pick);
   return <div className="mm-tm">
-    {people.length > 2 ? <div className="mm-tm-chips" role="group" aria-label={t('memoria.bonds.map.people')}>
-      {v.focus ? <button type="button" className="mm-ti-chip all" onClick={() => setFocus(v.focus)}>{t('memoria.bonds.map.all')}</button> : null}
+    {people.length > 2 ? <div className="mm-tm-chips" role="group" aria-label={t('memoria.ties.map.people')}>
+      {v.focus ? <button type="button" className="mm-ti-chip all" onClick={() => setFocus(v.focus)}>{t('memoria.ties.map.all')}</button> : null}
       {people.map(n => <button key={n} type="button" className={`mm-ti-chip${v.focus === n ? ' on' : ''}`} aria-pressed={v.focus === n} onClick={() => setFocus(n)}>{n}</button>)}
     </div> : null}
     <div className="mm-tm-stage">
-      <svg ref={svg} className={`mm-tm-svg${z > 1 ? ' pan' : ''}`} viewBox={viewBox} style={{ aspectRatio: `${bw} / ${Math.max(60, bh)}` }} role="img" aria-label={t('memoria.bonds.map.title')}
+      <svg ref={svg} className={`mm-tm-svg${z > 1 ? ' pan' : ''}`} viewBox={viewBox} style={{ aspectRatio: `${bw} / ${Math.max(60, bh)}` }} role="img" aria-label={t('memoria.ties.map.title')}
         onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>
         {L.lines.map(l => <g key={l.id} className={`mm-tm-edge mm-tk-${l.kind || 'none'}${v.pick === l.id ? ' on' : ''}`} onClick={() => { if (drag.current?.moved) return; v.pick = v.pick === l.id ? '' : l.id; redraw(); }}>
           <path className="mm-tm-line" d={l.d} /><path className="mm-tm-head" d={l.ah} /><path className="mm-tm-hit" d={l.d} />
@@ -48,11 +48,11 @@ export function TieMap({ edges, v, redraw }: { edges: TieEdge[]; v: TieMapView; 
       </svg>
     </div>
     <div className="mm-tm-bar">
-      <span className="mm-tm-note">{v.focus ? t('memoria.bonds.map.focusNote', { name: v.focus }) : L.hidden > 0 ? tn('memoria.bonds.map.hidden', L.hidden) : ''}</span>
-      <span className="mm-tm-zoom" role="group" aria-label={t('memoria.bonds.map.zoom')}>
-        <button type="button" className="mm-ti-btn" title={t('memoria.bonds.map.zoomOut')} aria-label={t('memoria.bonds.map.zoomOut')} disabled={z <= ZOOM_MIN} onClick={() => zoomBy(1 / 1.3)}>−</button>
-        <button type="button" className="mm-ti-btn wide" onClick={() => { v.zoom = 1; v.x = 0; v.y = 0; redraw(); }}>{t('memoria.bonds.map.fit')}</button>
-        <button type="button" className="mm-ti-btn" title={t('memoria.bonds.map.zoomIn')} aria-label={t('memoria.bonds.map.zoomIn')} disabled={z >= ZOOM_MAX} onClick={() => zoomBy(1.3)}>+</button>
+      <span className="mm-tm-note">{v.focus ? t('memoria.ties.map.focusNote', { name: v.focus }) : L.hidden > 0 ? tn('memoria.ties.map.hidden', L.hidden) : ''}</span>
+      <span className="mm-tm-zoom" role="group" aria-label={t('memoria.ties.map.zoom')}>
+        <button type="button" className="mm-ti-btn" title={t('memoria.ties.map.zoomOut')} aria-label={t('memoria.ties.map.zoomOut')} disabled={z <= ZOOM_MIN} onClick={() => zoomBy(1 / 1.3)}>−</button>
+        <button type="button" className="mm-ti-btn wide" onClick={() => { v.zoom = 1; v.x = 0; v.y = 0; redraw(); }}>{t('memoria.ties.map.fit')}</button>
+        <button type="button" className="mm-ti-btn" title={t('memoria.ties.map.zoomIn')} aria-label={t('memoria.ties.map.zoomIn')} disabled={z >= ZOOM_MAX} onClick={() => zoomBy(1.3)}>+</button>
       </span>
     </div>
     {picked ? <p className={`mm-tm-picked mm-tk-${picked.kind || 'none'}`}><i className="mm-ti-swatch" /><span><b>{picked.from}</b>{' → '}<b>{picked.to}</b></span><em>{picked.full}</em></p> : null}

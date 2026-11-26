@@ -64,11 +64,23 @@ export interface CastCard {
 }
 export interface BondStep { stage: string; basis?: string; calls?: string; unsaid?: string; turn?: number; msgId?: string; manual?: boolean; /** 같은 계단을 고쳐 쓰기 전의 글 */ was?: BondStep; [k: string]: unknown }
 export interface Bond{ id: string; from: string; to: string; log: BondStep[]; disabled?: boolean; manual?: boolean;
-  /** 사이 이름 — 관계 전체에서 읽은 마음의 핵심 한마디 ("죄책감 섞인 집착") 과 종류 (love · one_sided · family · friendship · colleague · rival · hostile · work · complicated). nameMsgId = 그 이름을 적은 답변, nameWas = 그 전 이름 (답변이 지워지면 되돌린다), nameManual = 직접 고친 이름 (사서가 덮어쓰지 않는다) */
+  /**
+   * 인연 — 관계선 위에 얹는 지금의 읽기 ("from" 쪽에서 본 것 — 방향마다 따로). types = 갈래 세 개까지(첫 번째가 대표 · 무리와 정해 둔 갈래, 또는 직접 쓴 말), word = 인연 한마디.
+   * tieTurn · tieMsgId = 그 읽기를 적은 턴과 답변, tieWas = 그 전 읽기 (답변이 지워지면 되돌린다), tieHand = 직접 고친 읽기 (사서가 덮어쓰지 않는다)
+   */
+  types?: TieTypeRow[]; word?: string; tieTurn?: number; tieMsgId?: string; tieHand?: boolean; tieWas?: TieWas | null;
+  /** 옛 꼴 (읽을 때 위의 칸으로 옮긴다): name · kind · nameTurn · nameMsgId · nameManual · nameWas */
   name?: string; kind?: string; nameTurn?: number; nameMsgId?: string; nameManual?: boolean; nameWas?: { name?: string; kind?: string; turn?: number; msgId?: string } | null;
   [k: string]: unknown }
-/** 변화 기록 한 줄 — 누가(누구에게) 무엇에서 무엇으로, 왜. kind: relationship · emotion · situation · growth. span = 요약에서 찾은 것이면 그 요약이 덮는 턴 범위(0부터), scan = 요약에서 찾았다 */
-export interface Shift { id: string; kind: string; who: string; toward?: string; from?: string; to: string; why?: string; turn: number; msgId?: string; span?: [number, number]; scan?: boolean; manual?: boolean; [k: string]: unknown }
+/** 인연 읽기의 한 단계 전 */
+/** 인연의 갈래 하나: group = 무리 (affection · family · friendship · work · conflict · fealty · debt · secret · other), type = 정해 둔 갈래(없으면 무리만), custom = type 이 직접 쓴 말이다 */
+export interface TieTypeRow { group: string; type?: string; custom?: boolean }
+export interface TieWas { types?: TieTypeRow[]; word?: string; turn?: number; msgId?: string }
+/**
+ * 전환점 한 줄 — 누가(누구와) 무엇에서 무엇으로, 왜. way: closer 가까워짐 · apart 멀어짐 · flip 뒤집힘 · heart 마음 · lot 처지 · grow 자람.
+ * span = 요약에서 되짚은 것이면 그 요약이 덮는 턴 범위(0부터), scan = 요약에서 되짚었다
+ */
+export interface Pivot { id: string; way: string; who: string; with?: string; was?: string; now: string; why?: string; turn: number; msgId?: string; span?: [number, number]; scan?: boolean; manual?: boolean; [k: string]: unknown }
 /** 캐논 · 상태 줄이 함께 갖는 이력 칸 (upsertRow) */
 export interface RowHistory { id: string; turn: number; createdTurn?: number; prev?: string | null; prevTurn?: number | null; prevMsgId?: string; msgId?: string; reMsgId?: string; manual?: boolean }
 export interface CanonRow extends RowHistory { key: string; value: string; scope: string; scopeName?: string; [k: string]: unknown }
@@ -125,11 +137,13 @@ export interface Mem {
   trackers?: Tracker[];
   /** 서약 훑기를 마지막으로 한 때 (그때까지 기록된 답변 수) */
   pledgeSweepAt?: number;
-  /** 변화 기록 (관계 · 감정 · 상황 · 성장) — 턴을 기록할 때 함께 받는다 */
-  shifts?: Shift[];
-  /** 지난 요약에서 사이 이름 · 변화를 찾아 둔 자리 (그 앞의 턴은 이미 훑었다) */
-  tieScanTo?: number;
-  /** 이 카드가 연기하는 인물: 'one' 한 인물 · 'many' 여러 인물(카드 이름은 해설자) · 없으면 자동 */
+  /** 전환점 — 턴을 기록할 때 함께 받는다 */
+  pivots?: Pivot[];
+  /** 옛 꼴의 shifts (읽을 때 pivots 로 옮긴다) */
+  shifts?: Record<string, unknown>[];
+  /** 인연 · 전환점을 새 꼴로 옮겨 둔 판 */
+  tieRev?: number;
+  /** 이 카드는: 'one' 한 사람 · 'many' 무대(카드 하나가 여러 사람을 연기 — 카드 이름은 무대의 이름일 뿐) · 없으면 자동 */
   cardCast?: 'one' | 'many';
   /** 옛 이야기 접기가 검수에 걸려 미뤄 둔 때 (그때의 턴 수) */
   foldHold?: number;
@@ -178,9 +192,9 @@ export interface Cfg {
   /** 작중 날짜를 상태창에서 읽어 턴에 적는다 */ storyDates?: boolean;
   bannedPhrases: string; banInChat: boolean; banTell: boolean; threadSleepTurns: number; eraKeep: number;
   /** 서약 훑기 주기(답변 수) — 오래된 서약을 요약과 견주어 끝난 것에 "풀린 듯" 의견을 붙인다 (0 = 끔) */ pledgeSweepTurns?: number;
-  /** 사이 이름 · 변화 기록을 턴 기록과 함께 받는다 */ tieNotes?: boolean;
-  /** 답의 꼴 도움말(예시 답 · 자주 하는 실수)을 붙일 때: 'auto' 형식을 틀린 적 있는 모델에게만 | 'always' | 'off' */ formatHelp?: string;
-  /** 장면에 있는 사람들끼리의 가장 최근 마음을 「지금」 쪽에 싣는 줄 수 (0 = 끔) */ feelingLines?: number;
+  /** 인연(갈래 · 한마디) · 전환점을 턴 기록과 함께 받는다 */ tieNotes?: boolean;
+  /** 답의 꼴 도움말(꾸며 낸 한 턴의 기록 · 읽지 못하는 꼴)을 붙일 때: 'auto' 형식을 틀린 적 있는 모델에게만 | 'always' | 'off' */ formatHelp?: string;
+  /** 장면에 함께 있는 사람들의 지금 사이를 「지금」 쪽에 싣는 줄 수 (0 = 끔) */ feelingLines?: number;
   statusMode: string; statusPattern: string; statusInject: boolean; qrMode: string; replyCheck: boolean;
   /** 어긋난 곳 검사 방식: '' 옛 설정(replyCheck) 그대로 | 'off' | 'each' 답변마다 | 'batch' 답 N개마다 한 번 — replyCheck 가 켜져 있으면 늘 답변마다다 */ checkMode?: string;
   /** 답 몇 개마다 한 번 검사하나 (checkMode 'batch') */ checkEvery?: number;

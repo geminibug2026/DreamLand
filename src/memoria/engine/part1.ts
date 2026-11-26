@@ -15,7 +15,7 @@ import { parseStoryDate } from '../calendar';
 import type { Usage } from '../craft';
 import { t } from '../../i18n';
 import { applyUndo } from './undo';
-import { cutReply, dropTies, hostNoteOf, moveTies } from './ties';
+import { cutReply, dropTies, hostNoteOf, liftTies, moveTies } from './ties';
 import { on as onEvent } from '../../lib/core';
 
 /** waitForChatIdle 이 받는 일 이름(한국어 id) → 화면 글 키 */
@@ -159,6 +159,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
       if (m.chapters && !m.chunks.length) { m.chunks = m.chapters; m.chunked = m.chaptered || 0; }
       for (const k of SHELVES) if (!Array.isArray(m[k])) m[k] = [];
       if ((m.bondRev || 0) < 1) { for (const b of m.bonds) this.compactBondLog(b); m.bondRev = 1; }   // 같은 단계를 말만 바꿔 여러 칸으로 쌓아 둔 관계선을 한 번 접는다
+      if ((m.tieRev || 0) < 1 || m.shifts != null) liftTies(m);   // 옛 꼴의 인연(종류) · shifts 를 새 꼴(갈래 · 한마디 · 전환점)으로 — 저장은 다음 저장 때
       cache.set(chatId, m);
     }
     return cache.get(chatId)!;
@@ -523,7 +524,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     // 이 턴이 같은 계단을 고쳐 쓴 것이었으면 고치기 전 글로, 새 계단을 놓은 것이었으면 그 계단을 걷어낸다
     for (const b of mem.bonds || []) b.log = (b.log || []).flatMap(e => (e.manual || !e.msgId || e.msgId !== msgId ? [e] : e.was ? [e.was] : []));
     mem.bonds = (mem.bonds || []).filter(b => b.log.length);
-    dropTies(mem, msgId);   // 이 답변이 붙인 사이 이름 · 변화 기록
+    dropTies(mem, msgId);   // 이 답변이 붙인 인연 읽기 · 전환점
     mem.items = mem.items.filter(x => x.msgId !== msgId || x.manual || (x.updated ?? x.first ?? x.turn) !== (x.first ?? x.turn));   /* 이 턴에 처음 적힌 물건만 지운다 — 뒤 턴이 고친 물건은 남긴다 (맞추기가 생성 · 갱신 턴이 모두 사라졌는지 본다) */ mem.milestones = mem.milestones.filter(x => x.msgId !== msgId || x.manual);
   },
   /** 턴 번호를 대화 순서대로 다시 맞춘다 (at 자리에서 d 만큼) */

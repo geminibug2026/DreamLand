@@ -11,6 +11,8 @@ import { t, fmtNum } from '../../i18n';
 import * as memMod from '../../lib/memory';
 import * as core from '../../lib/core';
 import * as libEmbed from '../../lib/embed';
+import { hostOf } from '../engine/ties';
+import type { MemoryApi } from '../engine/api';
 
 export { bundleDefaults, bundleOwner };
 
@@ -44,6 +46,28 @@ function PerspBox({ st }: { st: St }) {
       <span className="mm-opt-text"><b>{t('memoria.config.persp.localTog')}</b><small>{t('memoria.config.persp.localTogHint')}</small></span></label>
     <small className="hint">{local ? t('memoria.config.persp.hintLocal') : t('memoria.config.persp.hintDefault')}</small>
     <small className="hint">{help}</small><small className="hint">{t('memoria.config.persp.hintSecrets')}</small></div>;
+}
+
+// ════════ 이 카드는: 한 사람인가, 무대인가 (서술 방식과 한 묶음 — 이 대화만) ════════
+/** 무대 카드: 카드 하나가 여러 사람을 연기하는 대화 — 카드 이름은 무대의 이름일 뿐이라, 그 이름으로 사람을 기록하지 않고 말과 행동은 글에 나온 사람에게 돌린다 */
+function StageBox({ st }: { st: St }) {
+  const chat = st.chat, mem = st.mem;
+  if (!chat || !mem) return null;
+  const solo = (chat.charIds || []).length === 1, Mm = M() as unknown as MemoryApi, host = hostOf(Mm, chat, mem), mode = mem.cardCast || 'auto';
+  const key = (s: string) => String(s || '').toLowerCase().replace(/[\s._\-'"`]+/g, '');
+  const set = async (m: 'auto' | 'one' | 'many') => {
+    if (m === 'auto') delete mem.cardCast; else mem.cardCast = m;
+    const stray = m === 'many' ? mem.cast.find(c => !c.disabled && key(c.name) === key(host.label)) : null;
+    if (stray) stray.disabled = true;   // 무대 이름으로 잘못 생긴 인물 카드는 치워 둔다 (지우지 않는다 — 세계 탭에서 되돌릴 수 있다)
+    await M().save(mem); M().reinjectNow?.(chat); st.draw();
+    toast(m === 'many' ? t('memoria.config.stage.setMany', { name: host.label }) + (stray ? t('memoria.config.stage.strayOff') : '') : m === 'one' ? t('memoria.config.stage.setOne', { name: host.label }) : t('memoria.config.stage.setAuto'), 'ok');
+  };
+  const autoMany = solo && hostOf(Mm, chat, { ...mem, cardCast: undefined }).many;
+  const help = !solo ? t('memoria.config.stage.group') : mode === 'auto' ? t('memoria.config.stage.hintAuto', { now: autoMany ? t('memoria.config.stage.many') : t('memoria.config.stage.one') }) : mode === 'many' ? t('memoria.config.stage.hintMany', { name: host.label }) : t('memoria.config.stage.hintOne', { name: host.label });
+  return <div className="mm-persp mm-optset mm-stagebox">
+    <span className="field-label">{t('memoria.config.stage.label')}</span>
+    {solo ? <span className="mm-st-seg mm-au-seg" role="radiogroup" aria-label={t('memoria.config.stage.label')}>{([['auto', t('memoria.config.stage.auto')], ['one', t('memoria.config.stage.one')], ['many', t('memoria.config.stage.manyLong')]] as const).map(([id, label]) => <button key={id} type="button" role="radio" aria-checked={mode === id} className={mode === id ? 'on' : undefined} onClick={() => void set(id)}>{label}</button>)}</span> : null}
+    <small className="hint">{help}</small>{solo ? <small className="hint">{t('memoria.config.stage.local')}</small> : null}</div>;
 }
 
 // ════════ 프롬프트 ════════
@@ -109,6 +133,7 @@ export function Config({ st }: { st: St }) {
       <Tog k="supervisor" label={t('memoria.config.basic.supervisor.label')} hint={t('memoria.config.basic.supervisor.hint')} />
       <Tog k="authorizePrivate" label={t('memoria.config.basic.authorizePrivate.label')} hint={t('memoria.config.basic.authorizePrivate.hint')} after={() => st.draw()} />
       <PerspBox st={st} />
+      <StageBox st={st} />
       <Tog k="associative" label={t('memoria.config.basic.associative.label')} hint={t('memoria.config.basic.associative.hint')} />
       <Tog k="autoHide" label={t('memoria.config.basic.autoHide.label')} hint={<>{t('memoria.config.basic.autoHide.hintBefore')}<b>{t('memoria.config.basic.autoHide.hintBold')}</b>{t('memoria.config.basic.autoHide.hintAfter')}</>}
         after={on => { if (on) toast(t('memoria.config.basic.autoHide.done')); }} />

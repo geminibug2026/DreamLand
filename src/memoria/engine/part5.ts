@@ -14,7 +14,7 @@ import { t as tr } from '../../i18n';
 import { stripPhrases, pushRecallHistory, findConflicts, isEndedValue } from '../craft';
 import type { Claim, Conflict } from '../craft';
 import { VOLATILE } from './base';
-import { hostNoteOf } from './ties';
+import { hostNoteOf, liftTies } from './ties';
 
 /** 견줄 기록 한 줄 — src: 어디서 왔나, name: 상태의 인물 · 캐논의 키 · 인물 카드의 이름, field: 상태 칸 · 카드 칸 · 기억 종류, show: 화면에 보일 값 */
 export interface RecordClaim extends Claim { src: 'status' | 'canon' | 'cast' | 'memory'; name: string; field: string; show: string }
@@ -449,7 +449,10 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     for (const x of m.memories) { for (const k of ['witnesses', 'guessers', 'dim', 'learned'] as const) if (x[k] != null && !Array.isArray(x[k])) delete x[k]; }
     for (const t of m.turns) { if (t.parts != null && !Array.isArray(t.parts)) delete t.parts; if (t.beats != null && !Array.isArray(t.beats)) delete t.beats; }
     if (m.trackers != null && !Array.isArray(m.trackers)) delete m.trackers; if (m.dateFix != null && !Array.isArray(m.dateFix)) delete m.dateFix;
-    if (m.shifts != null) { if (Array.isArray(m.shifts)) { m.shifts = m.shifts.filter(s => s && typeof s === 'object' && typeof s.who === 'string' && typeof s.to === 'string' && Number.isFinite(s.turn)); for (const s of m.shifts) if (!s.id) s.id = uid(); } else delete m.shifts; }
+    if (m.shifts != null && !Array.isArray(m.shifts)) delete m.shifts;
+    if (m.pivots != null && !Array.isArray(m.pivots)) delete m.pivots;
+    liftTies(m);   // 옛 꼴(종류 · shifts)을 새 꼴로
+    if (m.pivots) { m.pivots = m.pivots.filter(s => s && typeof s === 'object' && typeof s.who === 'string' && typeof s.now === 'string' && Number.isFinite(s.turn)); for (const s of m.pivots) { if (!s.id) s.id = uid(); if (typeof s.way !== 'string') s.way = 'heart'; } }
     if (m.cardCast != null && m.cardCast !== 'one' && m.cardCast !== 'many') delete m.cardCast;
     if (m.conflictIgnore != null && !(Array.isArray(m.conflictIgnore) && m.conflictIgnore.every(x => typeof x === 'string'))) delete m.conflictIgnore;
     for (const c of m.cast) {   // 남긴 말 · 달라진 점 · 바탕 — 모양이 어긋난 것만 걷어 낸다

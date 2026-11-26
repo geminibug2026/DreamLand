@@ -328,8 +328,8 @@ export const part3: Part3 & ThisType<MemoryApi> = {
       // 합치기 검수 (모델을 따로 부르지 않는다): 넣은 것에 비해 너무 짧거나 가장 앞 기록의 내용이 사라졌으면 무엇이 빠졌는지 짚어 한 번 다시 쓰게 하고, 그래도 그러면 합치지 않는다 — 부른 쪽이 옛 글을 그대로 둔다
       const src = parts.map(p => p.text), loss = mergeLoss(src, text, max); if (!loss) return text;
       let again = ''; try { again = await ask(`\n\n(Your previous record ${loss === 'short' ? 'was far too short for this much material' : 'dropped the earliest records — the beginning of the story is missing'}. Write it again in the same structure, covering every record above from the first to the last.)`); } catch (e: any) { if (e?.name === 'AbortError' || signal?.aborted) throw e; }
-      if (again && !this.refusedReply(again) && !mergeLoss(src, again, max)) { this.logActivity('summary', tr('memoria.bonds.log.mergeFixed', span)); return again; }
-      this.logActivity('error', tr('memoria.bonds.log.mergeKept', span)); return '';
+      if (again && !this.refusedReply(again) && !mergeLoss(src, again, max)) { this.logActivity('summary', tr('memoria.engine.log.mergeFixed', span)); return again; }
+      this.logActivity('error', tr('memoria.engine.log.mergeKept', span)); return '';
     }
     catch (e: any) { if (e?.name === 'AbortError' || signal?.aborted) throw e; console.debug('[장기기억] 연대기 병합 실패', e); return ''; }
   },

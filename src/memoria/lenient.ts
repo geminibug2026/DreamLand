@@ -114,7 +114,7 @@ const TOP = table({
   pledges: 'locks threads promises 서약 약속 떡밥 誓约 约定 約束',
   bonds: 'relationships relationship relations relation ties 관계 관계선 사이 关系 関係',
   cast: 'characters character people persons npcs 인물 등장인물 캐릭터 角色 人物 キャラクター',
-  shifts: 'changes change shift transitions developments 변화 변화들 변화_기록 变化 変化',
+  pivots: 'pivot shifts shift changes change transitions developments 변곡점 변화 变化 変化',
   beats: 'scene_beats scenes 장면 비트 场景',
   settled: 'resolved closed 해소 해결', moved: 'progress advanced 진전', outdated: 'stale obsolete 지나간', learned: 'found_out discoveries 알게_됨',
   milestones: 'turning_points 전환점 연표', items: 'objects props 물건 아이템',
@@ -124,14 +124,14 @@ const ROW: Record<string, Map<string, string>> = {
   canon: table({ key: 'name fact_key 키 항목 이름', value: 'fact text content 값 내용', scope: '범위' }),
   status: table({ entity: 'name who character subject target 대상 인물 이름', slot: 'key field attribute aspect 칸 항목 속성', value: 'state text content current 값 내용 상태', claim: '주장', owner: 'holder believer 주인' }),
   pledges: table({ summary: 'text content description 내용 요약', kind: 'type category 종류 유형', status: 'state 상태', priority: '우선순위', due: 'deadline 기한', cause: 'reason 원인', needs: 'requires 필요' }),
-  bonds: table({ from: 'source a subject who 주체 누가 from_name', to: 'target b toward object whom 대상 누구에게 to_name', stage: 'status state level standing current 단계 현재 지금', basis: 'evidence reason shown_by 근거', calls: 'address addresses 호칭 부르는_말', unsaid: 'withheld 말하지_못한_것', name: 'label title relation_name 이름 사이 사이_이름 관계명 关系名', kind: 'type category 종류 유형 类型' }),
+  bonds: table({ from: 'source a subject who 주체 누가 from_name', to: 'target b toward object whom 대상 누구에게 to_name', stage: 'status state level standing current 단계 현재 지금', basis: 'evidence reason shown_by 근거', calls: 'address addresses 호칭 부르는_말', unsaid: 'withheld 말하지_못한_것', word: 'name label title relation_name 한마디 이름 관계명 关系名', types: 'type ties tie_types relation_types relationship_types categories 갈래 관계_갈래 关系类型', group: 'category 무리 分类', kind: '종류 类型' }),
   cast: table({ name: '이름 名字 名前', role: '역할', age: '나이', occupation: 'job 직업', appearance: 'looks 외모 외형', voice: 'speech speech_style 말투', core: 'personality_core 바탕', line: 'sample_line 대사', traits: '성격 특징', growth: 'development 성장 달라진_점', relationships: 'relations 관계', aka: 'aliases alias nicknames 별칭 다른_이름' }),
-  shifts: table({ kind: 'type category 종류 유형 类型', who: 'name character subject person 인물 누가 주체', toward: 'target to_whom about with 대상 누구에게 상대', from: 'before was old previous prev 이전 전 원래', to: 'after now new current 이후 후 지금 현재', why: 'reason cause because trigger 이유 원인 왜 계기' }),
+  pivots: table({ way: 'kind type category direction 갈래 종류 유형 방향 类型', who: 'name character subject person 인물 누가 주체', with: 'toward target to_whom about other 상대 대상 누구와', was: 'from before old previous prev 이전 전 원래', now: 'to after new current 이후 후 지금 현재', because: 'why reason cause trigger 이유 원인 왜 계기', warmth: 'warm temperature heat 온도' }),
   beats: table({ text: 'summary content 내용', quote: 'line 대사', with: 'present people 함께' }),
 };
 /** 목록이어야 하는 칸 — 글 하나로 적혀 오면 쉼표에서 나눈다 */
-const LIST_FIELDS = new Set(['entities', 'tags', 'recall', 'known_by', 'guess_by', 'with', 'traits', 'aka', 'participants']);
-/** 방향 화살표 — 깡→린, 깡->린, 깡 ⇒ 린, 깡 ▶ 린 을 같은 것으로 읽는다 */
+const LIST_FIELDS = new Set(['entities', 'tags', 'recall', 'known_by', 'guess_by', 'in_the_dark', 'keep_from', 'with', 'traits', 'aka', 'participants']);
+/** 방향 화살표 — 도하→세아, 도하->세아, 도하 ⇒ 세아, 도하 ▶ 세아 를 같은 것으로 읽는다 */
 const ARROW = /\s*(?:[→⇒➔➜➝➞⟶➡▶►]|[-=–—~]{1,2}>|>>)\s*/;
 export function splitArrow(text: unknown): [string, string] | null {
   const parts = String(text ?? '').split(ARROW).map(x => x.trim().replace(/^["'「『(\[]+|["'」』)\]]+$/g, '')).filter(Boolean);
@@ -158,7 +158,7 @@ export function offFormat(raw: unknown): boolean {
   const canon = canonRecord(raw); if (!canon) return false;
   const keys = (o: unknown) => (isObj(o) ? Object.keys(o).sort().join('\u0001') : ''), score = (v: unknown) => v == null || (typeof v === 'number' && v >= 0 && v <= 1);
   if (keys(raw) !== keys(canon) || !score(raw.weight)) return true;
-  for (const shelf of ['memories', 'status', 'bonds', 'shifts']) {
+  for (const shelf of ['memories', 'status', 'bonds', 'pivots']) {
     const a = raw[shelf], b = canon[shelf]; if (a == null) continue; if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return true;
     for (let i = 0; i < a.length; i++) if (keys(a[i]) !== keys(b[i]) || (shelf === 'memories' && isObj(a[i]) && (!score(a[i].importance) || typeof a[i].entities === 'string'))) return true;
   }
@@ -181,7 +181,7 @@ export function canonRecord(raw: unknown): LooseObj | null {
   for (const shelf of Object.keys(ROW)) {
     if (!(shelf in out)) continue;
     let rows = rowsOf(out[shelf]);
-    // 관계를 {"깡→린":"…"} 꼴의 사전으로 적은 답
+    // 관계를 {"도하→세아":"…"} 꼴의 사전으로 적은 답
     if (shelf === 'bonds' && isObj(out[shelf]) && rows.length === 1 && rows[0] === out[shelf] && Object.keys(out[shelf] as LooseObj).some(k => splitArrow(k))) {
       rows = Object.entries(out[shelf] as LooseObj).map(([k, v]) => { const p = splitArrow(k); return p ? { from: p[0], to: p[1], ...(isObj(v) ? v : { stage: v }) } : null; }).filter(Boolean);
     }
@@ -189,9 +189,9 @@ export function canonRecord(raw: unknown): LooseObj | null {
       const row = rename(r, ROW[shelf]);
       if (shelf === 'memories' && 'importance' in row) row.importance = readScore(row.importance, 0.5);
       if (shelf === 'bonds' && !row.to) { const p = splitArrow(row.from) || splitArrow(row.pair) || splitArrow(row.between); if (p) { row.from = p[0]; row.to = p[1]; } }
-      if (shelf === 'shifts') {
-        const p = !row.toward ? splitArrow(row.who) : null; if (p) { row.who = p[0]; row.toward = p[1]; }
-        const c = !row.from || !row.to ? splitArrow(row.change ?? row.to ?? row.summary) : null; if (c) { row.from = c[0]; row.to = c[1]; }
+      if (shelf === 'pivots') {
+        const p = !row.with ? splitArrow(row.who) : null; if (p) { row.who = p[0]; row.with = p[1]; }
+        const c = !row.was || !row.now ? splitArrow(row.change ?? row.now ?? row.summary) : null; if (c) { row.was = c[0]; row.now = c[1]; }
       }
       return row;
     });

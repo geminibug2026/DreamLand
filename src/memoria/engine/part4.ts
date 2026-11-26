@@ -16,8 +16,9 @@ import { pickBeats, beatLines } from '../calendar';
 import { VOICE_LINES, PLAN_HEAD } from '../directives';
 import { personaNameOf } from './part6';
 import { driftNoteLines } from './auditCore';
-import { hostOf, feelingRows } from './ties';
-import type { FeelingRow } from '../ties';
+import { hostOf, standRows } from './ties';
+import type { StandRow } from '../ties';
+import { typesText } from '../tieprompts';
 import type { FreezeMark, StableEntry as StableLine, TranscriptHit } from '../craft';
 
 /** 장부를 지을 때의 옵션 (회상 옵션 + 주입 옵션) */
@@ -77,7 +78,7 @@ export interface PacketSections {
   /** 장면 속 인물이 마음에 둔 것 */
   minds?: { name: string; lines: string[] }[];
   /** 장면에 함께 있는 사람들끼리의 가장 최근 마음 (매 턴 바뀌는 구간에만 싣는다) */
-  feelings?: FeelingRow[];
+  between?: StandRow[];
   /** 작가 계획 — 가린 줄만 */
   plans?: { id: string; veil: string }[];
   /** 날 세기 한 줄 */
@@ -158,7 +159,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
    */
   buildPacketSections(chat, mem, history, opt = {}) {
     const cfg = this.cfg(), T = mem.turns.length, narratorMode = this.perspective(mem) === NARRATOR;
-    const hostLabel = (h => h.many ? h.label : '')(hostOf(this, chat, mem));   // 여러 인물을 맡는 카드의 이름 — 인물로 싣지 않는다
+    const hostLabel = (h => h.many ? h.label : '')(hostOf(this, chat, mem));   // 무대 카드의 이름 — 인물로 싣지 않는다
     const r = this.recallEx(chat, mem, history, opt), inp = r.inputs, query = r.query, lastAssistantText = String(inp.scene || ''), recallContext = inp.aux;
     const recallCandidates = [...r.pinned, ...r.triggered, ...r.selected], publicRecall: MemItem[] = [], protectedRecall: MemItem[] = [];
     // 아직 원문으로 프롬프트에 실리는 구간의 기억은 회상으로 다시 싣지 않는다 — 몇 턴 전 일을 "기억"으로 또 끌어와 장면이 뒤로 돌아가게 만든다
@@ -341,9 +342,9 @@ export const part4: Part4 & ThisType<MemoryApi> = {
         for (const [id, blind] of unaware) { const rest = blind.filter(n => !is(n)); if (rest.length) unaware.set(id, rest); else unaware.delete(id); }
       }
     }
-    // 지금의 마음: 장면에 함께 있는 사람들끼리 가장 최근에 적힌 마음 몇 줄 — 얼려 둔 관계선보다 새것이라 매 턴 바뀌는 구간에 싣는다 (모델 호출 없음)
-    const feelings = feelingRows(this, mem, new Set([...sceneNames, meKey].filter(Boolean)), Math.max(0, Math.min(6, Math.round(Number(cfg.feelingLines) || 0))));
-    return { feelings, absent, cards, minds, plans, milestoneRoots: new Set(rootMiles.map(e => e.id)), trackerLine, returning, driftNotes: driftNoteLines(mem, opt.msgs, cfg.driftNote !== false), voice: String(cfg.recallVoice || 'natural'), bonds, voices, banned, styleGuard: cfg.styleGuard !== false, recallQuotes: cfg.recallQuotes !== false, banTell: cfg.banTell === true,
+    // 지금 사이: 장면에 함께 있는 사람들끼리의 인연 읽기와 가장 늦은 전환점 몇 줄 — 얼려 둔 관계선보다 새것이라 매 턴 바뀌는 구간에 싣는다 (모델 호출 없음)
+    const between = standRows(this, mem, new Set([...sceneNames, meKey].filter(Boolean)), Math.max(0, Math.min(6, Math.round(Number(cfg.feelingLines) || 0))));
+    return { between, absent, cards, minds, plans, milestoneRoots: new Set(rootMiles.map(e => e.id)), trackerLine, returning, driftNotes: driftNoteLines(mem, opt.msgs, cfg.driftNote !== false), voice: String(cfg.recallVoice || 'natural'), bonds, voices, banned, styleGuard: cfg.styleGuard !== false, recallQuotes: cfg.recallQuotes !== false, banTell: cfg.banTell === true,
       lag, publicRecall: publicRecallDeduped, protectedRecall, hiddenProtected: r.hidden, locks, rules, scene, states, characters, milestones, items, summaries, supervisorPlan, narratorMode, turnNow: T, storyAges, storyTotalDays, storyDay, storyNow,
       sources: this.dossierPick(mem, query, recallContext), recallCandidates, trace: r.trace, recallIntent: r.intent || '', recallShort: !!r.shortQ, recallCentered: !!r.centered, notes, recent, unaware, deadlines, nowIds, address, transcript,
       broken: mem.pledges.filter(l => l.status === 'resolved' && l.outcome === 'broken' && !l.disabled && T - 1 - (l.resolvedTurn ?? -999) <= 120).sort((a, b) => (b.resolvedTurn ?? 0) - (a.resolvedTurn ?? 0)).slice(0, 3) };
@@ -497,10 +498,14 @@ export const part4: Part4 & ThisType<MemoryApi> = {
         const line = personNowLine(rows[0].entity, rows.map(s => ({ slot: canonSlot(s.slot), value: s.value, note: changeNote(s) }))); if (line) lines.push(line);
       }
     }
-    if (P.feelings?.length && stateLimit > 0) {
-      // 지금의 마음 — 장면에 함께 있는 사람들끼리 가장 최근에 적힌 마음. 고정 장부의 관계선보다 새것이다
-      lines.push('## How They Feel Right Now (the latest turn of feeling on record between people in this scene — newer than Bonds where the two differ. Let it show in manner and choices; never state it outright)');
-      for (const f of P.feelings) lines.push(`- ${f.from} → ${f.to}: ${f.now}${f.was || f.why ? ` (${[f.was ? `was: ${f.was}` : '', f.why ? `since: ${f.why}` : ''].filter(Boolean).join('; ')})` : ''}`);
+    if (P.between?.length && stateLimit > 0) {
+      // 지금 사이 — 장면에 함께 있는 사람들의 인연 읽기와 가장 늦은 전환점. 고정 장부의 관계선보다 새것이다
+      lines.push('## Between Them Now (people sharing this scene: how each tie reads and its latest pivot, newer than Bonds where the two differ — let it color manner and choices, and never announce it)');
+      for (const f of P.between) {
+        const r = f.read, reads = [r.word ? `"${r.word}"` : '', typesText(r.types)].filter(Boolean).join(', ');
+        const turned = f.now ? `latest pivot (${f.way}): ${f.was ? `${f.was} → ` : ''}${f.now}${f.why ? `, because ${f.why}` : ''}` : '';
+        lines.push(`- ${f.from} → ${f.to}: ${[reads, turned].filter(Boolean).join('; ')}`);
+      }
     }
     if (P.deadlines?.length && stateLimit > 0) {
       // 약속 · 기한 — 작중 시간으로 센 남은 날. 가까운 것부터
@@ -720,7 +725,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
   },
   addressRows(chat, mem, msgs) {
     let me = ''; try { me = chat ? S.persona(chat)?.name || '' : ''; } catch { /* 페르소나가 없어도 된다 */ }
-    // 여러 인물을 맡는 카드: 답변을 쓴 "사람"이 없다 — 카드 이름은 사람으로 세지 않고, 누가 말했는지 서술에 적힌 대사만 센다
+    // 무대 카드: 답변을 쓴 "사람"이 없다 — 카드 이름은 사람으로 세지 않고, 누가 말했는지 서술에 적힌 대사만 센다
     const host = (h => h.many ? h.label : '')(hostOf(this, chat, mem)), chars = (chat?.charIds || []).map(id => S.get('chars', id)?.name || '').filter(Boolean), solo = chars.length === 1 && !host;
     const people: AddressPerson[] = mem.cast.filter(c => !c.disabled && !(host && ekey(c.name) === ekey(host))).map(c => ({ name: c.name, forms: c.aka || [] }));
     for (const n of [me, ...chars]) if (n && !(host && ekey(n) === ekey(host)) && !people.some(p => ekey(p.name) === ekey(this.canonName(mem, n)))) people.push({ name: n, forms: [] });

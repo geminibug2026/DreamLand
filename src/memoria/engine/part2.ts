@@ -16,9 +16,10 @@ import { chunkTurnsOf, repliesOf, startsWithFieldLabel, looksLikeAlias, looksLik
 import { snapUndo, diffUndo, trimUndo, mergeUndo, type Undo } from './undo';
 import { t as tr } from '../../i18n';
 import { hostOf, stripHost, readTies, applyTies, cutReply, needsFormatHelp, noteFormatSlip, TIE_MARK, type TiesRead } from './ties';
+import { tieOf } from '../ties';
 import { storyOnly } from '../guards';
 import { canonRecord, offFormat } from '../lenient';
-import { TIES_DIRECTIVE, formatGuard, formatHelp, CUT_NOTE, CUT_MARK, hostRecordLine } from '../tieprompts';
+import { TIES_DIRECTIVE, formatGuard, formatHelp, CUT_NOTE, CUT_MARK, hostRecordLine, readTag, typesText } from '../tieprompts';
 
 /** 사서가 돌려준 JSON (읽기 전의 날것 — 칸마다 믿을 수 없다) */
 export interface RawExtraction {
@@ -144,7 +145,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
   /** 캐릭터 카드 · 페르소나 요지. lean: 이름만 — 인물의 바탕이 이미 서고에 있으면 카드 본문을 매번 다시 보낼 이유가 없다 */
   buildProfileReference(chat, lean = false, ai = null) {
     const parts: string[] = [], ch = S.get('chars', ai?.charId) || S.get('chars', chat?.charIds?.[0]), persona = chat ? S.persona(chat) : null;
-    if (ch) { const bits: string[] = []; if (ch.name) bits.push(`Name: ${ch.name}`); if (ch.description && !lean) bits.push(`About: ${cleanStr(ch.description, 800)}`); if (ch.personality && !lean) bits.push(`Personality: ${cleanStr(ch.personality, 400)}`); if (bits.length) parts.push(`${hostOf(this, chat, chat ? this.get(chat.id) : null).many ? '[Narrator card — one card voicing several characters; its name is a label, not a person]' : '[Main character card]'}\n${bits.join('\n')}`); }
+    if (ch) { const bits: string[] = []; if (ch.name) bits.push(`Name: ${ch.name}`); if (ch.description && !lean) bits.push(`About: ${cleanStr(ch.description, 800)}`); if (ch.personality && !lean) bits.push(`Personality: ${cleanStr(ch.personality, 400)}`); if (bits.length) parts.push(`${hostOf(this, chat, chat ? this.get(chat.id) : null).many ? '[Stage card — one card playing a whole cast; its name titles the stage, not a person]' : '[Main character card]'}\n${bits.join('\n')}`); }
     if (persona?.name || persona?.description) { const bits: string[] = []; if (persona.name) bits.push(`Name: ${persona.name}`); if (persona.description && !lean) bits.push(`About: ${cleanStr(persona.description, 600)}`); parts.push(`[Player persona]\n${bits.join('\n')}`); }
     return parts.join('\n\n');
   },
@@ -204,7 +205,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
         by: na(cleanStr(m?.by, 60)) || null, to: na(cleanStr(m?.to, 60)) || null,
         knowers: arr(m?.known_by).map(e => cleanStr(e, 60)).filter(Boolean).slice(0, 6),   // 누가 아는가 — 소유자 말고도 이 비밀 · 속사정을 아는 인물 (공개 기억에는 의미가 없다)
         when: normWhen(m?.when),   // 회상 · 꿈 · 전해 들은 이야기 (없으면 지금 일)
-        unaware: arr(m?.unaware).map(e => cleanStr(e, 60)).filter(Boolean).slice(0, 6), keepFrom: arr(m?.keep_from).map(e => cleanStr(e, 60)).filter(Boolean).slice(0, 6),
+        unaware: arr(m?.in_the_dark ?? m?.unaware).map(e => cleanStr(e, 60)).filter(Boolean).slice(0, 6), keepFrom: arr(m?.keep_from).map(e => cleanStr(e, 60)).filter(Boolean).slice(0, 6),
         said: cleanStr(m?.said, 160),
       });
     }
@@ -355,7 +356,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     const shelfTagMap = new Map<string, MemItem>();
     const shelfLines = this.standingMemoriesNear(mem, `${userText}\n${assistantText}`, place()).map((m, i) => { const tag = `m${i + 1}`; shelfTagMap.set(tag, m); return `[${tag}] (${m.kind}) ${m.summary}`; });
     // 옛 비밀 · 속사정 가운데 이번 교환에 얽힌 것 — 누가 새로 알게 됐는지 함께 묻는다 (손으로 아는 사람을 고친 기억은 올리지 않는다)
-    const tieOn = cfg.tieNotes !== false;   // 사이 이름 · 변화 기록을 함께 받는다
+    const tieOn = cfg.tieNotes !== false;   // 인연 읽기 · 전환점을 함께 받는다
     const guard = cfg.guardSecrets !== false, hayLower = low(`${userText}\n${assistantText}`), privTagMap = new Map<string, MemItem>();
     const privLines = !guard ? [] : mem.memories.filter(m => m.visibility !== 'public' && !m.disabled && !m.retired && !m.knowLock && m.turn != null && m.turn < place() && [m.owner, ...(m.entities || [])].some(n => n && String(n).length >= 2 && hayLower.includes(low(n))))
       .sort((a, b) => (b.importance || 0) - (a.importance || 0)).slice(0, 6)
@@ -371,14 +372,14 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     const castLine = !tracking ? '' : filedCast!.length
       ? `Cast already on file: ${filedCast!.join(', ')}. Anyone present in this exchange who is NOT on this list — the leads included — gets a card now; for those already listed, file only meaningful changes. Spell every one of these names EXACTLY as written here (same script, same characters) everywhere you use them this turn: cast names, status "entity" and "owner", and memories "entities". A name respelled (romanized, translated, or abbreviated) opens a second record for the same person, and the two then hold different versions of where they are and how they feel.${lockedNote}\n`
       : 'The cast shelf is empty — no one has a card yet, not even the leads. Anyone characterized in this exchange gets a card now.\n';
-    // 여러 인물을 한 카드가 맡는 대화: 카드 이름은 말머리일 뿐이다 — 그 이름으로 인물 카드 · 상태 · 기억을 열지 않고, 글에 나온 인물에게 말과 행동을 돌린다
+    // 무대 카드(카드 하나가 여러 사람을 연기하는 대화): 카드 이름은 무대의 이름일 뿐이다 — 그 이름으로 인물 카드 · 상태 · 기억을 열지 않고, 글에 나온 사람에게 말과 행동을 돌린다
     const hostCard = (h => h.many ? h.label : '')(hostOf(this, chat, mem));   // 대화마다 정해 둔 값이 먼저, 없으면 카드 글 · 인물 명단으로 알아본다
     const hostLine = hostCard ? hostRecordLine(hostCard) : '';
     const crossNames = tracking ? crossScriptPairs(mem.cast.map(c => c.name)).map(([a, b]) => `${mem.cast[a].name}|${mem.cast[b].name}`).filter(k => !nameHints.has(k)) : [];
     for (const k of crossNames) { nameHints.add(k); const [a, b] = k.split('|'); this.logActivity('update', tr('memoria.engine.log.sameName', { a, b })); }   // 표기만 다른 같은 이름으로 보이는 카드 — 저절로 합치지 않고 한 번 알린다 (인물 탭에서 병합)
     // 관계선의 현재 단계 — 사서가 이미 적힌 단계를 되풀이하거나 몇 단계를 건너뛰어 적지 않게
     const bondLines = (mem.bonds || []).filter(b => !b.disabled && this.bondNow(b)).sort((a, b) => (this.bondNow(b)!.turn || 0) - (this.bondNow(a)!.turn || 0)).slice(0, 12)
-      .map(b => { const n = this.bondNow(b)!; return `${b.from} → ${b.to}: ${n.stage}${n.calls ? ` (calls them: ${n.calls})` : ''}${!tieOn ? '' : b.name ? ` [name: ${b.name}${b.kind ? ` · ${b.kind}` : ''}]` : ' [unnamed]'}`; });
+      .map(b => { const n = this.bondNow(b)!; return `${b.from} → ${b.to}: ${n.stage}${n.calls ? ` (calls them: ${n.calls})` : ''}${tieOn ? readTag(tieOf(b)) : ''}`; });
     // 카드 본문은 바탕을 적을 때 필요하다 — 주요 인물의 바탕이 다 적혔으면 이름만 보낸다 (턴마다 수백 토큰 절약)
     const coreSettled = mem.cast.length >= 2 && mem.cast.filter(c => !c.disabled).slice(0, 4).every(c => c.core || c.locked);
     const refBlock = await this.buildReferenceBlock(chat, { lean: coreSettled, ai });
@@ -429,8 +430,8 @@ export const part2: Part2 & ThisType<MemoryApi> = {
       else this.logActivity('record', tr('memoria.engine.log.reused', { n: idx + 1 }));
       if (parsed && !hit) rawParsed = parsed;
       if (parsed) { answered = true; ext = this.sanitizeExtraction(parsed, userText, assistantText); if (tieOn) ties = readTies(canonRecord(parsed)); if (hostCard) stripHost(ext, hostCard); }
-      if (parsed && note.cut) this.logActivity('record', tr('memoria.bonds.log.cutAnswer', { n: idx + 1 }));   // 답이 출력 한도에서 잘렸다 — 끝까지 적힌 항목만 기록한다
-      if (parsed && !hit && helpMode === 'auto' && !fullHelp && (note.slip || offFormat(parsed)) && noteFormatSlip(recConn)) this.logActivity('record', tr('memoria.bonds.log.formatHelp', { model: recConn?.model || '?' }));
+      if (parsed && note.cut) this.logActivity('record', tr('memoria.engine.log.cutAnswer', { n: idx + 1 }));   // 답이 출력 한도에서 잘렸다 — 끝까지 적힌 항목만 기록한다
+      if (parsed && !hit && helpMode === 'auto' && !fullHelp && (note.slip || offFormat(parsed)) && noteFormatSlip(recConn)) this.logActivity('record', tr('memoria.engine.log.formatHelp', { model: recConn?.model || '?' }));
     } catch (e: any) { if (e.name === 'AbortError' || signal?.aborted) throw e; error = e.message || String(e); }
     if (ext && hit?.clock && !ext.clockDay) { ext.clockDay = hit.clock.day ? clockDayOf(hit.clock.day) : ext.clockDay; if (!ext.clockNow && hit.clock.now) ext.clockNow = hit.clock.now; }
     // 며칠째인지는 꼭 받는다: 사서가 빠뜨렸으면 그것만 다시 묻는다 (짧은 호출 한 번)
@@ -518,7 +519,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     // 장면 인물 목록이 방금 적혔거나 몇 턴 안에 적힌 것일 때만 "있었다 · 없었다"를 따진다 — 묵은 목록으로 없던 사람을 만들지 않는다
     const sceneRow = mem.status.find(s => low(s.entity) === 'scene' && canonSlot(s.slot) === 'present'), presentNew = ext.entityStates.filter(st => low(st.entity) === 'scene' && canonSlot(st.slot) === 'present').map(st => st.value);
     const presentFresh = presentNew.length > 0 || (!!sceneRow && at - (sceneRow.turn ?? -99) <= 3);
-    const speakersNow = [userLabel, charLabel, ...(batch || []).map(nameOf)].filter(n => n && !(hostCard && ekey(n) === ekey(hostCard))).map(n => this.canonName(mem, n));   // 여러 인물을 맡는 카드의 이름은 그 자리에 있던 사람이 아니다
+    const speakersNow = [userLabel, charLabel, ...(batch || []).map(nameOf)].filter(n => n && !(hostCard && ekey(n) === ekey(hostCard))).map(n => this.canonName(mem, n));   // 무대 카드의 이름은 그 자리에 있던 사람이 아니다
     const presentNames = [...new Set([...(presentFresh ? (presentNew.length ? presentNew : [sceneRow?.value || '']) : []).flatMap(v => String(v || '').split(/[,，、·]+/)).map(n => this.canonName(mem, n.trim())).filter(Boolean), ...speakersNow])];
     const hereKeys = new Set(presentNames.map(ekey)), exLower = low(exchangeText);
     const wasHere = (name: string) => { const c = this.canonName(mem, name); return hereKeys.has(ekey(c)) || (String(name).length >= 2 && exLower.includes(low(name))) || (c.length >= 2 && exLower.includes(low(c))); };
@@ -621,7 +622,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     }
     if (retiredNow) this.logActivity('record', tr('memoria.engine.log.retired', { n: retiredNow }));
     for (const b of ext.bonds || []) this.upsertBond(mem, b, at, { msgId: ai.id });
-    if (ties) applyTies(this, mem, ties, at, ai.id, hostCard);   // 사이 이름 · 변화 기록 (같은 호출에 함께 받은 것)
+    if (ties) applyTies(this, mem, ties, at, ai.id, hostCard);   // 인연 읽기 · 전환점 (같은 호출에 함께 받은 것)
     if (answered && tieOn) turn[TIE_MARK] = true; if (cutSet.size) turn.cut = true;
     if (tracking) for (const c of ext.characters || []) this.upsertCast(mem, c, at, ai.id);
     if (cfg.milestones) for (const e of ext.milestones || []) this.upsertMilestone(mem, e, at, ai.id);
@@ -917,7 +918,8 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     const n = this.bondNow(b); if (!n) return '';
     const bits = [n.stage]; if (n.basis) bits.push(`shown by: ${n.basis}`); if (n.calls) bits.push(`calls them: ${n.calls}`); if (n.unsaid) bits.push(`unsaid: ${n.unsaid}`);
     const earlier: string[] = []; for (const e of b.log.slice(0, -1)) if (e.stage !== n.stage && earlier[earlier.length - 1] !== e.stage) earlier.push(e.stage);
-    return `- ${b.from} → ${b.to}${b.name ? ` (${b.name})` : ''}: ${bits.join(' | ')}${path && earlier.length ? ` | path: ${earlier.slice(-2).join(' → ')} → now` : ''}`;
+    const r = tieOf(b), read = [typesText(r.types), r.word ? `"${r.word}"` : ''].filter(Boolean).join(', ');   // 인연 읽기 (갈래 · 한마디)
+    return `- ${b.from} → ${b.to}${read ? ` [${read}]` : ''}: ${bits.join(' | ')}${path && earlier.length ? ` | path: ${earlier.slice(-2).join(' → ')} → now` : ''}`;
   },
 
   // ── 다른 이름으로도 부를 수 있게 ──
