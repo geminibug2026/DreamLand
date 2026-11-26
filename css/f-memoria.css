@@ -555,3 +555,9 @@ button.mm-outcome { cursor: pointer; background: none; font-family: inherit; lin
   .mm-head-tools > .mm-rd { display: contents; } .mm-head-tools .mm-rd-note { grid-column: 1 / -1; }
   .mm-head-tools > .btn, .mm-head-tools .mm-rd .btn.mm-rd-btn { min-width: 0; padding: 6px 8px; }
 }
+/* 서고 창 머리: 위가 잘린 큰 검은 달 · 점박이 무늬를 걷고, 제목 앞에 작고 온전한 초승달(포인트 색)과 제목 뒤 작은 별 둘 */
+.mm-bar { align-items: center; justify-content: flex-start; gap: 12px; }
+.mm-bar > .ibtn { margin-left: auto; order: 3; } .mm-bar > .phead-text { order: 1; }
+.mm-bar::before { content: ""; position: static; flex: none; order: -1; width: 30px; height: 30px; border-radius: 50%; background: none; box-shadow: inset -8px -3px 0 0 var(--accent); transform: rotate(-14deg); opacity: 1; }
+.mm-bar::after { content: "✦ ✧"; position: static; flex: none; order: 2; width: auto; height: auto; align-self: flex-end; margin: 0 0 6px -2px; background: none; -webkit-mask-image: none; mask-image: none; color: var(--accent); font-size: 11px; letter-spacing: .35em; opacity: .85; }
+@media (max-width: 820px) { .mm-bar::before { width: 26px; height: 26px; box-shadow: inset -7px -3px 0 0 var(--accent); } }
