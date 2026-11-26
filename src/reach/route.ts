@@ -51,14 +51,21 @@ export function fallbackLine(conn: Conn): Conn[] {
   return out;
 }
 export type ReplyResult = engine.StreamResult & { via: Conn; fell: boolean };
+/** 줄에서 마지막으로 답을 받은 연결: 한동안은 거기서 시작한다 (막힌 연결을 매번 먼저 두드리지 않게 — 계정 돌려쓰기) */
+const lastGood = new Map<string, { id: string; at: number }>();
 /** 주 대화의 답장 보내기: 글자가 나오기 전에 연결이 실패하면(끊김 · 429 · 5xx) 정해 둔 대체 연결로 차례차례 다시 보낸다 */
 export async function streamReply(conn: Conn, P: engine.Params, messages: engine.PromptList, opts: engine.StreamOpts = {}): Promise<ReplyResult> {
   // 처음 연결은 이 대화에서 고른 모델이 실린 사본일 수 있다: 그 뒤로 넘어갈 줄은 저장된 연결에서 따라간다
-  const line = fallbackLine((realConn(conn) as Conn | undefined) || conn).filter(c => c.id !== conn.id);
-  const r = await runWithFallback<Conn, engine.StreamResult>(conn, line, opts,
+  const rest = fallbackLine((realConn(conn) as Conn | undefined) || conn).filter(c => c.id !== conn.id);
+  let line: Conn[] = [conn, ...rest];
+  const g = lastGood.get(conn.id), k = g && Date.now() - g.at < 15 * 60000 ? rest.findIndex(c => c.id === g.id) : -1;
+  if (k >= 0) line = [...rest.slice(k), conn, ...rest.slice(0, k)];   // 최근에 통한 연결부터, 한 바퀴
+  const first = line[0];
+  const r = await runWithFallback<Conn, engine.StreamResult>(first, line.slice(1), opts,
     (c, sink) => engine.streamChat(c, P, messages, { ...opts, onText: sink.onText, onThink: sink.onThink, label: c === conn ? opts.label : `${opts.label || 'reply'} (fallback)` }),
     (_why, from, to) => toast(t('reach.fb.switching', { from: from.name, to: to.name })));
-  return { ...r.res, via: r.via, fell: r.fell };
+  if (r.via.id === conn.id) lastGood.delete(conn.id); else lastGood.set(conn.id, { id: r.via.id, at: Date.now() });
+  return { ...r.res, via: r.via, fell: r.via.id !== conn.id };
 }
 
 // ── 이 대화의 모델 고르기 ──

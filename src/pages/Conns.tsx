@@ -13,6 +13,7 @@ import * as adv from '../lib/advanced';
 import { t, tn } from '../i18n';
 import { TtsConnBody } from '../tts/ui';
 import { ConnExtras, exportAllConns, importConnFile } from '../reach/jobs';
+import { fallbackLine } from '../reach/route';
 import { Mark } from '../reach/models';
 import { useCss } from '../addons/parts';
 import { cfRelayGuide } from './cfRelay';
@@ -76,6 +77,24 @@ function SaField({ c, api }: { c: Conn; api: EditorApi }) {
   </div>;
 }
 
+/** 계정 돌려쓰기: 같은 모델을 다른 구글 프로젝트의 계정으로 이어 둔다. 실제로 넘기는 일은 '안 되면 이 연결로' 줄이 한다 (reach/route)
+ *  global 에만 있는 모델은 리전을 바꿀 수 없어, 프로젝트마다 따로 매겨지는 몫을 돌려 쓰는 것이 남은 길이다 */
+function Rotate({ c, api }: { c: Conn; api: EditorApi }) {
+  const line = fallbackLine(c), same = line.filter(x => x.provider === c.provider);
+  const add = async () => {
+    const n = same.length + 2, copy: Conn = { ...structuredClone(c), id: core.uid(), name: t('conns.rot.name', { name: c.name.replace(/ · .*$/, ''), n }), apiKey: '', serviceAccount: '', project: '', fallback: (c as Conn & { fallback?: string }).fallback || '' } as Conn;
+    for (const k of ['saEmail', 'saProject', 'sec', 'saved', 'mark'] as const) delete (copy as unknown as Record<string, unknown>)[k];
+    await S.save('conns', copy, true);
+    (c as Conn & { fallback?: string }).fallback = copy.id; await S.save('conns', c, true);
+    toast(t('conns.rot.added'), 'ok'); api.reselect(copy.id);
+  };
+  return <section className="rc-conn fx-frame">
+    <h4 className="fx-head"><span className="fx-lbl kr ink">{t('conns.rot.title')}</span></h4>
+    <p className="hint">{t('conns.rot.desc')}</p>
+    {line.length ? <p className="hint"><b>{t('conns.rot.line')}</b> {[c, ...line].map(x => x.name).join(' → ')}</p> : null}
+    <div className="row wrap"><Btn label={t('conns.rot.add')} ic="plus" cls="ghost" onClick={() => void add()} /></div>
+  </section>;
+}
 function ConnEditor({ c, api }: { c: Conn; api: EditorApi }) {
   const { Secrets, uid } = core, { PROVIDERS, listModels, streamChat } = engine, { TEXT_PROVIDER_KINDS, tplList, instructName } = adv;
   const redraw = useBump(), alive = useRef(true);
@@ -158,6 +177,7 @@ function ConnEditor({ c, api }: { c: Conn; api: EditorApi }) {
       { k: 'extraHeaders', label: t('conns.adv.extraHeaders'), type: 'area', rows: 2, ph: t('conns.adv.extraHeadersPh') }]} onChange={sv} /></details>}
     <div className="row"><Btn label={t('conns.test.run')} ic="play" onClick={() => void run()} /><div className={'test-out' + test.cls}>{test.text}</div></div>
     <ConnExtras c={c} onSave={sv} />
+    {(def.kind === 'vertex' || def.kind === 'google') && <Rotate c={c} api={api} />}
     </>}
   </div>;
 }

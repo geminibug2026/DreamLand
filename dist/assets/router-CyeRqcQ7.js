@@ -1,1 +1,0 @@
-export{t as go}from"./router-BWID7FY1.js";

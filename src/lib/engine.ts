@@ -1099,11 +1099,11 @@ async function call(conn: Conn, url: string, opts: CallOpts): Promise<Response> 
   // 리전 돌려쓰기: 주소에 리전이 들어 있고(프로젝트를 쓰는 Vertex) 돌아갈 리전을 적어 둔 연결만
   const regions = vertex && regionOf(url) && String(conn.regions || '').trim() ? regionList(conn) : [], rkey = regions.length ? regionKey(conn, url) : '';
   if (regions.length) url = startRegion(conn, url, relays);
-  let tried = new Set<string>([regionOf(url)]);
+  let tried = new Set<string>([regionOf(url)]), busyErr: unknown = null, busyUrl = url;
   for (let i = 0; ; ) {
     try { const r = await callOnce(conn, url, opts); if (regions.length) regionGood.set(rkey, { r: regionOf(url), at: Date.now() }); return r; }
-    catch (e) {
-      const st = (e as { status?: number }).status, after = (e as { retryAfter?: number }).retryAfter;
+    catch (e0) {
+      let e = e0, st = (e as { status?: number }).status; const after = (e as { retryAfter?: number }).retryAfter;
       if (st === 429) cooled.set(conn.id, Date.now() + Math.max(15000, (after || 0) * 1000));   // 이 연결은 잠깐 붐빈다: 보조 호출은 그동안 비켜 선다
       if (st === 429 && !opts.signal?.aborted && relays.length > 1 && hops < relays.length - 1) {   // 다음 중계(다른 지역)로: 기다리지 않고 바로
         const from = relays[relayIdx(conn, relays.length)], to = relays[relayNext(conn, relays.length)]; hops++;
@@ -1112,11 +1112,13 @@ async function call(conn: Conn, url: string, opts: CallOpts): Promise<Response> 
       // 다른 리전으로: 429(붐빔)면 다음 리전, 옮겨 간 리전에 그 모델이 없다(404)고 하면 하루 동안 그 리전을 건너뛰고 다음으로
       const here = regionOf(url), moved = here !== regions[0];
       const nothere = moved && (st === 404 || (st === 400 && /locat|region|not (supported|available)/i.test(String((e as Error).message || ''))));
+      if (st === 429) { busyErr = e; busyUrl = url; }
       if (regions.length && !opts.signal?.aborted && (st === 429 || nothere)) {
         if (nothere) regionGone.set(rkey + '|' + here, Date.now() + 86400000);
         const next = regions.find(r => !tried.has(r) && !((regionGone.get(rkey + '|' + r) || 0) > Date.now()));
         if (next) { tried.add(next); url = withRegion(url, next, relays); hops = 0; core.emit('conn:region', { conn: conn.name, region: next, n: tried.size - 1, of: regions.length - 1 }); continue; }
-        if (nothere) { regionGood.delete(rkey); throw e; }
+        // 남은 리전이 다 '그 모델 없음'이었다 (global 에만 있는 모델): 처음의 429 로 돌아가 재시도 · 대체 연결이 이어지게 한다
+        if (nothere) { regionGood.delete(rkey); if (!busyErr) throw e; e = busyErr; st = 429; url = busyUrl; }
       }
       if (i >= n || st !== 429 || opts.signal?.aborted) throw e;
       i++; hops = 0; tried = new Set([regionOf(url)]);
