@@ -49,7 +49,7 @@ export const TOPICS: Topic[] = [
   T('macros', 'prompt', 'presets', '매크로 macro {{char}} {{user}} getvar setvar random 변수 宏 变量'),
   T('regex', 'prompt', 'regex', '정규식 regex 스크립트 표시 display prompt store 바꾸기 正则'),
   T('format', 'prompt', 'format', '고급 포맷팅 instruct context template 텍스트 완성 text completion 高级格式'),
-  T('flow', 'prompt', 'flow', '흐름 연결 프로필 자동 이어쓰기 자동 재생성 연출 지시 profile auto continue direct 流程 配置'),
+  T('flow', 'prompt', 'flow', '흐름 연결 프로필 연결프로필 커스텀 프록시 키 주소 자동 이어쓰기 자동 재생성 연출 지시 profile connection profile proxy key auto continue direct 流程 配置 连接配置 代理'),
   T('memory', 'features', 'studio', '장기기억 기억 memoria memory 요약 summary 사서 长期记忆 总结', 'memoria'),
   T('mvu', 'features', 'exts', 'mvu magvarupdate 상태창 변수 stat_data initvar zod 규칙 schema 상태 바 status bar vue tavern helper 스크립트 script 变量 状态栏'),
   T('vectors', 'features', 'studio', '벡터 검색 임베딩 자료 보관 data bank vector embedding rag 向量'),
