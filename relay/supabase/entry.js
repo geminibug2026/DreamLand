@@ -13,16 +13,19 @@ async function sbSame(a, b) {
   const e = new TextEncoder(), [x, y] = await Promise.all([a, b].map(s => crypto.subtle.digest('SHA-256', e.encode(s))));
   const u = new Uint8Array(x), v = new Uint8Array(y); let d = 0; for (let i = 0; i < u.length; i++) d |= u[i] ^ v[i]; return d === 0;
 }
-globalThis.process ??= { env: {} };
 Deno.serve(async req => {
+  try { return await handle(req); }
+  catch (e) { return sbJson(500, { error: { message: '중계 안에서 오류가 났어요: ' + String(e && e.message || e) } }); }
+});
+async function handle(req) {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: SB_CORS });
-  Object.assign(process.env, Deno.env.toObject());
+  const E = globalThis.__relayEnv = Deno.env.toObject();   // Supabase 는 환경 변수에 쓸 수 없다 — 중계 코드가 이것을 읽는다
   const url = new URL(req.url); let parts = url.pathname.split('/').filter(Boolean);
   if (parts[0] === 'functions' && parts[1] === 'v1') parts = parts.slice(2);
   const fname = parts.shift() || 'relay', base = String(Deno.env.get('SUPABASE_URL') || url.origin).replace(/\/+$/, ''), self = `${base}/functions/v1/${fname}`;
-  const regions = (l => l.length ? l : SB_REGIONS)(String(process.env.HOP_REGIONS || '').split(/[\s,]+/).filter(r => SB_REGIONS.includes(r) || /^[a-z]{2}-[a-z]+-\d$/.test(r)));
+  const regions = (l => l.length ? l : SB_REGIONS)(String(E.HOP_REGIONS || '').split(/[\s,]+/).filter(r => SB_REGIONS.includes(r) || /^[a-z]{2}-[a-z]+-\d$/.test(r)));
   const at = req.headers.get('x-relay-at') || '', here = at || Deno.env.get('SB_REGION') || 'edge';
-  if (parts[0] === 'health') return sbJson(200, { ok: true, key: !!String(process.env.RELAY_KEY || '').trim(), region: Deno.env.get('SB_REGION') || '', regions, googleKeys: keyCount(), studioKeys: studioCount(), unreadable: bad.slice() });
+  if (parts[0] === 'health') return sbJson(200, { ok: true, key: !!String(E.RELAY_KEY || '').trim(), region: Deno.env.get('SB_REGION') || '', regions, googleKeys: keyCount(), studioKeys: studioCount(), unreadable: bad.slice() });
   const toRegion = (region, path, init) => fetch(`${self}${path}${path.includes('?') ? '&' : '?'}forceFunctionRegion=${region}`, { ...init, headers: { ...Object.fromEntries(new Headers(init.headers || {})), 'x-region': region, 'x-relay-at': region } });
   // 처음 받은 곳(보통 내게 가까운 서울 · 도쿄)에서 바로 구글로 보내지 않는다: 주소에 지역이 있으면 그 지역, 없으면 첫 지역에서 시작한다
   const isRegion = r => SB_REGIONS.includes(r) || /^[a-z]{2}-[a-z]+-\d$/.test(r);
@@ -32,7 +35,7 @@ Deno.serve(async req => {
   }
   hop.regions = regions;
   hop.send = (_u, next, init) => toRegion(next, '/v1/chat/completions', init);
-  const KEY = String(process.env.RELAY_KEY || '').trim();
+  const KEY = String(E.RELAY_KEY || '').trim();
   const oa = i => parts[i] === 'v1' && (parts[i + 1] === 'models' || (parts[i + 1] === 'chat' && parts[i + 2] === 'completions'));
   if (oa(0)) return openai(req, here, parts, url, false);
   if (KEY && parts.length > 1 && oa(1) && (await sbSame(parts[0], KEY))) return openai(req, here, parts.slice(1), url, true);
@@ -47,4 +50,4 @@ Deno.serve(async req => {
   catch (e) { return sbJson(502, { error: 'relay could not reach Vertex AI: ' + (e && e.message || e) }); }
   const out = new Headers(SB_CORS); out.set('Content-Type', up.headers.get('content-type') || 'application/octet-stream'); out.set('Cache-Control', 'no-store'); out.set('X-Relay-Region', here);
   return new Response(up.body, { status: up.status, headers: out });
-});
+}

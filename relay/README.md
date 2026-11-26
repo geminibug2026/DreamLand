@@ -171,7 +171,8 @@ Vertex 의 Gemini 는 리전마다 처리 용량을 따로 나눠 쓰므로, 이
 
 1. supabase.com 에서 프로젝트를 하나 만듭니다 (무료).
 2. Edge Functions → 새 함수 → 편집기에서 만들기. 이름은 `relay`. `relay/supabase/index.ts` 내용을 통째로 붙여 넣고 배포합니다.
-3. 그 함수의 설정에서 **Enforce JWT Verification(JWT 확인)을 끕니다.** (프로그램은 Supabase 토큰이 아니라 RELAY_KEY 를 보냅니다)
+3. 그 함수의 Details 에서 **Verify JWT with legacy secret(예전 이름 Enforce JWT Verification)을 끄고 Save changes.** (프로그램은 Supabase 토큰이 아니라 RELAY_KEY 를 보냅니다)
+   프로젝트를 만들 때 고르는 데이터베이스 지역은 상관없습니다 (중계는 데이터베이스를 쓰지 않고, 함수가 도는 지역은 요청마다 따로 고릅니다).
 4. Edge Functions → Secrets 에 `RELAY_KEY`, `API_1` 등을 넣습니다. `HOP_REGIONS` 로 지역과 순서를 바꿉니다.
 5. 실리태번 · 마리나라: `https://<프로젝트>.supabase.co/functions/v1/relay/v1` + API 키 `RELAY_KEY`
 

@@ -10367,7 +10367,7 @@
   "conns.relay.cfOld": "If the deploy button fails (paste code · one region)",
   "conns.relay.sb1": "Sign up at Supabase and create a new project (free).",
   "conns.relay.sb2": "Edge Functions → Deploy a new function → Via Editor. Name it relay, paste all of the copied code, Deploy.",
-  "conns.relay.sb3": "In that function's settings turn off \"Enforce JWT Verification\" and save. Left on, you get 401.",
+  "conns.relay.sb3": "In that function's Details, turn off \"Verify JWT with legacy secret\" (formerly \"Enforce JWT Verification\") and Save changes. Left on, you get 401.",
   "conns.relay.sb4": "Edge Functions → Secrets: name RELAY_KEY, value = the password below.",
   "conns.relay.sb5": "Paste the function address (https://….supabase.co/functions/v1/relay) into \"Relay address\" below.",
   "conns.relay.keyHint": "Keeps others from using your relay. Enter exactly this text in the steps above.",

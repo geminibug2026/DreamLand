@@ -10287,7 +10287,7 @@
   "conns.relay.cfOld": "배포 버튼이 안 되면 (코드 붙여넣기 · 한 지역)",
   "conns.relay.sb1": "Supabase 에 가입하고 새 프로젝트를 만들어요 (무료).",
   "conns.relay.sb2": "Edge Functions → Deploy a new function → Via Editor. 이름은 relay, 복사한 코드를 통째로 붙여넣고 Deploy.",
-  "conns.relay.sb3": "그 함수의 설정에서 「Enforce JWT Verification」을 끄고 저장해요. 켜 두면 401 이 나요.",
+  "conns.relay.sb3": "그 함수의 Details(설정)에서 「Verify JWT with legacy secret」(예전 이름 Enforce JWT Verification)을 끄고 Save changes. 켜 두면 401 이 나요.",
   "conns.relay.sb4": "Edge Functions → Secrets 에 이름 RELAY_KEY, 값은 아래 암호를 넣어요.",
   "conns.relay.sb5": "함수 주소(https://….supabase.co/functions/v1/relay)를 아래 「중계 주소」에 붙여넣어요.",
   "conns.relay.keyHint": "남이 내 중계를 못 쓰게 막는 암호예요. 위 단계에서 이 글자를 그대로 넣어요.",

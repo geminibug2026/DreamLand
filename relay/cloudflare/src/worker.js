@@ -22,10 +22,10 @@ async function same(a, b) {
   const enc = new TextEncoder(), [x, y] = await Promise.all([a, b].map(s => crypto.subtle.digest('SHA-256', enc.encode(s))));
   const u = new Uint8Array(x), v = new Uint8Array(y); let d = 0; for (let i = 0; i < u.length; i++) d |= u[i] ^ v[i]; return d === 0;
 }
-/** 워커의 변수를 중계 코드가 읽는 자리(process.env)로 */
+/** 워커의 변수를 중계 코드가 읽는 자리로 (환경 변수에 쓰지 않는다 — 쓸 수 없는 곳이 있다) */
 function setEnv(env) {
-  globalThis.process ??= { env: {} }; process.env ??= {};
-  for (const [k, v] of Object.entries(env || {})) if (typeof v === 'string') process.env[k] = v;
+  const out = {}; for (const [k, v] of Object.entries(env || {})) if (typeof v === 'string') out[k] = v;
+  globalThis.__relayEnv = out;
 }
 const regionsOf = env => { const l = String(env.HOP_REGIONS || '').split(/[\s,]+/).filter(r => HINTS.includes(r)); return l.length ? l : ['enam', 'wnam', 'weur', 'eeur', 'sam', 'oc', 'apac']; };
 /** 그 지역의 일꾼에게 넘긴다 (지역마다 이름이 하나 — 처음 만들 때 그 지역 근처에 자리 잡는다) */

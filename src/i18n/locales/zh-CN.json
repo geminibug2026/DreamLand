@@ -10287,7 +10287,7 @@
   "conns.relay.cfOld": "部署按钮不行时（粘贴代码 · 单区域）",
   "conns.relay.sb1": "在 Supabase 注册并新建项目（免费）。",
   "conns.relay.sb2": "Edge Functions → Deploy a new function → Via Editor。名称 relay，整段粘贴复制的代码，Deploy。",
-  "conns.relay.sb3": "在该函数的设置中关闭“Enforce JWT Verification”并保存。开着会出现 401。",
+  "conns.relay.sb3": "在该函数的 Details 中关闭“Verify JWT with legacy secret”（旧名 Enforce JWT Verification）并 Save changes。开着会出现 401。",
   "conns.relay.sb4": "Edge Functions → Secrets：名称 RELAY_KEY，值为下面的密码。",
   "conns.relay.sb5": "把函数地址（https://….supabase.co/functions/v1/relay）粘贴到下面的“中转地址”。",
   "conns.relay.keyHint": "防止别人使用你的中转。在上面的步骤中原样填写这段文字。",
