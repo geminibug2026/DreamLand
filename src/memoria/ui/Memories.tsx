@@ -9,6 +9,7 @@ import { toast } from '../../ui';
 import { t } from '../../i18n';
 import { Tr } from './ReaderView';
 import * as memMod from '../../lib/memory';
+import { useWindow } from './parts';
 
 const memDefs = (owners: string[]): FormDefs => {
   const { KINDS, VIS } = memMod;
@@ -67,6 +68,8 @@ export function Memories({ st }: { st: StOpen }) {
     && (!q || `${m.summary} ${m.quote || ''} ${(m.entities || []).join(' ')} ${(m.tags || []).join(' ')} ${(m.hints || []).join(' ')} ${(m.knowers || []).join(' ')}`.toLowerCase().includes(q))).sort(sorts[st.sort] || sorts.new);
   const sel = (key: FilterKey, opts: (readonly [string, string])[], title: string, full = false) => <select className="inp auto" title={title} value={st[key] || ''} onChange={e => { st[key] = e.target.value; if (full) st.draw(); else drawList(); }}>{opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>;
   const kinds = Object.keys(KINDS).map(k => [k, mem.memories.filter(m => m.kind === k).length] as const).filter(x => x[1]);
+  // 카드는 보이는 만큼만 그린다 (200장을 한 번에 그리느라 탭이 늦게 뜨고 검색어 한 글자마다 멈췄다) — 내려가면 이어서 그린다. 거르는 조건이 바뀌면 처음부터
+  const [shown, more] = useWindow(st, `mem|${st.kind}|${st.vis}|${st.owner}|${st.sort}|${st.only}|${q}`, Math.min(200, items.length), 24);
   const people = [...new Set([...owners, ...mem.memories.flatMap(m => m.knowers || [])])];
   return <div className="mm-view" onClick={onJump(st)}><Sec title={t('memoria.memories.title')} desc={t('memoria.memories.desc')} tools={<Btn label={t('common.add')} ic="plus" title={t('memoria.memories.addBtnTitle')} onClick={() => void editMem(st)} />}>
     <div className="mm-toolbar"><input className="inp" type="search" placeholder={t('memoria.memories.searchPh')} defaultValue={st.q || ''} onChange={e => { st.q = e.target.value; drawList(); }} />{sel('kind', [['', t('memoria.memories.all')], ...Object.entries(KINDS)], t('memoria.memories.f.kind'), true)}{sel('vis', [['', t('memoria.memories.allVis')], ...Object.entries(VIS)], t('memoria.memories.vis'))}{people.length ? sel('owner', [['', t('memoria.memories.allKnowers')], ...people.map(o => [o, o] as const)], t('memoria.memories.ownerOrKnower')) : null}
@@ -74,6 +77,6 @@ export function Memories({ st }: { st: StOpen }) {
     <div className="mm-toolbar" title={t('memoria.memories.muteTitle')}><input className="inp" type="text" autoComplete="off" placeholder={t('memoria.memories.mutePh')} aria-label={t('memoria.memories.mutePh')} defaultValue={(mem.recallMute || []).join(', ')} onBlur={e => void setMute(e.currentTarget)} onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.blur(); } }} /></div>
     {kinds.length ? <div className="mm-kindbar">{kinds.map(([k, n]) => <button key={k} type="button" className={`mm-kindchip k-${safe(k)}${st.kind === k ? ' on' : ''}`} onClick={() => { st.kind = st.kind === k ? '' : k; st.draw(); }}>{KINDS[k]}<small>{String(n)}</small></button>)}</div> : null}
     <small className="hint">{t('memoria.memories.count', { total: mem.memories.length, shown: items.length }) + (items.length > 200 ? t('memoria.memories.first200') : '')}</small>
-    <div className="mm-list mm-st-results">{items.slice(0, 200).map(card)}{items.length ? null : <None text={mem.memories.length ? t('memoria.memories.emptyFiltered') : t('memoria.memories.empty')} />}</div>
+    <div className="mm-list mm-st-results">{items.slice(0, shown).map(card)}{more}{items.length ? null : <None text={mem.memories.length ? t('memoria.memories.emptyFiltered') : t('memoria.memories.empty')} />}</div>
   </Sec></div>;
 }

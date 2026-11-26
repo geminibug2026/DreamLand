@@ -16,6 +16,7 @@ import type { Usage } from '../craft';
 import { t } from '../../i18n';
 import { applyUndo } from './undo';
 import { cutReply, dropTies, hostNoteOf, moveTies } from './ties';
+import { on as onEvent } from '../../lib/core';
 
 /** waitForChatIdle 이 받는 일 이름(한국어 id) → 화면 글 키 */
 const WAIT_WHAT: Record<string, string> = { '기록': 'record', '연속성 검사': 'check', '턴 기록': 'turn', '장면 연출': 'direct', '요약·서고 정리': 'tidy' };
@@ -144,6 +145,11 @@ export interface Part1 {
   post(chat: ChatM, msgs: Msg[], signal?: AbortSignal): Promise<void>;
 }
 
+// 설정 묶음(cfg)은 한 번에 이어지는 일 안에서는 한 번만 짓는다 — 메시지마다 부르는 곳(막간 가리기 · 상태창 읽기)이 있어 긴 대화에서는 한 번 훑는 데 수백 번을 새로 지었다.
+// 설정이 저장되거나(S.set 의 'settings') 그 일이 끝나면 버린다. 돌려받은 묶음은 고치지 않는다 (설정을 그 자리에서 고쳤으면 바로 S.set 으로 저장한다)
+let cfgMemo: { s: unknown; c: Cfg } | null = null;
+onEvent('settings', () => { cfgMemo = null; });
+
 export const part1: Part1 & ThisType<MemoryApi> = {
   async load(chatId) {
     if (!cache.has(chatId)) {
@@ -161,11 +167,12 @@ export const part1: Part1 & ThisType<MemoryApi> = {
   async save(mem) { cache.set(mem.id, mem); await DB.put('mem', mem); emit('memory', mem); },
   async reset(chatId) { const m = empty(chatId); await this.save(m); overrides.delete(chatId); audits.delete(chatId); lasts.delete(chatId); freezes.delete(chatId); recallRuns.delete(chatId); return m; },
   cfg() {
-    const s: RawCfg = S.settings.memory || {}; this.migrateSettings(s);
+    const s: RawCfg = S.settings.memory || {}; if (cfgMemo && cfgMemo.s === s) return cfgMemo.c; this.migrateSettings(s);
     const c: Cfg = { ...MEMORY_DEFAULTS, ...s, embed: { ...MEMORY_DEFAULTS.embed, ...(s.embed || {}) }, prompts: { ...MEMORY_DEFAULTS.prompts, ...(s.prompts || {}) }, fossil: fossilShape(s.fossil) };
     // 빈 문자열 = 기본값. 옛 기본 프롬프트를 그대로 저장해 둔 것도 손대지 않은 것이므로 새 기본값을 쓴다
     if (c.prompt && untouchedPrompt('archivist', c.prompt)) c.prompt = '';
     for (const k of ['supervisor', 'chunk', 'arc']) if (c.prompts[k] && untouchedPrompt(k, c.prompts[k])) c.prompts[k] = '';
+    if (S.settings.memory === s) { cfgMemo = { s, c }; queueMicrotask(() => { cfgMemo = null; }); }
     return c;
   },
   /**

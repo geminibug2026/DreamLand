@@ -11060,6 +11060,8 @@
   "memoria.config.inject.pledgeSweepTurns.label": "誓约梳理（回合）",
   "memoria.config.inject.pledgeSweepTurns.title": "每个对话一次，此后每累积此数量的回复，把较早的誓约与至今的摘要对照，给已经结束的标上“似乎已解决”（调用模型 1 次。带标记的誓约在确认前也不会注入。0 = 关闭）",
   "memoria.overview.sec.returning": "久别归来的人",
+  "memoria.overview.sec.feelings": "此刻的心情",
+  "memoria.overview.sec.driftNotes": "与记录保持一致",
   "editors.sheet.del.title": "要删除 {name} 吗？",
   "editors.sheet.del.solo.one": "只和这个角色进行的对话有 {count} 个。请选择是否一起删除。",
   "editors.sheet.del.solo.other": "只和这个角色进行的对话有 {count} 个。请选择是否一起删除。",

@@ -1,12 +1,12 @@
 // 장기기억 — 인물 탭: 인물 목록 → 한 사람에 관한 모든 것을 한 장에
 // 세계 탭은 선반별(인물 · 관계 · 약속 · 상태 …)로 쌓여 있어 "이 사람은 지금 어떤가"를 보려면 여러 칸을 오가야 한다. 여기서는 사람을 축으로 다시 모은다.
 // 모으기만 한다 — 고칠 때는 세계 · 기억 탭의 편집 상자를 그대로 연다. 좁은 화면에서는 목록과 한 장이 서로 자리를 바꾼다(뒤로 단추).
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import { Btn } from '../../kit';
 import type { MemItem, Pledge } from '../types';
 import { crossScriptSame } from '../craft';
 import { NOW_ORDER, matchPerson, nameKey, nameSuggestions, peopleList, personPage, type NowKind, type PersonRow } from '../people';
-import { Chip, Ib, Ico, None, mergeCast, safe, showSource, turnTag, useBump, type StOpen } from './parts';
+import { Chip, Ib, Ico, None, mergeCast, revNow, safe, showSource, turnTag, useBump, type StOpen } from './parts';
 import { Gi, noMap, onJump } from './viewsShared';
 import { editMem } from './Memories';
 import { NameTidy } from './NameTidy';
@@ -140,10 +140,12 @@ function Person({ st, row }: { st: StOpen; row: PersonRow }) {
 }
 
 export function People({ st }: { st: StOpen }) {
-  const mem = st.mem, v = peopleState(st), drawList = useBump();
-  if (v.view === 'tidy') return <NameTidy st={st} back={() => { v.view = 'list'; st.draw(); }} />;
-  const all = peopleList(mem), sel = v.name ? all.find(p => nameKey(p.name) === nameKey(Memory.canonName(mem, v.name))) || null : null;
-  const rows = all.filter(p => matchPerson(p, v.q)), hints = nameSuggestions(mem, crossScriptSame).length;
+  const mem = st.mem, v = peopleState(st), drawList = useBump(), rv = revNow(), tidy = v.view === 'tidy';
+  // 목록과 이름 정리 권유는 서고가 그대로인 동안 한 번만 센다 (검색칸에 글자를 칠 때마다 전부 다시 세던 것)
+  const all = useMemo(() => tidy ? [] : peopleList(mem), [mem, rv, tidy]), hints = useMemo(() => tidy ? 0 : nameSuggestions(mem, crossScriptSame).length, [mem, rv, tidy]);
+  if (tidy) return <NameTidy st={st} back={() => { v.view = 'list'; st.draw(); }} />;
+  const sel = v.name ? all.find(p => nameKey(p.name) === nameKey(Memory.canonName(mem, v.name))) || null : null;
+  const rows = all.filter(p => matchPerson(p, v.q));
   const pick = (p: PersonRow) => { v.name = p.name; st.draw(); };
   const item = (p: PersonRow) => { const c = p.card, meta = [c?.role, c?.age, c?.occupation].filter(Boolean).join(' · ');
     return <button key={nameKey(p.name)} type="button" className={`mm-pp-item${sel && nameKey(sel.name) === nameKey(p.name) ? ' on' : ''}${c?.disabled ? ' off' : ''}${c ? '' : ' stray'}`} onClick={() => pick(p)}>

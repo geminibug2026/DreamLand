@@ -436,3 +436,23 @@
 .mm-au-issues { display: flex; flex-direction: column; min-width: 0; } .mm-au-issue { display: flex; flex-direction: column; gap: 7px; padding: 10px 0; min-width: 0; } .mm-au-issue + .mm-au-issue { border-top: 1px dashed var(--line-3); }
 .mm-au-issue p { font-size: .92em; line-height: 1.6; } .mm-au-issue p .mm-tag { margin: 0 6px 0 0; } .mm-au-issue.done p { color: var(--dim); } .mm-au .mm-details .mm-au-card { margin-bottom: 8px; }
 
+
+/* ── 가볍게 그리기 · 탭 줄 · 좁은 화면의 누름 자리 ──
+   .mm-end: 긴 목록에서 "여기까지 그렸다"는 자리 (화면에 가까워지면 이어서 그린다). 보이지 않는다 */
+.mm-end { display: block; flex: none; height: 1px; grid-column: 1 / -1; pointer-events: none; }
+/* 탭 줄: 탭이 늘어도 글자가 눌리지 않고 옆으로 민다. 더 있는 쪽 끝은 흐리게 (more-l · more-r 는 Archive 가 붙인다) */
+.mm-tabs { overscroll-behavior-x: contain; } .mm-tabs .tab { flex: none; }
+.mm-tabs.more-r { -webkit-mask-image: linear-gradient(to left, transparent, #000 30px); mask-image: linear-gradient(to left, transparent, #000 30px); }
+.mm-tabs.more-l { -webkit-mask-image: linear-gradient(to right, transparent, #000 30px); mask-image: linear-gradient(to right, transparent, #000 30px); }
+.mm-tabs.more-l.more-r { -webkit-mask-image: linear-gradient(to right, transparent, #000 30px, #000 calc(100% - 30px), transparent); mask-image: linear-gradient(to right, transparent, #000 30px, #000 calc(100% - 30px), transparent); }
+/* 머리의 숫자 줄이 마지막 숫자 하나만 다음 줄로 넘기지 않게 · 서고 목록의 캐릭터 얼굴이 옆으로 늘어나 납작한 띠가 되던 것 (머리의 div 를 모두 늘리는 규칙에 함께 걸렸다) */
+.mm-status span { text-wrap: pretty; } .mm-owner > header > .avatar { flex: none; display: grid; }
+@media (max-width: 820px) {
+  /* 숫자 띠: 칸 수가 3의 배수가 아니면 마지막 줄이 한쪽에 몰려 테두리가 끊겼다 — 남는 칸이 줄을 채운다 */
+  .mm-stats:not(.small) { display: flex; flex-wrap: wrap; } .mm-stats:not(.small) > * { flex: 1 1 33.3%; } .mm-stats:not(.small) > *:nth-child(3n) { border-right: 0; }
+  /* 누름 자리 34px 이상 — 작은 아이콘 단추는 줄 높이를 그대로 두고 누르는 넓이만 키운다 (인물 · 이름 정리 · 날 세기는 이미 40px) */
+  .mm .ibtn.tiny:not(.mm-pp .ibtn, .mm-nt .ibtn, .mm-tk .ibtn) { width: 34px; height: 34px; margin: -4px 0; }
+  .mm-kindchip, .check.mm-inline, .mm-owner > header .btn { min-height: 34px; } .mm-more, .mm-st-seg button { min-height: 36px; } .mm-lib .check.mm-inline { min-width: 34px; justify-content: center; }
+  .mm-st-jump:not(.mm-pp .mm-st-jump), .mm-revive, .mm-said .mm-line button { position: relative; }
+  .mm-st-jump:not(.mm-pp .mm-st-jump)::after, .mm-revive::after { content: ""; position: absolute; inset: -8px -3px; } .mm-said .mm-line button::after { content: ""; position: absolute; inset: -11px -9px; }
+}

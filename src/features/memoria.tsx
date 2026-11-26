@@ -101,6 +101,33 @@ function MsgMemories({ mem, turnMsgId }: { mem: Mem; turnMsgId: string }) {
     {rows.map(m => <article key={m.id} className="mm-card"><header><KindBadge k={m.kind} /><span className="mm-turn">{turnTag(mem, m)}</span>{m.retired ? <span className="tokbadge">{t('memoria.memories.only.retired')}</span> : null}</header><p className="mm-sum">{m.summary}</p>{m.quote ? <blockquote>{`"${m.quote}"`}</blockquote> : null}</article>)}{!rows.length ? <None text={t('memoria.feat.act.memsNone')} /> : null}</div>;
 }
 
+// ════════ 대화를 연 뒤 · 답변을 받은 뒤 틈날 때 미리 읽어 두기 ════════
+/**
+ * 서로 부르는 말은 최근 80메시지의 대사마다 말한 사람을 찾아야 해서 무겁다 (대사가 많은 긴 답변일수록). 엔진이 메시지마다 결과를 기억해 두지만,
+ * 안 읽어 둔 메시지는 다음 답변 요청 때 한꺼번에 읽느라 그 요청이 늦게 떠났다 — 방을 연 뒤의 첫 요청이 특히 그랬다.
+ * 쉬는 틈에 메시지 하나씩 미리 읽어 둔다 (읽기만 한다 — 서고는 바뀌지 않는다). 장기기억이 꺼져 있거나 답변을 받는 중이면 하지 않는다
+ */
+let warmJob = 0;
+function warmAddress(chat?: ChatM | null, wait = 1500) {
+  const job = ++warmJob, M = Memory; if (!chat || !M.cfg().enabled) return;
+  const later = (fn: (d?: IdleDeadline) => void) => { if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(fn, { timeout: 2000 }); else setTimeout(fn, 120); };
+  let at = -1;
+  const step = (d?: IdleDeadline) => {
+    try {
+      do {
+        const c = M.cfg(), now = cur(); if (job !== warmJob || !c.enabled || c.addressTerms === false || !isCur(chat) || now.busy) return;
+        const mem = M.get(chat.id), msgs = now.msgs; if (!mem || !msgs.length) return;
+        if (at < 0 && String(M.scene(mem).present || '').split(/[,，、]/).filter(x => x.trim()).length < 2) return;   // 장면에 둘 이상 있을 때만 장부에 실린다
+        if (at < 0 || at > msgs.length) at = msgs.length;
+        if (at <= Math.max(0, msgs.length - 80)) return;
+        at--; M.addressRows(chat, mem, msgs.slice(at, at + 1));   // 끝에서부터 하나씩 — 이미 읽은 메시지는 엔진이 건너뛴다
+      } while (d && !d.didTimeout && d.timeRemaining() > 6);
+      later(step);
+    } catch (e) { console.warn('[장기기억] 부르는 말 미리 읽기', e); }
+  };
+  setTimeout(() => later(step), wait);
+}
+
 function setup() {
   if (!document.querySelector('link[data-memoria]')) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = new URL('css/f-memoria.css', document.baseURI).href; l.dataset.memoria = '1'; document.head.append(l); }
   const x = X, { on } = core, M = Memory, { fmtDays } = memMod;
@@ -227,13 +254,14 @@ function setup() {
       if (!cfg.auto && !side && (cfg.supervisor || cfg.autoHide || cfg.embed?.mode === 'api')) { const prep = t('memoria.feat.ev.preparing'); setActivity(prep); try { await M.post(chat, msgs); } finally { if (activityText() === prep) setActivity(''); } }
     } catch (e) { console.warn('[장기기억]', e); M.logActivity?.('error', t('memoria.engine.log.eventError', { why: (e as Error)?.message || e })); }
   });
+  on('message:received', (a?: { chat?: ChatM }) => warmAddress(a?.chat, 800));   // 새 답변의 부르는 말도 다음 요청 전에 읽어 둔다
   on('memory:msgs', (chat?: ChatM) => { if (isCur(chat)) chatApi.redraw(); });
   on('memory:hidden-first', (d?: { chat: ChatM; n: number }) => { if (d && isCur(d.chat)) toast(t('memoria.feat.hiddenFirst', { n: d.n })); });
   on('memory:unhid', (d?: { chat: ChatM; n: number }) => { if (d && isCur(d.chat)) toast(t('memoria.feat.unhid', { n: d.n })); });
   on('memory:check', () => queueDecorate());   // 엔진이 점검 결과를 메시지에 붙였을 때
   // 뒤에서 도는 기억 작업(기록 · 검사 · 채점 · 수정)을 머리 · 패널의 「상태:」 줄에 띄운다
   let jobText = ''; on('memory:job', (j?: { text?: string } | null) => { const text = j?.text || ''; if (text || activityText() === jobText) setActivity(text); jobText = text; });
-  on('chat:open', (chat?: ChatM | null) => { setFocus(chat?.id); ensureCfg(); setTimeout(queueDecorate, 600); });
+  on('chat:open', (chat?: ChatM | null) => { setFocus(chat?.id); ensureCfg(); setTimeout(queueDecorate, 600); warmAddress(chat); });
   installConfigEvents();   // 대화를 열면 그 대화의 설정 세트로 갈아 끼운다 (옛 memoria-settings.js 의 chat:open)
 }
 

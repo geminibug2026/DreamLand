@@ -1,6 +1,8 @@
 // 장기기억 — 서고 화면 조립 (옛 f-memoria.js 의 mount · openArchive · roomPick · 머리 · 탭)
 // 기능 탭(스튜디오)과 서고 창이 함께 쓴다
 import { Component, memo, useEffect, useReducer, type ReactNode } from 'react';
+import { startTransition, useRef } from 'react';
+import { bumpRev } from './parts';
 import { Btn, IconBtn, mountInto } from '../../kit';
 import type { ChatM } from '../types';
 import { Audit } from './Audit';
@@ -41,6 +43,8 @@ function wire() {
   on('memory', debounce(refreshHeads, 150)); on('memory:busy', refreshHeads);
   // 장부의 모양을 바꾸는 설정을 고쳤을 때(엔진의 reinjectNow) — 미리보기를 고치는 중이 아니면 개요를 다시 그린다
   on('memory:packet', (id?: string) => { for (const st of alive()) if (st.tab === 'overview' && st.chat && (!id || st.chat.id === id) && !document.activeElement?.classList?.contains('mm-preview')) st.draw(); });
+  // 서고 · 대화 · 설정이 바뀌면 화면이 계산해 둔 것(장부 미리보기 · 맞지 않는 기록)을 버린다 — 탭만 오갈 때는 그대로 쓴다
+  for (const ev of ['memory', 'memory:packet', 'memory:msgs', 'memory:check', 'settings', 'chat:open', 'message:sent', 'message:received', 'message:edited', 'message:updated', 'message:deleted', 'message:swiped']) on(ev, bumpRev);
 }
 
 // ════════ 머리: 상태 · 대화방 고르기 · 기록 · 갱신 ════════
@@ -102,11 +106,22 @@ const Body = memo(function Body({ st, n }: { st: St; n: number }) {
 function Archive({ st, chatId }: { st: St; chatId?: string | null }) {
   const [, bumpHead] = useReducer((x: number) => x + 1, 0), [n, bumpBody] = useReducer((x: number) => x + 1, 0);
   st.head = bumpHead;
-  st.draw = () => { lastTab = st.tab; bumpHead(); bumpBody(); };
+  st.draw = () => { bumpRev(); lastTab = st.tab; bumpHead(); bumpBody(); };   // 무언가 고친 뒤 부른다 — 계산해 둔 것도 새로 한다
+  st.ease = () => { lastTab = st.tab; bumpHead(); startTransition(bumpBody); };   // 누른 탭 표시가 먼저 뜨고, 몸통은 화면을 붙잡지 않고 뒤따른다
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { wire(); mounted.add(st); void st.load(chatId || focus); return () => { mounted.delete(st); }; }, []);
+  // 탭 줄: 탭이 열 개쯤 되면 좁은 화면에서는 옆으로 민다 — 고른 탭이 가려지지 않게 끌어오고, 더 있는 쪽 끝을 흐리게 한다
+  const bar = useRef<HTMLDivElement>(null), first = useRef(true);
+  const edges = () => { const el = bar.current; if (!el) return; el.classList.toggle('more-l', el.scrollLeft > 4); el.classList.toggle('more-r', el.scrollLeft + el.clientWidth < el.scrollWidth - 4); };
+  useEffect(() => {
+    const el = bar.current, on = el?.querySelector<HTMLElement>('.tab.on');
+    if (el && on) { const b = el.getBoundingClientRect(), r = on.getBoundingClientRect(); if (r.left < b.left + 28 || r.right > b.right - 28) el.scrollTo({ left: Math.max(0, el.scrollLeft + r.left - b.left - (b.width - r.width) / 2), behavior: first.current ? 'auto' : 'smooth' }); }
+    first.current = false; edges();
+  }, [st.tab]);
+  useEffect(() => { addEventListener('resize', edges); return () => removeEventListener('resize', edges); }, []);
+  const pick = (id: string) => { if (st.tab === id) return st.draw(); st.win = {}; st.tab = id; st.ease!(); };
   return <><Head st={st} />
-    <div className="tabs mm-tabs" role="tablist" aria-label={t('memoria.archive.title')}>{TABS.map(([id, label, ic]) => <button key={id} className={`tab${st.tab === id ? ' on' : ''}`} type="button" role="tab" aria-selected={String(st.tab === id) as 'true' | 'false'} onClick={() => { st.tab = id; st.draw(); }}><Ico name={ic} size={15} /><span>{t(label)}</span></button>)}</div>
+    <div className="tabs mm-tabs" ref={bar} onScroll={edges} role="tablist" aria-label={t('memoria.archive.title')}>{TABS.map(([id, label, ic]) => <button key={id} className={`tab${st.tab === id ? ' on' : ''}`} type="button" role="tab" aria-selected={String(st.tab === id) as 'true' | 'false'} onClick={() => pick(id)}><Ico name={ic} size={15} /><span>{t(label)}</span></button>)}</div>
     <Body st={st} n={n} /></>;
 }
 
@@ -115,11 +130,12 @@ function newSt(host: HTMLElement, tab?: string, close?: () => void): St {
     chat: null, mem: null, msgs: [], tab: tab || lastTab, q: '', kind: '', vis: '', owner: '', sort: 'new', only: '', log: [], draft: null, answer: '', question: '', story: null, close, host,
     draw() { }, head() { },
     async load(id) {
-      const s = S, chat = s.get('chats', id) || cur().chat || s.get('chats', s.settings.lastChat) || [...s.chats].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0] || null;
-      if (chat?.id !== st.chat?.id) { st.log = []; st.draft = null; st.answer = ''; st.question = ''; st.story = null; }   // 편집 대화 · 초안 · 이야기 탭의 보기 상태는 그 대화의 것
+      const s = S, again = !!st.chat, chat = s.get('chats', id) || cur().chat || s.get('chats', s.settings.lastChat) || [...s.chats].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0] || null;
+      if (chat?.id !== st.chat?.id) { st.log = []; st.draft = null; st.answer = ''; st.question = ''; st.story = null; st.win = {}; }   // 편집 대화 · 초안 · 이야기 탭의 보기 상태는 그 대화의 것
       st.chat = chat; focus = chat?.id || '';
       if (chat) { st.mem = await Memory.load(chat.id); st.msgs = await msgsOf(chat); } else { st.mem = null; st.msgs = []; }
-      st.draw();
+      if (again) bumpRev();   // 다시 불러올 때(기록 · 복원 뒤)는 계산해 둔 것도 새로 한다. 창을 새로 열 때는 그대로 쓴다
+      (st.ease || st.draw)();   // 창 틀 · 머리부터 뜨고 몸통이 뒤따른다
     },
     reload() { return st.load(st.chat?.id); },
   };
@@ -139,7 +155,8 @@ export function openArchive(chat?: ChatM | null, tab?: string) {
   const modals = document.getElementById('modals')!;
   const wrap = document.createElement('div'); wrap.className = 'mm-wrap';
   let off = () => { };
-  const close = () => { wrap.classList.add('out'); setTimeout(() => { wrap.remove(); off(); }, 180); document.removeEventListener('keydown', key); if (cur().chat) chatApi.redraw(); };
+  // 닫을 때: 사라지는 것부터 보이고, 대화 화면은 창이 걷힌 다음에 고친다 (대화를 다시 그리느라 닫기가 늦게 먹던 것)
+  const close = () => { wrap.classList.add('out'); setTimeout(() => { wrap.remove(); off(); if (cur().chat) chatApi.redraw(); }, 180); document.removeEventListener('keydown', key); };
   const key = (e: KeyboardEvent) => { if (e.key === 'Escape' && wrap === modals.lastElementChild && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) close(); };
   wrap.addEventListener('mousedown', e => { if (e.target === wrap) close(); });
   modals.append(wrap); document.addEventListener('keydown', key);

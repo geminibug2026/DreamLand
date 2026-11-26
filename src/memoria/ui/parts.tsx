@@ -1,5 +1,5 @@
 // 장기기억 화면이 함께 쓰는 작은 부품 · 창 · 상태 꼴 (옛 f-memoria.js 의 「작은 도구」와 도우미 묶음)
-import { useReducer, type ReactNode } from 'react';
+import { useCallback, useEffect, useReducer, useRef, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { Form, confirmBox, openModal, type FormDefs, toast } from '../../ui';
@@ -28,6 +28,10 @@ export interface St {
   draw(): void;
   /** 머리(상태 줄)만 다시 그린다 */
   head(): void;
+  /** 탭을 옮기거나 대화를 불러왔을 때: 머리 · 탭 줄부터 고치고 몸통은 틈나는 대로 잇는다 (계산해 둔 것은 그대로 쓴다) */
+  ease?(): void;
+  /** 긴 목록 · 구역을 어디까지 그렸는지 (useWindow · useStaged) — 탭을 옮기면 비운다 */
+  win?: Record<string, number>;
   load(id?: string | null): Promise<void>;
   reload(): Promise<void>;
   [k: string]: unknown;
@@ -36,6 +40,40 @@ export interface St {
 export type StOpen = St & { chat: ChatM; mem: Mem };
 
 export const useBump = () => useReducer((x: number) => x + 1, 0)[1];
+
+// ════════ 긴 화면 가볍게 그리기 ════════
+/** 서고 · 대화 · 설정이 바뀔 때마다 오르는 번호 (Archive 의 wire 가 올린다). 번호가 그대로인 동안은 계산해 둔 것(장부 미리보기 · 맞지 않는 기록)을 다시 쓴다 */
+let rev = 0;
+export const bumpRev = () => { rev++; };
+export const revNow = () => rev;
+/** 긴 목록은 처음 몇 개만 그리고, 끝이 화면에 가까워지면 이어서 그린다. 그린 만큼은 st 에 적어 둬서 고친 뒤 다시 그려도 읽던 자리가 남는다 */
+export function useWindow(st: St, id: string, total: number, step = 20): [number, ReactNode] {
+  const bump = useBump(), win = st.win ||= {}, n = Math.min(total, Math.max(step, win[id] || 0)), io = useRef<IntersectionObserver | null>(null);
+  // 끝 표시가 붙을 때마다 지켜본다 (구역이 나중에 그려져 끝 표시가 뒤늦게 생겨도 놓치지 않게 ref 로 건다)
+  const end = useCallback((el: HTMLElement | null) => {
+    io.current?.disconnect(); io.current = null; if (!el) return;
+    io.current = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { win[id] = n + step; bump(); } }, { root: el.closest('.mm-scroll'), rootMargin: '700px 0px' });
+    io.current.observe(el);
+  }, [n, id]);   // eslint-disable-line react-hooks/exhaustive-deps
+  return [n, n < total ? <i ref={end} className="mm-end" aria-hidden="true" /> : null];
+}
+/** 구역이 많은 탭은 첫 구역부터 그리고 나머지는 틈나는 대로 잇는다. 돌려주는 수만큼의 단계를 그린다 (다 그린 뒤에는 다시 그려도 한 번에) */
+export function useStaged(st: St, id: string, total: number): number {
+  const bump = useBump(), win = st.win ||= {}, n = Math.min(total, win[id] || 1);
+  useEffect(() => {
+    if (n >= total) return;
+    const next = () => { win[id] = n + 1; bump(); }, idle = typeof window.requestIdleCallback === 'function', t = idle ? window.requestIdleCallback(next, { timeout: 400 }) : window.setTimeout(next, 80);
+    return () => { if (idle) window.cancelIdleCallback(t); else clearTimeout(t); };
+  }, [n, total, id]);   // eslint-disable-line react-hooks/exhaustive-deps
+  return n;
+}
+const conflictMemo = new WeakMap<Mem, { rev: number; list: unknown[] }>();
+/** 서로 맞지 않는 기록 — 개요의 숫자 띠와 세계 탭이 함께 쓴다. 서고가 그대로면 다시 찾지 않는다 */
+export function conflictsOf(m: Mem): ReturnType<typeof Memory.currentConflicts> {
+  const hit = conflictMemo.get(m); if (hit && hit.rev === rev) return hit.list as ReturnType<typeof Memory.currentConflicts>;
+  let list: ReturnType<typeof Memory.currentConflicts> = []; try { list = Memory.currentConflicts(m); } catch (e) { console.warn('[장기기억] 서로 다른 기록 찾기', e); }
+  conflictMemo.set(m, { rev, list }); return list;
+}
 
 // ════════ 아이콘 · 단추 ════════
 const IC: Record<string, string> = {
@@ -107,7 +145,7 @@ export function SceneLine({ m, sc = Memory.scene(m) }: { m: Mem; sc?: SceneNow }
 /** 숫자 띠 + 지금 장면 (개요 맨 위) */
 export function Stats({ st }: { st: StOpen }) {
   const m = st.mem, failed = m.turns.filter(t => t.failed).length, { fmtDays } = memMod;
-  let conflicts = 0; try { conflicts = Memory.currentConflicts(m).length; } catch (e) { console.warn('[장기기억] 서로 다른 기록 찾기', e); }   // 같은 사람에 대해 서로 다른 말을 하는 기록 — 세계 탭에서 고른다
+  const conflicts = conflictsOf(m).length;   // 같은 사람에 대해 서로 다른 말을 하는 기록 — 세계 탭에서 고른다
   // 숫자 띠 — 누르면 그 탭으로 간다 (장면 패널의 숫자 띠와 같은 짝)
   const tile = (n: ReactNode, l: string, tab: string, cls?: string) => <button type="button" className={cls} onClick={() => { st.tab = tab; st.draw(); }}><b>{String(n)}</b><span>{l}</span></button>;
   return <div className="mm-top"><div className="mm-stats">{tile(m.turns.length, t('memoria.parts.stat.turns'), 'summaries')}{tile(m.memories.length, t('memoria.parts.stat.memories'), 'memories')}{tile(m.cast.length, t('memoria.parts.stat.cast'), 'people')}{tile(m.pledges.filter(p => p.status === 'active').length, t('memoria.parts.stat.pledges'), 'world')}{tile(m.chunks.length + m.arcs.length, t('memoria.parts.stat.summaries'), 'summaries')}{tile(m.clockDays >= 1 / 24 ? fmtDays(m.clockDays) : '–', t('memoria.parts.stat.clock'), 'summaries')}{failed ? tile(failed, t('memoria.parts.stat.failed'), 'tools', 'bad') : null}{conflicts ? tile(conflicts, t('memoria.parts.stat.conflicts'), 'world', 'bad') : null}</div>

@@ -274,7 +274,9 @@ export function sanitizeRecord(raw: unknown): string {
   const out = kept.join('\n').trim();
   return out.replace(/^[ \t]*(?:PLOT|SHIFTS|OPEN)[ \t]*[:：][ \t]*$/gim, '').replace(/^[ \t]*WHEN[ \t]*[:：].*$/gim, '').replace(/\s/g, '').length >= 2 ? out : cleaned.trim();
 }
-export const ekey: (s: unknown) => string = s => String(s || '').toLowerCase().replace(/[\s._\-'"`]+/g, '').trim();
+// 같은 이름을 회상 한 번에 수만 번 되짚는다 (canonName 이 인물 카드마다 부른다) — 글자에서 글자로만 가는 계산이라 결과를 기억해 둔다
+const ekeys = new Map<string, string>();
+export const ekey: (s: unknown) => string = s => { const raw = String(s || ''); let k = ekeys.get(raw); if (k === undefined) { if (ekeys.size > 4000) ekeys.clear(); ekeys.set(raw, k = raw.toLowerCase().replace(/[\s._\-'"`]+/g, '').trim()); } return k; };
 
 // ── 내장 검색: 해시 임베딩 (외부 API 불필요 · 언어 무관 · 결정적) + 어휘 겹침 —
 //    단어(1.0) · 단어 안 3글자 조각(0.32) · 글 전체 3글자 조각(0.08)을 128칸에 부호를 붙여 해시한다 ──

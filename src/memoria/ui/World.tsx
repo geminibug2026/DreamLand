@@ -15,6 +15,7 @@ import * as core from '../../lib/core';
 import { t } from '../../i18n';
 import { Tr } from './ReaderView';
 import { TrackerSec } from './Trackers';
+import { conflictsOf, useStaged, useWindow } from './parts';
 
 /** 인물 편집 — 칸과 상한.
  *  달라진 점 · 남긴 말은 문구가 그대로면 원래 적힌 턴을 지키고, 새로 적은 것은 직접 적음으로 둔다 — 직접 적은 남긴 말은 고정이라 밀려나지 않는다. */
@@ -128,9 +129,11 @@ export function World({ st }: { st: StOpen }) {
 
   // ── 인물 도감
   const cast = [...mem.cast].sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  // 긴 선반은 보이는 만큼만 그리고 내려가면 잇는다 · 아래쪽 구역은 첫 구역이 뜬 뒤에 잇는다 (인물 수십 명 · 상태 수백 줄을 한 번에 그리느라 탭이 1초 넘게 걸렸다)
+  const stage = useStaged(st, 'world', 3), [castN, castMore] = useWindow(st, 'w-cast', cast.length, 4), [bondN, bondMore] = useWindow(st, 'w-bond', bonds.length, 12), [pledgeN, pledgeMore] = useWindow(st, 'w-pledge', mem.pledges.length, 20), [canonN, canonMore] = useWindow(st, 'w-canon', mem.canon.length, 24);
   const dropLine = async (c: CastCard, l: CastNote) => { if (!(await confirmBox(t('memoria.world.cast.dropLine', { text: cut(l.text, 40) }), t('memoria.world.cast.dropOk'), true))) return; c.lines = (c.lines || []).filter(x => x !== l); await M.save(mem); st.draw(); };
   const castSec = <Sec title={t('memoria.world.cast.title')} desc={<>{t('memoria.world.cast.desc1')}<b>{t('memoria.world.cast.f.core')}</b>(<Gi name="anchor" size={12} />){t('memoria.world.cast.desc2')}(<Gi name="sprout" size={12} />){t('memoria.world.cast.desc3')}(<Gi name="quote" size={12} />){t('memoria.world.cast.desc4')}</>} tools={<Btn label={t('common.add')} ic="plus" title={t('memoria.world.cast.add')} onClick={() => void editCard(st)} />}>
-    <div className="mm-cast">{cast.map(c => <article key={c.id} className={`mm-person${c.disabled ? ' off' : ''}${c.locked ? ' locked' : ''}`}>
+    <div className="mm-cast">{cast.slice(0, castN).map(c => <article key={c.id} className={`mm-person${c.disabled ? ' off' : ''}${c.locked ? ' locked' : ''}`}>
       <header><i className="mm-initial">{(c.name || '?').trim().slice(0, 1)}</i><div className="mm-person-name"><b>{c.name}</b><small>{[c.role, c.age, c.occupation].filter(Boolean).join(' · ')}</small></div>
         {c.provisional ? <em className="mm-tag dash" title={t('memoria.world.cast.provisionalTitle')}>{t('memoria.world.cast.provisional')}</em> : null}{c.locked ? <em className="mm-tag" title={t('memoria.world.cast.lockedTitle')}>{t('memoria.world.cast.locked')}</em> : null}</header>
       {(c.aka || []).length ? <p className="mm-meta">{t('memoria.world.cast.aka', { names: c.aka!.join(', ') })}</p> : null}{c.appearance ? <p><Tr>{c.appearance}</Tr></p> : null}
@@ -141,7 +144,7 @@ export function World({ st }: { st: StOpen }) {
       {(c.traits || []).length ? <div className="mm-chips">{c.traits!.map((t, i) => <Chip key={i} text={t} />)}</div> : null}{(c.relationships || []).length ? <div className="mm-chips">{c.relationships!.map((r, i) => <span key={i} className="mm-chip rel"><Ico name="link" size={12} />{`${r.target}: ${r.relation}`}</span>)}</div> : null}
       <footer>{tog(c, 'locked', t('memoria.world.cast.lockOn'), t('memoria.world.cast.lockOff'), 'unlock', 'lock', x => toast(x.locked ? t('memoria.world.cast.lockedToast', { name: x.name }) : t('memoria.world.cast.unlockedToast', { name: x.name })))}
         {tog(c, 'disabled', t('memoria.world.cast.exclude'), t('memoria.world.include'))}<Ib name="merge" title={t('memoria.world.cast.merge')} onClick={() => mergeCast(st, c)} /><Ib name="edit" title={t('common.edit')} onClick={() => editCard(st, c)} /><Del st={st} arr="cast" x={c} what={t('memoria.world.cast.what', { name: c.name })} /></footer>
-    </article>)}
+    </article>)}{castMore}
       {!cast.length ? <None text={cfg.cast === false ? t('memoria.world.cast.emptyOff') : t('memoria.world.cast.empty')} /> : null}</div>
   </Sec>;
 
@@ -151,13 +154,13 @@ export function World({ st }: { st: StOpen }) {
   const toStory = (e: MouseEvent | KeyboardEvent) => { const g = (e.target as Element).closest?.<HTMLElement>('.mm-bond-edge'); if (!g) return; const v = storyState(st); v.tab = 'bonds'; v.bond = g.dataset.id || ''; st.tab = 'summaries'; st.draw(); };
   const bondSec = <Sec title={t('memoria.world.bond.title')} desc={t('memoria.world.bond.desc')} tools={<Btn label={t('common.add')} ic="plus" title={t('memoria.world.bond.add')} onClick={() => void editBond(st)} />}>
     {svg ? <div className="mm-bond-mapwrap" dangerouslySetInnerHTML={{ __html: svg }} onClick={toStory} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') toStory(e); }} /> : null}
-    <div className="mm-bond-rows">{[...bonds].sort((a, b) => (bondNow(b)?.turn || 0) - (bondNow(a)?.turn || 0)).map(b => {
+    <div className="mm-bond-rows">{[...bonds].sort((a, b) => (bondNow(b)?.turn || 0) - (bondNow(a)?.turn || 0)).slice(0, bondN).map(b => {
       const cur: Partial<BondStep> = bondNow(b) || {}, path: string[] = []; for (const e of b.log || []) if (path[path.length - 1] !== e.stage) path.push(e.stage);
       return <article key={b.id} className={`mm-bond-row${b.disabled ? ' off' : ''}`}>
         <header><b>{b.from}<span className="mm-bond-arrow">→</span>{b.to}</b><em className="mm-bond-stage"><Tr>{cur.stage || ''}</Tr></em><span className="mm-actions">{tog(b, 'disabled', t('memoria.world.bond.exclude'), t('memoria.world.include'))}<Ib name="edit" title={t('memoria.world.bond.editStage')} onClick={() => editBond(st, b)} /><Del st={st} arr="bonds" x={b} what={t('memoria.world.bond.what', { from: b.from, to: b.to })} /></span></header>
         {cur.basis ? pline(<Ico name="search" size={13} />, t('memoria.world.bond.basis'), <Tr>{cur.basis}</Tr>) : null}{cur.calls ? pline(<Ico name="chat" size={13} />, t('memoria.world.bond.calls'), t('memoria.world.bond.callsPrefix'), cur.calls) : null}{cur.unsaid ? pline(<Ico name="more" size={13} />, t('memoria.world.bond.unsaid'), t('memoria.world.bond.unsaidPrefix'), <Tr>{cur.unsaid}</Tr>) : null}
         {path.length > 1 ? <div className="mm-chips mm-bond-path" title={t('memoria.world.bond.path')}>{path.map((p, i) => <span key={i} className="mm-bond-hop">{i ? <span className="mm-bond-arrow">→</span> : null}<span className={`mm-chip${i === path.length - 1 ? ' ent' : ''}`}>{p}</span></span>)}</div> : null}
-      </article>; })}
+      </article>; })}{bondMore}
       {!bonds.length ? <None text={t('memoria.world.bond.empty')} /> : null}</div>
   </Sec>;
 
@@ -193,7 +196,7 @@ export function World({ st }: { st: StOpen }) {
     catch (e) { toast(t('memoria.world.pledge.veilFail', { error: (e as Error).message }), 'err'); }
   };
   const pledgeSec = <Sec title={t('memoria.world.pledge.title')} desc={t('memoria.world.pledge.desc')} tools={<>{bare ? <Btn label={t('memoria.world.pledge.veilBtn', { n: bare })} ic="sparkle" cls="ghost" title={t('memoria.world.pledge.veilBtnTitle')} onClick={() => void makeVeils()} /> : null}{mem.pledges.some(p => p.status === 'active' && p.kind !== 'author_plan') ? <Btn label={t('memoria.world.pledge.sweepBtn')} ic="search" cls="ghost" title={t('memoria.world.pledge.sweepBtnTitle')} onClick={() => void sweep()} /> : null}<Btn label={t('common.add')} ic="plus" cls="ghost" title={t('memoria.world.pledge.add')} onClick={() => void editPledge()} /></>}>
-    <div className="mm-rows">{[...mem.pledges].sort((a, b) => rank(a) - rank(b) || (a.priority || 2) - (b.priority || 2)).map(p => row(p.id, p.status === 'resolved' ? 'done' : p.status === 'dormant' || pledgeHeldBack(p) ? 'mm-dormant' : '', <><em className={`mm-lock l-${safe(p.kind)}`}>{LOCK_KO[p.kind] || p.kind}</em>
+    <div className="mm-rows">{[...mem.pledges].sort((a, b) => rank(a) - rank(b) || (a.priority || 2) - (b.priority || 2)).slice(0, pledgeN).map(p => row(p.id, p.status === 'resolved' ? 'done' : p.status === 'dormant' || pledgeHeldBack(p) ? 'mm-dormant' : '', <><em className={`mm-lock l-${safe(p.kind)}`}>{LOCK_KO[p.kind] || p.kind}</em>
       {p.status === 'dormant' ? <em className="mm-tag dash" title={t('memoria.world.pledge.dormantTitle')}>{t('memoria.world.pledge.dormant')}</em> : null} <span className="mm-pledge-text"><Tr>{p.summary}</Tr></span><small>{` (P${p.priority || 2}${p.turn != null ? ` · t${p.turn + 1}` : ''}${p.manual ? t('memoria.world.pledge.manual') : ''})`}</small>
       {p.status !== 'resolved' && dueText(mem, p) ? <em className="mm-tag mm-due" title={t('memoria.world.pledge.dueTitle')}>{dueText(mem, p)}</em> : null}
       {p.kind === 'author_plan' && p.status === 'active' ? <small className="mm-lock-now" title={t('memoria.world.pledge.veilTitle')}>{` ${p.veil ? t('memoria.world.pledge.veilShown', { text: p.veil }) : t('memoria.world.pledge.veilNone')}`}</small> : null}
@@ -202,7 +205,7 @@ export function World({ st }: { st: StOpen }) {
       {p.resolution && p.status === 'resolved' ? <small className="mm-resolution" title={t('memoria.world.pledge.resolution')}>{` — ${p.resolution}`}</small> : null}
       {p.suggestResolved && p.status === 'active' ? <><em className="mm-suggest" title={(p.suggestHow ? t('memoria.world.pledge.suggestHowTitle', { how: p.suggestHow }) : t('memoria.world.pledge.suggestTitle')) + (pledgeHeldBack(p) ? t('memoria.world.pledge.heldNote') : '')}><Ico name="bell" size={12} />{pledgeHeldBack(p) ? t('memoria.world.pledge.suggestHeld') : t('memoria.world.pledge.suggest')}</em>
         <button type="button" className="mm-tag dash mm-revive" title={t('memoria.world.pledge.stillValidTitle')} onClick={() => void uphold(p)}>{t('memoria.world.pledge.stillValid')} ↺</button></> : null}</>,
-      <Ib name={p.status === 'active' ? 'check' : 'refresh'} title={p.status === 'active' ? t('memoria.world.pledge.markResolved') : p.status === 'dormant' ? t('memoria.world.pledge.wake') : t('memoria.world.pledge.reactivate')} onClick={() => flip(p)} />, <Ib name="edit" title={t('common.edit')} onClick={() => editPledge(p)} />, <Del st={st} arr="pledges" x={p} what={t('memoria.world.pledge.what')} />))}
+      <Ib name={p.status === 'active' ? 'check' : 'refresh'} title={p.status === 'active' ? t('memoria.world.pledge.markResolved') : p.status === 'dormant' ? t('memoria.world.pledge.wake') : t('memoria.world.pledge.reactivate')} onClick={() => flip(p)} />, <Ib name="edit" title={t('common.edit')} onClick={() => editPledge(p)} />, <Del st={st} arr="pledges" x={p} what={t('memoria.world.pledge.what')} />))}{pledgeMore}
       {!mem.pledges.length ? <None text={t('memoria.world.pledge.empty')} /> : null}</div>
   </Sec>;
 
@@ -210,15 +213,16 @@ export function World({ st }: { st: StOpen }) {
   const canonDefs: FormDefs = [{ k: 'key', label: t('memoria.world.canon.f.key'), half: true }, { k: 'scope', label: t('memoria.world.canon.f.scope'), type: 'select', opts: SCOPES, half: true }, { k: 'value', label: t('memoria.world.content'), type: 'area', rows: 2 }];
   const editCanon = async (c?: CanonRow) => { const d = await editBox<Partial<CanonRow>>(c ? t('memoria.world.canon.edit') : t('memoria.world.canon.add'), c || { scope: 'world', key: '', value: '' }, canonDefs); if (!d?.key?.trim() || !d.value?.trim()) return; d.key = d.key.trim().toLowerCase().replace(/[\s-]+/g, '_'); if (c) Object.assign(c, d, { manual: true }); else mem.canon.push({ id: uid(), ...d, prev: null, manual: true, turn: T } as CanonRow); await M.save(mem); st.draw(); };
   const canonSec = <Sec title={t('memoria.world.canon.title')} desc={t('memoria.world.canon.desc')} tools={<Btn label={t('common.add')} ic="plus" cls="ghost" title={t('memoria.world.canon.add')} onClick={() => void editCanon()} />}>
-    <div className="mm-rows">{mem.canon.map(c => row(c.id, '', <><b>{c.key}</b> = {c.value}<small>{` (${c.scope}${c.scopeName ? ':' + c.scopeName : ''}${c.turn != null ? ` · t${c.turn + 1}` : ''})`}</small></>, <Ib name="edit" title={t('common.edit')} onClick={() => editCanon(c)} />, <Del st={st} arr="canon" x={c} what={t('memoria.world.canon.what')} />))}{!mem.canon.length ? <None text={t('memoria.world.canon.empty')} /> : null}</div>
+    <div className="mm-rows">{mem.canon.slice(0, canonN).map(c => row(c.id, '', <><b>{c.key}</b> = {c.value}<small>{` (${c.scope}${c.scopeName ? ':' + c.scopeName : ''}${c.turn != null ? ` · t${c.turn + 1}` : ''})`}</small></>, <Ib name="edit" title={t('common.edit')} onClick={() => editCanon(c)} />, <Del st={st} arr="canon" x={c} what={t('memoria.world.canon.what')} />))}{canonMore}{!mem.canon.length ? <None text={t('memoria.world.canon.empty')} /> : null}</div>
   </Sec>;
 
   // ── 상태 보드
   const editStatus = (s?: StatusRow) => editStatusBox(st, s);
   const groups = new Map<string, StatusRow[]>(); for (const s of mem.status) { const k = s.entity; if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(s); }
+  const [boardN, boardMore] = useWindow(st, 'w-board', groups.size, 10);
   const statusSec = <Sec title={t('memoria.world.status.title')} desc={t('memoria.world.status.desc')} tools={<Btn label={t('common.add')} ic="plus" cls="ghost" title={t('memoria.world.status.add')} onClick={() => void editStatus()} />}><SceneLine m={mem} />
-    <div className="mm-board">{[...groups].sort((a, b) => (isScene(a[0]) ? -1 : 0) - (isScene(b[0]) ? -1 : 0)).map(([name, rows], gi) => <div key={gi} className="mm-entity"><h4>{isScene(name) ? t('memoria.world.status.scene') : name}</h4>
-      {rows.map(s => <div key={s.id} className={`mm-slot${s.claim === 'belief' ? ' belief' : ''}${s.expired != null ? ' mm-dormant' : ''}`} title={`${s.claim === 'belief' ? `${t('memoria.world.status.belief')}${s.owner ? ':' + s.owner : ''}` : t('memoria.world.status.objective')}${s.turn != null ? ` · t${s.turn + 1}` : ''}`}><span className="mm-slot-k">{s.slot}</span><span className="mm-slot-v">{s.expired != null ? <><Revive title={t('memoria.world.status.reviveTitle')} onClick={async () => { delete s.expired; await M.save(mem); st.draw(); }} />{' '}</> : null}<Tr>{s.value}</Tr>{s.prev != null ? <s title={t('memoria.world.status.prev')}>{String(s.prev)}</s> : null}{s.claim === 'belief' ? <em className="mm-tag dash free">{`${t('memoria.world.status.belief')}${s.owner ? ':' + s.owner : ''}`}</em> : null}</span><span className="mm-actions"><Ib name="edit" title={t('common.edit')} onClick={() => editStatus(s)} /><Del st={st} arr="status" x={s} what={t('memoria.world.status.what')} /></span></div>)}</div>)}</div>
+    <div className="mm-board">{[...groups].sort((a, b) => (isScene(a[0]) ? -1 : 0) - (isScene(b[0]) ? -1 : 0)).slice(0, boardN).map(([name, rows], gi) => <div key={gi} className="mm-entity"><h4>{isScene(name) ? t('memoria.world.status.scene') : name}</h4>
+      {rows.map(s => <div key={s.id} className={`mm-slot${s.claim === 'belief' ? ' belief' : ''}${s.expired != null ? ' mm-dormant' : ''}`} title={`${s.claim === 'belief' ? `${t('memoria.world.status.belief')}${s.owner ? ':' + s.owner : ''}` : t('memoria.world.status.objective')}${s.turn != null ? ` · t${s.turn + 1}` : ''}`}><span className="mm-slot-k">{s.slot}</span><span className="mm-slot-v">{s.expired != null ? <><Revive title={t('memoria.world.status.reviveTitle')} onClick={async () => { delete s.expired; await M.save(mem); st.draw(); }} />{' '}</> : null}<Tr>{s.value}</Tr>{s.prev != null ? <s title={t('memoria.world.status.prev')}>{String(s.prev)}</s> : null}{s.claim === 'belief' ? <em className="mm-tag dash free">{`${t('memoria.world.status.belief')}${s.owner ? ':' + s.owner : ''}`}</em> : null}</span><span className="mm-actions"><Ib name="edit" title={t('common.edit')} onClick={() => editStatus(s)} /><Del st={st} arr="status" x={s} what={t('memoria.world.status.what')} /></span></div>)}</div>)}{boardMore}</div>
     {!mem.status.length ? <None text={t('memoria.world.status.empty')} /> : null}
   </Sec>;
 
@@ -233,7 +237,7 @@ export function World({ st }: { st: StOpen }) {
       {!mem.dossier.length ? <None text={t('memoria.world.doc.empty')} /> : null}</div>{chars ? <div className="mm-budget"><span className="mm-tok">{t('memoria.world.doc.usage', { chars: chars.toLocaleString(), max: DOSSIER_MAX.toLocaleString() })}</span><Meter v={chars} max={DOSSIER_MAX} cls="big" /></div> : null}
   </Sec>;
   // ── 서로 맞지 않는 기록 — 찾은 것이 있을 때만 맨 위에
-  const conflicts = Mc.currentConflicts ? Mc.currentConflicts(mem) : [];
+  const conflicts = conflictsOf(mem);
   const keepSide = async (x: { a: RecordClaim; b: RecordClaim }, keep: 'a' | 'b') => {
     await M.checkpoint(mem, t('memoria.world.conflict.checkpoint')).catch(e => console.warn('[장기기억] 복구 지점', e));   // 고르기 전 상태는 복구 지점에 남긴다
     Mc.dropClaim(mem, (keep === 'a' ? x.b : x.a).key); await M.save(mem); M.reinjectNow?.(st.chat); st.draw(); toast(t('memoria.world.conflict.kept'), 'ok');
@@ -244,5 +248,5 @@ export function World({ st }: { st: StOpen }) {
       {(['a', 'b'] as const).map(side => { const c = x[side]; return <div key={side} className="mm-conflict-side"><small>{claimLabel(c)}{c.turn ? ` · t${c.turn + 1}` : ''}</small><span>{c.show}</span><Btn label={t('memoria.world.conflict.keep')} cls="ghost" onClick={() => void keepSide(x, side)} /></div>; })}
       <div className="row"><Btn label={t('memoria.world.conflict.both')} cls="ghost" title={t('memoria.world.conflict.bothTitle')} onClick={() => void bothRight(x.pair)} /></div></article>)}</div>
   </Sec> : null;
-  return <div className="mm-view">{conflictSec}{castSec}{bondSec}{itemSec}{pledgeSec}<TrackerSec st={st} />{canonSec}{statusSec}{dossierSec}</div>;
+  return <div className="mm-view">{conflictSec}{castSec}{stage > 1 ? <>{bondSec}{itemSec}{pledgeSec}</> : null}{stage > 2 ? <><TrackerSec st={st} />{canonSec}{statusSec}{dossierSec}</> : null}</div>;
 }

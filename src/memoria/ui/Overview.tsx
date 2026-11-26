@@ -3,6 +3,8 @@ import { useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode, 
 import { Btn, Icon } from '../../kit';
 import type { EditorOp, LogLine, RecallRow } from '../types';
 import { Ib, Ico, KindBadge, None, Sec, Stats, busyBtn, confirmList, histOf, review, safe, showSource, turnTag, withCheckpoint, type StOpen } from './parts';
+import { revNow } from './parts';
+import { S, msgText } from '../../lib/core';
 import { Memory } from '../../lib/memory';
 import { toast } from '../../ui';
 import { tokens } from '../../lib/engine';
@@ -11,7 +13,7 @@ import { t } from '../../i18n';
 import type { RecallTest } from '../engine/part6';
 
 // 장부 절 이름(엔진의 영어 이름) → 화면 이름 키
-const SEC_KEY: Record<string, string> = { Canon: 'canon', Cast: 'cast', Bonds: 'bonds', 'Notable Items': 'items', 'Turning Points': 'turningPoints', 'Story So Far': 'storySoFar', Pledges: 'pledges', 'Recent Turns': 'recentTurns', 'Recalled Moments': 'recalled', 'Hidden Knowledge': 'hidden', 'No Longer Secret': 'outSecrets', 'Source Excerpts': 'sources', 'Scene Now': 'sceneNow', 'Status Board': 'status', Direction: 'direction', 'People in the Scene Now': 'peopleNow', 'Promises with a Date': 'promises', 'How They Address Each Other': 'address', 'Recalled Scene': 'sceneCard', 'On Their Minds': 'minds', 'Where the Story Is Heading': 'plans', 'Back After a Long Absence': 'returning' };
+const SEC_KEY: Record<string, string> = { Canon: 'canon', Cast: 'cast', Bonds: 'bonds', 'Notable Items': 'items', 'Turning Points': 'turningPoints', 'Story So Far': 'storySoFar', Pledges: 'pledges', 'Recent Turns': 'recentTurns', 'Recalled Moments': 'recalled', 'Hidden Knowledge': 'hidden', 'No Longer Secret': 'outSecrets', 'Source Excerpts': 'sources', 'Scene Now': 'sceneNow', 'Status Board': 'status', Direction: 'direction', 'People in the Scene Now': 'peopleNow', 'Promises with a Date': 'promises', 'How They Address Each Other': 'address', 'Recalled Scene': 'sceneCard', 'On Their Minds': 'minds', 'Where the Story Is Heading': 'plans', 'Back After a Long Absence': 'returning', 'How They Feel Right Now': 'feelings', 'Keep Consistent with the Record': 'driftNotes' };
 const secName = (n: string) => SEC_KEY[n] ? t('memoria.overview.sec.' + SEC_KEY[n]) : n;
 const PLEDGE_ST: Record<string, string> = { active: 'memoria.overview.pledge.active', resolved: 'memoria.overview.pledge.resolved', dormant: 'memoria.overview.pledge.dormant' };
 /** 사서가 제안한 정정 한 건을 사람이 읽는 글로 */
@@ -27,9 +29,23 @@ export function opText(o: EditorOp): string {
 }
 const enter = (fn: () => void) => (e: KeyboardEvent<HTMLInputElement>) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); fn(); } };
 
+/**
+ * 주입 미리보기의 장부 두 벌 (지금 실릴 것 · 자동으로 지은 것). 장부를 짓는 일이 무거워(회상 · 부르는 말 · 이름 맞추기) 개요가 그려질 때마다 두 번씩 지으면 탭이 늦게 뜨고 미리보기에 글자를 칠 때마다 멈췄다.
+ * 고정 · 1회 수정본이 없으면 둘은 같은 것이라 한 번만 짓고, 서고 · 대화 · 설정이 그대로인 동안은 지어 둔 것을 다시 쓴다 (미리보기는 엔진에 아무것도 남기지 않는다)
+ */
+type Pk = ReturnType<typeof Memory.packet>;
+let pkMemo: { rev: number; at: number; chatId: string; mem: unknown; msgs: unknown; n: number; tail: string; once: string; pin: string; cfg: string; p: Pk; auto: Pk } | null = null;
+function packets(st: StOpen, hist: ReturnType<typeof histOf>): { p: Pk; auto: Pk } {
+  const M = Memory, { chat, mem, msgs } = st, last = msgs[msgs.length - 1], tail = last ? `${last.id}:${last.sw ?? 0}:${msgText(last).length}` : '', once = M.overridden(chat.id) || '', pin = mem.packetPin?.text || '', cfg = JSON.stringify(S.settings.memory || null), k = pkMemo;
+  if (k && k.rev === revNow() && Date.now() - k.at < 300000 && k.chatId === chat.id && k.mem === mem && k.msgs === msgs && k.n === msgs.length && k.tail === tail && k.once === once && k.pin === pin && k.cfg === cfg) return k;
+  const p = M.packet(chat, hist, { preview: true, msgs, force: true }), auto = once || pin ? M.packet(chat, hist, { preview: true, fresh: true, msgs, force: true }) : p;
+  pkMemo = { rev: revNow(), at: Date.now(), chatId: chat.id, mem, msgs, n: msgs.length, tail, once, pin, cfg, p, auto };
+  return pkMemo;
+}
+
 export function Overview({ st }: { st: StOpen }) {
   const M = Memory, cfg = M.cfg(), { chat, mem, msgs } = st, hist = histOf(msgs);
-  const p = M.packet(chat, hist, { preview: true, msgs, force: true }), auto = M.packet(chat, hist, { preview: true, fresh: true, msgs, force: true });
+  const { p, auto } = packets(st, hist);
   const once = M.overridden(chat.id), pin = mem.packetPin?.text, lastReal = M.last(chat.id), budget = cfg.tokenBudget;
   // 미리보기 글 — 다시 그려도 치던 글 · 커서가 남는다. 초안 · 장부가 바뀌었을 때만 새 값으로
   const init = st.draft ?? p?.text ?? '';

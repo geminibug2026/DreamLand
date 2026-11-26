@@ -11060,6 +11060,8 @@
   "memoria.config.inject.pledgeSweepTurns.label": "서약 훑기(턴)",
   "memoria.config.inject.pledgeSweepTurns.title": "대화마다 한 번, 그 뒤로 답변이 이만큼 쌓일 때마다 오래된 서약을 지금까지의 요약과 견주어 이미 끝난 것에 ‘해소된 듯’ 표시를 붙입니다 (모델 호출 1번. 표시가 붙은 서약은 확정 전에도 싣지 않습니다. 0 = 끔)",
   "memoria.overview.sec.returning": "오랜만에 돌아온 사람",
+  "memoria.overview.sec.feelings": "지금의 마음",
+  "memoria.overview.sec.driftNotes": "기록과 맞추기",
   "editors.sheet.del.title": "{name} 을(를) 삭제할까요?",
   "editors.sheet.del.solo.one": "이 캐릭터하고만 나눈 대화가 {count}개 있어요. 대화도 함께 지울지 골라 주세요.",
   "editors.sheet.del.solo.other": "이 캐릭터하고만 나눈 대화가 {count}개 있어요. 대화도 함께 지울지 골라 주세요.",
