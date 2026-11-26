@@ -3,7 +3,7 @@
 //
 // 주소 모양:  https://<프로젝트>.vercel.app/<지역>/<RELAY_KEY>/v1/projects/…   (지역을 빼면 iad1)
 // 환경 변수:  RELAY_KEY  (필수) 남이 내 중계를 쓰지 못하게 하는 암호
-import { openai, keyCount, bad } from './openai.js';
+import { openai, keyCount, studioCount, bad } from './openai.js';
 
 const PASS = ['authorization', 'x-goog-api-key', 'x-goog-user-project', 'content-type', 'accept'];
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Max-Age': '86400' };
@@ -21,7 +21,7 @@ export async function relay(request, region) {
   const oa = i => parts[i] === 'v1' && (parts[i + 1] === 'models' || (parts[i + 1] === 'chat' && parts[i + 2] === 'completions'));
   if (oa(0)) return openai(request, region, parts, url, false);
   if (KEY && parts.length > 1 && oa(1) && (await same(parts[0], KEY))) return openai(request, region, parts.slice(1), url, true);
-  if (parts[0] === 'health') { const n = keyCount(); return json(200, { ok: true, key: !!KEY, colo: region, country: '', googleKeys: n, unreadable: bad.slice() }); }   // 열쇠 수 · 읽지 못한 열쇠 이름 (값은 안 보인다)
+  if (parts[0] === 'health') { const n = keyCount(); return json(200, { ok: true, key: !!KEY, colo: region, country: '', googleKeys: n, studioKeys: studioCount(), waitSec: Math.max(0, Math.min(240, Number(process.env.WAIT_SEC ?? 60) || 0)), fallbackModel: String(process.env.FALLBACK_MODEL || '').trim() || null, unreadable: bad.slice() }); }   // 열쇠 수 · 읽지 못한 열쇠 이름 (값은 안 보인다)
   if (!KEY) return json(500, { error: 'RELAY_KEY is not set on this project.' });
   if (!parts.length || !(await same(parts[0], KEY))) return json(403, { error: 'forbidden' });
   const rest = '/' + parts.slice(1).join('/'), q = new URLSearchParams(url.search); q.delete('path');

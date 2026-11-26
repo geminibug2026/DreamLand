@@ -6,10 +6,15 @@
 // 이 길은 구글 키를 중계가 들고 있어야 한다 (프로그램이 OpenAI 형식으로만 말하므로). 환경 변수:
 //   RELAY_KEY   (필수) 프로그램의 "API 키" 칸에 넣는 암호
 //   API_1 … API_9, 또는 API_ 로 시작하는 아무 이름   서비스 계정 JSON 통째로, 또는 Vertex 익스프레스 API 키. 여럿이면 429 때 다음 것으로 넘어간다
+//   STUDIO_1 …, 또는 STUDIO_ 로 시작하는 아무 이름   (선택) Google AI Studio(Gemini API) 키. Vertex 와 따로 매기는 몫이라, Vertex 키가 다 막히면 여기로 넘어간다
+//   WAIT_SEC    (선택) 모든 키 · 지역이 429 일 때 중계 안에서 버티며 다시 해 볼 시간(초). 기본 60, 0 이면 바로 429 를 돌려준다 (최대 240)
+//   FALLBACK_MODEL (선택) 그래도 막히면 이 모델로 한 번 답한다 (예: gemini-3.7-flash). 비우면 끔
 //   MODELS      (선택) 쉼표로 나눈 모델 이름
 //   VERTEX_LOCATION (선택) 기본 global
 //
-// 429 가 나면: ① 다른 키(다른 프로젝트)로 → ② 다 막히면 이 배포의 다른 지역 함수에 넘긴다 (지역 여섯 곳을 한 바퀴)
+// 429 가 나면: ① 다른 키(다른 프로젝트)로 → ② AI Studio 키로 → ③ 이 배포의 다른 지역 함수에 넘긴다 (지역 여섯 곳을 한 바퀴)
+//   → ④ 그래도 다 막히면 연결을 열어 둔 채 잠깐씩 쉬며 키를 다시 돌린다(WAIT_SEC 동안) → ⑤ FALLBACK_MODEL 이 있으면 그 모델로
+// 구글 쪽 전체가 붐비는 429 는 몇 초 ~ 몇십 초 안에 풀리는 일이 많아, ④가 가장 자주 듣는다. 받는 프로그램은 첫 글자가 늦게 올 뿐 오류를 보지 않는다
 export const REGIONS = ['iad1', 'pdx1', 'cle1', 'sfo1', 'fra1', 'lhr1'];
 const DEFAULT_MODELS = ['gemini-4-hydrogen', 'gemini-4-neon', 'gemini-4-carbon', 'gemini-4-argon', 'gemini-3.7-flash', 'gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-3.1-pro-preview', 'gemini-3-flash-preview', 'gemini-2.5-pro', 'gemini-2.5-flash'];
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Max-Age': '86400' };
@@ -32,8 +37,19 @@ function creds() {
     if (v.startsWith('{')) { try { const sa = JSON.parse(v); if (sa.client_email && sa.private_key) out.push({ name, sa }); else bad.push(name + ': client_email / private_key 가 없는 JSON'); } catch { bad.push(name + ': JSON 이 깨졌어요 (처음부터 끝까지 통째로 붙여 넣었는지 확인)'); } }
     else out.push({ name, key: v });
   }
+  // AI Studio(Gemini API) 키: Vertex 열쇠 뒤에 선다 (Vertex 와 따로 매기는 몫이라 둘 다 막히는 일이 드물다)
+  let studio = []; try { studio = Object.keys(process.env).filter(k => /^STUDIO_/.test(k)).sort(); } catch { /* 훑을 수 없으면 정해진 이름만 */ }
+  for (const name of new Set([...Array.from({ length: 9 }, (_, i) => 'STUDIO_' + (i + 1)), ...studio])) {
+    const v = String(process.env[name] || '').trim(); if (!v || seen.has(v)) continue; seen.add(v);
+    if (v.startsWith('{')) bad.push(name + ': AI Studio 키 칸에는 키(AIza…)만 넣어요 — 서비스 계정 JSON 은 API_ 칸에'); else out.push({ name, studio: v });
+  }
   return out;
 }
+export const studioCount = () => creds().filter(c => c.studio).length;
+/** 방금 429 를 받은 열쇠: 잠깐은 뒤로 미룬다 (같은 함수가 이어서 받는 요청에서 막힌 열쇠부터 두드리지 않게) */
+const cooling = new Map();
+/** AI Studio 에 아직 없는 모델 (404): 10분 동안은 AI Studio 열쇠를 건너뛴다 */
+const studioMissing = new Map();
 const tokens = new Map();
 async function accessToken(sa) {
   const hit = tokens.get(sa.client_email); if (hit && hit.exp - Date.now() > 60000) return hit.token;
@@ -137,6 +153,7 @@ function jsonOut(up, model) {   // 스트리밍을 안 쓰는 요청: 다 모아
 }
 
 async function callVertex(cred, model, payload) {
+  if (cred.studio) return fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cred.studio }, body: JSON.stringify(payload) });
   const loc = String(process.env.VERTEX_LOCATION || 'global').trim() || 'global', host = loc === 'global' ? 'https://aiplatform.googleapis.com' : `https://${loc}-aiplatform.googleapis.com`;
   const headers = { 'Content-Type': 'application/json' }; let path;
   if (cred.sa) { headers.Authorization = 'Bearer ' + await accessToken(cred.sa); path = `/v1/projects/${cred.sa.project_id}/locations/${loc}/publishers/google/models/${encodeURIComponent(model)}`; }
@@ -185,41 +202,66 @@ async function openaiInner(request, region, parts, url, authed) {
   const list = creds(); if (!list.length) return fail(500, '중계에 구글 열쇠가 없어요 (No Google key). Vercel → Settings → Environment Variables 에 API_1 이름으로 서비스 계정 JSON 을 통째로 넣고, Deployments 에서 Redeploy 하세요.' + (bad.length ? ' 읽지 못한 것: ' + bad.join(' / ') : ''));
   // Vercel Edge 는 25초 안에 답을 시작해야 끊지 않는다 (FUNCTION_INVOCATION_TIMEOUT). 생각이 긴 모델은 구글이 첫 글자를 25초 넘게 안 보내므로,
   // 8초 안에 끝나지 않으면 먼저 200 으로 답을 열고 5초마다 '아직 연결돼 있음' 신호를 보내며 기다린다 (스트리밍: SSE 주석 줄, 아니면 공백 — 둘 다 받는 쪽이 무시한다)
-  return keepAlive(async () => {
-    const tried = (request.headers.get('x-relay-tried') || '').split(',').map(s => s.trim()).filter(Boolean);
-    let payload = toGemini({ ...body, model }), last = '';
-    const start = Math.floor(Math.random() * list.length); let thrown = 0, busy = 0;
-    for (let i = 0; i < list.length; i++) {
-      const cred = list[(start + i) % list.length]; let r;
+  const tried = (request.headers.get('x-relay-tried') || '').split(',').map(s => s.trim()).filter(Boolean), entry = !tried.length;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  /** 한 바퀴: 열쇠를 차례로 (Vertex → AI Studio, 방금 막힌 것은 뒤로) → 다 막히면 아직 안 가 본 지역의 함수에 넘긴다(here 면 이 지역만) */
+  const attempt = async (mdl, here) => {
+    let payload = toGemini({ ...body, model: mdl }), last = '';
+    const now = Date.now(), vx = list.filter(c => !c.studio), st = list.filter(c => c.studio), turn = a => { const k = Math.floor(Math.random() * (a.length || 1)); return [...a.slice(k), ...a.slice(0, k)]; };
+    const stOk = (studioMissing.get(mdl) || 0) > now ? [] : st;
+    const order = [...turn(vx), ...turn(stOk)].map((c, i) => ({ c, i, cool: (cooling.get(c.name) || 0) > now })).sort((x, y) => (x.cool - y.cool) || (x.i - y.i)).map(x => x.c);
+    let thrown = 0, busy = 0;
+    for (const cred of order) {
+      let r;
       try {
-        r = await callVertex(cred, model, payload);
+        r = await callVertex(cred, mdl, payload);
         if (r.status === 400 && payload.generationConfig.thinkingConfig) {   // 이 모델이 그 추론 설정을 받지 않으면 빼고 한 번 더
           const why = await errorOf(r);
-          if (/think/i.test(why)) { payload = { ...payload, generationConfig: { ...payload.generationConfig } }; delete payload.generationConfig.thinkingConfig; r = await callVertex(cred, model, payload); }
+          if (/think/i.test(why)) { payload = { ...payload, generationConfig: { ...payload.generationConfig } }; delete payload.generationConfig.thinkingConfig; r = await callVertex(cred, mdl, payload); }
           else return fail(400, why);
         }
       } catch (e) { last = String(e && e.message || e); thrown++; continue; }
       if (r.ok) {
-        const head = { ...CORS, 'Cache-Control': 'no-store', 'X-Relay-Region': region, 'X-Relay-Key': cred.name };
-        return body.stream ? new Response(streamOut(r, model), { status: 200, headers: { ...head, 'Content-Type': 'text/event-stream' } }) : new Response(jsonOut(r, model), { status: 200, headers: { ...head, 'Content-Type': 'application/json' } });
+        cooling.delete(cred.name);
+        const head = { ...CORS, 'Cache-Control': 'no-store', 'X-Relay-Region': region, 'X-Relay-Key': cred.name, 'X-Relay-Model': mdl };
+        return body.stream ? new Response(streamOut(r, mdl), { status: 200, headers: { ...head, 'Content-Type': 'text/event-stream' } }) : new Response(jsonOut(r, mdl), { status: 200, headers: { ...head, 'Content-Type': 'application/json' } });
       }
       last = await errorOf(r);
+      if (r.status === 429) cooling.set(cred.name, Date.now() + 20000);
       if (r.status === 503) busy++;
+      if (r.status === 404 && cred.studio) { studioMissing.set(mdl, Date.now() + 600000); continue; }   // AI Studio 에 아직 없는 모델이면 그 키는 건너뛴다 (Vertex 전용 모델)
       if (r.status !== 429 && r.status !== 503) return fail(r.status, last);   // 키 · 요청이 잘못된 것은 다른 곳으로 넘겨도 소용없다
     }
     // 모든 열쇠가 구글 인증에서 막혔다 (429 가 아니다): 다른 지역으로 넘겨도 소용없으니 까닭을 그대로 알린다
     if (thrown === list.length) return fail(502, '구글 인증에 실패했어요. 서비스 계정 JSON 이 맞는지, 그 계정에 Vertex AI 사용자 권한이 있는지 확인하세요. (' + last + ')', 'auth_error');
-    // 이 지역에서는 모든 키가 막혔다: 아직 안 가 본 지역의 함수에 넘긴다
-    const next = REGIONS.find(x => x !== region && !tried.includes(x));
+    // 이 지역에서는 모든 키가 막혔다: 아직 안 가 본 지역의 함수에 넘긴다 (버티는 중의 다시 해 보기는 이 지역에서만 — 지역마다 함수를 또 부르지 않게)
+    const next = here ? null : REGIONS.find(x => x !== region && !tried.includes(x));
     if (next) {
       try {
-        const sib = await fetch(`${url.origin}/${next}/v1/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + KEY, 'x-relay-tried': [...tried, region].join(','), ...(busy || request.headers.get('x-relay-busy') === '1' ? { 'x-relay-busy': '1' } : {}) }, body: JSON.stringify(body) });
-        const head = new Headers(CORS); for (const k of ['content-type', 'x-relay-region', 'x-relay-key']) { const v = sib.headers.get(k); if (v) head.set(k, v); } head.set('Cache-Control', 'no-store');
+        const sib = await fetch(`${url.origin}/${next}/v1/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + KEY, 'x-relay-tried': [...tried, region].join(','), ...(busy || request.headers.get('x-relay-busy') === '1' ? { 'x-relay-busy': '1' } : {}) }, body: JSON.stringify({ ...body, model: mdl }) });
+        const head = new Headers(CORS); for (const k of ['content-type', 'x-relay-region', 'x-relay-key', 'x-relay-model']) { const v = sib.headers.get(k); if (v) head.set(k, v); } head.set('Cache-Control', 'no-store');
         return new Response(sib.body, { status: sib.status, headers: head });
       } catch (e) { last = last || String(e && e.message || e); }
     }
     // 503 은 한도가 아니라 구글 쪽 모델이 붐비는 것 — 키 · 지역을 다 돌아도 그대로면 그렇다고 알린다
     if (busy || (request.headers.get('x-relay-busy') === '1')) return fail(503, '구글 쪽 모델이 지금 붐벼요 (503 · overloaded). 모든 키 · 지역에서 같은 답이 왔어요. 잠시 뒤 다시 하거나 다른 모델(예: flash)로 바꿔 보세요. ' + last, 'overloaded');
-    return fail(429, '모든 키 · 지역이 429 예요 (Every key in every region returned 429). 잠시 쉬거나 다른 프로젝트 키(API_2 …)를 더 넣어 주세요. ' + last, 'rate_limit_exceeded');
+    return fail(429, '모든 키 · 지역이 429 예요 (Every key in every region returned 429). ' + last, 'rate_limit_exceeded');
+  };
+  // Vercel Edge 는 25초 안에 답을 시작해야 끊지 않는다 (FUNCTION_INVOCATION_TIMEOUT). 생각이 긴 모델은 구글이 첫 글자를 25초 넘게 안 보내므로,
+  // 8초 안에 끝나지 않으면 먼저 200 으로 답을 열고 5초마다 '아직 연결돼 있음' 신호를 보내며 기다린다 (스트리밍: SSE 주석 줄, 아니면 공백 — 둘 다 받는 쪽이 무시한다)
+  return keepAlive(async () => {
+    let r = await attempt(model, false);
+    if (!entry) return r;   // 다른 지역에서 넘겨받은 요청은 버티지 않는다 (처음 받은 함수가 버틴다)
+    // 버티기: 구글 쪽이 붐비는 429 · 503 은 금방 풀리는 일이 많다. 연결을 열어 둔 채 잠깐씩 쉬며 이 지역의 열쇠를 다시 돌린다
+    const t0 = Date.now(), budget = Math.max(0, Math.min(240, Number(process.env.WAIT_SEC ?? 60) || 0)) * 1000; let delay = 3000, rounds = 0;
+    while ((r.status === 429 || r.status === 503) && Date.now() - t0 + delay <= budget) {
+      await sleep(delay * (0.8 + Math.random() * 0.4)); delay = Math.min(delay * 2, 20000); rounds++;
+      r = await attempt(model, true);
+    }
+    // 그래도 막히면: 정해 둔 대신 쓸 모델로 한 번 (가벼운 모델은 대개 덜 붐빈다)
+    const alt = String(process.env.FALLBACK_MODEL || '').trim().replace(/^(models\/|google\/)/, '');
+    if ((r.status === 429 || r.status === 503) && alt && alt !== model) { const r2 = await attempt(alt, false); if (r2.ok) return r2; }
+    if ((r.status === 429 || r.status === 503) && rounds) return fail(r.status, `${Math.round((Date.now() - t0) / 1000)}초 동안 ${rounds + 1}번 돌려 봤지만 모든 키 · 지역이 막혔어요. 잠시 뒤 다시 하거나, 다른 프로젝트 키(API_2 …) · AI Studio 키(STUDIO_1 …)를 더 넣거나, FALLBACK_MODEL 을 정해 두세요.`, r.status === 503 ? 'overloaded' : 'rate_limit_exceeded');
+    return r;
   }, !!body.stream, region);
 }
