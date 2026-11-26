@@ -1,1 +1,0 @@
-export{y as download}from"./core-Dcwg22m1.js";

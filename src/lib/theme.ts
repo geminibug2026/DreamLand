@@ -69,6 +69,20 @@ export function applyTheme() {
   set('--accent', c.accent); set('--accent2', c.accent2 || c.accent); set('--say-bg', c.sayBg || c.surface); set('--say-text', c.sayText || c.text);
   set('--on-accent', lum(c.accent || '#d98a9e') > 0.66 ? '#2b2430' : '#ffffff');
   set('--user-bg', c.userBg || c.accent); set('--user-text', c.userText || '#fff'); set('--nar', c.nar || c.text); set('--think', c.think || c.dim);
+  // 읽히는 흐린 글씨: 테마의 흐린 색(시간 · 설명 · 보조 글)이 배경과 너무 비슷하면 휴대폰에서 안 읽힌다.
+  // 색감은 그대로 두고 글자 색 쪽으로 조금씩 당겨 대비를 맞춘다 — 흐린 글 5.2:1 · 더 흐린 글 4.5:1 · 지문 4.5:1 (직접 만든 테마도 같은 기준)
+  const ink = six(c.text), grounds = [c.bg, c.bg2, c.surface, c.sayBg].map(six).filter((x): x is string => !!x);
+  if (ink && grounds.length) {
+    const dim = six(c.dim), nar = six(c.nar), think = six(c.think);
+    if (dim) { const d = legible(dim, ink, grounds, 5.2); set('--dim', d); set('--faint', legible(mix(d, grounds[0], 0.3), ink, grounds, 4.5)); if (!think) set('--think', legible(d, ink, grounds, 4.5)); }
+    if (nar) set('--nar', legible(nar, ink, grounds, 4.5));
+    // 포인트 색을 글자로 쓸 때(상태 · 칸 이름 · 링크 · 표식)는 읽히는 진한 쪽을 쓴다 — 바탕 · 테두리 · 아이콘은 원래 색 그대로
+    const acc = six(c.accent), accInk = acc ? legible(acc, ink, grounds, 4.5) : null; set('--accent-ink', accInk);
+    set('--on-accent-ink', accInk ? (contrast(accInk, '#ffffff') >= contrast(accInk, '#2b2430') ? '#ffffff' : '#2b2430') : null);   // 진한 포인트 색을 바탕으로 쓸 때 그 위 글자
+    // 지우기 · 경고 같은 빨간 글씨도 같은 기준 (기본 빨강은 밝은 테마에서 3.6:1)
+    const bad = six(getComputedStyle(root).getPropertyValue('--bad').trim() || (t.tone === 'dark' ? '#f09aae' : '#d8607a')); set('--bad-ink', bad ? legible(bad, ink, grounds, 4.5) : null);
+    if (think) set('--think', legible(think, ink, grounds, 4.5));
+  }
   set('--r', (t.radius ?? 20) + 'px'); set('--glass', String(1 - Math.min(0.9, Math.max(0, t.glass || 0))));
   set('--bg-image', t.bgImage ? `url("${t.bgImage}")` : 'none'); set('--bg-dim', String(t.bgDim ?? 0.25)); set('--bg-blur', (t.bgBlur || 0) + 'px');
   root.classList.toggle('has-bg-image', !!t.bgImage);
@@ -98,6 +112,12 @@ const toHex = (v: unknown): string | { hex: string; a: number } | null => {
 const lum = (hex: string) => { const n = parseInt(hex.slice(1, 7), 16); return (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255; };
 const mix = (a: string, b: string, k: number) => { const p = (h: string) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)); const [x, y] = [p(a), p(b)]; return '#' + x.map((v, i) => Math.round(v + (y[i] - v) * k).toString(16).padStart(2, '0')).join(''); };
 const hexOf = (v: unknown) => { const r = toHex(v); return r ? (typeof r === 'string' ? r.slice(0, 7) : r.hex) : null; };
+/** #rgb · #rrggbb · rgb() 를 #rrggbb 로 (못 읽으면 null) */
+const six = (v?: string | null) => { const h = v ? hexOf(v) : null; if (!h) return null; if (/^#[0-9a-f]{3}$/i.test(h)) return '#' + [...h.slice(1)].map(x => x + x).join(''); return /^#[0-9a-f]{6}$/i.test(h) ? h.toLowerCase() : null; };
+/** WCAG 대비 (1 ~ 21) */
+const contrast = (a: string, b: string) => { const rl = (h: string) => { const [r, g, bl] = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4); return 0.2126 * r + 0.7152 * g + 0.0722 * bl; }; const x = rl(a), y = rl(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+/** fg 가 모든 바탕에서 target 대비에 닿을 때까지 toward(글자 색) 쪽으로 조금씩 섞는다. 이미 닿아 있으면 그대로 */
+const legible = (fg: string, toward: string, grounds: string[], target: number) => { for (let k = 0; k <= 1.0001; k += 0.04) { const c = k ? mix(fg, toward, k) : fg; if (grounds.every(g => contrast(c, g) >= target)) return c; } return toward; };
 
 /** 실리태번 테마 JSON 의 칸 (쓰는 것만) */
 export interface StTheme { name?: string; main_text_color?: string; blur_tint_color?: string; bot_mes_blur_tint_color?: string; user_mes_blur_tint_color?: string; quote_text_color?: string; underline_text_color?: string; italics_text_color?: string; blur_strength?: number; custom_css?: string; [k: string]: unknown }

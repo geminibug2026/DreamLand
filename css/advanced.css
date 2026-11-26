@@ -25,7 +25,7 @@
 .field-label em.tok { font-style: normal; font-weight: 500; font-size: .92em; color: var(--faint); margin-left: auto; font-variant-numeric: tabular-nums; }
 .field-label em.tok + .ibtn { margin-left: 4px; }
 .af-talk { flex: 1 1 100%; display: flex; justify-content: space-between; font-size: .82em; color: var(--faint); margin-top: -8px; padding-right: 54px; }
-small.hint.bad { color: var(--bad); }
+small.hint.bad { color: var(--bad-ink); }
 
 @media (max-width: 820px) {
   .af-bar > select.inp { flex-basis: 100%; }
@@ -43,8 +43,8 @@ small.hint.bad { color: var(--bad); }
 .save-pill { position: fixed; z-index: 90; left: 14px; bottom: 14px; display: flex; align-items: center; gap: 7px; padding: 5px 11px 4px; border: 1px solid var(--ink-line); background: var(--surface); font: 600 .7em var(--display); letter-spacing: .06em; color: var(--dim); pointer-events: none; opacity: 0; transform: translateY(4px); transition: opacity .35s, transform .35s, border-color .2s; white-space: nowrap; }
 .save-pill.on { opacity: 1; transform: none; } .save-pill.dim { opacity: .5; } .save-pill i { font-style: normal; color: var(--faint); }
 .save-pill[data-state="dirty"] { border-style: dashed; } .save-pill[data-state="saving"] { border-color: var(--ink); color: var(--text); } .save-pill[data-state="saving"] i { animation: save-spin 1s linear infinite; display: inline-block; }
-.save-pill[data-state="saved"] { border-color: var(--ink); color: var(--text); } .save-pill[data-state="saved"] i { color: var(--accent); }
-.save-pill[data-state="error"] { border-color: var(--bad); color: var(--bad); opacity: 1; }
+.save-pill[data-state="saved"] { border-color: var(--ink); color: var(--text); } .save-pill[data-state="saved"] i { color: var(--accent-ink); }
+.save-pill[data-state="error"] { border-color: var(--bad); color: var(--bad-ink); opacity: 1; }
 @keyframes save-spin { to { transform: rotate(360deg); } }
 @media (max-width: 820px) { .save-pill { left: 8px; bottom: calc(66px + env(safe-area-inset-bottom, 0px)); font-size: .66em; padding: 4px 9px 3px; } }
 @media (prefers-reduced-motion: reduce) { .save-pill[data-state="saving"] i { animation: none; } }

@@ -31,7 +31,7 @@ textarea.rx-mono { font-size: .9em; line-height: 1.55; resize: vertical; }
 .rx-row.off .rx-row-text, .rx-row.off .rx-row-meta { opacity: .48; }
 .rx-row-meta { display: flex; align-items: center; gap: 6px; flex: none; }
 .rx-tag { font: 500 .74em var(--display); color: var(--dim); border: 1px solid var(--ink-line); padding: 1px 7px; white-space: nowrap; }
-.rx-flag { background: none; border: 1px solid var(--ink); color: var(--text); } .rx-flag.error { border-color: var(--bad); color: var(--bad); }
+.rx-flag { background: none; border: 1px solid var(--ink); color: var(--text); } .rx-flag.error { border-color: var(--bad); color: var(--bad-ink); }
 .rx-no { flex: none; width: 30px; text-align: center; font: 500 .74em var(--display); color: var(--faint); font-variant-numeric: tabular-nums; }
 .rx-pick { flex: none; width: 30px; min-height: 44px; justify-content: center; }
 .rx-empty { height: auto; padding: 46px 20px; }
@@ -60,7 +60,7 @@ textarea.rx-mono { font-size: .9em; line-height: 1.55; resize: vertical; }
 .rx-issues { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
 .rx-issues li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 9px; align-items: start; font-size: .88em; line-height: 1.6; }
 .rx-issues i { font: 700 .78em/1.7 var(--display); font-style: normal; padding: 0 7px; border: 1px solid var(--ink-line); color: var(--dim); white-space: nowrap; margin-top: 1px; }
-.rx-issues .error i { border-color: var(--bad); color: var(--bad); } .rx-issues .warn i { border-color: var(--ink); color: var(--text); }
+.rx-issues .error i { border-color: var(--bad); color: var(--bad-ink); } .rx-issues .warn i { border-color: var(--ink); color: var(--text); }
 .rx-fine { display: inline-flex; align-items: center; gap: 6px; font-size: .88em; color: var(--dim); } .rx-fine .ic { color: var(--ok); }
 
 /* 시험 창 */
@@ -70,11 +70,11 @@ textarea.rx-mono { font-size: .9em; line-height: 1.55; resize: vertical; }
 @media (min-width: 821px) { .rx-view { max-height: 52vh; overflow: auto; } }
 .rx-text { margin: 0; padding: 12px 14px; border: 1px solid var(--ink-line); background: var(--surface2); white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; font: inherit; font-size: .92em; line-height: 1.7; max-height: 44vh; overflow: auto; }
 .rx-text mark { background: color-mix(in srgb, var(--accent) 28%, transparent); color: inherit; }
-.rx-text del { color: var(--bad); background: color-mix(in srgb, var(--bad) 12%, transparent); text-decoration: line-through; }
+.rx-text del { color: var(--bad-ink); background: color-mix(in srgb, var(--bad) 12%, transparent); text-decoration: line-through; }
 .rx-text ins { text-decoration: none; background: color-mix(in srgb, var(--ok) 24%, transparent); } .rx-text .rx-nil { opacity: .6; }
 .rx-more { color: var(--faint); }
 .rx-sum { font-size: .9em; color: var(--dim); line-height: 1.6; } .rx-sum b { color: var(--text); }
-.rx-stop { color: var(--bad); border: 1px solid var(--bad); padding: 10px 12px; font-size: .9em; line-height: 1.65; }
+.rx-stop { color: var(--bad-ink); border: 1px solid var(--bad); padding: 10px 12px; font-size: .9em; line-height: 1.65; }
 .rx-none { font-weight: 700; } .rx-why { margin: 0; padding-left: 18px; font-size: .9em; line-height: 1.7; display: flex; flex-direction: column; gap: 4px; }
 .rx-match { border: 1px solid var(--ink-line); padding: 10px 12px; }
 .rx-match-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; } .rx-match-head small { color: var(--dim); font-size: .8em; }

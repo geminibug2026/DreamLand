@@ -12,7 +12,7 @@
 .mod-card.on { border-color: var(--ink); background: var(--handles), var(--surface); box-shadow: inset 3px 0 0 var(--accent); }
 .mod-card:not(.on) .mod-desc, .mod-card:not(.on) .mod-stats { opacity: .62; }
 .mod-card-head { display: flex; align-items: center; gap: 10px; }
-.mod-card-title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; text-align: left; } .mod-card-title b { font: 800 1.06em var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .mod-card-title:hover b { color: var(--accent); }
+.mod-card-title { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; text-align: left; } .mod-card-title b { font: 800 1.06em var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .mod-card-title:hover b { color: var(--accent-ink); }
 .mod-ver { font: 500 .72em ui-monospace, Consolas, monospace; color: var(--faint); flex: none; }
 .mod-by { margin: 0; font-size: .78em; color: var(--dim); } .mod-by span { font: 600 .9em var(--display); letter-spacing: .06em; color: var(--faint); margin-right: 6px; }
 .mod-desc { margin: 0; font-size: .86em; line-height: 1.55; color: var(--dim); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.9em; } .mod-desc.none { color: var(--faint); }
@@ -21,7 +21,7 @@
 .mod-card-foot { display: flex; align-items: center; gap: 8px; min-height: 30px; }
 .mod-scope { display: inline-flex; align-items: center; gap: 5px; font: 600 .76em var(--display); color: var(--dim); min-width: 0; } .mod-scope span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mod-roomnote { color: var(--faint); font-size: .74em; white-space: nowrap; } .mod-card-foot .ibtn { margin-left: auto; }
-.mod-star { color: var(--accent); flex: none; }
+.mod-star { color: var(--accent-ink); flex: none; }
 
 .mod-opts { border: 1px solid var(--ink-line); margin-top: 8px; } .mod-opts > summary { display: flex; align-items: center; gap: 8px; padding: 10px 14px; cursor: pointer; font: 600 .86em var(--display); color: var(--dim); list-style: none; } .mod-opts > summary::-webkit-details-marker { display: none; }
 .mod-opts[open] > summary { color: var(--text); border-bottom: 1px dashed var(--ink-line); } .mod-opts-body { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 14px; }
@@ -39,11 +39,11 @@
 .mod-row-state { display: flex; align-items: center; gap: 6px; flex: none; }
 .mod-quick { display: flex; flex-direction: column; gap: 6px; } .mod-quick-row { display: grid; grid-template-columns: minmax(90px, 1fr) minmax(0, 2.4fr) auto auto; gap: 6px; align-items: center; }
 .mod-code { font: 500 .84em/1.6 ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; word-break: break-word; } pre.mod-code { margin: 0; padding: 12px; border: 1px solid var(--ink-line); background: var(--surface2); max-height: 260px; overflow: auto; }
-.mod-warn { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--ink); background: var(--soft); font-size: .86em; line-height: 1.55; } .mod-warn svg { flex: none; margin-top: 2px; color: var(--accent); }
+.mod-warn { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--ink); background: var(--soft); font-size: .86em; line-height: 1.55; } .mod-warn svg { flex: none; margin-top: 2px; color: var(--accent-ink); }
 .mod-assets { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 12px; }
 .mod-asset { margin: 0; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
 .mod-asset-pic { aspect-ratio: 1; border: 1px solid var(--ink-line); background: var(--surface2); overflow: hidden; padding: 0; } .mod-asset-pic img { width: 100%; height: 100%; object-fit: contain; display: block; } .mod-asset-pic:hover { border-color: var(--ink); }
-.mod-asset-name { font: 500 .76em ui-monospace, Consolas, monospace; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; } .mod-asset-name:hover { color: var(--accent); }
+.mod-asset-name { font: 500 .76em ui-monospace, Consolas, monospace; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; } .mod-asset-name:hover { color: var(--accent-ink); }
 
 /* 고르기 창 · 가져오기 미리 보기 */
 .mod-dialog { gap: 12px; min-width: min(560px, 78vw); } .mod-pick { max-height: 46vh; } .mod-pick-tools, .mod-pick-head { gap: 8px; align-items: center; }

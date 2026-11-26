@@ -1,7 +1,7 @@
 /* ── Dreamland 삽화 (씬북) ── 흑백 지면 + 포인트 색 하나 · 각진 모서리 · 가는 선 · 모서리 핸들 · 하프톤 */
 .sb-grow { flex: 1 1 auto; min-width: 0; }
 .sb-empty { margin: 6px 0; padding: 26px 14px; text-align: center; color: var(--dim); font-size: .92em; border: 1px dashed var(--ink-line); }
-.sb-state { font-size: .84em; color: var(--dim); font-variant-numeric: tabular-nums; } .sb-state.bad { color: var(--bad); font-weight: 600; }
+.sb-state { font-size: .84em; color: var(--dim); font-variant-numeric: tabular-nums; } .sb-state.bad { color: var(--bad-ink); font-weight: 600; }
 .sb-code { max-height: 46vh; overflow: auto; overflow-wrap: anywhere; font-size: .84em; line-height: 1.55; margin: 0; }
 .sb-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .sb-warn { margin: 0; padding-left: 20px; font-size: .88em; line-height: 1.65; color: var(--dim); }
@@ -36,7 +36,7 @@
 .sb-preset b { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; font-size: .93em; } .sb-preset small { flex: 1 1 auto; min-width: 0; color: var(--faint); font-size: .82em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 인물 */
-.sb-char > summary .sb-char-no { font: 700 .78em var(--display); color: var(--accent); letter-spacing: .06em; }
+.sb-char > summary .sb-char-no { font: 700 .78em var(--display); color: var(--accent-ink); letter-spacing: .06em; }
 .sb-char > summary small { flex: 1 1 0; min-width: 0; font-weight: 400; color: var(--faint); font-size: .84em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sb-char > .col { gap: 12px; padding: 14px; }
 .sb-profile { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px dashed var(--ink-line); }
@@ -59,10 +59,10 @@
 
 /* 작업 */
 .sb-job { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--ink-line); background: var(--surface); }
-.sb-job .col { flex: 1 1 auto; min-width: 0; gap: 2px; } .sb-job b { font-size: .93em; overflow-wrap: anywhere; } .sb-job small { color: var(--faint); font-size: .82em; overflow-wrap: anywhere; } .sb-job small.err { color: var(--bad); }
+.sb-job .col { flex: 1 1 auto; min-width: 0; gap: 2px; } .sb-job b { font-size: .93em; overflow-wrap: anywhere; } .sb-job small { color: var(--faint); font-size: .82em; overflow-wrap: anywhere; } .sb-job small.err { color: var(--bad-ink); }
 .sb-job-state { flex: none; min-width: 64px; text-align: center; padding: 3px 8px; font-size: .78em; font-weight: 700; border: 1px solid var(--ink-line); color: var(--dim); }
 .sb-job.running { border-color: var(--text); } .sb-job.running .sb-job-state { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-.sb-job.done .sb-job-state { background: var(--text); color: var(--bg); border-color: var(--text); } .sb-job.failed .sb-job-state, .sb-job.uncertain .sb-job-state { color: var(--bad); border-color: var(--bad); } .sb-job.cancelled { opacity: .55; }
+.sb-job.done .sb-job-state { background: var(--text); color: var(--bg); border-color: var(--text); } .sb-job.failed .sb-job-state, .sb-job.uncertain .sb-job-state { color: var(--bad-ink); border-color: var(--bad); } .sb-job.cancelled { opacity: .55; }
 .sb-panel { gap: 10px; } .sb-panel .btn { min-height: 32px; padding: 4px 10px; font-size: .86em; }
 
 /* 메시지 아래 삽화 */
@@ -70,7 +70,7 @@
 .illust[data-sb] figcaption { align-items: center; justify-content: flex-start; gap: 4px; padding: 3px 3px 3px 10px; min-height: 34px; }
 .sb-fig-title { flex: 1 1 auto; min-width: 0; font-size: .82em; font-weight: 600; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sb-ver { display: inline-flex; align-items: center; flex: none; color: var(--dim); }
-.sb-ver button { width: 24px; height: 26px; display: inline-grid; place-items: center; color: inherit; } .sb-ver button:hover { color: var(--accent); }
+.sb-ver button { width: 24px; height: 26px; display: inline-grid; place-items: center; color: inherit; } .sb-ver button:hover { color: var(--accent-ink); }
 .sb-ver-count { min-width: 26px; text-align: center; font-size: .72em; font-variant-numeric: tabular-nums; }
 .sb-fig-actions { position: absolute; top: 8px; right: 8px; z-index: 2; display: flex; gap: 5px; opacity: 0; transition: opacity .2s; }
 .illust:hover .sb-fig-actions, .illust:focus-within .sb-fig-actions { opacity: 1; }
@@ -83,11 +83,11 @@
 .sb-pending { position: relative; flex: 1 1 140px; min-height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 14px; text-align: center; border: 1px dashed var(--text); color: var(--dim);
   background: radial-gradient(color-mix(in srgb, var(--text) 20%, transparent) 1.2px, transparent 1.7px) 0 0 / 10px 10px, var(--surface); }
 .sb-pending::before { content: ""; position: absolute; inset: -4px; background: var(--handles); pointer-events: none; }
-.sb-pending.running { border-style: solid; animation: sb-dots 1.6s linear infinite; } .sb-pending.running .ic { color: var(--accent); }
+.sb-pending.running { border-style: solid; animation: sb-dots 1.6s linear infinite; } .sb-pending.running .ic { color: var(--accent-ink); }
 .sb-pending b { font-size: .86em; color: var(--text); background: var(--surface); padding: 1px 8px; } .sb-pending span { font-size: .8em; background: var(--surface); padding: 0 6px; overflow-wrap: anywhere; }
 .sb-note { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding: 6px 6px 6px 12px; border: 1px solid var(--ink-line); background: var(--surface); font-size: .88em; }
-.sb-note > .ic { flex: none; color: var(--accent); } .sb-note > span { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; color: var(--dim); } .sb-note > span b { color: var(--text); }
-.sb-note .btn { min-height: 30px; padding: 3px 11px; font-size: .92em; } .sb-note.bad { border-color: var(--bad); } .sb-note.bad > .ic { color: var(--bad); } .sb-note.draft { border-color: var(--text); }
+.sb-note > .ic { flex: none; color: var(--accent-ink); } .sb-note > span { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; color: var(--dim); } .sb-note > span b { color: var(--text); }
+.sb-note .btn { min-height: 30px; padding: 3px 11px; font-size: .92em; } .sb-note.bad { border-color: var(--bad); } .sb-note.bad > .ic { color: var(--bad-ink); } .sb-note.draft { border-color: var(--text); }
 .sb-hidden-chip { align-self: flex-start; font-size: .8em; }
 @keyframes sb-dots { to { background-position: 10px 10px, 0 0; } }
 @keyframes sb-blink { 50% { opacity: .45; } }
@@ -112,7 +112,7 @@
 .sb-excerpt { margin: 0; max-height: 150px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .88em; line-height: 1.65; padding: 8px 12px; border-left: 2px solid var(--accent); background: var(--surface2); color: var(--dim); } .sb-excerpt[hidden] { display: none; }
 .sb-para-list { display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow: auto; padding: 2px; }
 .sb-para { display: block; width: 100%; padding: 11px 13px; text-align: left; border: 1px solid var(--ink-line); background: var(--surface); } .sb-para:hover { border-color: var(--text); }
-.sb-para b { display: block; margin-bottom: 5px; font-size: .82em; color: var(--accent); } .sb-para span { display: block; font-size: .9em; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.sb-para b { display: block; margin-bottom: 5px; font-size: .82em; color: var(--accent-ink); } .sb-para span { display: block; font-size: .9em; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .sb-cast { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(0, 1.2fr); gap: 24px; align-items: start; } .sb-cast-visual, .sb-cast-editor { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 .sb-cast-list { display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 12px; border-bottom: 1px solid var(--ink-line); } .sb-cast-list:empty { display: none; } .sb-cast-list .chip { max-width: 190px; overflow: hidden; text-overflow: ellipsis; }
 .sb-cast-fields { gap: 12px; } .sb-cast-actions .btn { min-height: 34px; padding: 5px 12px; font-size: .88em; }
@@ -142,7 +142,7 @@
 /* 검수 · 미완료 작업 · 문단 고르기 · 연결 안내 */
 .sb-review p { margin: 0; line-height: 1.75; } .sb-review .sb-warn { color: var(--text); }
 .sb-shot-off { display: grid; place-items: center; width: 100%; aspect-ratio: 3 / 4; font-style: normal; font-size: .84em; font-weight: 700; color: var(--dim); border: 1px dashed var(--text); background: radial-gradient(color-mix(in srgb, var(--text) 16%, transparent) 1.2px, transparent 1.7px) 0 0 / 10px 10px, var(--surface); }
-.sb-shot-off.failed, .sb-shot-off.uncertain { color: var(--bad); border-color: var(--bad); } .sb-shot-off.running { border-style: solid; color: var(--accent); animation: sb-dots 1.6s linear infinite; }
+.sb-shot-off.failed, .sb-shot-off.uncertain { color: var(--bad-ink); border-color: var(--bad); } .sb-shot-off.running { border-style: solid; color: var(--accent-ink); animation: sb-dots 1.6s linear infinite; }
 .sb-shot-mark { position: absolute; top: 6px; left: 6px; padding: 1px 7px; font-style: normal; font-size: .7em; font-weight: 700; background: var(--accent); color: var(--on-accent); }
 .sb-para.on { border-color: var(--text); box-shadow: inset 3px 0 0 var(--accent); }
 .sb-help-steps { margin: 0; padding-left: 22px; font-size: .93em; line-height: 1.8; overflow-wrap: anywhere; } .sb-help-steps li { margin-bottom: 8px; }
@@ -201,7 +201,7 @@
 .illust:not([data-sb]) { max-width: min(100%, var(--sb-w, 400px)); } .illust:not([data-sb]) figcaption { min-height: 34px; box-sizing: border-box; }
 /* 참조 이미지: 지금 설정으로 실제 쓰이는 장수와 값, 못 쓰는 까닭 */
 .sb-ref-cost { margin: 0; padding: 6px 10px; border-left: 2px solid var(--accent); background: var(--surface); font-size: .86em; color: var(--dim); overflow-wrap: anywhere; }
-.sb-ref-skip { margin: 0; padding: 5px 8px; border: 1px dashed var(--bad); color: var(--bad); font-size: .84em; overflow-wrap: anywhere; }
+.sb-ref-skip { margin: 0; padding: 5px 8px; border: 1px dashed var(--bad); color: var(--bad-ink); font-size: .84em; overflow-wrap: anywhere; }
 .sb-ref > .col { justify-content: flex-start; align-self: start; } .sb-manual .sb-seg { display: flex; width: 100%; }
 /* 목록의 작은 그림: 아직 만들어지지 않은 칸도 같은 크기로 자리를 잡아 둔다 */
 .sb-shot .sb-thumb-wait { display: block; width: 100%; aspect-ratio: 3 / 4; border: 1px solid var(--text); background: var(--surface2); }

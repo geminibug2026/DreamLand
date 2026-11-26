@@ -16,12 +16,12 @@
 
 /* ── 누르는 것들: 손가락으로 누르기 좋게 34px 넘게 ── */
 .mm-ti-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; max-width: 100%; padding: 4px 12px; border: 1px solid var(--line-2); background: transparent; color: var(--text); font: inherit; font-size: .86em; line-height: 1.3; overflow-wrap: anywhere; text-align: left; cursor: pointer; }
-.mm-ti-chip.on { background: var(--text); color: var(--bg); border-color: var(--text); } .mm-ti-chip.all { border-style: dashed; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.mm-ti-chip.on { background: var(--text); color: var(--bg); border-color: var(--text); } .mm-ti-chip.all { border-style: dashed; color: var(--accent-ink); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
 .mm-ti-chip > b { font-weight: 400; font-size: .86em; opacity: .7; }
 .mm-ti-btn { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 34px; min-height: 34px; padding: 0 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text); font: inherit; cursor: pointer; }
-.mm-ti-btn.wide { padding: 0 12px; font-size: .84em; } .mm-ti-btn:disabled { opacity: .35; cursor: default; } .mm-ti-btn.del { border-color: transparent; color: var(--dim); } .mm-ti-btn.del:hover { color: var(--bad); }
+.mm-ti-btn.wide { padding: 0 12px; font-size: .84em; } .mm-ti-btn:disabled { opacity: .35; cursor: default; } .mm-ti-btn.del { border-color: transparent; color: var(--dim); } .mm-ti-btn.del:hover { color: var(--bad-ink); }
 .mm-ti-chip:focus-visible, .mm-ti-btn:focus-visible, .mm-ti-jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.mm-ti-jump { display: inline-flex; align-items: center; min-height: 26px; padding: 2px 8px; border: 1px solid var(--line-2); background: transparent; color: var(--accent); font-size: 11.5px; cursor: pointer; position: relative; white-space: nowrap; }
+.mm-ti-jump { display: inline-flex; align-items: center; min-height: 26px; padding: 2px 8px; border: 1px solid var(--line-2); background: transparent; color: var(--accent-ink); font-size: 11.5px; cursor: pointer; position: relative; white-space: nowrap; }
 .mm-ti-jump::after { content: ""; position: absolute; inset: -5px -3px; } .mm-ti-jump.off { color: var(--dim); border-style: dashed; cursor: default; }
 
 /* ── 지난 요약에서 찾기 ── */
@@ -59,7 +59,7 @@
 .mm-ti-tip { font-style: normal; font-size: .62em; color: var(--tk); } .mm-ti-kind { padding: 0 6px; border: 1px solid var(--tk); color: color-mix(in srgb, var(--tk) 70%, var(--text)); white-space: nowrap; }
 .mm-ti-hand { padding: 0 6px; border: 1px dashed var(--line-2); white-space: nowrap; } .mm-ti-dim { color: var(--dim); }
 .mm-ti-tag { display: inline-block; margin-right: 7px; padding: 0 7px; border: 1px solid var(--line-2); font-style: normal; font-size: .8em; font-weight: 600; color: var(--dim); white-space: nowrap; vertical-align: 1px; }
-.mm-ti-tag.sk-relationship, .mm-ti-chip.sk-relationship:not(.on) { border-color: color-mix(in srgb, var(--accent) 60%, transparent); } .mm-ti-tag.sk-relationship { color: var(--accent); }
+.mm-ti-tag.sk-relationship, .mm-ti-chip.sk-relationship:not(.on) { border-color: color-mix(in srgb, var(--accent) 60%, transparent); } .mm-ti-tag.sk-relationship { color: var(--accent-ink); }
 .mm-ti-tag.sk-emotion, .mm-ti-chip.sk-emotion:not(.on) { border-color: color-mix(in srgb, var(--bad) 50%, transparent); } .mm-ti-tag.sk-emotion { color: color-mix(in srgb, var(--bad) 70%, var(--text)); }
 .mm-ti-tag.sk-situation, .mm-ti-chip.sk-situation:not(.on) { border-color: var(--line-1); } .mm-ti-tag.sk-situation { color: var(--text); }
 .mm-ti-tag.sk-growth, .mm-ti-chip.sk-growth:not(.on) { border-color: color-mix(in srgb, var(--ok) 60%, transparent); } .mm-ti-tag.sk-growth { color: var(--ok); }

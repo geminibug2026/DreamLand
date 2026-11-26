@@ -5,14 +5,14 @@
 .quick .qr-chip:disabled { opacity: .45; cursor: default; }
 .quick .qr-more { flex: none; padding-inline: 10px; color: var(--dim); }
 .quick .qr-chip, .qr-cell { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-.qr-pin { color: var(--accent); font-size: .78em; margin-right: 4px; }
+.qr-pin { color: var(--accent-ink); font-size: .78em; margin-right: 4px; }
 .quick .qr-pinned + .qr-set > .qr-chip:first-child, .quick .qr-pinned + .qr-setchip { margin-left: 8px; }
 /* 접힌 세트: 칩 하나 + 작은 개수 */
 .quick .qr-setchip { display: inline-flex; align-items: center; gap: 6px; max-width: 46vw; color: var(--text); }
 .quick .qr-setchip .qr-setname { overflow: hidden; text-overflow: ellipsis; }
 .quick .qr-setchip small { font-size: .82em; color: var(--faint); font-variant-numeric: tabular-nums; }
-.quick .qr-setchip small::before { content: "✦ "; color: var(--accent); font-size: .8em; }
-.quick .qr-setchip.on { border-color: var(--accent); color: var(--accent); }
+.quick .qr-setchip small::before { content: "✦ "; color: var(--accent-ink); font-size: .8em; }
+.quick .qr-setchip.on { border-color: var(--accent); color: var(--accent-ink); }
 
 /* 서랍 */
 .qr-tray-back { display: none; }

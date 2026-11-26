@@ -9,7 +9,7 @@
 .alm-sp { flex: 1; }
 .alm-tag { font: 600 .68em var(--display); letter-spacing: .2em; text-transform: uppercase; }
 .alm-chip { font: 600 .7em var(--display); font-style: normal; letter-spacing: .04em; padding: 1px 7px; border: 1px solid var(--ink-line); color: var(--dim); white-space: nowrap; flex: none; }
-.alm-g { width: 12px; height: 12px; flex: none; color: var(--text); } .alm-g.g-scene { color: var(--accent); } .alm-g.g-missed { color: var(--bad); } .alm-g.g-dream, .alm-g.g-letter { color: var(--dim); }
+.alm-g { width: 12px; height: 12px; flex: none; color: var(--text); } .alm-g.g-scene { color: var(--accent-ink); } .alm-g.g-missed { color: var(--bad-ink); } .alm-g.g-dream, .alm-g.g-letter { color: var(--dim); }
 .alm-mini { flex: none; color: var(--ink); }
 .alm-flash { animation: alm-flash 2s var(--ease); } @keyframes alm-flash { 0%, 55% { background: color-mix(in srgb, var(--accent) 16%, transparent); } }
 
@@ -42,14 +42,14 @@
 .alm-env { margin-top: auto; display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--surface); text-align: left; min-width: 0; }
 .alm-env > div { display: flex; flex-direction: column; min-width: 0; } .alm-env b { font-size: .9em; } .alm-env small { color: var(--dim); font-size: .78em; line-height: 1.45; }
 .alm-env .alm-g { width: 22px; height: 22px; }
-.alm-env.locked { border: 1px dashed var(--ink-line); color: var(--dim); } .alm-env.has { border: 1px solid var(--ink); width: 100%; } .alm-env.has:hover { background: var(--surface2); } .alm-env.has .alm-g { color: var(--accent); }
+.alm-env.locked { border: 1px dashed var(--ink-line); color: var(--dim); } .alm-env.has { border: 1px solid var(--ink); width: 100%; } .alm-env.has:hover { background: var(--surface2); } .alm-env.has .alm-g { color: var(--accent-ink); }
 .alm-env.ready { flex-wrap: wrap; padding: 0; background: none; gap: 6px; } .alm-env.ready .btn { flex: 1 1 auto; white-space: normal; text-align: left; } .alm-env.ready small { flex: 1 1 100%; }
 
 .alm-cal { display: flex; flex-direction: column; min-width: 0; }
 .alm-cal-head { display: flex; align-items: center; gap: 4px; padding: 12px 14px 10px; flex-wrap: wrap; } .alm-cal-head h2 { font: 800 1.3em var(--display); letter-spacing: -.01em; padding: 0 6px; min-width: 7.2em; text-align: center; }
 .alm-cal-head .btn { min-height: 34px; padding: 5px 12px; }
 .alm-week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
-.alm-week span { padding: 5px 8px; font: 600 .7em var(--display); letter-spacing: .14em; color: var(--dim); } .alm-week .sun, .alm-day.sun .alm-n { color: var(--bad); }
+.alm-week span { padding: 5px 8px; font: 600 .7em var(--display); letter-spacing: .14em; color: var(--dim); } .alm-week .sun, .alm-day.sun .alm-n { color: var(--bad-ink); }
 .alm-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-auto-rows: minmax(86px, 1fr); flex: 1; }
 .alm-day { position: relative; text-align: left; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); min-width: 0; overflow: hidden; transition: background .15s; }
 .alm-day:nth-child(7n) { border-right: 0; } .alm-day:hover { background: var(--surface2); }
@@ -63,7 +63,7 @@
 .alm-marks { position: absolute; left: 6px; right: 4px; bottom: 5px; display: flex; align-items: center; gap: 3px; } .alm-marks .alm-g { width: 11px; height: 11px; } .alm-marks em { font: 600 .7em var(--display); font-style: normal; color: var(--dim); }
 .alm-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 9px 14px 11px; border-top: 1px solid var(--ink); font-size: .74em; color: var(--dim); } .alm-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .alm-dot.demo { position: static; margin: 0; --d: 8px; display: inline-block; } .alm-dot.demo.d2 { --d: 6px; } .alm-dot.demo { --d: 4px; } .alm-dot.demo.d3 { --d: 9px; } .alm-legend .alm-dots { gap: 3px; } .alm-legend .alm-dots .d3 { margin-right: 3px; }
-.alm-g.g-kept { color: var(--accent); }
+.alm-g.g-kept { color: var(--accent-ink); }
 
 /* 한 해의 달들 */
 .alm-year { display: flex; align-items: center; gap: 4px; padding: 8px 10px; border: 1px solid var(--ink-line); background: var(--surface); min-width: 0; } .alm-year > b { font: 800 1.05em var(--display); padding: 0 4px; }
@@ -164,18 +164,18 @@ button.alm-ticket { transition: transform .2s var(--ease); } button.alm-ticket:h
 .bk-ex-head { display: flex; justify-content: space-between; align-items: baseline; font: 600 .66em var(--display); letter-spacing: .2em; } .bk-ex-head small { letter-spacing: .06em; opacity: .6; }
 .bk-ex-add { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px dashed var(--ink-line); color: var(--dim); text-align: left; } .bk-ex-add:hover { border-style: solid; color: var(--pen); background: var(--surface2); }
 .bk-ex-add span { font-size: 1.15rem; flex: 1; } .bk-ex-add small { font: 600 .62em var(--display); letter-spacing: .16em; }
-.bk-note { position: relative; color: var(--accent); font-size: calc(var(--bk-size) * .94); line-height: 1.55; padding-right: 26px; } .bk-note p, .bk-ans p { margin: 0 0 .35em; }
+.bk-note { position: relative; color: var(--accent-ink); font-size: calc(var(--bk-size) * .94); line-height: 1.55; padding-right: 26px; } .bk-note p, .bk-ans p { margin: 0 0 .35em; }
 .bk-by { display: block; text-align: right; font-size: .82em; opacity: .75; }
 .bk-mini { position: absolute; top: 0; right: 0; width: 24px; height: 24px; display: grid; place-items: center; color: var(--dim); } .bk-mini:hover { color: var(--pen); background: var(--surface2); }
 .bk-ans { position: relative; align-self: flex-end; max-width: 86%; margin: 6px 4px 2px 0; padding: 12px 14px 8px; background: color-mix(in srgb, var(--paper) 86%, var(--pen)); color: var(--bk-ink); font-size: calc(var(--bk-size) * .9); line-height: 1.5; transform: rotate(-1.4deg); box-shadow: 0 3px 8px rgba(0, 0, 0, .12); }
 .bk-ans::before { content: ""; position: absolute; top: -7px; left: 18px; width: 52px; height: 15px; background: color-mix(in srgb, var(--accent) 42%, transparent); transform: rotate(-3deg); }
-.bk-note-inp { width: 100%; min-height: 84px; resize: vertical; padding: 8px 10px; border: 1px solid var(--ink-line); background: color-mix(in srgb, var(--paper) 70%, #fff); color: var(--accent); font-size: calc(var(--bk-size) * .94); line-height: 1.5; outline: none; } .bk-note-inp:focus { border-color: var(--pen); }
+.bk-note-inp { width: 100%; min-height: 84px; resize: vertical; padding: 8px 10px; border: 1px solid var(--ink-line); background: color-mix(in srgb, var(--paper) 70%, #fff); color: var(--accent-ink); font-size: calc(var(--bk-size) * .94); line-height: 1.5; outline: none; } .bk-note-inp:focus { border-color: var(--pen); }
 .bk-ex-acts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
 .bk-btn { font: 600 .78em var(--display); padding: 5px 11px; border: 1px solid var(--pen); color: var(--pen); background: transparent; } .bk-btn:hover { background: var(--surface2); } .bk-btn.ink { background: var(--pen); color: var(--paper); } .bk-btn.ink:hover { opacity: .88; } .bk-btn:disabled { opacity: .55; pointer-events: none; }
 .bk-stamp { font: 700 .62em var(--display); letter-spacing: .16em; padding: 2px 8px; border: 1.5px solid currentColor; transform: rotate(-3deg); opacity: .72; white-space: nowrap; }
 .bk-ps { opacity: .8; font-size: .92em; }
 .bk-keep { align-items: center; gap: 14px; padding: 16px 6px 6px 0; } .bk-keep .bk-ex-acts { align-self: stretch; margin-top: auto; }
-.bk-sum { font-size: var(--bk-size); line-height: 1.5; text-align: center; color: var(--bk-ink); margin: 0; } .bk-memo { font-size: calc(var(--bk-size) * .9); line-height: 1.5; text-align: center; color: var(--accent); margin: 0; }
+.bk-sum { font-size: var(--bk-size); line-height: 1.5; text-align: center; color: var(--bk-ink); margin: 0; } .bk-memo { font-size: calc(var(--bk-size) * .9); line-height: 1.5; text-align: center; color: var(--accent-ink); margin: 0; }
 .bk-nophoto { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 26px 0; opacity: .6; } .bk-nophoto small { font-size: .8em; }
 .bk-seal { display: grid; place-items: center; } .book-mid .alm-ticket { max-width: 100%; transform: rotate(-2deg); box-shadow: 0 6px 14px rgba(0, 0, 0, .16); }
 /* 꿈: 밤의 종이 */

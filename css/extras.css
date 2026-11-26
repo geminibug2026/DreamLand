@@ -84,7 +84,7 @@
 .xt-bg-it figcaption { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 11px; } .xt-bg-it figcaption span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .xt-bg-it figcaption em { font-style: normal; font-size: 10px; }
 .xt-star { width: 24px; height: 24px; display: inline-grid; place-items: center; border: 0; background: none; color: var(--dim); cursor: pointer; padding: 0; opacity: .55; transition: opacity .15s, color .15s; } .xt-star:hover { opacity: 1; color: var(--text); }
-.xt-star.on { opacity: 1; color: var(--accent); } .xt-star.on .ic path { fill: currentColor; }
+.xt-star.on { opacity: 1; color: var(--accent-ink); } .xt-star.on .ic path { fill: currentColor; }
 
 /* ── 지운 메시지 ── */
 .toast.xt-undo { display: flex; align-items: center; gap: 14px; } .toast.xt-undo button { border: 0; background: none; color: inherit; font: 500 12px var(--fx-mono); letter-spacing: .08em; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; padding: 4px 0; }

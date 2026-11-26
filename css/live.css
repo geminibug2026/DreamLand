@@ -14,7 +14,7 @@
 .me-btn.is-dnd i { background: var(--bad); }
 .me-btn.is-hidden i { background: none; box-shadow: 0 0 0 1px var(--faint); }
 .msg-head .why { font: 500 .68em var(--display); font-style: normal; letter-spacing: .06em; color: var(--dim); padding: 1px 6px; border: 1px solid var(--line); white-space: nowrap; }
-.msg-head .why::before { content: "☾ "; color: var(--accent); }
+.msg-head .why::before { content: "☾ "; color: var(--accent-ink); }
 
 /* ════ 장면 패널: 상태 ════ */
 .pres-row { display: flex; flex-direction: column; gap: 6px; padding-bottom: 10px; border-bottom: 1px solid var(--line); } .pres-row:last-of-type { border-bottom: 0; }
@@ -31,7 +31,7 @@
 .wk-bar { position: relative; height: 20px; border: 1px solid var(--ink-line); background: var(--surface2); overflow: visible; }
 .wk-bar > i { position: absolute; top: 0; bottom: 0; background: var(--st); box-shadow: inset -1px 0 0 var(--ink-line); }
 .wk-bar > em { position: absolute; inset: 0; display: grid; place-items: center; font: 500 10px var(--display); font-style: normal; color: var(--faint); letter-spacing: .08em; }
-.wk-now { position: absolute; z-index: 1; top: -9px; transform: translateX(-50%); font-size: 11px; line-height: 1; color: var(--accent); pointer-events: none; }
+.wk-now { position: absolute; z-index: 1; top: -9px; transform: translateX(-50%); font-size: 11px; line-height: 1; color: var(--accent-ink); pointer-events: none; }
 .wk-now::after { content: ""; position: absolute; left: 50%; top: 9px; height: 20px; width: 1px; background: var(--accent); }
 button.wk-row:hover .wk-bar { border-color: var(--ink); } .wk-row.on .wk-bar { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); } .wk-row.on .wk-day { color: var(--text); }
 .wk-row.on .wk-day::before { content: "✦"; font-size: 8px; margin-right: 2px; vertical-align: 2px; }
@@ -50,7 +50,7 @@ button.wk-row:hover .wk-bar { border-color: var(--ink); } .wk-row.on .wk-bar { b
 .sched-when { display: flex; align-items: center; gap: 6px; min-width: 0; } .sched-when span { font: 500 .8em var(--display); color: var(--dim); white-space: nowrap; }
 .sched-row .inp { padding: 6px 8px; font-size: .9em; min-width: 0; } .sched-time { width: 96px; flex: none; font-variant-numeric: tabular-nums; } .sched-time:disabled { opacity: .55; }
 .sched-tools { display: flex; gap: 2px; }
-.sched-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 10px; text-align: center; color: var(--dim); } .sched-empty > i { font-style: normal; font-size: 1.6em; color: var(--accent); } .sched-empty p { margin: 0; font-size: .9em; }
+.sched-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 10px; text-align: center; color: var(--dim); } .sched-empty > i { font-style: normal; font-size: 1.6em; color: var(--accent-ink); } .sched-empty p { margin: 0; font-size: .9em; }
 .sched-gen { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; border-top: 1px solid var(--ink-line); } .sched-gen .hint { flex: 1 1 220px; }
 .sched-items { display: flex; flex-direction: column; } .sched-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); min-width: 0; } .sched-item:last-child { border-bottom: 0; }
 .sched-item-text { flex: 1 1 120px; min-width: 0; display: flex; flex-direction: column; } .sched-item-text b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .sched-item-text small { color: var(--dim); font-size: .82em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -67,7 +67,7 @@ button.wk-row:hover .wk-bar { border-color: var(--ink); } .wk-row.on .wk-bar { b
 .plan-cell span { font: 500 .68em var(--display); letter-spacing: .08em; color: var(--dim); } .plan-cell b { font: 800 1.02em var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .plan-cell small { font-size: .78em; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .plan-bar { display: block; height: 4px; background: var(--surface3); margin-top: 3px; } .plan-bar i { display: block; height: 100%; background: var(--ink); }
 .plan-why { font-size: .88em; } .plan-why b { font: 700 .82em var(--display); letter-spacing: .04em; } .plan-why ul { margin: 4px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 2px; } .plan-why.soft { color: var(--dim); }
-.plan-why li::marker { content: "✦  "; font-size: .7em; color: var(--accent); }
+.plan-why li::marker { content: "✦  "; font-size: .7em; color: var(--accent-ink); }
 .plan-cds { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; } .plan-cds-label { font: 500 .7em var(--display); letter-spacing: .08em; color: var(--dim); margin-right: 4px; }
 .plan-cd { display: inline-flex; align-items: baseline; gap: 5px; padding: 3px 8px; border: 1px solid var(--ink-line); font-size: .8em; font-weight: 600; } .plan-cd small { font: 500 .82em var(--display); color: var(--dim); } .plan-cd.wait { color: var(--faint); border-style: dashed; font-weight: 500; }
 
@@ -80,7 +80,7 @@ button.hud-cell { text-align: left; cursor: pointer; } button.hud-cell:hover { b
 .hud-side { flex: none; display: flex; align-items: stretch; border-left: 1px solid var(--ink-line); } .hud-side > :where(:not(:first-child)) { border-left: 1px solid var(--line); } .hud-side .hud-edit { border-left: 1px solid var(--line); }
 .hud-nav { display: flex; align-items: stretch; } .hud-nav button { display: flex; align-items: center; gap: 4px; padding: 0 7px; color: var(--dim); } .hud-nav button:hover:not(:disabled) { background: var(--ink); color: var(--bg); } .hud-nav button:disabled { opacity: .3; cursor: default; }
 .hud-when { font: 700 .72em var(--display); letter-spacing: .06em; min-width: 46px; justify-content: center; } .hud-when small { font-weight: 500; opacity: .7; }
-.hud-people { display: flex; align-items: center; gap: 5px; padding: 0 10px; font: 600 .72em var(--display); letter-spacing: .04em; color: var(--dim); white-space: nowrap; } .hud-people i { font-style: normal; color: var(--accent); } .hud-people:hover, .hud-people.on { color: var(--text); background: var(--surface2); }
+.hud-people { display: flex; align-items: center; gap: 5px; padding: 0 10px; font: 600 .72em var(--display); letter-spacing: .04em; color: var(--dim); white-space: nowrap; } .hud-people i { font-style: normal; color: var(--accent-ink); } .hud-people:hover, .hud-people.on { color: var(--text); background: var(--surface2); }
 .hud.past .hud-line { background: repeating-linear-gradient(135deg, transparent 0 6px, var(--surface2) 6px 7px); } .hud.past .hud-when { background: var(--ink); color: var(--bg); } .hud.past button.hud-cell { cursor: default; }
 
 /* ════ 상태창: 인물 카드 (다이어리 여백에 붙인 쪽지) ════ */
@@ -96,10 +96,10 @@ button.hud-cell { text-align: left; cursor: pointer; } button.hud-cell:hover { b
 .pcard-think::before, .pcard-think::after { content: ""; position: absolute; border: 1px solid var(--ink-line); border-radius: 50%; background: var(--surface); }
 .pcard-think::before { width: 9px; height: 9px; left: 12px; top: -7px; } .pcard-think::after { width: 5px; height: 5px; left: 4px; top: -13px; }
 .pcard-think p { margin: 0; font-size: .86em; line-height: 1.5; color: var(--think, var(--dim)); font-style: italic; overflow-wrap: anywhere; } .pcard-think.blank p { color: var(--faint); font-style: normal; } .pcard-think:hover { border-color: var(--ink); }
-.pcard-row.fresh, .pcard-think.fresh { animation: hud-in .5s var(--ease); } .pcard-row.fresh b, .pcard-think.fresh p { color: var(--accent); }
+.pcard-row.fresh, .pcard-think.fresh { animation: hud-in .5s var(--ease); } .pcard-row.fresh b, .pcard-think.fresh p { color: var(--accent-ink); }
 
 /* ════ 상태창 고치기 ════ */
-.state-edit { display: flex; flex-direction: column; gap: 12px; min-width: 0; } .se-mark { font-style: normal; color: var(--accent); font-size: .8em; }
+.state-edit { display: flex; flex-direction: column; gap: 12px; min-width: 0; } .se-mark { font-style: normal; color: var(--accent-ink); font-size: .8em; }
 .se-list { display: flex; flex-direction: column; } .se-row { display: grid; grid-template-columns: minmax(84px, 24%) 1fr 34px 34px; gap: 6px; align-items: center; padding: 5px 0; border-bottom: 1px solid var(--line); } .se-row:last-child { border-bottom: 0; }
 .se-k { font-size: .88em; font-weight: 600; display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; } .se-k small { font: 500 .78em var(--display); color: var(--faint); } .se-row.se-off .se-k { color: var(--faint); }
 .se-row .inp { padding: 6px 9px; font-size: .92em; min-width: 0; }

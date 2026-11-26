@@ -17,7 +17,7 @@
 .tts-search { margin-bottom: 8px; }
 .tts-char-head { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 2px; background: none; border: 0; color: inherit; text-align: left; cursor: pointer; min-width: 0; }
 .tts-char-head small { flex: 1; text-align: right; }
-.tts-chars li.open .tts-char-head .tts-conn-name { color: var(--accent); }
+.tts-chars li.open .tts-char-head .tts-conn-name { color: var(--accent-ink); }
 .tts-chars li.open { padding-bottom: 8px; }
 .tts-char-voice { display: flex; flex-direction: column; gap: 6px; }
 .tts-char-voice > .tts-row { flex-wrap: wrap; }
@@ -52,7 +52,7 @@
 .rd-strip-tag { position: absolute; left: 22px; top: 0; transform: translateY(-55%); display: inline-flex; align-items: center; gap: 5px; max-width: calc(100% - 140px); padding: 1px 8px 1px 6px;
   border: 1px solid var(--ink-line, var(--line)); border-radius: 999px; background: var(--surface); font-size: 10.5px; line-height: 15px; white-space: nowrap; pointer-events: none; }
 .rd-strip-tag b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.rd-strip-tag small { color: var(--accent); font-size: 1em; font-weight: 600; }
+.rd-strip-tag small { color: var(--accent-ink); font-size: 1em; font-weight: 600; }
 .rd-strip.paused .rd-strip-tag small, .rd-strip.out .rd-strip-tag small { color: var(--dim); }
 .rd-strip-dot { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--accent); animation: rd-pulse 1.4s ease-in-out infinite; }
 .rd-strip.paused .rd-strip-dot, .rd-strip.out .rd-strip-dot { background: var(--dim); animation: none; }

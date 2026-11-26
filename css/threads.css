@@ -15,7 +15,7 @@
 .th-return > div { display: grid; gap: 3px; min-width: 0; } .th-return b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .th-head { margin-top: 6px; }
 .th-keep > li { padding: 3px 0; font-size: 13px; } .th-keep .fx-pips { align-self: center; }
-.th-link { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; text-decoration-color: var(--line-2); }
+.th-link { padding: 0; border: 0; background: none; color: var(--accent-ink); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; text-decoration-color: var(--line-2); }
 .th-link:hover { text-decoration-color: currentColor; }
 /* 자리: 의자 한 줄씩. 없는 사람은 잉크를 덜어 내고 의자를 점선으로 */
 .th-seats { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 6px; }
@@ -80,7 +80,7 @@
 .th-tied { display: inline-flex; align-items: center; gap: 3px; flex: none; font-family: var(--fx-mono); font-variant-numeric: tabular-nums; }
 .th-room-marks q { quotes: "“" "”"; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--fx-serif); }
 .th-about { display: block; width: 100%; margin-top: 7px; padding: 0; border: 0; background: none; color: var(--dim); font: 400 13px/1.5 var(--fx-serif); text-align: left; text-wrap: pretty; border-radius: 2px; }
-.th-about > span { margin-right: 3px; color: var(--accent); font-size: 1.25em; line-height: 0; } .th-about.none { font-family: var(--font); font-size: 12px; opacity: .7; }
+.th-about > span { margin-right: 3px; color: var(--accent-ink); font-size: 1.25em; line-height: 0; } .th-about.none { font-family: var(--font); font-size: 12px; opacity: .7; }
 
 @container (max-width: 300px) { .th-seats { grid-template-columns: 1fr; } }
 @media (max-width: 820px) {
