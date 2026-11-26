@@ -1,0 +1,17 @@
+# 이 파일을 settings.txt 로 복사해서 고쳐 쓰세요. 이름=값 한 줄씩, # 은 메모
+# 실리태번 · 마리나라의 API 키 칸에 넣는 암호 (비우면 local-relay)
+RELAY_KEY=local-relay
+# 주소의 포트 (http://127.0.0.1:4190/v1)
+PORT=4190
+# 1 이면 같은 와이파이의 다른 기기(휴대폰 등)도 씀. 이때는 RELAY_KEY 를 꼭 바꾸세요
+LAN=0
+# 모든 키가 막혔을 때 버티며 다시 보낼 시간(초). 0 이면 바로 429
+WAIT_SEC=60
+# 끝까지 막히면 한 번 쓸 모델 (비우면 끔)
+FALLBACK_MODEL=
+# VPN · 프록시 프로그램을 거쳐 보내기 (예: http://127.0.0.1:7890 · socks5://127.0.0.1:10808). 비우면 바로
+VIA=
+# 모델 목록에 보일 이름들 (쉼표로). 비우면 기본 목록
+MODELS=
+# Vertex 리전 (기본 global)
+VERTEX_LOCATION=global

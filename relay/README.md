@@ -142,6 +142,31 @@ Vertex 의 Gemini 는 리전마다 처리 용량을 따로 나눠 쓰므로, 이
 
 ---
 
+## 클라우드 없이: 내 PC 중계 (`relay/local`)
+
+Vercel · Cloudflare 에 아무것도 올리지 않고, **내 컴퓨터(또는 안드로이드 Termux)에서** 같은 일을 하는 중계입니다. 실리태번 · 마리나라 · 드림랜드 모두에서 씁니다.
+Vercel 중계의 OpenAI 호환 길과 같은 코드를 쓰고, 계속 떠 있어서 몇 가지를 더 잘합니다.
+
+- **하루 한도가 찬 키를 기억**해 한 시간 동안 건너뜁니다 (클라우드 함수는 요청마다 새로 떠서 잊어요)
+- **버티는 시간에 제한이 없습니다** (Vercel 은 함수 실행 시간 제한이 있어요)
+- **VPN · 프록시 프로그램을 거쳐** 보낼 수 있습니다 (`VIA`) — 요청이 나가는 나라를 바꿀 때
+- 배포 · 가입 · 카드 등록 없음. Node.js 만 있으면 됩니다 (드림랜드를 쓰고 있다면 이미 있어요)
+
+쓰는 법
+
+1. 드림랜드 폴더의 `relay/local/keys/` 에 키를 넣습니다.
+   - 서비스 계정 `.json` 파일을 그대로 (여러 개면 서로 다른 프로젝트의 것으로)
+   - `ai-studio.txt` 에 AI Studio 키를 한 줄에 하나씩, `express.txt` 에 Vertex 익스프레스 키를 한 줄에 하나씩
+2. `relay/local/start-relay.bat`(Windows) 또는 `sh relay/local/start-relay.sh`(Mac · Linux · Termux)를 실행합니다. 창에 주소와 API 키가 나옵니다.
+3. 프로그램에서 "Custom (OpenAI-compatible)" 을 고르고
+   - 주소: `http://127.0.0.1:4190/v1`
+   - API 키: `local-relay` (바꾸려면 아래 설정의 `RELAY_KEY`)
+
+설정은 `relay/local/settings.example.txt` 를 `settings.txt` 로 복사해 고칩니다: `RELAY_KEY` · `PORT` · `LAN`(1 이면 같은 와이파이의 휴대폰도) · `WAIT_SEC` · `FALLBACK_MODEL` · `VIA` · `MODELS` · `VERTEX_LOCATION`.
+`keys/` 와 `settings.txt` 는 깃에 올라가지 않고, `git pull` 이나 `git reset --hard` 로도 지워지지 않습니다.
+
+---
+
 ## 실리태번 · 마리나라 등 다른 프로그램에서 쓰기 (OpenAI 호환)
 
 같은 Vercel 중계에 **OpenAI 호환 길**이 들어 있습니다. 프로그램에서 "Custom (OpenAI-compatible)"을 고르고

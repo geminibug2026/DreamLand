@@ -11,3 +11,8 @@ Thumbs.db
 web/
 ios-app/www/
 ios-app/ios/
+
+# 내 PC 중계에 넣은 구글 키 · 설정 — 절대 올리지 않는다
+relay/local/keys/*
+!relay/local/keys/README.txt
+relay/local/settings.txt

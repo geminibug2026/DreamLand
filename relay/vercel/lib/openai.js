@@ -227,7 +227,7 @@ async function openaiInner(request, region, parts, url, authed) {
         return body.stream ? new Response(streamOut(r, mdl), { status: 200, headers: { ...head, 'Content-Type': 'text/event-stream' } }) : new Response(jsonOut(r, mdl), { status: 200, headers: { ...head, 'Content-Type': 'application/json' } });
       }
       last = await errorOf(r);
-      if (r.status === 429) cooling.set(cred.name, Date.now() + 20000);
+      if (r.status === 429) cooling.set(cred.name, Date.now() + (/per.?day|daily|perday/i.test(last) ? 3600000 : 20000));   // 하루 한도가 찬 열쇠는 한 시간 뒤로 (계속 떠 있는 중계 — 내 PC 중계 — 에서 특히 듣는다)
       if (r.status === 503) busy++;
       if (r.status === 404 && cred.studio) { studioMissing.set(mdl, Date.now() + 600000); continue; }   // AI Studio 에 아직 없는 모델이면 그 키는 건너뛴다 (Vertex 전용 모델)
       if (r.status !== 429 && r.status !== 503) return fail(r.status, last);   // 키 · 요청이 잘못된 것은 다른 곳으로 넘겨도 소용없다
@@ -235,7 +235,7 @@ async function openaiInner(request, region, parts, url, authed) {
     // 모든 열쇠가 구글 인증에서 막혔다 (429 가 아니다): 다른 지역으로 넘겨도 소용없으니 까닭을 그대로 알린다
     if (thrown === list.length) return fail(502, '구글 인증에 실패했어요. 서비스 계정 JSON 이 맞는지, 그 계정에 Vertex AI 사용자 권한이 있는지 확인하세요. (' + last + ')', 'auth_error');
     // 이 지역에서는 모든 키가 막혔다: 아직 안 가 본 지역의 함수에 넘긴다 (버티는 중의 다시 해 보기는 이 지역에서만 — 지역마다 함수를 또 부르지 않게)
-    const next = here ? null : REGIONS.find(x => x !== region && !tried.includes(x));
+    const next = here || process.env.RELAY_HOPS === '0' ? null : REGIONS.find(x => x !== region && !tried.includes(x));   // 내 PC 중계처럼 지역 함수가 없는 곳은 넘기지 않는다
     if (next) {
       try {
         const sib = await fetch(`${url.origin}/${next}/v1/chat/completions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + KEY, 'x-relay-tried': [...tried, region].join(','), ...(busy || request.headers.get('x-relay-busy') === '1' ? { 'x-relay-busy': '1' } : {}) }, body: JSON.stringify({ ...body, model: mdl }) });
