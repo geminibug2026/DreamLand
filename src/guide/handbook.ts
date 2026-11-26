@@ -20,7 +20,7 @@ const T = (id: string, group: string, page: string | undefined, tags: string, ar
 export const TOPICS: Topic[] = [
   T('start', 'start', 'home', '시작 처음 first start begin 开始 入门 quick'),
   T('conns', 'start', 'conns', '연결 api 키 key 모델 model provider 제공자 连接 密钥 openai claude gemini ollama mock 에코'),
-  T('relay', 'start', 'conns', '429 너무 많은 요청 중계 relay cloudflare vercel 워커 worker 지역 region 재시도 retry 자동 재시도 버텍스 vertex 限流 中继 重试'),
+  T('relay', 'start', 'conns', '429 너무 많은 요청 중계 relay cloudflare vercel 워커 worker 지역 region 리전 돌려쓰기 대체 연결 fallback 재시도 retry 자동 재시도 버텍스 vertex 限流 中继 重试 区域 备用连接'),
   T('keys', 'start', 'settings', '키 보안 금고 vault secret password 비밀번호 密钥 安全 server'),
   T('cards', 'start', 'home', '캐릭터 카드 가져오기 import png json charx chub 링크 link 角色卡 导入 만들기 create'),
   T('migrate', 'start', 'import', '이식 옮기기 sillytavern 실리태번 marinara 마리나라 migrate 迁移 import 폴더'),

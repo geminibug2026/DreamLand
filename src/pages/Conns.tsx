@@ -17,6 +17,8 @@ import { Mark } from '../reach/models';
 import { useCss } from '../addons/parts';
 import { cfRelayGuide } from './cfRelay';
 
+/** 429 때 돌아갈 리전 추천 묶음: 대륙을 고루 섞는다. 그 모델이 없는 리전은 처음 한 번 404 를 받은 뒤 하루 동안 건너뛴다 */
+const REGION_PICK = ['global', 'us-central1', 'us-east5', 'europe-west4', 'europe-west1', 'asia-northeast1', 'asia-southeast1'];
 export const page = { name: 'conns', Component: ConnsPage };
 
 /** 제공자 묶음 (PROVIDERS 의 group 값 — 한국어 id 그대로, 그릴 때만 번역) */
@@ -133,7 +135,9 @@ function ConnEditor({ c, api }: { c: Conn; api: EditorApi }) {
       <p className="hint">{t('conns.sa.sectionHint')}</p>
       <SaField c={c} api={api} />
       <div className="row cf-row"><Btn label={/\.(workers\.dev|vercel\.app)\//i.test(c.baseUrl || '') ? t('conns.cf.openOn') : t('conns.cf.open')} ic="sparkle" cls="ghost" onClick={() => cfRelayGuide(c, sv)} /><small className="hint">{t('conns.cf.openHint')}</small></div>
-      <Form obj={c} defs={[{ k: 'region', label: t('conns.region'), type: 'select', opts: ['global', 'us-central1', 'us-east5', 'us-east4', 'us-west1', 'europe-west1', 'europe-west4', 'asia-northeast1', 'asia-northeast3', 'asia-southeast1'], half: true }, { k: 'project', label: t('conns.project'), half: true, ph: t('conns.projectPh') }]} onChange={sv} /></div>}
+      <Form obj={c} defs={[{ k: 'region', label: t('conns.region'), type: 'select', opts: ['global', 'us-central1', 'us-east5', 'us-east4', 'us-west1', 'europe-west1', 'europe-west4', 'asia-northeast1', 'asia-northeast3', 'asia-southeast1'], half: true }, { k: 'project', label: t('conns.project'), half: true, ph: t('conns.projectPh') }]} onChange={sv} />
+      <Form obj={c} defs={[{ k: 'regions', label: t('conns.regions'), ph: 'us-central1, europe-west4, asia-northeast1', hint: t('conns.regionsHint') },
+        { el: <div className="row wrap"><Btn label={t('conns.regionsPick')} ic="plus" cls="ghost sm" onClick={() => { c.regions = REGION_PICK.filter(r => r !== (c.region || 'global')).join(', '); sv(); redraw(); }} />{c.regions ? <Btn label={t('conns.regionsClear')} cls="ghost sm" onClick={() => { c.regions = ''; sv(); redraw(); }} /> : null}</div> }]} onChange={sv} /></div>}
     <div className="field"><span className="field-label">{t('conns.model')}</span>
       <div className="row"><input className="inp" list={'models-' + c.id} value={model} placeholder={def.kind === 'azure' ? t('conns.deployName') : t('conns.modelId')} autoComplete="off" spellCheck={false} onChange={e => { setModel(e.target.value); c.model = e.target.value.trim(); sv(); }} />
         <datalist id={'models-' + c.id}>{(models || def.models).map(m => <option value={m} key={m} />)}</datalist>

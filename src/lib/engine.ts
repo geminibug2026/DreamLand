@@ -1053,6 +1053,41 @@ async function vertexTarget(conn: Conn, publisher: string, model: string, method
   return { url: `${host}/v1/projects/${project}/locations/${region}/publishers/${publisher}/models/${model}:${method}`, headers: { Authorization: 'Bearer ' + await vertexToken(conn) } };
 }
 
+// ── 429 때 다른 리전으로 (Vertex) ──
+// Vertex 의 Gemini 는 리전마다 따로 나눠 쓰는 처리 용량이 있다. 한 리전이 붐벼 429 가 나도 다른 리전은 비어 있을 수 있다.
+// 중계는 요청이 나가는 곳(IP)만 바꾸고 주소 속 리전은 그대로라, 그 리전이 붐비면 중계를 다 돌아도 429 다. 여기서는 주소 속 리전 자체를 바꾼다 (중계를 쓰면 중계는 그대로 두고 리전만)
+export const regionList = (conn: Conn): string[] => { const own = String(conn.region || 'global').trim() || 'global'; return [...new Set([own, ...String(conn.regions || '').split(/[\s,]+/).map(x => x.trim().toLowerCase()).filter(x => /^[a-z]+(-[a-z0-9]+)*$/.test(x))])]; };
+/** 그 리전에 이 모델이 없다(404)고 답한 곳: 하루 동안 건너뛴다 · 마지막으로 답을 받은 리전: 30분 동안 거기서 시작한다 */
+const regionGone = new Map<string, number>(), regionGood = new Map<string, { r: string; at: number }>();
+const regionKey = (conn: Conn, url: string) => `${conn.id}|${(url.match(/\/models\/([^/:]+)/) || [])[1] || ''}`;
+const regionOf = (url: string) => (url.match(/\/locations\/([a-z0-9-]+)\//) || [])[1] || '';
+/** 주소의 리전을 바꾼다. 중계 주소면 중계는 그대로, 구글 주소면 그 리전의 주소로 */
+function withRegion(url: string, to: string, relays: string[]): string {
+  const path = url.replace(/\/locations\/[a-z0-9-]+\//, `/locations/${to}/`);
+  if (relays.some(r => path.startsWith(r))) return path;
+  return path.replace(/^https:\/\/([a-z0-9-]+-)?aiplatform\.googleapis\.com/, to === 'global' ? 'https://aiplatform.googleapis.com' : `https://${to}-aiplatform.googleapis.com`);
+}
+/** 이번 요청을 어느 리전에서 시작할지: 최근에 답을 받은 리전이 있으면 거기서 */
+function startRegion(conn: Conn, url: string, relays: string[]): string {
+  if (defOf(conn).kind !== 'vertex' || !regionOf(url) || !String(conn.regions || '').trim()) return url;
+  const g = regionGood.get(regionKey(conn, url)), list = regionList(conn);
+  return g && Date.now() - g.at < 30 * 60000 && list.includes(g.r) && g.r !== regionOf(url) && !((regionGone.get(regionKey(conn, url) + '|' + g.r) || 0) > Date.now()) ? withRegion(url, g.r, relays) : url;
+}
+/** 붐빌 때 보조 호출이 비켜 선다: 같은 연결로 본 답변이 나가는 동안, 그리고 그 연결에서 429 가 난 직후 잠깐은 기억 · 번역 · 선택지 같은 보조 호출을 늦게 보낸다
+ *  (한꺼번에 여러 개가 나가 본 답변까지 429 를 맞지 않게, 막힌 연결을 보조 호출이 계속 두드리지 않게). 본 답변은 기다리지 않는다 */
+const mainLive = new Map<string, number>(), cooled = new Map<string, number>(), mainDone = new Set<() => void>();
+const isHelper = (label?: string) => label === 'helper' || label === 'mvu';
+async function yieldToMain(id: string, signal?: AbortSignal | null) {
+  const until = Date.now() + 90000;
+  while (Date.now() < until) {
+    if (signal?.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' });
+    const cool = (cooled.get(id) || 0) - Date.now(), busy = (mainLive.get(id) || 0) > 0;
+    if (!busy && cool <= 0) return;
+    await new Promise<void>(res => { const done = () => { clearTimeout(tm); mainDone.delete(done); res(); }; const tm = setTimeout(done, busy ? 4000 : Math.min(cool, 4000) + 50); mainDone.add(done); signal?.addEventListener('abort', done, { once: true }); });
+  }
+}
+const mainStart = (id: string) => { mainLive.set(id, (mainLive.get(id) || 0) + 1); return () => { const n = (mainLive.get(id) || 1) - 1; if (n > 0) mainLive.set(id, n); else mainLive.delete(id); for (const f of [...mainDone]) f(); }; };
+
 /** 생각하는 모델에 덧붙이는 출력 여유분 */
 const THINK_ROOM = () => Math.max(0, +(S.settings.format?.reasoning?.headroom ?? 8000) || 0);
 interface CallOpts { method?: string; headers?: Record<string, string>; body?: unknown; signal?: AbortSignal }
@@ -1060,17 +1095,31 @@ interface CallOpts { method?: string; headers?: Record<string, string>; body?: u
  *  서버가 Retry-After 를 주면 그만큼, 아니면 retryWait 초부터 두 배씩 (조금씩 흔들어 여러 창이 한꺼번에 몰리지 않게) */
 async function call(conn: Conn, url: string, opts: CallOpts): Promise<Response> {
   const n = Math.max(0, Math.min(5, Math.round(+(conn.retry429 || 0)) || 0)), wait = Math.max(0.5, Math.min(30, +(conn.retryWait || 0) || 2));
-  const relays = defOf(conn).kind === 'vertex' ? relayList(conn) : []; let hops = 0;
+  const vertex = defOf(conn).kind === 'vertex', relays = vertex ? relayList(conn) : []; let hops = 0;
+  // 리전 돌려쓰기: 주소에 리전이 들어 있고(프로젝트를 쓰는 Vertex) 돌아갈 리전을 적어 둔 연결만
+  const regions = vertex && regionOf(url) && String(conn.regions || '').trim() ? regionList(conn) : [], rkey = regions.length ? regionKey(conn, url) : '';
+  if (regions.length) url = startRegion(conn, url, relays);
+  let tried = new Set<string>([regionOf(url)]);
   for (let i = 0; ; ) {
-    try { return await callOnce(conn, url, opts); }
+    try { const r = await callOnce(conn, url, opts); if (regions.length) regionGood.set(rkey, { r: regionOf(url), at: Date.now() }); return r; }
     catch (e) {
       const st = (e as { status?: number }).status, after = (e as { retryAfter?: number }).retryAfter;
+      if (st === 429) cooled.set(conn.id, Date.now() + Math.max(15000, (after || 0) * 1000));   // 이 연결은 잠깐 붐빈다: 보조 호출은 그동안 비켜 선다
       if (st === 429 && !opts.signal?.aborted && relays.length > 1 && hops < relays.length - 1) {   // 다음 중계(다른 지역)로: 기다리지 않고 바로
         const from = relays[relayIdx(conn, relays.length)], to = relays[relayNext(conn, relays.length)]; hops++;
         if (url.startsWith(from)) { url = to + url.slice(from.length); core.emit('conn:hop', { conn: conn.name, n: hops, of: relays.length - 1 }); continue; }
       }
+      // 다른 리전으로: 429(붐빔)면 다음 리전, 옮겨 간 리전에 그 모델이 없다(404)고 하면 하루 동안 그 리전을 건너뛰고 다음으로
+      const here = regionOf(url), moved = here !== regions[0];
+      const nothere = moved && (st === 404 || (st === 400 && /locat|region|not (supported|available)/i.test(String((e as Error).message || ''))));
+      if (regions.length && !opts.signal?.aborted && (st === 429 || nothere)) {
+        if (nothere) regionGone.set(rkey + '|' + here, Date.now() + 86400000);
+        const next = regions.find(r => !tried.has(r) && !((regionGone.get(rkey + '|' + r) || 0) > Date.now()));
+        if (next) { tried.add(next); url = withRegion(url, next, relays); hops = 0; core.emit('conn:region', { conn: conn.name, region: next, n: tried.size - 1, of: regions.length - 1 }); continue; }
+        if (nothere) { regionGood.delete(rkey); throw e; }
+      }
       if (i >= n || st !== 429 || opts.signal?.aborted) throw e;
-      i++; hops = 0;
+      i++; hops = 0; tried = new Set([regionOf(url)]);
       const ms = Math.min(60000, after ? after * 1000 : wait * 1000 * 2 ** (i - 1) * (0.85 + Math.random() * 0.3));
       core.emit('conn:retry', { conn: conn.name, n: i, of: n, sec: Math.round(ms / 100) / 10 });
       await new Promise<void>((res, rej) => { const tm = setTimeout(res, ms); opts.signal?.addEventListener('abort', () => { clearTimeout(tm); rej(Object.assign(new Error('aborted'), { name: 'AbortError' })); }, { once: true }); });
@@ -1271,8 +1320,10 @@ export async function streamChat(conn: Conn | null | undefined, P: Params, messa
   }
   const after = (f: () => void) => { void Promise.allSettled(pending).then(f); };   // 응답 기록이 먼저 찍히게
   try {
+    if (conn && isHelper(opts.label)) await yieldToMain(conn.id, opts.signal);   // 보조 호출: 같은 연결로 본 답변이 나가는 중이거나 막 429 가 났으면 잠깐 비켜 선다
     if (conn?.rpm) await Rpm.gate(conn.id, +conn.rpm, opts.signal);   // 분당 요청 수 제한: 넘치면 자리가 날 때까지 기다린다
-    const r = await streamChatRaw(conn, P, messages, ac ? { ...opts, signal: ac.signal } : opts);
+    const endMain = conn && !isHelper(opts.label) ? mainStart(conn.id) : null;
+    let r: StreamResult; try { r = await streamChatRaw(conn, P, messages, ac ? { ...opts, signal: ac.signal } : opts); } finally { endMain?.(); }
     after(() => termSend('done', `✓ ${who} · ${((Date.now() - t0) / 1000).toFixed(1)}s · ${r.text.length} chars out · finish=${r.finish || '-'}`, () => ({
       done: { id, ms: Date.now() - t0, chars: r.text.length, tok: tokens(r.text), finish: r.finish || '', usage: usageOf(r.usage), thinkTok: tokens(r.think),
         think: full && !gotJson ? r.think.slice(0, 50000) : '', out: full ? (gotJson ? '' : r.text.slice(0, 50000)) : oneLine(r.text, 300) },

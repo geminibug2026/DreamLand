@@ -14,17 +14,23 @@ export function shouldFallback(e: unknown): boolean {
 export interface Sink { onText?: (t: string) => void; onThink?: (t: string) => void; signal?: AbortSignal | null }
 export interface FallbackResult<R, C> { res: R; via: C; fell: boolean; /** 주 연결이 왜 안 됐는지 */ why?: string }
 /**
- * primary 로 보내고, 넘길 만한 실패이며 아직 아무 글자도 받지 못했을 때만 backup 으로 한 번 더 보낸다.
- * 글자(또는 생각)가 나온 뒤의 오류 · 사용자가 멈춘 것은 넘기지 않는다. backup 도 실패하면 그 오류를 던진다.
+ * primary 로 보내고, 넘길 만한 실패이며 아직 아무 글자도 받지 못했을 때만 다음 연결로 넘긴다.
+ * backups 는 하나 또는 차례대로 늘어선 여럿: A 가 안 되면 B, B 도 안 되면 C … (연결마다 정해 둔 '안 되면 이 연결로'를 이어 붙인 줄).
+ * 글자(또는 생각)가 나온 뒤의 오류 · 사용자가 멈춘 것 · 넘겨 봐야 소용없는 오류(키 · 요청 잘못)는 넘기지 않는다. 마지막 연결도 실패하면 그 오류를 던진다.
  */
-export async function runWithFallback<C, R>(primary: C, backup: C | null | undefined, sink: Sink, run: (conn: C, sink: Sink) => Promise<R>, onSwitch: (why: string) => void = () => { }): Promise<FallbackResult<R, C>> {
+export async function runWithFallback<C, R>(primary: C, backups: C | C[] | null | undefined, sink: Sink, run: (conn: C, sink: Sink) => Promise<R>, onSwitch: (why: string, from: C, to: C) => void = () => { }): Promise<FallbackResult<R, C>> {
   let got = false;
   const watch: Sink = { signal: sink.signal, onText: d => { if (d) got = true; sink.onText?.(d); }, onThink: d => { if (d) got = true; sink.onThink?.(d); } };
-  try { return { res: await run(primary, watch), via: primary, fell: false }; }
-  catch (e) {
-    if (!backup || backup === primary || got || sink.signal?.aborted || !shouldFallback(e)) throw e;
-    const why = e instanceof Error ? e.message : String(e);
-    onSwitch(why);
-    return { res: await run(backup, sink), via: backup, fell: true, why };
+  const line = [primary, ...(Array.isArray(backups) ? backups : backups ? [backups] : [])].filter((c, i, a) => c && a.indexOf(c) === i);
+  let why: string | undefined;
+  for (let i = 0; ; i++) {
+    const conn = line[i];
+    try { return { res: await run(conn, watch), via: conn, fell: i > 0, ...(why ? { why } : {}) }; }
+    catch (e) {
+      const next = line[i + 1];
+      if (!next || got || sink.signal?.aborted || !shouldFallback(e)) throw e;
+      const w = e instanceof Error ? e.message : String(e); why ??= w;
+      onSwitch(w, conn, next);
+    }
   }
 }

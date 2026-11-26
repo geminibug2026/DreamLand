@@ -56,6 +56,7 @@ export const drawGauge = () => bump('gauge');
 export function setStatus(t: string) { cur.status = t; bump('status'); }
 // 429 자동 재시도 중이면 상태 줄에 알린다 (연결 설정에서 켠 경우만)
 on('conn:hop', d => { const x = d as { conn: string; n: number; of: number }; if (cur.busy) setStatus(t('chat.status.hop429', x)); });
+on('conn:region', d => { const x = d as { conn: string; region: string; n: number; of: number }; if (cur.busy) setStatus(t('chat.status.region429', x)); });
 on('conn:retry', d => { const x = d as { conn: string; n: number; of: number; sec: number }; if (cur.busy) setStatus(t('chat.status.retry429', x)); });
 /** 이 방의 답변 받는 중 · 답변 전 준비 중 표시 (방마다 따로 — 그 방을 볼 때 입력창의 멈추기 단추 · 목록의 표시에 보인다) */
 function setBusy(chat: Room, msgs: Msg[], b: boolean, abort: AbortController | null = null) { const r = runFor(chat, msgs); r.busy = b; r.abort = b ? abort : null; bump('busy', 'side'); }

@@ -171,7 +171,7 @@ export interface Preset { id: string; name: string; createdAt: number; updatedAt
 export interface Conn {
   id: string; name: string; provider: string; baseUrl: string; apiKey: string; model: string; proxy: boolean; postProcess: string; extraHeaders: string; extraBody: string; cache: boolean;
   serviceAccount?: string; saEmail?: string; saProject?: string; sec?: string; updatedAt?: number; instruct?: string; project?: string; region?: string; /** 이 연결의 요청을 내보낼 바깥 프록시 (http://127.0.0.1:7890 등) */ via?: string;
-  /** 429 가 나면 잠깐 쉬었다 같은 연결로 다시 보낼 횟수 (0 · 비움 = 끔) */ retry429?: number; /** 첫 재시도까지 기다릴 초 (다음은 두 배씩) */ retryWait?: number;
+  /** Vertex: 429 가 나면 바로 옮겨 가 볼 다른 리전들 (쉼표 · 줄바꿈으로 나눔. 비우면 끔) */ regions?: string; /** 429 가 나면 잠깐 쉬었다 같은 연결로 다시 보낼 횟수 (0 · 비움 = 끔) */ retry429?: number; /** 첫 재시도까지 기다릴 초 (다음은 두 배씩) */ retryWait?: number;
   [k: string]: unknown;
 }
 

@@ -44,13 +44,20 @@ export function pickReply(chat: RChat, type = 'normal', rnd: () => number = Math
   return withModel(conn, it.m);
 }
 
+/** 이 연결이 안 될 때 차례로 넘어갈 연결들: 정해 둔 '안 되면 이 연결로'를 따라간다 (B 에도 정해 두었으면 C 로 …). 같은 연결은 두 번 넣지 않고, 최대 4개까지 */
+export function fallbackLine(conn: Conn): Conn[] {
+  const out: Conn[] = [], seen = new Set([conn.id]); let at = conn as RConn;
+  while (out.length < 4) { const next = S.get('conns', at.fallback || '') as RConn | undefined; if (!next || seen.has(next.id)) break; seen.add(next.id); out.push(next); at = next; }
+  return out;
+}
 export type ReplyResult = engine.StreamResult & { via: Conn; fell: boolean };
-/** 주 대화의 답장 보내기: 글자가 나오기 전에 연결이 실패하면(끊김 · 429 · 5xx) conn.fallback 으로 한 번만 다시 보낸다 */
+/** 주 대화의 답장 보내기: 글자가 나오기 전에 연결이 실패하면(끊김 · 429 · 5xx) 정해 둔 대체 연결로 차례차례 다시 보낸다 */
 export async function streamReply(conn: Conn, P: engine.Params, messages: engine.PromptList, opts: engine.StreamOpts = {}): Promise<ReplyResult> {
-  const backup = S.get('conns', (conn as RConn).fallback || '');
-  const r = await runWithFallback<Conn, engine.StreamResult>(conn, backup && backup.id !== conn.id ? backup : null, opts,
+  // 처음 연결은 이 대화에서 고른 모델이 실린 사본일 수 있다: 그 뒤로 넘어갈 줄은 저장된 연결에서 따라간다
+  const line = fallbackLine((realConn(conn) as Conn | undefined) || conn).filter(c => c.id !== conn.id);
+  const r = await runWithFallback<Conn, engine.StreamResult>(conn, line, opts,
     (c, sink) => engine.streamChat(c, P, messages, { ...opts, onText: sink.onText, onThink: sink.onThink, label: c === conn ? opts.label : `${opts.label || 'reply'} (fallback)` }),
-    () => toast(t('reach.fb.switching', { from: conn.name, to: backup?.name || '' })));
+    (_why, from, to) => toast(t('reach.fb.switching', { from: from.name, to: to.name })));
   return { ...r.res, via: r.via, fell: r.fell };
 }
 
