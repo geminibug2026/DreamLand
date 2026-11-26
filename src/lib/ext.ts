@@ -102,17 +102,20 @@ async function inspect(code: string) {
   try { const mod = await import(/* @vite-ignore */ blob) as ExtModule; const def = mod.default || {}; const m = (mod.manifest || def.manifest || def) as Record<string, string>; if (typeof (def.activate || mod.activate) !== 'function') throw new Error(t('ext.noActivateFn')); return { id: String(m.id || '').trim(), name: m.name || m.id || t('ext.unnamed'), version: m.version || '', author: m.author || '', description: m.description || '' }; }
   finally { URL.revokeObjectURL(blob); }
 }
-export async function install(code: string, hint = '') {
+/** ask: false — 이미 코드를 보여 주고 허락받은 곳(등불지기의 설치 카드)에서 부를 때. 그때는 읽기 실패를 던진다. 설치한 항목을 돌려준다 */
+export async function install(code: string, hint = '', { ask = true }: { ask?: boolean } = {}): Promise<CatalogItem | undefined> {
   // 선언부를 읽으려면 코드를 한 번 돌려야 하므로, 돌리기 전에 먼저 묻는다
-  if (!(await confirmBox(hint ? t('ext.installConfirm', { name: hint }) : t('ext.installConfirmCode'), t('ext.install')))) return;
+  if (ask && !(await confirmBox(hint ? t('ext.installConfirm', { name: hint }) : t('ext.installConfirmCode'), t('ext.install')))) return;
   let meta;
-  try { meta = await inspect(code); } catch (e) { return toast(t('ext.readFail', { error: (e as Error).message }), 'err'); }
+  try { meta = await inspect(code); } catch (e) { if (!ask) throw e; toast(t('ext.readFail', { error: (e as Error).message }), 'err'); return; }
   if (!meta.id) meta.id = (hint.replace(/\.[^.]+$/, '') || 'ext-' + uid()).toLowerCase().replace(/[^\w-]+/g, '-');
   unload(meta.id);
   await DB.put('kv', { id: 'ext:' + meta.id, extId: meta.id, meta, code });
   await readCatalog();
-  await setEnabled(catalog.find(c => c.id === meta.id) as CatalogItem, true);
+  const item = catalog.find(c => c.id === meta.id) as CatalogItem;
+  await setEnabled(item, true);
   toast(t('ext.installed', { name: meta.name }), 'ok'); refresh();
+  return item;
 }
 export async function installFromUrl(url: string) {
   url = url.trim().replace(/^https:\/\/github\.com\/([^/]+\/[^/]+)\/blob\//, 'https://raw.githubusercontent.com/$1/');

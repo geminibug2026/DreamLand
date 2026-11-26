@@ -1,4 +1,5 @@
 // 등불지기(앱 안의 조수)와 첫걸음 안내의 자료 꼴
+import type { ExtOp } from './ext';
 /** 모델이 답 끝에 적는 도구 호출 한 번 */
 export interface ToolCall { tool: string; args: Record<string, unknown>; /** 계획의 몇째 걸음(1 부터)을 끝냈다고 표시하는가 — 호출과 함께 적으면 왕복을 따로 쓰지 않는다 */ tick?: number[]; /** 이 답으로 맺는다 (읽어 들이는 동안만) */ end?: boolean }
 /** 답 한 덩이를 읽은 결과: 사람이 볼 글 · 도구 호출(있으면) · 호출이 틀렸을 때 모델에 돌려줄 말 */
@@ -24,14 +25,18 @@ export type Op =
   /** 열린 대화의 변수 고치기: MVU 갱신 명령(commands)을 그 메시지 위에 돌리고, 채팅 변수(set: 값이 null 이면 지운다)를 적는다 */
   | { type: 'vars'; chatId: string; msgId: string; commands: string; set: Record<string, string | null> }
   /** 앱 설정 바꾸기 (점으로 이은 길 → 값) */
-  | { type: 'settings'; fields: Record<string, unknown> };
+  | { type: 'settings'; fields: Record<string, unknown> }
+  /** 확장 한 판: 드림랜드 확장은 적용하면 설치, 실리태번 확장은 적용하면 zip 으로 받는다 */
+  | ExtOp;
 /** 조수가 손댈 수 있는 자료 종류. theme · qr 은 설정 안에 산다 */
-/** vars: 열린 대화의 변수 · settings: 앱 설정 (둘은 서재의 자료가 아니라 따로 적용 · 되돌린다) */
-export type Kind = 'chars' | 'personas' | 'lore' | 'presets' | 'regex' | 'theme' | 'qr' | 'vars' | 'settings';
+/** vars: 열린 대화의 변수 · settings: 앱 설정 · ext: 확장 (셋은 서재의 자료가 아니라 따로 적용 · 되돌린다) */
+export type Kind = 'chars' | 'personas' | 'lore' | 'presets' | 'regex' | 'theme' | 'qr' | 'vars' | 'settings' | 'ext';
 export type ChangeState = 'pending' | 'applied' | 'dropped' | 'undone' | 'failed';
 export interface Change {
   id: string; verb: 'create' | 'update' | 'delete'; kind: Kind; target: string; op: Op; fields: FieldChange[];
   state: ChangeState; at: number; undoId?: string; err?: string;
+  /** 새 판 카드가 이 카드를 대신했다 (그 카드의 id) */
+  by?: string;
 }
 /** 되돌리기 장부의 한 줄. 사본(before)은 따로 한 줄씩 둔다 (kv 의 gdundo:<id>) */
 export interface UndoRow { id: string; at: number; kind: Kind; targetId: string; target: string; created: boolean; stamp?: number; /** 'th': 실리태번 스크립트가 고친 것 (조수의 기록과 따로 센다) */ src?: string }
@@ -65,6 +70,6 @@ export interface ToolDef {
   run(args: Record<string, unknown>): unknown | Promise<unknown>;
 }
 /** 설명서의 한 주제. 제목과 본문은 로케일(guide.hb.<id>.t / .b)에 있고, 본문의 {slot} 은 실제 화면 라벨로 채운다 */
-export interface Topic { id: string; group: string; page?: string; arg?: string; /** 찾기에 쓰는 낱말 (세 언어 섞어서) */ tags: string }
+export interface Topic { id: string; group: string; page?: string; arg?: string; /** 찾기에 쓰는 낱말 (세 언어 섞어서) */ tags: string; /** 로케일 열쇠 앞부분 (없으면 guide.hb.<id>) — 제목은 <key>.t, 본문은 <key>.b */ key?: string }
 /** 둘러보기의 한 걸음 */
 export interface TourStep { id: string; page?: string; arg?: string; /** 고리를 두를 요소 (앞에서부터 보이는 첫째). 없으면 가운데 카드 */ sel?: string[]; /** 재기 전에 한 번 누를 것 (탭 등) */ click?: string; art?: 'mark' | 'modes' | 'panel' | 'end' }

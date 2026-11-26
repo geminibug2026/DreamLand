@@ -91,6 +91,7 @@ export function foldLines(rows: Row[], ctx = 2): Row[] {
 export function looksCode(kind: string | undefined, field: string, text: string): boolean {
   if (kind === 'regex' && /^(find|replace)\b/.test(field)) return true;
   if (kind === 'theme' && /^css\b/.test(field)) return true;
+  if (kind === 'ext') return !/\.(md|txt)$/i.test(field);   // 확장의 파일: 글(README)이 아니면 코드
   const t = text.trim(); if (!t) return false;
   if (/^[[{][\s\S]*[\]}]$/.test(t) && /["']?[\w가-힣$]+["']?\s*:/.test(t)) return true;   // JSON · YAML 풍
   const lines = t.split('\n'), cmd = lines.filter(l => /^\s*(\/[a-z#:=-]|\{:|:\}|\|)/i.test(l)).length;

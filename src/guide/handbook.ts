@@ -61,6 +61,7 @@ export const TOPICS: Topic[] = [
   T('helpers', 'features', 'studio', '보조 연결 helper 싼 모델 작업별 연결 辅助 连接 cost 비용'),
   T('qr', 'features', 'qr', '퀵 리플라이 빠른 답장 버튼 quick reply button 快速回复'),
   T('modules', 'features', 'modules', '모듈 확장 플러그인 module extension plugin 模块 扩展 插件'),
+  { id: 'extMake', group: 'features', page: 'exts', key: 'guide.ext.hb', tags: '확장 만들기 플러그인 만들기 확장 기능 실리태번 확장 sillytavern extension plugin make build create manifest index.js zip 설치 install /확장 扩展 插件 制作 酒馆' },
   T('themes', 'look', 'themes', '꾸미기 테마 색 글꼴 배경 css theme color font 主题 字体 颜色'),
   T('backup', 'data', 'settings', '백업 내보내기 복원 자료 폴더 backup export restore data folder 备份 恢复'),
   T('guide', 'guide', undefined, '등불지기 조수 assistant helper 변경 카드 되돌리기 undo change card 掌灯人 助手 撤销'),
@@ -70,7 +71,7 @@ export const TOPICS: Topic[] = [
 export const GROUPS = ['start', 'people', 'chat', 'world', 'prompt', 'features', 'look', 'data', 'guide'];
 
 export interface HelpRow { id: string; title: string; body: string; topic: Topic }
-export function topicRow(tp: Topic): HelpRow { const L = labels(); return { id: tp.id, title: t('guide.hb.' + tp.id + '.t', L), body: t('guide.hb.' + tp.id + '.b', L), topic: tp }; }
+export function topicRow(tp: Topic): HelpRow { const L = labels(), k = tp.key || 'guide.hb.' + tp.id; return { id: tp.id, title: t(k + '.t', L), body: t(k + '.b', L), topic: tp }; }
 export const topicText = (id: string) => { const tp = TOPICS.find(x => x.id === id); return tp ? (r => ({ id: r.id, title: r.title, text: r.body }))(topicRow(tp)) : null; };
 
 /** 낱말이 제목 · 꼬리표 · 본문 어디에 걸리나에 따라 점수를 매겨 찾는다. 빈 물음이면 전부 */

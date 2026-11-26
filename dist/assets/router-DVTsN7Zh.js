@@ -1,1 +1,0 @@
-export{t as go}from"./router-TK6WWn7s.js";

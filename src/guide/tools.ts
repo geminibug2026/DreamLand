@@ -1,5 +1,5 @@
 // 등불지기의 도구: 앱 자료를 읽는 것과, 변경 카드를 남기는 것. 셸도 파일도 없다 — 여기 적힌 것이 조수가 할 수 있는 전부다
-// 연결 · API 키 · 서버 설정 · 확장 코드는 읽기 도구에도 쓰기 도구에도 없다. 지우는 도구도 없다
+// 연결 · API 키 · 서버 설정은 읽기 도구에도 쓰기 도구에도 없다. 확장은 이 대화에서 새로 만드는 것(create_extension · revise_extension)만 다룬다
 import { S, chatConns, msgText, newRegex, uid } from '../lib/core';
 import { tokens } from '../lib/engine';
 import { allThemes, COLOR_FIELDS, FONTS } from '../lib/theme';
@@ -18,6 +18,7 @@ import { checkChar, checkPersona, checkPreset, type Finding } from './check';
 import { current, getPath } from './changes';
 import { searchHelp, topicText } from './handbook';
 import { syntaxOf } from './syntax';
+import { checkExt, extRef, extTarget, fileFields, installedWarn, normFiles, type ExtFiles, type ExtOp } from './ext';
 import type { Change, FieldChange, Item, Kind, Op, Plan, ToolDef } from './types';
 
 /** 도구가 지금 대화를 들여다보는 자리 (agent 가 채운다): 앞서 읽은 것 · 할 일 목록 · 기다리는 변경 카드 */
@@ -370,6 +371,8 @@ const R: ToolDef[] = [
     run: a => { const rows = searchHelp(str(a.query)).slice(0, 5).map(h => ({ id: h.id, title: h.title, text: h.body })); return rows.length ? rows : { none: true, hint: 'No topic matched. Try other words, or say you are not sure.' }; } },
   { name: 'help_read', sig: '{id}', desc: 'Read one handbook topic by id.',
     run: a => topicText(str(a.id)) || fail('No such topic. Use help_search.') },
+  { name: 'ext_reference', sig: '{target: "dreamland"|"sillytavern"}', desc: 'The extension API and file layout for that target. Read it before create_extension unless it is already in this conversation.',
+    run: a => { const tg = extTarget(a.target) || fail('"target" must be "dreamland" or "sillytavern".'); return { target: tg === 'dl' ? 'dreamland' : 'sillytavern', reference: extRef(tg) }; } },
   { name: 'check', sig: '{kind: "character"|"persona"|"preset", id}', desc: 'Run the app\'s built-in lint: token weight, empty greetings, broken macros, missing blocks, conflicting instructions, markdown emphasis in card text, cliche obsessive/controlling trait words, greetings that act for {{user}}. Returns counted facts; you explain them.',
     run: a => a.kind === 'preset' ? (p => ({ preset: p.name, ...checkPreset(p) }))(find(S.presets, a.id, 'preset') as Preset) : a.kind === 'persona' ? (p => ({ persona: p.name, ...checkPersona(p) }))(find(S.personas, a.id, 'persona')) : (c => ({ character: c.name, ...checkChar(c) }))(find(S.chars, a.id, 'character')) },
   { name: 'plan', sig: '{steps?: [string], title?, done?: [n], doing?: n, add?: [string], skip?: [n]}', desc: 'Your visible checklist, shown to the user as a small todo list. steps= starts a new plan (3-7 short steps, in the user\'s language). Later: done=[2] ticks step 2, doing=3 marks the current one, add= appends steps, skip= drops them. Cheaper: add "tick": [n] next to any other call, or end your final answer with {"tick": [n]}.',
@@ -633,6 +636,41 @@ const W: ToolDef[] = [
     run: a => { const q = qrRef(a.set), it = itemRef(q, a.item ?? a.id ?? a.label); mustHaveRead('qr', q.id); return propose('delete', 'qr', `${q.name} › ${it.label}`, { type: 'qrdel', setId: q.id, itemId: it.id }, gone(it as unknown as Obj, ['label', 'kind', 'text'])); } },
   { name: 'delete_qr_set', write: true, sig: '{set}', desc: 'Propose deleting a whole quick-reply set with its buttons (read it first). Undoable.',
     run: a => { const q = qrRef(a.set ?? a.id); mustHaveRead('qr', q.id); return propose('delete', 'qr', q.name, { type: 'delete', coll: 'qr', id: q.id }, [{ name: 'name', before: q.name, after: '' }, ...q.items.map(i => ({ name: qrCard(i as unknown as Obj), before: str(i.text), after: '' }))]); } },
+  { name: 'create_extension', write: true, sig: '{target: "dreamland"|"sillytavern", id, name, version?, author?, description?, files: {<path>: <full file text>}}', desc: 'Propose an extension as a change card (files + code). dreamland: one ES module index.js the user installs here; sillytavern: an extension folder the user downloads as a zip (a missing manifest.json, style.css or README.md is written by the app). id: lowercase letters, digits, dashes. Syntax, manifest and API names are checked; problems refuse it with the reason.',
+    run: async a => {
+      const tg = extTarget(a.target) || fail('"target" must be "dreamland" or "sillytavern".'), name = str(a.name).trim() || fail('"name" is required.');
+      const nf = normFiles(a.files); if (nf.errors.length) fail(nf.errors.join(' '));
+      const r = await checkExt(tg, nf.files, { id: str(a.id), name, version: str(a.version), author: str(a.author), description: str(a.description) });
+      if (r.errors.length) fail(`Not proposed. Fix these and send the call again:\n- ${r.errors.join('\n- ')}`);
+      const op: ExtOp = { type: 'ext', target: tg, id: r.id, name, main: r.main, files: r.files, meta: r.meta };
+      const warn = tg === 'dl' ? await installedWarn(r.id) : undefined;
+      return { ...propose('create', 'ext', name, op, fileFields({}, r.files)), notes: { id: r.id, files: Object.keys(r.files), ...(r.added.length ? { writtenByApp: r.added } : {}), warnings: r.warnings.length ? r.warnings : 'none' }, ...(warn ? { warn } : {}) };
+    } },
+  { name: 'revise_extension', write: true, sig: '{card?, edits?: [{file, old, new, all?}], files?: {<path>: <full new text> | null}, name?}', desc: 'Change the newest extension card (or card=): edits replace exact text like edit (file defaults to the main .js; old must occur once unless all=true), files= replaces whole files (null deletes one). Makes a new card showing only the changes; it replaces a waiting card, or updates the installed extension when the user presses Install. Checked like create_extension.',
+    run: async a => {
+      const all = CTX.items().filter((i): i is Extract<Item, { k: 'change' }> => i.k === 'change' && i.change.kind === 'ext').map(i => i.change), id = str(a.card).trim();
+      const base = (id ? all.find(c => c.id === id) : [...all].reverse().find(c => !c.by)) || fail(all.length ? `No extension card "${id}". Extension cards here: ${all.map(c => `${c.id} (${c.target}, ${c.state})`).join('; ')}.` : 'No extension was proposed in this conversation yet. Use create_extension.');
+      const op = base.op as ExtOp, files: ExtFiles = { ...op.files };
+      if (a.files != null) { if (typeof a.files !== 'object' || Array.isArray(a.files)) fail('"files" must be an object of path → full text (or null to delete).'); const keep: Obj = {}; for (const [k, v] of Object.entries(a.files as Obj)) { if (v === null) delete files[k.replace(/^\.?\/+/, '')]; else keep[k] = v; } const nf = normFiles(keep); if (nf.errors.length) fail(nf.errors.join(' ')); Object.assign(files, nf.files); }
+      const eds = (Array.isArray(a.edits) ? a.edits : a.old != null ? [{ file: a.file, old: a.old, new: a.new, all: a.all }] : []) as Obj[];
+      eds.forEach((e, i) => {
+        const f = str(e.file).replace(/^\.?\/+/, '') || op.main, old = str(e.old), nw = str(e.new);
+        if (files[f] == null) fail(`edits[${i}]: no file "${f}". Files: ${Object.keys(files).join(', ')}.`);
+        if (!old) fail(`edits[${i}].old is empty.`);
+        const n = files[f].split(old).length - 1;
+        if (!n) fail(`edits[${i}].old was not found in ${f}. Copy it exactly from the current version (spaces and line breaks too).`);
+        if (n > 1 && !e.all) fail(`edits[${i}].old occurs ${n} times in ${f}. Add surrounding text to make it unique, or set all=true.`);
+        files[f] = e.all ? files[f].split(old).join(nw) : files[f].replace(old, () => nw);
+      });
+      if (a.files == null && !eds.length) fail('Give edits=[{file, old, new}] or files={path: text}.');
+      const name = str(a.name).trim() || op.name;
+      const r = await checkExt(op.target, files, { id: op.id, name, ...op.meta });
+      if (r.errors.length) fail(`Not proposed. Fix these and send the call again:\n- ${r.errors.join('\n- ')}`);
+      const p = propose('update', 'ext', name, { ...op, name, main: r.main, files: r.files, meta: r.meta }, fileFields(op.files, r.files));
+      const replaced = base.state === 'pending' || base.state === 'failed';
+      if (replaced) { base.state = 'dropped'; base.by = p.change.id; }
+      return { ...p, notes: { changed: p.change.fields.map(f => f.name), basedOn: base.id, ...(replaced ? { replacesCard: base.id } : {}), warnings: r.warnings.length ? r.warnings : 'none' } };
+    } },
   { name: 'revise_card', write: true, sig: '{card, fields}', desc: 'Change a change card that is still waiting for approval, instead of proposing a second card. Use it to redo one field ("only rewrite the speech style") or to fix something the check flagged. fields: same names as the tool that made the card. The card is updated in place and is still not saved.',
     run: async a => {
       const all = CTX.items().filter((i): i is Extract<Item, { k: 'change' }> => i.k === 'change').map(i => i.change);
@@ -662,7 +700,8 @@ const W: ToolDef[] = [
         if (raw.name) { op.obj.name = str(raw.name); c.target = str(raw.name); }
         notes = await lintButtons(items as { label: string; text: string; kind?: unknown }[], items.map(i => str(i.label)));
         c.fields = [{ name: 'name', before: '', after: str(op.obj.name) }, ...items.map(i => ({ name: qrCard(i), before: '', after: str(i.text) }))];
-      } else fail('This kind of card cannot be revised. Propose a new change instead.');
+      } else if (op.type === 'ext') fail('Extension cards are changed with revise_extension.');
+      else fail('This kind of card cannot be revised. Propose a new change instead.');
       if (!c.fields.length) fail('Nothing would change: the new values equal the current ones.');
       c.state = 'pending'; delete c.err; c.at = Date.now();
       return { revised: { card: c.id, notes } };

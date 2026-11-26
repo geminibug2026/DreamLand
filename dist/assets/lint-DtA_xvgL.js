@@ -1,0 +1,1 @@
+export{r as similar}from"./lint-DO5m-cAY.js";

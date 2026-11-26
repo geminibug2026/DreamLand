@@ -13,6 +13,7 @@ import { AttachError, readAttach } from './upload';
 import { targetOf, touchedSince } from './changes';
 import { diffLines, diffWords, fold, foldLines, looksCode, tally } from './diff';
 import { Mark, startTour } from './Tour';
+import { extAsk, fileOrder, saveZip, type ExtOp } from './ext';
 import type { Attach, Change, FieldChange, Item, Plan, Ref } from './types';
 
 /** 글을 복사한다. 클립보드 API 가 없는 곳(주소가 http 인 휴대폰 등)에서는 옛 방법으로 */
@@ -52,7 +53,8 @@ export function Md({ text }: { text: string }) {
 
 // ── 변경 카드 ──
 const KIND_KEY: Record<string, string> = { chars: 'guide.kind.chars', personas: 'guide.kind.personas', lore: 'guide.kind.lore', presets: 'guide.kind.presets', regex: 'guide.kind.regex', theme: 'guide.kind.theme', qr: 'guide.kind.qr', vars: 'guide.kind.vars', settings: 'guide.kind.settings' };
-const PAGE_OF: Record<string, string> = { chars: 'home', personas: 'personas', lore: 'lore', presets: 'presets', regex: 'regex', theme: 'themes', qr: 'qr', vars: 'chat', settings: 'settings' };
+const PAGE_OF: Record<string, string> = { chars: 'home', personas: 'personas', lore: 'lore', presets: 'presets', regex: 'regex', theme: 'themes', qr: 'qr', vars: 'chat', settings: 'settings', ext: 'exts' };
+const kindLabel = (ch: Change) => ch.op.type === 'ext' ? t(ch.op.target === 'st' ? 'guide.ext.kind.st' : 'guide.ext.kind.dl') : t(KIND_KEY[ch.kind] || 'guide.kind.chars');
 /** 칸 이름을 사람 말로 (모르는 칸은 그대로) */
 const fieldName = (n: string) => { const m = /^([\w.]+)(.*)$/.exec(n), k = m ? m[1].replace(/\./g, '_') : ''; return k && has('guide.f.' + k) ? t('guide.f.' + k) + (m![2] || '') : n; };
 const isHex = (s: string) => /^#[0-9a-f]{6}$/i.test(s);
@@ -96,20 +98,52 @@ function ChangeCard({ ch }: { ch: Change }) {
   const colors = ch.kind === 'theme' ? ch.fields.filter(f => isHex(f.after)) : [];
   return <article className={'gd-card fx-frame is-' + ch.state + (ch.verb === 'delete' ? ' is-del' : '')} aria-label={t('guide.card.aria', { target: ch.target })}>
     <header className="gd-ch">
-      <span className="fx-lbl acc">{ch.verb === 'create' ? t('guide.card.create') : ch.verb === 'delete' ? t('guide.card.delete') : t('guide.card.update')} · {t(KIND_KEY[ch.kind] || 'guide.kind.chars')}</span>
+      <span className="fx-lbl acc">{ch.verb === 'create' ? t('guide.card.create') : ch.verb === 'delete' ? t('guide.card.delete') : t('guide.card.update')} · {kindLabel(ch)}</span>
       <b className="fx-serif">{ch.target}</b>
-      <span className={'fx-pill gd-st st-' + ch.state}><i className="fx-dot" />{t(STATE_KEY[ch.state] || 'guide.card.pending')}</span>
+      <span className={'fx-pill gd-st st-' + ch.state}><i className="fx-dot" />{ch.by ? t('guide.ext.replaced') : t(STATE_KEY[ch.state] || 'guide.card.pending')}</span>
     </header>
     {colors.length ? <div className="gd-pal" aria-hidden="true">{colors.map(f => <i key={f.name} style={{ background: f.after }} title={fieldName(f.name)} />)}</div> : null}
     {colors.length ? <div className="gd-cols">{colors.map(f => <span key={f.name}><i style={{ background: f.after }} /><b>{fieldName(f.name)}</b><code>{f.after}</code></span>)}</div> : null}
+    {ch.op.type === 'ext' ? <ExtTree ch={ch} op={ch.op} /> : null}
     <div className="gd-fs fx-rows">{ch.fields.filter(f => !colors.includes(f)).map((f, i) => <FieldView key={i + ':' + ch.at} f={f} ch={ch} />)}</div>
     {ch.err && ch.state === 'failed' ? <p className="gd-err">{ch.err === 'gone' ? t('guide.card.gone') : ch.err === 'locked' ? t('guide.card.locked') : ch.err}</p> : null}
-    <footer className="gd-cf">
+    {ch.op.type === 'ext' ? <ExtFoot ch={ch} op={ch.op} busy={busy} run={run} doUndo={doUndo} /> : <footer className="gd-cf">
       {ch.state === 'pending' || ch.state === 'failed' ? <><button type="button" className="btn ghost" disabled={busy} onClick={run(() => discard(ch))}>{t('guide.card.discard')}</button>
         <button type="button" className="btn primary" disabled={busy} onClick={run(async () => { await apply(ch); toast(t('guide.card.appliedToast'), 'ok'); })}><Icon name="check" size={15} />{t('common.apply')}</button></> : null}
       {ch.state === 'applied' ? <><small className="dim">{t('guide.card.undoHint')}</small><button type="button" className="btn ghost" disabled={busy} onClick={doUndo}>{t('guide.card.undo')}</button>{ch.op.type === 'delete' ? null : <button type="button" className="btn" onClick={open}>{t('guide.card.open')}</button>}</> : null}
-    </footer>
+    </footer>}
   </article>;
+}
+// ── 확장 카드: 파일 나무 · 점검 · 설치(드림랜드) 또는 zip 받기(실리태번) ──
+const bytes = (s: string) => new TextEncoder().encode(s).length;
+const MARK: Record<string, string> = { new: 'guide.ext.mark.new', changed: 'guide.ext.mark.changed', removed: 'guide.ext.mark.removed' };
+function ExtTree({ ch, op }: { ch: Change; op: ExtOp }) {
+  const touched = new Map(ch.fields.map(f => [f.name, f])), list = fileOrder([...new Set([...Object.keys(op.files), ...ch.fields.map(f => f.name)])]);
+  const how = op.target === 'st' ? 'guide.ext.stHow' : ch.state === 'applied' ? 'guide.ext.dlOn' : 'guide.ext.dlHow';
+  return <div className="gd-fs"><div className="gd-f">
+    <div className="gd-fh"><span className="fx-lbl kr ink">{t('guide.ext.files', { n: Object.keys(op.files).length })}</span><span className="fx-num gd-cnt">{op.id}/</span></div>
+    <ul aria-label={t('guide.ext.files', { n: Object.keys(op.files).length })} style={{ listStyle: 'none', margin: 0, padding: 0, font: '400 12px/1.7 var(--fx-mono)', minWidth: 0 }}>
+      {list.map(p => { const f = touched.get(p), mark = ch.verb !== 'update' || !f ? '' : !f.before ? 'new' : !f.after ? 'removed' : 'changed';
+        return <li key={p} style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0, borderBottom: '1px dotted var(--line-3)' }}>
+          <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere', paddingLeft: 12, textDecoration: mark === 'removed' ? 'line-through' : undefined }}>{p}</span>
+          <small className={mark ? 'gd-cnt' : 'dim'} style={{ flex: 'none' }}>{mark ? <b>{t(MARK[mark])}</b> : sizeText(bytes(op.files[p] ?? ''))}</small>
+        </li>; })}
+    </ul>
+    <p className="dim" style={{ margin: 0, fontSize: 12, lineHeight: 1.55 }}>{t('guide.ext.checked')} {t(how, { exts: t('nav.exts') })}</p>
+  </div></div>;
+}
+function ExtFoot({ ch, op, busy, run, doUndo }: { ch: Change; op: ExtOp; busy: boolean; run: (fn: () => Promise<unknown>) => () => Promise<void>; doUndo: () => Promise<void> }) {
+  if (ch.state === 'dropped' || ch.state === 'undone') return null;
+  const zip = <button type="button" className="btn ghost" disabled={busy} onClick={run(() => saveZip(op))}><Icon name="import" size={15} />{t(ch.state === 'applied' && op.target === 'st' ? 'guide.ext.zipAgain' : 'guide.ext.zip')}</button>;
+  return <footer className="gd-cf" style={{ flexWrap: 'wrap' }}>
+    {ch.state === 'pending' || ch.state === 'failed' ? <>
+      <button type="button" className="btn ghost" disabled={busy} onClick={run(() => discard(ch))}>{t('guide.card.discard')}</button>
+      {op.target === 'dl' ? zip : null}
+      <button type="button" className="btn primary" disabled={busy} onClick={run(async () => { await apply(ch); if (op.target === 'st') toast(t('guide.ext.zipped'), 'ok'); })}><Icon name={op.target === 'st' ? 'import' : 'plug'} size={15} />{t(op.target === 'st' ? 'guide.ext.zip' : 'guide.ext.install')}</button>
+    </> : null}
+    {ch.state === 'applied' && op.target === 'st' ? <><small className="dim">{t('guide.ext.got')}</small>{zip}</> : null}
+    {ch.state === 'applied' && op.target === 'dl' ? <><button type="button" className="btn ghost" disabled={busy} onClick={doUndo}>{t('guide.card.undo')}</button>{zip}<button type="button" className="btn" onClick={() => { closeGuide(); go('exts'); }}>{t('guide.card.open')}</button></> : null}
+  </footer>;
 }
 
 // ── 기록의 한 줄 ──
@@ -226,18 +260,19 @@ function refsFor(q: string): Ref[] {
 const here = (): Ref[] => route.page === 'chat' && cur.chat ? cur.chat.charIds.slice(0, 2).map(i => S.get('chars', i)).filter(Boolean).map(c => ({ kind: 'chars' as const, id: c!.id, name: c!.name })) : [];
 const named = (rs: Ref[]) => rs.map(r => `${r.kind === 'chars' ? 'character' : r.kind === 'presets' ? 'preset' : r.kind} "${r.name}" (id ${r.id})`).join(', ');
 /** /캐릭터 · /페르소나 옆에 고르는 것: 분량 · 시점 · 언어 */
-interface Opts { detail: 'short' | 'standard' | 'detailed'; pov: 'third' | 'second' | 'first'; lang: 'auto' | 'ko' | 'en' | 'ja' | 'zh' }
-const OPT0: Opts = { detail: 'standard', pov: 'third', lang: 'auto' };
+interface Opts { detail: 'short' | 'standard' | 'detailed'; pov: 'third' | 'second' | 'first'; lang: 'auto' | 'ko' | 'en' | 'ja' | 'zh'; /** /확장 을 어디에 쓸지 */ target: 'auto' | 'dl' | 'st' }
+const OPT0: Opts = { detail: 'standard', pov: 'third', lang: 'auto', target: 'auto' };
 const LANG_NAME: Record<Opts['lang'], string> = { auto: '', ko: 'Korean', en: 'English', ja: 'Japanese', zh: 'Simplified Chinese' };
 /** 고르기 단추의 이름 (열쇠를 이어 붙이지 않고 하나씩) */
 const OPT_LABEL: { [K in keyof Opts]: Record<Opts[K], () => string> } = {
   detail: { short: () => t('guide.opt.detail.short'), standard: () => t('guide.opt.detail.standard'), detailed: () => t('guide.opt.detail.detailed') },
   pov: { third: () => t('guide.opt.pov.third'), second: () => t('guide.opt.pov.second'), first: () => t('guide.opt.pov.first') },
   lang: { auto: () => t('guide.opt.lang.auto'), ko: () => t('guide.opt.lang.ko'), en: () => t('guide.opt.lang.en'), ja: () => t('guide.opt.lang.ja'), zh: () => t('guide.opt.lang.zh') },
+  target: { auto: () => t('guide.ext.opt.auto'), dl: () => t('guide.ext.opt.dl'), st: () => t('guide.ext.opt.st') },
 };
 const optLine = (o: Opts, pov: boolean) => `Options: detail=${o.detail}${pov ? `, greeting point of view=${o.pov} person` : ''}, language=${o.lang === 'auto' ? 'the language I write in' : LANG_NAME[o.lang]}.`;
-type CmdId = 'char' | 'persona' | 'qr' | 'mvu' | 'check' | 'why' | 'help';
-interface Cmd { id: CmdId; names: string[]; opts?: 'char' | 'persona'; label(): string; hint(): string; ask(rest: string, refs: Ref[], o: Opts): string }
+type CmdId = 'char' | 'persona' | 'qr' | 'mvu' | 'ext' | 'check' | 'why' | 'help';
+interface Cmd { id: CmdId; names: string[]; opts?: 'char' | 'persona' | 'ext'; label(): string; hint(): string; ask(rest: string, refs: Ref[], o: Opts): string }
 const CMDS: Cmd[] = [
   { id: 'char', label: () => t('guide.cmd.char.name'), hint: () => t('guide.cmd.char.hint'), opts: 'char', names: ['/캐릭터', '/새캐릭터', '/character', '/new', '/角色', '/新角色'], ask: (rest, refs, o) => {
     const tg = refs.filter(r => r.kind === 'chars');
@@ -249,6 +284,7 @@ const CMDS: Cmd[] = [
       : `Help me make a persona (the character I play).${rest ? ` My idea: ${rest}` : ' Ask me in one short question who I want to be, with two or three example ideas.'}\n${optLine(o, false)}\nFollow the CARD AND PERSONA WRITING rules for personas. If it is clear enough, propose it with create_persona, then read the check and fix what it flags with revise_card.`; } },
   { id: 'qr', label: () => t('guide.cmd.qr.name'), hint: () => t('guide.cmd.qr.hint'), names: ['/qr', '/빠른답장', '/퀵리플', '/quickreply', '/快速回复'], ask: rest => `Help me with quick replies (STscript buttons).${rest ? ` What I want: ${rest}` : ' Ask me in one short question what the buttons should do, and list a few things you could build (for example a simple simulation with stats and a menu).'}\nIf I mean an existing set, list and read it first. Make a short plan, look up every command you use with st_commands, run st_check until each script is clean, then propose with create_qr_set, add_qr or update_qr. Tell me how to try it.` },
   { id: 'mvu', label: () => t('guide.cmd.mvu.name'), hint: () => t('guide.cmd.mvu.hint'), names: ['/mvu', '/변수', '/상태변수', '/变量'], ask: (rest, refs) => { const tg = refs.filter(r => r.kind === 'chars'); return `Help me set up MVU status variables${tg.length ? ` for ${named(tg)}` : ''}.${rest ? ` What I want to track: ${rest}` : ' If I have not said what to track, suggest a small set based on the card and ask me to confirm in one short question.'}\nRead the card and its lorebooks first (and get_mvu if a chat is open). Plan: initial variables ([InitVar] entry) → update rules → test a sample update with mvu_check → optional status display. Propose each piece with the lorebook / regex tools.`; } },
+  { id: 'ext', label: () => t('guide.ext.cmd.name'), hint: () => t('guide.ext.cmd.hint'), opts: 'ext', names: ['/확장', '/extension', '/ext', '/plugin', '/扩展', '/插件'], ask: (rest, _refs, o) => extAsk(rest, o.target) },
   { id: 'check', label: () => t('guide.cmd.check.name'), hint: () => t('guide.cmd.check.hint'), names: ['/검사', '/점검', '/check', '/检查'], ask: (rest, refs) => { const tg = refs.filter(r => r.kind === 'chars' || r.kind === 'presets' || r.kind === 'personas'); return `Run the built-in check on ${tg.length ? named(tg) : 'the item I mean — if nothing is attached and no chat is open, ask me which character, persona or preset'}${rest ? ` (${rest})` : ''}. Then read the fields it flags, and read the instructions for contradictions. Explain the findings in order of importance, each with one concrete fix. Do not propose changes unless I ask.`; } },
   { id: 'why', label: () => t('guide.cmd.why.name'), hint: () => t('guide.cmd.why.hint'), names: ['/진단', '/why', '/诊断'], ask: rest => `Explain why the last reply in the open chat came out the way it did${rest ? ` — specifically: ${rest}` : ''}. Use diagnose_reply, read whatever else you need, then name the most likely causes in order and what I can change for each.` },
   { id: 'help', label: () => t('guide.cmd.help.name'), hint: () => t('guide.cmd.help.hint'), names: ['/도움', '/help', '/帮助'], ask: rest => rest ? `Search the handbook and answer: ${rest}` : 'Briefly list what you can help me with here, and the / commands and @ attach chips I can use.' },
@@ -278,11 +314,12 @@ async function readFiles(list: File[], have: number): Promise<Attach[]> {
 let dropTo: ((fs: File[]) => void) | null = null;
 
 /** /캐릭터 · /페르소나 를 고르면 입력창 위에 뜨는 고르기 줄 */
-function OptRow({ kind, o, set }: { kind: 'char' | 'persona'; o: Opts; set: (o: Opts) => void }) {
+function OptRow({ kind, o, set }: { kind: 'char' | 'persona' | 'ext'; o: Opts; set: (o: Opts) => void }) {
   const group = <K extends keyof Opts>(k: K, label: string, vals: Opts[K][]) => <span className="gd-og" role="radiogroup" aria-label={label}>
     <small className="fx-lbl kr">{label}</small>
     {vals.map(v => <button key={v} type="button" role="radio" aria-checked={o[k] === v} className={'gd-o' + (o[k] === v ? ' on' : '')} onClick={() => set({ ...o, [k]: v })}>{(OPT_LABEL[k] as Record<string, () => string>)[v as string]()}</button>)}
   </span>;
+  if (kind === 'ext') return <div className="gd-opts">{group('target', t('guide.ext.opt.target'), ['auto', 'dl', 'st'])}</div>;
   return <div className="gd-opts">
     {group('detail', t('guide.opt.detail'), ['short', 'standard', 'detailed'])}
     {kind === 'char' ? group('pov', t('guide.opt.pov'), ['third', 'second', 'first']) : null}
@@ -335,7 +372,7 @@ function Composer() {
     {refs.length ? <div className="gd-refs">{refs.map(r => <button key={r.kind + r.id} type="button" className="fx-pill" title={t('guide.ref.remove')} onClick={() => setRefs(refs.filter(x => x !== r))}>@{r.name}<svg className="fx-art" viewBox="0 0 8 8" width="8" height="8" aria-hidden="true"><path d="M1 1l6 6M7 1L1 7" /></svg></button>)}</div> : null}
     {files.length || reading ? <div className="gd-fwrap">{files.length ? <FileChips files={files} onRemove={a => setFiles(files.filter(x => x !== a))} /> : null}{reading ? <small className="dim gd-reading">{t('guide.att.reading')}</small> : null}</div> : null}
     <div className="gd-box">
-      <button type="button" className="gd-slash" title={t('guide.cmd.menu')} aria-label={t('guide.cmd.menu')} onClick={e => menu(e.currentTarget, CMDS.map(c => ({ label: cmdHint(c), hint: cmdName(c), ic: c.id === 'char' ? 'sparkle' : c.id === 'persona' ? 'user' : c.id === 'qr' ? 'play' : c.id === 'mvu' ? 'sliders' : c.id === 'check' ? 'check' : c.id === 'why' ? 'search' : 'book', onclick: () => useCmd(c) })))}>/</button>
+      <button type="button" className="gd-slash" title={t('guide.cmd.menu')} aria-label={t('guide.cmd.menu')} onClick={e => menu(e.currentTarget, CMDS.map(c => ({ label: cmdHint(c), hint: cmdName(c), ic: c.id === 'char' ? 'sparkle' : c.id === 'persona' ? 'user' : c.id === 'qr' ? 'play' : c.id === 'mvu' ? 'sliders' : c.id === 'ext' ? 'plug' : c.id === 'check' ? 'check' : c.id === 'why' ? 'search' : 'book', onclick: () => useCmd(c) })))}>/</button>
       <button type="button" className="gd-clip" title={t('guide.att.add')} aria-label={t('guide.att.add')} onClick={async () => void addFiles(await pickFiles({ accept: ACCEPT, multiple: true }))}><Icon name="clip" size={17} /></button>
       <textarea ref={ta} rows={1} value={text} placeholder={t('guide.ph')} aria-label={t('guide.ph')} spellCheck={false}
         onChange={e => { setText(e.target.value); setCaret(e.target.selectionStart); setSel(0); }} onSelect={e => setCaret((e.target as HTMLTextAreaElement).selectionStart)}
@@ -369,7 +406,7 @@ function Empty() {
     <Mark size={84} draw lit />
     <h3 className="fx-title">{t('guide.empty.title')}</h3>
     <p className="fx-body dim">{t('guide.empty.body')}</p>
-    <div className="gd-tasks" role="group" aria-label={t('guide.empty.tasks')}>{(['char', 'persona', 'qr', 'mvu', 'check'] as CmdId[]).map(id => { const c = CMD(id); return <button key={id} type="button" className="gd-task" onClick={() => ask(cmdName(c) + ' ', id === 'check' || id === 'mvu' ? h : [])}><b>{cmdHint(c)}</b><small className="fx-num">{cmdName(c)}</small></button>; })}</div>
+    <div className="gd-tasks" role="group" aria-label={t('guide.empty.tasks')}>{(['char', 'persona', 'qr', 'mvu', 'ext', 'check'] as CmdId[]).map(id => { const c = CMD(id); return <button key={id} type="button" className="gd-task" onClick={() => ask(cmdName(c) + ' ', id === 'check' || id === 'mvu' ? h : [])}><b>{cmdHint(c)}</b><small className="fx-num">{cmdName(c)}</small></button>; })}</div>
     <div className="gd-sugg fx-rows">{rows.map(([label, run], i) => <button key={i} type="button" className="fx-in" style={{ ['--d' as string]: `${.08 * i + .1}s` }} onClick={run}><span className="fx-num">{String(i + 1).padStart(2, '0')}</span>{label}</button>)}</div>
     <p className="gd-tips fx-lbl kr">{t('guide.empty.tips')}</p>
   </div>;
