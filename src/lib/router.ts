@@ -5,6 +5,8 @@ export type PageRender = (root: HTMLElement, arg?: unknown) => unknown;
 const pages: Record<string, PageRender> = {};
 export const route: { page: string; arg: unknown; from: string } = { page: '', arg: null, from: '' };
 export const registerPage = (name: string, render: PageRender) => { pages[name] = render; };
+/** 등록된 화면 이름들 (등불지기의 open 도구가 쓴다) */
+export const pageNames = () => Object.keys(pages);
 export function go(page: string, arg?: unknown, fromHistory?: boolean) {
   if (!pages[page]) page = 'home';
   if (!fromHistory) try {   // 뒤로 가기가 앱 밖으로 나가지 않고 앞 화면으로 돌아가게 기록해 둔다 (같은 화면을 다시 그릴 때는 쌓지 않는다)

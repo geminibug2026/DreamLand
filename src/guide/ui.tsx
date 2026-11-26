@@ -7,7 +7,7 @@ import { go, route } from '../lib/router';
 import { confirmBox, menu, openModal, toast } from '../ui';
 import { fmtDate, has, t, useLang } from '../i18n';
 import { cur } from '../chat/store';
-import { G, apply, applyAll, branchAt, closeGuide, discard, editFrom, newTalk, openTalk, poke, regen, removeTalks, restoreTalks, resume, retry, send, stop, undo, type RemovedTalks } from './agent';
+import { G, apply, applyAll, autoOn, setAuto, branchAt, closeGuide, discard, editFrom, newTalk, openTalk, poke, regen, removeTalks, restoreTalks, resume, retry, send, stop, undo, type RemovedTalks } from './agent';
 import { ACCEPT, MAX_FILES, sizeText } from './attach';
 import { AttachError, readAttach } from './upload';
 import { targetOf, touchedSince } from './changes';
@@ -52,8 +52,8 @@ export function Md({ text }: { text: string }) {
 }
 
 // ── 변경 카드 ──
-const KIND_KEY: Record<string, string> = { chars: 'guide.kind.chars', personas: 'guide.kind.personas', lore: 'guide.kind.lore', presets: 'guide.kind.presets', regex: 'guide.kind.regex', theme: 'guide.kind.theme', qr: 'guide.kind.qr', vars: 'guide.kind.vars', settings: 'guide.kind.settings' };
-const PAGE_OF: Record<string, string> = { chars: 'home', personas: 'personas', lore: 'lore', presets: 'presets', regex: 'regex', theme: 'themes', qr: 'qr', vars: 'chat', settings: 'settings', ext: 'exts' };
+const KIND_KEY: Record<string, string> = { chars: 'guide.kind.chars', personas: 'guide.kind.personas', lore: 'guide.kind.lore', presets: 'guide.kind.presets', regex: 'guide.kind.regex', theme: 'guide.kind.theme', qr: 'guide.kind.qr', vars: 'guide.kind.vars', settings: 'guide.kind.settings', chats: 'guide.kind.chats', msgs: 'guide.kind.msgs', mem: 'guide.kind.mem', switch: 'guide.kind.switch', cmd: 'guide.kind.cmd' };
+const PAGE_OF: Record<string, string> = { chars: 'home', personas: 'personas', lore: 'lore', presets: 'presets', regex: 'regex', theme: 'themes', qr: 'qr', vars: 'chat', settings: 'settings', ext: 'exts', chats: 'chat', msgs: 'chat', mem: 'chat', switch: 'conns', cmd: 'chat' };
 const kindLabel = (ch: Change) => ch.op.type === 'ext' ? t(ch.op.target === 'st' ? 'guide.ext.kind.st' : 'guide.ext.kind.dl') : t(KIND_KEY[ch.kind] || 'guide.kind.chars');
 /** 칸 이름을 사람 말로 (모르는 칸은 그대로) */
 const fieldName = (n: string) => { const m = /^([\w.]+)(.*)$/.exec(n), k = m ? m[1].replace(/\./g, '_') : ''; return k && has('guide.f.' + k) ? t('guide.f.' + k) + (m![2] || '') : n; };
@@ -94,7 +94,7 @@ function ChangeCard({ ch }: { ch: Change }) {
   const [busy, setBusy] = useState(false);
   const run = (fn: () => Promise<unknown>) => async () => { if (busy) return; setBusy(true); try { await fn(); } catch (e) { toast(t('guide.card.failToast', { err: e instanceof Error && e.message === 'gone' ? t('guide.card.gone') : e instanceof Error && e.message === 'locked' ? t('guide.card.locked') : String(e instanceof Error ? e.message : e) }), 'err'); } finally { setBusy(false); } };
   const doUndo = run(async () => { if (ch.undoId && await touchedSince(ch.undoId) && !(await confirmBox(t('guide.card.undoTouched'), t('guide.card.undo')))) return; await undo(ch); toast(t('guide.card.undoneToast'), 'ok'); });
-  const open = () => { const p = PAGE_OF[ch.kind], id = targetOf(ch); if (ch.kind === 'chars') go('home'); else if (ch.kind === 'settings') go('settings'); else if (ch.kind === 'qr') go('qr', id ? { set: id } : undefined); else go(p, id || undefined); };
+  const open = () => { const p = PAGE_OF[ch.kind], id = targetOf(ch); if (ch.kind === 'chats' || ch.kind === 'msgs' || ch.kind === 'mem') go('chat', id || undefined); else if (ch.kind === 'chars') go('home'); else if (ch.kind === 'settings') go('settings'); else if (ch.kind === 'qr') go('qr', id ? { set: id } : undefined); else go(p, id || undefined); };
   const colors = ch.kind === 'theme' ? ch.fields.filter(f => isHex(f.after)) : [];
   return <article className={'gd-card fx-frame is-' + ch.state + (ch.verb === 'delete' ? ' is-del' : '')} aria-label={t('guide.card.aria', { target: ch.target })}>
     <header className="gd-ch">
@@ -106,11 +106,13 @@ function ChangeCard({ ch }: { ch: Change }) {
     {colors.length ? <div className="gd-cols">{colors.map(f => <span key={f.name}><i style={{ background: f.after }} /><b>{fieldName(f.name)}</b><code>{f.after}</code></span>)}</div> : null}
     {ch.op.type === 'ext' ? <ExtTree ch={ch} op={ch.op} /> : null}
     <div className="gd-fs fx-rows">{ch.fields.filter(f => !colors.includes(f)).map((f, i) => <FieldView key={i + ':' + ch.at} f={f} ch={ch} />)}</div>
+    {ch.out && ch.kind === 'cmd' && ch.state === 'applied' ? <pre className="gd-out">{ch.out}</pre> : null}
     {ch.err && ch.state === 'failed' ? <p className="gd-err">{ch.err === 'gone' ? t('guide.card.gone') : ch.err === 'locked' ? t('guide.card.locked') : ch.err}</p> : null}
     {ch.op.type === 'ext' ? <ExtFoot ch={ch} op={ch.op} busy={busy} run={run} doUndo={doUndo} /> : <footer className="gd-cf">
       {ch.state === 'pending' || ch.state === 'failed' ? <><button type="button" className="btn ghost" disabled={busy} onClick={run(() => discard(ch))}>{t('guide.card.discard')}</button>
         <button type="button" className="btn primary" disabled={busy} onClick={run(async () => { await apply(ch); toast(t('guide.card.appliedToast'), 'ok'); })}><Icon name="check" size={15} />{t('common.apply')}</button></> : null}
-      {ch.state === 'applied' ? <><small className="dim">{t('guide.card.undoHint')}</small><button type="button" className="btn ghost" disabled={busy} onClick={doUndo}>{t('guide.card.undo')}</button>{ch.op.type === 'delete' ? null : <button type="button" className="btn" onClick={open}>{t('guide.card.open')}</button>}</> : null}
+      {ch.state === 'applied' && !ch.undoId ? <><small className="dim">{t('guide.card.noUndo')}</small>{ch.kind === 'cmd' ? null : <button type="button" className="btn" onClick={open}>{t('guide.card.open')}</button>}</> : null}
+      {ch.state === 'applied' && ch.undoId ? <><small className="dim">{t('guide.card.undoHint')}</small><button type="button" className="btn ghost" disabled={busy} onClick={doUndo}>{t('guide.card.undo')}</button>{ch.op.type === 'delete' || ch.verb === 'delete' ? null : <button type="button" className="btn" onClick={open}>{t('guide.card.open')}</button>}</> : null}
     </footer>}
   </article>;
 }
@@ -391,7 +393,10 @@ function Composer() {
 }
 function ConnLine() {
   const c = S.helperConn('guide', null);
-  return <p className="gd-meta" title={t('guide.cost')}><span>{c ? `${c.name}${c.model ? ' · ' + c.model : ''}` : t('guide.noConn')}</span><span>{t('guide.tips')}</span></p>;
+  const on = autoOn();
+  return <p className="gd-meta"><span title={t('guide.cost')}>{c ? `${c.name}${c.model ? ' · ' + c.model : ''}` : t('guide.noConn')}</span>
+    <button type="button" role="switch" aria-checked={on} className={'gd-autosw' + (on ? ' on' : '')} title={t(on ? 'guide.auto.onTitle' : 'guide.auto.offTitle')} onClick={() => { setAuto(!on); toast(t(!on ? 'guide.auto.onToast' : 'guide.auto.offToast'), 'ok'); }}><i aria-hidden="true" />{t('guide.auto.label')}</button>
+    <span className="gd-tips">{t('guide.tips')}</span></p>;
 }
 
 // ── 빈 자리: 무엇을 물을 수 있는지 몇 줄 ──

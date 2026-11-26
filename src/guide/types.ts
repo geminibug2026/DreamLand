@@ -27,19 +27,24 @@ export type Op =
   /** 앱 설정 바꾸기 (점으로 이은 길 → 값) */
   | { type: 'settings'; fields: Record<string, unknown> }
   /** 확장 한 판: 드림랜드 확장은 적용하면 설치, 실리태번 확장은 적용하면 zip 으로 받는다 */
-  | ExtOp;
+  | ExtOp
+  /** 행동: 앱에 있는 기능으로 하는 일 (src/guide/acts.ts 의 ACTS[name]) — 대화방 · 메시지 · 연결 바꾸기 · 장기기억 · 명령 실행 */
+  | { type: 'action'; name: string; args: Record<string, unknown> };
 /** 조수가 손댈 수 있는 자료 종류. theme · qr 은 설정 안에 산다 */
 /** vars: 열린 대화의 변수 · settings: 앱 설정 · ext: 확장 (셋은 서재의 자료가 아니라 따로 적용 · 되돌린다) */
-export type Kind = 'chars' | 'personas' | 'lore' | 'presets' | 'regex' | 'theme' | 'qr' | 'vars' | 'settings' | 'ext';
+/** chats: 대화방(저장소의 자료) · msgs · mem · switch · cmd: 행동 카드가 다루는 것 */
+export type Kind = 'chars' | 'personas' | 'lore' | 'presets' | 'regex' | 'theme' | 'qr' | 'vars' | 'settings' | 'ext' | 'chats' | 'msgs' | 'mem' | 'switch' | 'cmd';
 export type ChangeState = 'pending' | 'applied' | 'dropped' | 'undone' | 'failed';
 export interface Change {
   id: string; verb: 'create' | 'update' | 'delete'; kind: Kind; target: string; op: Op; fields: FieldChange[];
   state: ChangeState; at: number; undoId?: string; err?: string;
+  /** 행동 카드가 돌려준 결과 (명령의 출력 · 새 대화방 id) — 모델에 함께 알린다 */
+  out?: string;
   /** 새 판 카드가 이 카드를 대신했다 (그 카드의 id) */
   by?: string;
 }
 /** 되돌리기 장부의 한 줄. 사본(before)은 따로 한 줄씩 둔다 (kv 의 gdundo:<id>) */
-export interface UndoRow { id: string; at: number; kind: Kind; targetId: string; target: string; created: boolean; stamp?: number; /** 'th': 실리태번 스크립트가 고친 것 (조수의 기록과 따로 센다) */ src?: string }
+export interface UndoRow { id: string; at: number; kind: Kind; targetId: string; target: string; created: boolean; stamp?: number; /** 행동 카드의 이름 (되돌릴 때 ACTS[act].undo) */ act?: string; /** 'th': 실리태번 스크립트가 고친 것 (조수의 기록과 따로 센다) */ src?: string }
 
 /** 입력창에서 @ 로 붙인 맥락 */
 export interface Ref { kind: 'chars' | 'personas' | 'lore' | 'presets' | 'chats' | 'regex'; id: string; name: string }

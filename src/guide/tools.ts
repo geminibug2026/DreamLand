@@ -20,6 +20,7 @@ import { searchHelp, topicText } from './handbook';
 import { syntaxOf } from './syntax';
 import { checkExt, extRef, extTarget, fileFields, installedWarn, normFiles, type ExtFiles, type ExtOp } from './ext';
 import type { Change, FieldChange, Item, Kind, Op, Plan, ToolDef } from './types';
+import { reachTools } from './reach';
 
 /** 도구가 지금 대화를 들여다보는 자리 (agent 가 채운다): 앞서 읽은 것 · 할 일 목록 · 기다리는 변경 카드 */
 export interface ToolCtx { items(): Item[]; plan(): Plan | undefined; setPlan(p: Plan | undefined): void }
@@ -710,12 +711,23 @@ const W: ToolDef[] = [
 
 // 예전 이름도 받는다 (지난 대화 기록 · 익숙한 이름)
 const ALIASES: Record<string, string> = { create_quick_reply: 'create_qr_set' };
-export const TOOLS: ToolDef[] = [...R, ...W];
+/** 대화방 · 메시지 · 연결 · 장기기억 · 명령 · 화면 · 지우기 (src/guide/reach.ts) */
+const X = reachTools({ str, num, clip, fail, find, propose, show, openChat, chatTitle, cur: cur as never, msgText, card: id => { for (const it of CTX.items()) if (it.k === 'change' && it.change.id === id) return it.change; return undefined; } });
+const RX = [...R, ...X.read], WX = [...W, ...X.write];
+export const TOOLS: ToolDef[] = [...RX, ...WX];
 const BY = new Map(TOOLS.map(t => [t.name, t]));
 export const toolDef = (name: string) => BY.get(name);
 /** 모델에 보여 줄 도구 목록 */
-export const toolDocs = () => { const line = (t: ToolDef) => `- ${t.name} ${t.sig} — ${t.desc}`; return `READ TOOLS (run at once)\n${R.map(line).join('\n')}\n\nWRITE TOOLS (never applied directly: each becomes a change card the user must approve)\n${W.map(line).join('\n')}`; };
+export const toolDocs = () => { const line = (t: ToolDef) => `- ${t.name} ${t.sig} — ${t.desc}`; return `READ TOOLS (run at once)\n${RX.map(line).join('\n')}\n\nWRITE TOOLS (each becomes a change card; see APPLYING)\n${WX.map(line).join('\n')}`; };
 
+/** 이 쓰기에 맞는 안내서 (읽지 않았으면 결과에 한 줄 알린다) */
+function playbookFor(tool: string, a: Args): string {
+  if (/^(create_character|add_greeting|create_persona|update_persona)$/.test(tool) || (tool === 'update_character' && a.fields && typeof a.fields === 'object' && ['description', 'firstMes', 'altGreetings', 'personality', 'scenario'].some(k => k in (a.fields as Obj)))) return 'cards';
+  if (/^(create_regex|update_regex)$/.test(tool) && /<(div|table|section|details|body|style)\b|```html/i.test(str((a.fields as Obj | undefined)?.replace ?? a.replace))) return 'panels';
+  if (tool === 'create_lorebook' && /\[initvar\]/i.test(JSON.stringify(a.entries ?? ''))) return 'mvu';
+  if (/^(create_qr_set|add_qr|update_qr|update_qr_set|run_command)$/.test(tool) && /(^|[\s|{])\/(=|ife|elseif|foreach|map|filter|reduce|whilee|getat|setat|try|catch|switch|case|sorte|dict)\b/.test(JSON.stringify(a))) return 'lalib';
+  return '';
+}
 /** 도구를 돌린다. 읽기는 글로, 쓰기는 변경 카드로 돌려준다. 틀린 호출은 까닭을 적어 던진다 (모델이 읽고 고친다) */
 export async function runTool(name: string, args: Args): Promise<{ out: string; change?: Change }> {
   const def = BY.get(name) || BY.get(ALIASES[name] || '');
@@ -724,8 +736,8 @@ export async function runTool(name: string, args: Args): Promise<{ out: string; 
   try { res = await def.run(args || {}); }
   catch (e) { if (e instanceof ToolError) throw new Error(`${e.message} Usage: ${def.name} ${def.sig}`); console.warn('[등불지기]', name, e); throw new Error(`The tool failed: ${e instanceof Error ? e.message : String(e)}`); }
   if (isProposal(res)) {
-    const c = res.change;
-    return { change: c, out: JSON.stringify({ status: 'PENDING — not saved yet', changeCard: c.id, ...(c.verb === 'delete' ? { action: 'delete (undoable after it is applied)' } : {}), target: c.target, fields: c.fields.map(f => f.name), ...(res.warn ? { warning: res.warn } : {}), ...(res.notes ? { check: res.notes } : {}), next: `A change card is now shown to the user. Nothing is saved until they press Apply. Do not say it is done; say what you proposed and that it waits for their approval.${res.notes ? ' Read "check" first: if it flags something you did not intend, fix it now with revise_card (same card) before you report.' : ''}` }, null, 1) };
+    const c = res.change, pb = playbookFor(def.name, args), hint = pb && !CTX.items().some(it => it.k === 'tool' && it.ok && it.name === 'playbook' && str(it.args.topic).toLowerCase() === pb) ? `Playbook "${pb}" holds the rules for this kind of work and you have not read it in this conversation — read it and revise this card if anything differs.` : '';
+    return { change: c, out: JSON.stringify({ status: 'PENDING — not saved yet', changeCard: c.id, ...(c.verb === 'delete' ? { action: 'delete (undoable after it is applied)' } : {}), target: c.target, fields: c.fields.map(f => f.name), ...(res.warn ? { warning: res.warn } : {}), ...(res.notes ? { check: res.notes } : {}), ...(hint ? { playbook: hint } : {}), next: `A change card is now shown to the user. Nothing is saved until they press Apply. Do not say it is done; say what you proposed and that it waits for their approval.${res.notes ? ' Read "check" first: if it flags something you did not intend, fix it now with revise_card (same card) before you report.' : ''}` }, null, 1) };
   }
   let out = JSON.stringify(res, null, 1); if (out.length > 14000) out = out.slice(0, 14000) + '\n… [result cut; narrow it with query/offset/field]';
   return { out };

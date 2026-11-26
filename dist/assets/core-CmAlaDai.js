@@ -1,1 +1,0 @@
-export{y as download}from"./core-C8acLLUT.js";

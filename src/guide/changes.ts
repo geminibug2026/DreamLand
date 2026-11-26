@@ -1,15 +1,19 @@
 // 변경 카드의 적용과 되돌리기. 조수의 쓰기는 전부 여기를 지난다 — 사람이 "적용"을 눌러야만 불린다
 // 되돌리기: 적용 직전의 사본을 kv 에 둔다 (gdundo:<id>). 14일이 지났거나 50건을 넘으면 오래된 것부터 버린다
-import { DB, S, emit, newChar, newEntry, newLore, newPersona, newRegex, now, uid } from '../lib/core';
+import { DB, S, defaultPreset, emit, newChar, newEntry, newLore, newPersona, newRegex, now, uid } from '../lib/core';
 import { BUILTIN, applyTheme } from '../lib/theme';
 import { newQrItem, newQrSet, qrSave, qrStore, type QrItem, type QrSet } from '../lib/qr-data';
 import type { Char, Lore, LoreEntry, Persona, Preset, PresetBlock, Regex, Theme } from '../lib/types';
 import { installExt, restoreExt, saveZip, type ExtBefore } from './ext';
+import { ACTS } from './acts';
 import type { Change, Kind, Op, UndoRow } from './types';
 
 const LEDGER = 'guide:undo', KEEP_DAYS = 14, KEEP_N = 50, KEEP_TH = 30;
 type Obj = Record<string, unknown>;
 const themes = () => (S.settings.customThemes ||= []);
+/** 행동 카드만 쓰는 종류 (저장소에 그 이름의 칸이 없다) */
+const ACT_KINDS = new Set<Kind>(['msgs', 'mem', 'switch', 'cmd']);
+const isAct = (k: Kind): k is 'msgs' | 'mem' | 'switch' | 'cmd' => ACT_KINDS.has(k);
 
 /** 점으로 이은 길(depthPrompt.prompt)에 값을 넣는다 */
 export function setPath(o: Obj, path: string, v: unknown) { const ks = path.split('.'); let t = o; for (const k of ks.slice(0, -1)) t = (t[k] && typeof t[k] === 'object' ? t[k] : (t[k] = {})) as Obj; t[ks[ks.length - 1]] = v; }
@@ -17,7 +21,7 @@ export function getPath(o: unknown, path: string): unknown { let t = o; for (con
 
 /** 지금 그 자료 (없으면 undefined) */
 export function current(kind: Kind, id: string): Obj | undefined {
-  if (kind === 'vars' || kind === 'settings' || kind === 'ext') return undefined;   // 서재의 자료가 아니다 (아래에서 따로 다룬다)
+  if (kind === 'vars' || kind === 'settings' || kind === 'ext' || isAct(kind)) return undefined;   // 서재의 자료가 아니다 (아래에서 따로 다룬다)
   if (kind === 'theme') return themes().find(t => t.id === id) as Obj | undefined;
   if (kind === 'qr') return qrStore().sets.find(s => s.id === id) as unknown as Obj | undefined;
   return S.get(kind, id) as Obj | undefined;
@@ -25,12 +29,15 @@ export function current(kind: Kind, id: string): Obj | undefined {
 async function put(kind: Kind, obj: Obj) {
   if (kind === 'theme') { const l = themes(), i = l.findIndex(t => t.id === obj.id); if (i < 0) l.push(obj as Theme); else l[i] = obj as Theme; S.set({ customThemes: l }); if (S.settings.theme === obj.id) applyTheme(); }
   else if (kind === 'qr') { const q = qrStore(), i = q.sets.findIndex(s => s.id === obj.id); if (i < 0) q.sets.push(obj as unknown as QrSet); else q.sets[i] = obj as unknown as QrSet; qrSave(); }
-  else if (kind !== 'vars' && kind !== 'settings' && kind !== 'ext') await S.save(kind, obj as never);
+  else if (kind !== 'vars' && kind !== 'settings' && kind !== 'ext' && !isAct(kind)) await S.save(kind, obj as never);
+  if (kind === 'chats') await redrawIfOpen(String(obj.id));
 }
+/** 열린 대화방을 고쳤으면 화면을 새로 그린다 (이름 · 페르소나 · 작가 노트 · 모드가 바로 보이게) */
+async function redrawIfOpen(id: string) { const { cur } = await import('../chat/store'); if (cur.chat?.id !== id) return; const { drawMain } = await import('../chat/actions'); drawMain(); }
 async function drop(kind: Kind, id: string) {
   if (kind === 'theme') { S.set({ customThemes: themes().filter(t => t.id !== id), ...(S.settings.theme === id ? { theme: BUILTIN[0].id } : {}) }); applyTheme(); }
   else if (kind === 'qr') { const q = qrStore(); q.sets = q.sets.filter(s => s.id !== id); qrSave(); }
-  else if (kind !== 'vars' && kind !== 'settings' && kind !== 'ext') await S.remove(kind, id);
+  else if (kind !== 'vars' && kind !== 'settings' && kind !== 'ext' && !isAct(kind)) await S.remove(kind, id);
 }
 
 /** 새 자료를 그 종류의 기본 꼴 위에 만든다 */
@@ -39,6 +46,7 @@ function build(kind: Kind, o: Obj): Obj {
   if (kind === 'personas') return newPersona(o as Partial<Persona>);
   if (kind === 'lore') { const b = newLore({ ...(o as Partial<Lore>), entries: [] }); b.entries = (Array.isArray(o.entries) ? o.entries as Obj[] : []).map(e => newEntry(e as Partial<LoreEntry>)); return b as unknown as Obj; }
   if (kind === 'regex') return newRegex(o as Partial<Regex>) as unknown as Obj;
+  if (kind === 'presets') { const src = o.from ? S.get('presets', String(o.from)) : null, base = src ? structuredClone(src) : defaultPreset(); return { ...base, id: uid(), name: String(o.name || base.name), builtin: false, createdAt: now(), updatedAt: now() } as unknown as Obj; }
   if (kind === 'theme') { const base = structuredClone(BUILTIN.find(t => t.tone === o.tone) || BUILTIN[0]); return { ...base, id: 'my-' + uid(), builtin: false, ...o, c: { ...base.c, ...(o.c as Obj || {}) } }; }
   if (kind === 'qr') return newQrSet({ ...(o as Partial<QrSet>), items: (Array.isArray(o.items) ? o.items as Obj[] : []).map(i => newQrItem(i as Partial<QrItem>)) }) as unknown as Obj;
   throw new Error('cannot create ' + kind);
@@ -115,6 +123,19 @@ export async function applyChange(ch: Change): Promise<void> {
       if (Object.keys(op.set).length) { const vs = (chat.vars ||= {}) as unknown as Obj; for (const [k, v] of Object.entries(op.set)) { if (v === null) delete vs[k]; else vs[k] = v; } await chatApi.save(); chatApi.redraw?.(); A.pushFrames(); }
       await saveLedger([...(await ledger()), { id, at: now(), kind: 'vars', targetId: chat.id, target: ch.target, created: false, stamp: 0 }]);
       ch.state = 'applied'; ch.undoId = id; ch.at = now(); delete ch.err;
+      return;
+    }
+    if (op.type === 'action') {   // 행동: 앱의 기능으로 하고, 되돌릴 사본을 남긴다 (되돌릴 수 없는 행동은 장부에 적지 않는다)
+      const act = ACTS[op.name]; if (!act) throw new Error('unknown action ' + op.name);
+      const r = await act.apply(op.args);
+      if (!op.args.chatId && (ch.kind === 'chats' || ch.kind === 'msgs' || ch.kind === 'mem')) ch.op = { ...op, args: { ...op.args, chatId: r.targetId } };
+      if (act.undo) {
+        await DB.put('kv', { id: 'gdundo:' + id, before: r.before as Obj });
+        await saveLedger([...(await ledger()), { id, at: now(), kind: ch.kind, targetId: r.targetId, target: ch.target, created: false, stamp: 0, act: op.name }]);
+        ch.undoId = id;
+      }
+      if (r.out) ch.out = r.out;
+      ch.state = 'applied'; ch.at = now(); delete ch.err;
       return;
     }
     if (op.type === 'ext') {   // 확장: 실리태번 것은 zip 으로 받기만 (되돌릴 것이 없다), 드림랜드 것은 사람이 설치하는 길로 넣고 그 전 모습을 남긴다
@@ -198,7 +219,8 @@ export async function touchedSince(undoId: string): Promise<boolean> {
 export async function undoChange(undoId: string): Promise<boolean> {
   const list = await ledger(), r = list.find(x => x.id === undoId); if (!r) return false;
   const row = await DB.get('kv', 'gdundo:' + undoId) as { before?: Obj | null } | undefined;
-  if (r.kind === 'settings') { if (!row?.before) return false; writeSettings(row.before); }
+  if (r.act) { const act = ACTS[r.act]; if (!act?.undo) return false; await act.undo(row?.before ?? null, r.targetId); }
+  else if (r.kind === 'settings') { if (!row?.before) return false; writeSettings(row.before); }
   else if (r.kind === 'vars') { if (!row?.before) return false; await restoreVars(row.before as unknown as VarsBefore); }
   else if (r.kind === 'ext') { if (!row?.before) return false; await restoreExt(r.targetId, row.before as unknown as ExtBefore); }
   else if (r.created) { if (current(r.kind, r.targetId)) await drop(r.kind, r.targetId); }
@@ -208,4 +230,4 @@ export async function undoChange(undoId: string): Promise<boolean> {
   return true;
 }
 /** 만든 자료의 id (적용된 만들기 카드에서 "열기"에 쓴다) */
-export const targetOf = (ch: Change): string => ch.op.type === 'ext' ? ch.op.id : ch.op.type === 'vars' ? ch.op.chatId : ch.op.type === 'settings' ? 'settings' : ch.op.type === 'create' ? String(ch.op.obj.id || '') : ch.op.type === 'entry' || ch.op.type === 'entrydel' ? ch.op.loreId : ch.op.type === 'block' ? ch.op.presetId : ch.op.type === 'qritem' || ch.op.type === 'qrdel' ? ch.op.setId : ch.op.id;
+export const targetOf = (ch: Change): string => ch.op.type === 'action' ? String(ch.op.args.chatId || '') : ch.op.type === 'ext' ? ch.op.id : ch.op.type === 'vars' ? ch.op.chatId : ch.op.type === 'settings' ? 'settings' : ch.op.type === 'create' ? String(ch.op.obj.id || '') : ch.op.type === 'entry' || ch.op.type === 'entrydel' ? ch.op.loreId : ch.op.type === 'block' ? ch.op.presetId : ch.op.type === 'qritem' || ch.op.type === 'qrdel' ? ch.op.setId : ch.op.id;
