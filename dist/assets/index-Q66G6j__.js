@@ -455,7 +455,7 @@ async function openaiInner(request, region, parts, url, authed) {
 // Supabase 는 요청마다 어느 지역에서 돌릴지 고를 수 있다 (x-region 머리말). 한 지역이 429 면 다음 지역에서 다시 돌린다.
 //   주소 (실리태번 · 마리나라 · 드림랜드 Custom):  https://<프로젝트>.supabase.co/functions/v1/<함수 이름>/v1     API 키 = RELAY_KEY
 //   비밀(Edge Function Secrets): RELAY_KEY(필수) · API_1 … · STUDIO_1 … · WAIT_SEC · FALLBACK_MODEL · MODELS · VERTEX_LOCATION · HOP_REGIONS
-//   함수 설정에서 "Enforce JWT Verification"(JWT 확인)을 꺼야 한다 — 프로그램은 Supabase 토큰이 아니라 RELAY_KEY 를 보낸다
+//   함수 Details 에서 "Verify JWT with legacy secret"(예전 이름 Enforce JWT Verification)을 꺼야 한다 — 프로그램은 Supabase 토큰이 아니라 RELAY_KEY 를 보낸다
 //   드림랜드 Vertex 연결(키를 드림랜드가 붙여 보냄):  https://<프로젝트>.supabase.co/functions/v1/<함수 이름>/<지역>/<RELAY_KEY>  — 지역마다 하나씩 적으면 429 때 다음 지역으로
 const SB_REGIONS = ['us-east-1', 'us-west-2', 'us-west-1', 'ca-central-1', 'eu-west-2', 'eu-central-1', 'eu-west-1', 'eu-west-3', 'sa-east-1', 'ap-southeast-2', 'ap-south-1', 'ap-southeast-1', 'ap-northeast-1'];
 const SB_CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': 'GET, POST, OPTIONS', 'Access-Control-Max-Age': '86400' };
@@ -472,6 +472,7 @@ async function handle(req) {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: SB_CORS });
   const E = globalThis.__relayEnv = Deno.env.toObject();   // Supabase 는 환경 변수에 쓸 수 없다 — 중계 코드가 이것을 읽는다
   const url = new URL(req.url); let parts = url.pathname.split('/').filter(Boolean);
+  const sp = new URLSearchParams(url.search); sp.delete('forceFunctionRegion'); const search = sp.toString() ? '?' + sp : '';   // 지역을 고르려고 붙인 것은 구글에 넘기지 않는다 (400 Unknown name)
   if (parts[0] === 'functions' && parts[1] === 'v1') parts = parts.slice(2);
   const fname = parts.shift() || 'relay', base = String(Deno.env.get('SUPABASE_URL') || url.origin).replace(/\\/+$/, ''), self = \`\${base}/functions/v1/\${fname}\`;
   const regions = (l => l.length ? l : SB_REGIONS)(String(E.HOP_REGIONS || '').split(/[\\s,]+/).filter(r => SB_REGIONS.includes(r) || /^[a-z]{2}-[a-z]+-\\d$/.test(r)));
@@ -481,7 +482,7 @@ async function handle(req) {
   // 처음 받은 곳(보통 내게 가까운 서울 · 도쿄)에서 바로 구글로 보내지 않는다: 주소에 지역이 있으면 그 지역, 없으면 첫 지역에서 시작한다
   const isRegion = r => SB_REGIONS.includes(r) || /^[a-z]{2}-[a-z]+-\\d$/.test(r);
   if (!at) {
-    const pinned = isRegion(parts[0]) ? parts[0] : '', rest = '/' + (pinned ? parts.slice(1) : parts).join('/') + url.search;
+    const pinned = isRegion(parts[0]) ? parts[0] : '', rest = '/' + (pinned ? parts.slice(1) : parts).join('/') + search;
     return toRegion(pinned || regions[0], rest, { method: req.method, headers: req.headers, body: req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.arrayBuffer() }).then(r => new Response(r.body, { status: r.status, headers: r.headers }));
   }
   hop.regions = regions;
@@ -497,7 +498,7 @@ async function handle(req) {
   if (!/^\\/v1(beta1)?\\/(projects|publishers)\\//.test(rest)) return sbJson(404, { error: 'Use /v1/chat/completions (OpenAI-compatible) or a Vertex AI path.' });
   const loc = (rest.match(/\\/locations\\/([a-z0-9-]+)\\//) || [])[1] || 'global', host = loc === 'global' ? 'https://aiplatform.googleapis.com' : \`https://\${loc}-aiplatform.googleapis.com\`;
   const headers = new Headers(); for (const k of ['authorization', 'x-goog-api-key', 'x-goog-user-project', 'content-type', 'accept']) { const v = req.headers.get(k); if (v) headers.set(k, v); }
-  let up; try { up = await fetch(host + rest + url.search, { method: req.method, headers, body: req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.arrayBuffer() }); }
+  let up; try { up = await fetch(host + rest + search, { method: req.method, headers, body: req.method === 'GET' || req.method === 'HEAD' ? undefined : await req.arrayBuffer() }); }
   catch (e) { return sbJson(502, { error: 'relay could not reach Vertex AI: ' + (e && e.message || e) }); }
   const out = new Headers(SB_CORS); out.set('Content-Type', up.headers.get('content-type') || 'application/octet-stream'); out.set('Cache-Control', 'no-store'); out.set('X-Relay-Region', here);
   return new Response(up.body, { status: up.status, headers: out });
