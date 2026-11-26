@@ -45,25 +45,27 @@
 .mm-yn-focus h4 { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font: 700 .98em var(--fx-serif, inherit); letter-spacing: .02em; overflow-wrap: anywhere; } .mm-yn-focus h4 b { font-weight: 400; font-size: 11.5px; color: var(--dim); }
 .mm-yn-focus .mm-link { min-height: 34px; display: inline-flex; align-items: center; font-size: .84em; background: none; border: 0; padding: 0; cursor: pointer; }
 .mm-yn-cards { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.mm-yn-card { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 8px 10px 9px 12px; border: 1px solid var(--line-3); border-left: 2px solid var(--tk); background: var(--surface); }
+.mm-yn-card { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 8px 12px 10px 14px; border: 1px solid var(--line-3); border-left: 2px solid var(--tk); background: var(--surface); }
 .mm-yn-card > header { flex-wrap: wrap; } .mm-yn-link { flex: 0 1 28px; min-width: 14px; height: 1.5px; background: var(--tk); }
 .mm-yn-types { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
-.mm-yn-type { display: inline-flex; align-items: center; gap: 4px; min-height: 22px; padding: 1px 8px; border: 1px solid color-mix(in srgb, var(--tk) 55%, transparent); color: color-mix(in srgb, var(--tk) 72%, var(--text)); font-size: 12px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.mm-yn-type { display: inline-flex; align-items: center; gap: 4px; min-height: 20px; padding: 0 7px; border: 1px solid color-mix(in srgb, var(--tk) 55%, transparent); color: color-mix(in srgb, var(--tk) 72%, var(--text)); font-size: 11.5px; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
 .mm-yn-type.main { background: color-mix(in srgb, var(--tk) 12%, transparent); } .mm-yn-type.own { border-style: dashed; }
 .mm-yn-card > header { display: flex; align-items: center; gap: 4px 10px; min-width: 0; }
 .mm-yn-who { flex: 0 1 auto; display: inline-flex; align-items: center; gap: 7px; min-height: 34px; max-width: 46%; padding: 0; border: 0; background: none; color: var(--text); font: inherit; cursor: pointer; text-align: left; }
 .mm-yn-who b { font-weight: 700; overflow-wrap: anywhere; } .mm-yn-who:hover b { text-decoration: underline; text-underline-offset: 3px; }
-.mm-yn-stage { min-width: 0; font-size: .82em; line-height: 1.5; color: var(--dim); overflow-wrap: anywhere; }
-.mm-yn-read { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 2px 8px; padding: 5px 0 4px; border-top: 1px dashed var(--line-3); min-width: 0; }
-.mm-yn-read .dir { display: inline-flex; align-items: center; gap: 4px; padding-top: 2px; font-size: .78em; color: var(--dim); white-space: nowrap; max-width: 7em; } .mm-yn-read .dir b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
-.mm-yn-read .body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.mm-yn-stage { min-width: 0; margin: -2px 0 4px; font-size: .82em; line-height: 1.5; color: var(--dim); overflow-wrap: anywhere; }
+.mm-yn-read { display: flex; flex-direction: column; gap: 2px; padding: 6px 0 7px; border-top: 1px dashed var(--line-3); min-width: 0; }
+.mm-yn-read .top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; min-height: 26px; }
+.mm-yn-read .dir { display: inline-flex; align-items: center; gap: 5px; min-width: 0; font-size: .78em; color: var(--dim); white-space: nowrap; } .mm-yn-read .dir b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; max-width: 9em; } .mm-yn-read .dir i { font-style: normal; }
+.mm-yn-read .body { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
 .mm-yn-read .word { font-style: normal; font-weight: 600; font-size: .95em; line-height: 1.45; overflow-wrap: anywhere; } .mm-yn-read .word.none { font-weight: 400; color: var(--dim); font-size: .84em; }
-.mm-yn-read .axes { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
 .mm-yn-tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border: 1px dashed var(--line-2); font-size: 11px; color: var(--dim); white-space: nowrap; } .mm-yn-tag.lean { border-style: solid; border-color: color-mix(in srgb, var(--accent) 55%, transparent); color: var(--accent-ink); }
 .mm-yn-btn { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; border: 1px solid var(--line-2); background: transparent; color: var(--text); cursor: pointer; } .mm-yn-btn svg { display: block; }
+.mm-yn-btn.ghost { width: 32px; height: 32px; margin: -4px -8px -4px 0; border-color: transparent; color: var(--dim); } .mm-yn-btn.ghost:hover { color: var(--text); background: color-mix(in srgb, var(--text) 6%, transparent); }
 .mm-yn-btn.del { border-color: transparent; color: var(--dim); } .mm-yn-btn.del:hover { color: var(--bad-ink, var(--bad)); }
 .mm-yn-btn:focus-visible, .mm-yn-who:focus-visible, .mm-yn-hrow:focus-visible, .mm-yn-wf:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.mm-yn-card > footer { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding-top: 6px; border-top: 1px dashed var(--line-3); font-size: .84em; min-width: 0; }
+.mm-yn-card > footer { display: flex; flex-direction: column; gap: 2px; padding-top: 7px; border-top: 1px dashed var(--line-3); font-size: .86em; min-width: 0; }
+.mm-yn-card > footer .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; min-width: 0; }
 
 /* ── 전환점의 갈래 빛깔 (--way) ── */
 [data-way] { --way: var(--dim); }
@@ -71,9 +73,10 @@
 [data-way="flip"] { --way: var(--accent-ink); } [data-way="heart"] { --way: color-mix(in srgb, #c25470 74%, var(--text)); }
 [data-way="lot"] { --way: color-mix(in srgb, var(--text) 62%, var(--surface)); } [data-way="grow"] { --way: var(--ok); }
 .mm-yn-wi { flex: none; display: block; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-.mm-yn-way { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px 0 5px; border: 1px solid color-mix(in srgb, var(--way) 50%, transparent); color: var(--way); font-size: 12px; font-weight: 600; line-height: 1; white-space: nowrap; }
+.mm-yn-way { flex: none; display: inline-flex; align-items: center; gap: 4px; min-height: 22px; padding: 0; color: var(--way); font-size: 12px; font-weight: 700; line-height: 1; white-space: nowrap; }
 .mm-yn-change { min-width: 0; overflow-wrap: anywhere; line-height: 1.55; } .mm-yn-change s { text-decoration: none; color: var(--dim); } .mm-yn-change i { font-style: normal; margin: 0 6px; color: var(--dim); } .mm-yn-change em { font-style: normal; font-weight: 600; }
-.mm-yn-where { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); font-size: .92em; white-space: nowrap; }
+.mm-yn-where { display: inline-flex; align-items: center; gap: 8px; color: var(--dim); font-size: .92em; white-space: nowrap; }
+.mm-yn .mm-st-jump { padding: 3px 0; border: 0; background: none; color: var(--accent-ink); font-size: 1em; text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent); text-underline-offset: 3px; cursor: pointer; } .mm-yn .mm-st-jump:hover { color: var(--text); }
 
 /* ── 마음 ── */
 .mm-yn-hearts { display: flex; flex-direction: column; min-width: 0; }
@@ -127,7 +130,7 @@ select.mm-yn-whof { width: 100%; min-height: 36px; max-width: none; }
 .mm-yn > .mm-yn-retrace { padding: 12px 14px; border: 1px dashed var(--line-2); background: var(--surface); }
 .mm-yn-hint { font-size: .84em; color: var(--dim); line-height: 1.65; overflow-wrap: anywhere; } .mm-yn-hint .mm-link { background: none; border: 0; padding: 0; cursor: pointer; font-size: 1em; }
 
-@media (max-width: 820px) { .mm-yn-way { height: 24px; font-size: 12.5px; } }
+@media (max-width: 820px) { .mm-yn-way { min-height: 24px; font-size: 12.5px; } }
 @media (min-width: 720px) {
   .mm-yn-filter { flex-direction: row; align-items: center; justify-content: space-between; } select.mm-yn-whof { width: auto; min-width: 180px; max-width: 260px; }
   .mm-yn-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }

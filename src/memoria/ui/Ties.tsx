@@ -86,10 +86,12 @@ export function Ties({ st }: { st: StOpen }) {
   const toPerson = (name: string) => { const ps = (st.people ||= { name: '', q: '', view: 'list', open: new Set<string>(), more: new Map<string, number>() }) as { name: string; view: string }; ps.name = M.canonName(mem, name); ps.view = 'list'; st.tab = 'people'; st.draw(); };
   const readRow = (b: Bond | undefined, from: string, to: string) => {
     if (!b) return null; const r: TieRead = tieOf(b);
-    return <div className="mm-yn-read"><span className="dir"><b>{from}</b><i aria-hidden="true">→</i></span>
-      <span className="body">{r.word ? <em className="word"><Tr>{r.word}</Tr></em> : <em className="word none">{t('memoria.ties.unread')}</em>}
-        <span className="axes">{r.types?.length ? <TypeChips types={r.types} /> : <span className="mm-yn-tag">{t('memoria.ties.noType')}</span>}{b.tieHand ? <span className="mm-yn-tag">{t('memoria.ties.hand')}</span> : null}</span></span>
-      <button type="button" className="mm-yn-btn" title={t('memoria.ties.edit.btn')} aria-label={`${t('memoria.ties.edit.btn')} — ${from} → ${to}`} onClick={() => editTie(st, b)}><PenIco /></button></div>;
+    // 한 방향 = 두 줄: 위는 누가 → 누구에게(작게)와 고치기, 아래는 한마디와 갈래 칩을 한 줄에 이어서
+    return <div className="mm-yn-read">
+      <div className="top"><span className="dir"><b>{from}</b><i aria-hidden="true">→</i><b>{to}</b></span>
+        <button type="button" className="mm-yn-btn ghost" title={t('memoria.ties.edit.btn')} aria-label={`${t('memoria.ties.edit.btn')} — ${from} → ${to}`} onClick={() => editTie(st, b)}><PenIco /></button></div>
+      <div className="body">{r.word ? <em className="word"><Tr>{r.word}</Tr></em> : <em className="word none">{t('memoria.ties.unread')}</em>}
+        {r.types?.length ? <TypeChips types={r.types} /> : <span className="mm-yn-tag">{t('memoria.ties.noType')}</span>}{b.tieHand ? <span className="mm-yn-tag">{t('memoria.ties.hand')}</span> : null}</div></div>;
   };
   const used = [...new Set(edges.map(e => e.kind))].sort((x, y) => (GROUPS as string[]).indexOf(x) - (GROUPS as string[]).indexOf(y));
   const nameBtn = (n: string) => <button type="button" className="mm-yn-who" title={focus === n ? t('memoria.ties.map.all') : t('memoria.ties.focus.only', { name: n })} onClick={() => pick(n)}><b>{n}</b></button>;
@@ -104,7 +106,7 @@ export function Ties({ st }: { st: StOpen }) {
         <header>{nameBtn(x.a)}<i className="mm-yn-link" aria-hidden="true" />{nameBtn(x.b)}</header>
         {stage ? <p className="mm-yn-stage" title={t('memoria.ties.focus.stage')}><Tr>{stage}</Tr></p> : null}
         {readRow(x.ab, x.a, x.b)}{readRow(x.ba, x.b, x.a)}
-        {last ? <footer><span className="mm-yn-way" data-way={last.way}><WayIco way={last.way} />{wayName(last.way)}</span><Change p={last} /><Where p={last} /></footer> : null}
+        {last ? <footer><div className="meta"><span className="mm-yn-way" data-way={last.way}><WayIco way={last.way} />{wayName(last.way)}</span><Where p={last} /></div><Change p={last} /></footer> : null}
       </article>; })}</div> : <None text={t('memoria.ties.focus.none')} />}
   </Sec>;
 
