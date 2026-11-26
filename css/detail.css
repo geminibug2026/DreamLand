@@ -493,3 +493,4 @@ button.top-room:hover { text-decoration: underline dotted; text-underline-offset
 .rl-old, .rl-notes { margin: 6px 0 10px; padding-left: 1.2em; display: flex; flex-direction: column; gap: 6px; font-size: .86em; line-height: 1.6; color: var(--text); }
 @media (max-width: 420px) { .rl-kind { padding: 8px; } .rl-kind span { font-size: .72em; } }
 .rl-act .btn.ghost { border: 1px solid var(--line-2, var(--line)); padding-left: 12px; padding-right: 12px; }
+.cf-row .btn { max-width: 100%; white-space: normal; text-align: left; height: auto; min-height: 38px; }
