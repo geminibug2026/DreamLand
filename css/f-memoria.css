@@ -418,3 +418,21 @@
 @media (hover: hover) { .mm-pp-item:hover, button.mm-pp-scene:hover { background: var(--line-4); } }
 /* 서고 창: 내용이 긴 탭(세계 · 인물)에서 격자 줄이 내용 높이만큼 늘어나 창이 화면 아래로 밀려났다 — 줄을 화면 높이에 묶는다 */
 .mm-wrap { grid-template-rows: minmax(0, 1fr); }
+/* 검사 탭 — 어긋난 곳 보고서 · 요약 점검. 좁은 화면(390px)에서 넘치지 않게: 줄은 접히고, 긴 글은 어디서든 끊기고, 누르는 것은 34px 이상 */
+.mm-au-status { display: flex; align-items: center; gap: 11px; padding: 2px 4px; font-size: .84em; color: var(--dim); min-width: 0; } .mm-au-status span { min-width: 0; overflow-wrap: anywhere; }
+.mm-au-row { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; min-width: 0; } .mm-au .btn, .mm-au-row .inp { min-height: 34px; } .mm-au .btn { padding: 5px 12px; font-size: .86em; }
+.mm-au-seg { display: flex; flex: 1 1 240px; max-width: 100%; min-width: 0; } .mm-au-seg button { flex: 1 1 0; min-height: 34px; padding: 6px 8px; min-width: 0; overflow-wrap: anywhere; }
+.mm-au-num { display: inline-flex; align-items: center; gap: 6px; font-size: .86em; color: var(--dim); min-width: 0; flex-wrap: wrap; } .mm-au-num input.inp { width: 62px; text-align: center; padding-left: 6px; padding-right: 6px; } .mm-au-num select.inp { max-width: 100%; }
+.mm-au-list { display: flex; flex-direction: column; gap: 9px; min-width: 0; padding-top: 10px; border-top: 1px solid var(--line-3); }
+.mm-au-head { font-weight: 700; line-height: 1.55; overflow-wrap: anywhere; } .mm-au-head small { font-weight: 500; font-size: .86em; color: var(--dim); font-variant-numeric: tabular-nums; }
+.mm-au-foot { font-size: .84em; color: var(--dim); line-height: 1.6; min-width: 0; overflow-wrap: anywhere; } .mm-au-foot:empty { display: none; } .mm-au-foot.mm-tok { white-space: normal; }
+.mm-au-sub { font: 700 .93em var(--display); padding-top: 10px; border-top: 1px solid var(--line-3); overflow-wrap: anywhere; }
+.mm-au-card > header { gap: 6px 8px; } .mm-au-card > header .mm-tag { margin-left: 0; } .mm-au-card > header .mm-tok { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+.mm-au-card p, .mm-au-card blockquote, .mm-au-evid, .mm-au-issue p { min-width: 0; overflow-wrap: anywhere; } .mm-au-card blockquote { font-style: normal; border-left-color: var(--line-2); }
+.mm-au-evid { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; background: var(--line-4); } .mm-au-src { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; } .mm-au-src small { color: var(--faint, var(--dim)); }
+.mm-au-acts { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; min-width: 0; } .mm-au-acts small { font-size: .8em; color: var(--dim); overflow-wrap: anywhere; min-width: 0; } .mm-au-acts .mm-tag { margin-left: 0; }
+.mm-au-span { display: inline-flex; align-items: center; gap: 4px; flex: none; } .mm-au-span i { font-style: normal; color: var(--faint, var(--dim)); }
+.mm-au .mm-st-jump { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; min-width: 44px; padding: 0 9px; }
+.mm-au-issues { display: flex; flex-direction: column; min-width: 0; } .mm-au-issue { display: flex; flex-direction: column; gap: 7px; padding: 10px 0; min-width: 0; } .mm-au-issue + .mm-au-issue { border-top: 1px dashed var(--line-3); }
+.mm-au-issue p { font-size: .92em; line-height: 1.6; } .mm-au-issue p .mm-tag { margin: 0 6px 0 0; } .mm-au-issue.done p { color: var(--dim); } .mm-au .mm-details .mm-au-card { margin-bottom: 8px; }
+

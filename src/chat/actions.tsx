@@ -15,7 +15,7 @@ import { Live, cdHours, inQuietHours, mo, newLater, quietLeft } from '../lib/liv
 import { MOTIVE_ORDER, STATUS, cooldownLeft, pickMotive, planAuto, replyDelay, scheduleOf, wakeIn } from '../lib/f-schedule';
 import { X, runFilters } from '../lib/hooks';
 import { Assets } from '../lib/assets';
-import { Memory } from '../lib/memory';
+import { Memory, Auditor } from '../lib/memory';
 import { Illust, translateText } from '../lib/illust';
 import { Clock } from '../lib/clock';
 import { render, renderKept } from '../lib/format';
@@ -768,7 +768,8 @@ async function afterReply(chat: Room, msgs: Msg[]) {
   const st = S.settings; armAuto();
   const tail = msgs[msgs.length - 1];
   if (st.illust.auto && tail?.role === 'assistant' && !tail.swipes[tail.sw].illust?.length && (st.illust.mode === 'call') && msgs.filter(m => m.role === 'assistant').length % Math.max(1, st.illust.every || 1) === 0) Illust.analyze(chat, msgs, tail, undefined, { manual: false }).then(sc => sc.slice(0, st.illust.maxScenes || 1).forEach(x => drawScene(tail, x, { chat, msgs }))).catch(e => toast(t('chat.illust.planFail', { err: errMsg(e) }), 'err'));
-  if (st.memory.enabled && st.memory.auto && tail?.role === 'assistant') { setStatus(t('chat.status.memorizing')); try { await Memory.commit(chat, msgs, tail); if (cur.drawer && cur.chat === chat) drawDrawer(); } catch (e) { toast(t('chat.memory.fail', { err: errMsg(e) }), 'err'); } finally { setStatus(''); } }
+  // 기억 정리는 뒤에서 한다 — 번역 · 상태 갱신 · 선택지가 기록(과 요약 · 검사)이 끝나기를 기다리지 않는다. 실패하면 장부에 남아 나중에 다시 한다
+  if (st.memory.enabled && st.memory.auto && tail?.role === 'assistant') { const note = t('chat.status.memorizing'); setStatus(note); void Auditor.recordSoon(chat, msgs, tail).then(() => { if (cur.drawer && cur.chat === chat) drawDrawer(); }, e => toast(t('chat.memory.fail', { err: errMsg(e) }), 'err')).finally(() => { if (cur.status === note) setStatus(''); }); }
   if (st.translate.auto && tail?.role === 'assistant' && !tail.swipes[tail.sw].tr) await translate(tail, { chat, msgs });
   if (st.tracker.enabled && st.tracker.mode !== 'inline') await track(chat, msgs);
   maybeChime(chat, msgs);

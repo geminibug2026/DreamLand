@@ -10,7 +10,7 @@ import { TABS, activityText, alive, mount, openArchive, setActivity, setFocus } 
 import { installConfigEvents } from '../memoria/ui/Config';
 import { Ico, KindBadge, Meter, None, SceneLine, cur, ensureCfg, isCur, msgsOf, saveCfg, turnTag } from '../memoria/ui/parts';
 import { backfill, recordNow } from '../memoria/ui/Tools';
-import { Memory } from '../lib/memory';
+import { Memory, Auditor } from '../lib/memory';
 import { X } from '../lib/hooks';
 import { chatApi } from '../chat/actions';
 import * as memMod from '../lib/memory';
@@ -219,6 +219,10 @@ function setup() {
         Promise.resolve(M.checkReply(chat, msgs, msg)).catch(e => { console.warn('[장기기억] 연속성 검사', e); M.logActivity?.('error', t('memoria.feat.ev.checkFail', { why: (e as Error)?.message || e })); })
           .finally(() => { if (activityText() === checking) setActivity(''); if (isCur(chat)) queueDecorate(); });
       }
+      // 답 N개마다 한 번 검사 (답변마다 검사와는 함께 돌지 않는다) — N개가 찼을 때만 엔진이 호출 1회를 줄에 세운다
+      else if (Auditor.mode() === 'batch' && msg?.role === 'assistant' && !side && !msg.greeting && !msg.viaCommand) Promise.resolve(Auditor.onReply(chat, msgs, msg)).catch(e => console.warn('[장기기억] 어긋난 곳 검사', e)).finally(() => { if (isCur(chat)) queueDecorate(); });
+      // 이 답변의 기록을 장부에 적어 둔다 — 방을 나가 있어 답변 뒤 처리가 돌지 않아도, 창을 닫아도 나중에 이어서 적는다
+      if (cfg.auto && msg?.role === 'assistant' && !side) Auditor.owe(chat, msg);
       // 자동 기록을 꺼 두었어도 연출 · 숨김 · 질의 임베딩은 답변 뒤에 챙긴다 (켜져 있으면 기록이 끝난 뒤 함께 처리된다)
       if (!cfg.auto && !side && (cfg.supervisor || cfg.autoHide || cfg.embed?.mode === 'api')) { const prep = t('memoria.feat.ev.preparing'); setActivity(prep); try { await M.post(chat, msgs); } finally { if (activityText() === prep) setActivity(''); } }
     } catch (e) { console.warn('[장기기억]', e); M.logActivity?.('error', t('memoria.engine.log.eventError', { why: (e as Error)?.message || e })); }
@@ -227,6 +231,8 @@ function setup() {
   on('memory:hidden-first', (d?: { chat: ChatM; n: number }) => { if (d && isCur(d.chat)) toast(t('memoria.feat.hiddenFirst', { n: d.n })); });
   on('memory:unhid', (d?: { chat: ChatM; n: number }) => { if (d && isCur(d.chat)) toast(t('memoria.feat.unhid', { n: d.n })); });
   on('memory:check', () => queueDecorate());   // 엔진이 점검 결과를 메시지에 붙였을 때
+  // 뒤에서 도는 기억 작업(기록 · 검사 · 채점 · 수정)을 머리 · 패널의 「상태:」 줄에 띄운다
+  let jobText = ''; on('memory:job', (j?: { text?: string } | null) => { const text = j?.text || ''; if (text || activityText() === jobText) setActivity(text); jobText = text; });
   on('chat:open', (chat?: ChatM | null) => { setFocus(chat?.id); ensureCfg(); setTimeout(queueDecorate, 600); });
   installConfigEvents();   // 대화를 열면 그 대화의 설정 세트로 갈아 끼운다 (옛 memoria-settings.js 의 chat:open)
 }

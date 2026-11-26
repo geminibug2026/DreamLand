@@ -116,6 +116,8 @@ export interface Mem {
   pledgeSweepAt?: number;
   /** 작중 날짜 직접 고침 — 그 메시지부터 그 날짜로 이어진다 */
   dateFix?: { msgId: string; date: string }[];
+  /** 검사 — 어긋난 곳 보고서 · 요약 채점 · 채울 범위 (engine/auditCore.ts) */
+  audit?: import('./engine/auditCore').AuditState;
   /** 옛 서고의 이름 (chunks · chunked 로 옮긴다) */
   chapters?: Summary[]; chaptered?: number;
   [k: string]: unknown;
@@ -151,6 +153,11 @@ export interface Cfg {
   bannedPhrases: string; banInChat: boolean; banTell: boolean; threadSleepTurns: number; eraKeep: number;
   /** 서약 훑기 주기(답변 수) — 오래된 서약을 요약과 견주어 끝난 것에 "풀린 듯" 의견을 붙인다 (0 = 끔) */ pledgeSweepTurns?: number;
   statusMode: string; statusPattern: string; statusInject: boolean; qrMode: string; replyCheck: boolean;
+  /** 어긋난 곳 검사 방식: '' 옛 설정(replyCheck) 그대로 | 'off' | 'each' 답변마다 | 'batch' 답 N개마다 한 번 — replyCheck 가 켜져 있으면 늘 답변마다다 */ checkMode?: string;
+  /** 답 몇 개마다 한 번 검사하나 (checkMode 'batch') */ checkEvery?: number;
+  /** 검사에서 근거를 확인한 어긋남을 다음 답 몇 개 동안 「지금」 쪽에 메모로 싣는다 (호출 없음) */ driftNote?: boolean;
+  /** 요약 채점: 'manual' 직접 | 'flagged' 번호 · 날짜 점검에 걸렸을 때만 | 'every' 새 요약 M개마다 */ gradeMode?: string;
+  /** 새 요약 몇 개마다 채점하나 (gradeMode 'every') */ gradeEvery?: number;
   bundles: Record<string, Record<string, unknown>>; bundleByOwner: Record<string, string>; activeBundle: string; bundleBase: Record<string, unknown> | null;
   noticed: Record<string, unknown>; promptRev: number; settingsRev: number; promptOutdated: Record<string, number>;
   [k: string]: unknown;

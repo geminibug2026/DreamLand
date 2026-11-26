@@ -15,6 +15,7 @@ import { dayOnFile } from './part2';
 import { pickBeats, beatLines } from '../calendar';
 import { VOICE_LINES, PLAN_HEAD } from '../directives';
 import { personaNameOf } from './part6';
+import { driftNoteLines } from './auditCore';
 import type { FreezeMark, StableEntry as StableLine, TranscriptHit } from '../craft';
 
 /** 장부를 지을 때의 옵션 (회상 옵션 + 주입 옵션) */
@@ -79,6 +80,8 @@ export interface PacketSections {
   voice?: string;
   /** 오랜만에 다시 나온 사람 — 누구인지 · 장면 사람들과의 사이(부르는 말) · 마지막으로 있었던 일 (매 턴 바뀌는 구간에만 싣는다) */
   returning?: PacketReturn[];
+  /** 검사가 찾은 어긋남 — 기록 쪽 문장과 함께 다음 답 몇 개 동안만 (매 턴 바뀌는 구간에만 싣는다. 없으면 한 줄도 싣지 않는다) */
+  driftNotes?: string[];
 }
 /** 오랜만에 다시 나온 사람 한 명. away = 기록에 마지막으로 나온 뒤 지난 답변 수 */
 export interface PacketReturn { name: string; who: string; ties: string[]; last: string; away: number }
@@ -331,7 +334,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
         for (const [id, blind] of unaware) { const rest = blind.filter(n => !is(n)); if (rest.length) unaware.set(id, rest); else unaware.delete(id); }
       }
     }
-    return { absent, cards, minds, plans, milestoneRoots: new Set(rootMiles.map(e => e.id)), trackerLine, returning, voice: String(cfg.recallVoice || 'natural'), bonds, voices, banned, styleGuard: cfg.styleGuard !== false, recallQuotes: cfg.recallQuotes !== false, banTell: cfg.banTell === true,
+    return { absent, cards, minds, plans, milestoneRoots: new Set(rootMiles.map(e => e.id)), trackerLine, returning, driftNotes: driftNoteLines(mem, opt.msgs, cfg.driftNote !== false), voice: String(cfg.recallVoice || 'natural'), bonds, voices, banned, styleGuard: cfg.styleGuard !== false, recallQuotes: cfg.recallQuotes !== false, banTell: cfg.banTell === true,
       lag, publicRecall: publicRecallDeduped, protectedRecall, hiddenProtected: r.hidden, locks, rules, scene, states, characters, milestones, items, summaries, supervisorPlan, narratorMode, turnNow: T, storyAges, storyTotalDays, storyDay, storyNow,
       sources: this.dossierPick(mem, query, recallContext), recallCandidates, trace: r.trace, notes, recent, unaware, deadlines, nowIds, address, transcript };
   },
@@ -511,6 +514,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
       lines.push('## Voices (lines these characters really said earlier — match how they sound; never repeat or paraphrase the lines themselves)');
       for (const v of P.voices) lines.push(`- ${v.name}: ${v.lines.map(l => `"${l}"`).join(' / ')}`);
     }
+    if (P.driftNotes?.length && stateLimit > 0) lines.push(...P.driftNotes);   // 검사가 찾은 어긋남 — 최근 대화 가까이에 둔다
     if (P.supervisorPlan) {
       const p = P.supervisorPlan; lines.push('## Direction (staging notes for this reply)');
       for (const r of list(p.remember).slice(0, 5)) lines.push(`- Remember: ${r}`);

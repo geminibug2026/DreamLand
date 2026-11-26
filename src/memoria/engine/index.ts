@@ -3,3 +3,4 @@ export * from './base';
 export { Memory } from './memory';
 export type { MemoryApi } from './api';
 import './events';
+export { Auditor } from './audit';

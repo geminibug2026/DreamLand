@@ -104,6 +104,11 @@ export const MEMORY_DEFAULTS: Cfg = {
   statusInject: true,       // 가장 최근 상태창을 AI 에게 알려 시간 · 날짜 · 장소를 잇는다
   qrMode: 'side',           // 명령으로 만든 메시지: 'side' 코멘트와 막간만 빼기 | 'all' 전부 빼기 | 'keep' 빼지 않기
   replyCheck: false,        // 연속성 검사 — 새 답변이 기록 · 최근 대화와 어긋나면 ⚠ (답변마다 호출 1회)
+  checkMode: '',            // 어긋난 곳 검사 방식 — '' 옛 설정(replyCheck) 그대로 | 'off' | 'each' 답변마다 | 'batch' 답 N개마다 한 번 (그때만 호출 1회)
+  checkEvery: 5,            // 답 몇 개마다 한 번 검사하나 (checkMode 'batch')
+  driftNote: true,          // 검사에서 근거를 확인한 어긋남을 다음 답 3개 동안 「지금」 쪽에 짧은 메모로 싣는다 (모델 호출 없음 · 보고서가 없으면 아무것도 싣지 않는다)
+  gradeMode: 'manual',      // 요약 채점 — 'manual' 단추로만 | 'flagged' 번호 · 날짜 점검에 걸렸을 때만 | 'every' 새 요약 gradeEvery 개마다 (호출 1회)
+  gradeEvery: 3,            // 새 요약 몇 개마다 채점하나 (gradeMode 'every')
   bundles: {},              // 설정 세트 { 이름: 값들 }
   bundleByOwner: {},        // 캐릭터 · 그룹에 붙인 세트
   activeBundle: '',         // 지금 적용 중인 세트 ('' = 기본 설정)
