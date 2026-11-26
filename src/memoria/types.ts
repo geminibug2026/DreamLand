@@ -97,7 +97,7 @@ export interface Pledge { id: string; kind: string; summary: string; status: str
   checkedTurn?: number | null;
   /** 사용자가 "아직 유효"라고 한 서약 — 서약 훑기가 옛 요약만 보고 다시 "풀린 듯"을 붙이지 않는다 */
   upheld?: boolean;
-  /** 풀리지 않은 감정(feeling): 왜 생겼는지 · 풀리려면 무엇이 필요한지 */
+  /** 맺힌 마음(feeling): 왜 생겼는지 · 무엇이 응어리를 풀지 */
   cause?: string; needs?: string;
   /** 작가 계획(author_plan): answer = 정해 둔 답(인물은 모른다), veil = 답을 가린 한 줄 (이것만 싣는다) */
   answer?: string; veil?: string;

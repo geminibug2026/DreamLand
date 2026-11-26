@@ -34,7 +34,7 @@ export const BEATS_DIRECTIVE = `
 
 SCENE BEATS: also include a top-level array "beats" — the skeleton of this exchange in the order things happened, 1 to 4 beats (up to 6 when several messages are shelved together). Each beat: {"text":"one plain clause — who did what to whom, keeping any date, amount, place or condition that was stated","major":false,"with":["everyone actually there for it"],"quote":"the one spoken line that carries the moment, copied character for character in its original language, or null","by":"who said it, or null","to":"who it was said to, or null"}. Set "major":true only for a turning point. Prefer a line the player's character spoke when it moved the scene. Beats repeat nothing that did not happen and add no commentary.`;
 
-/** 풀리지 않은 감정 — 서약의 한 종류 */
+/** 맺힌 마음 — 서약의 한 종류 */
 export const FEELING_DIRECTIVE = `
 
 FEELINGS LEFT HANGING: the pledges shelf also takes kind "feeling" — a hurt, guilt, grudge, longing or jealousy between two named people that this exchange raised and left unresolved. Put who feels what toward whom in "summary", and add "cause" (what set it off, one clause) and "needs" (what would have to happen for it to ease, or null when the text does not say). A feeling that eased within the same exchange is not one; a passing mood is not one. At most one per exchange.`;
