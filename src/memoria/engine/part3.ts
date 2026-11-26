@@ -13,6 +13,7 @@ import type { TranscriptHit } from '../craft';
 import { prose, clipStr } from './base';
 import { t as tr } from '../../i18n';
 import { THREAD_KIND_NOTE } from '../directives';
+import { mergeLoss } from '../guards';
 /** 묶음 요약 때 함께 살펴보지만 저절로 닫지는 않는 서약 종류 · 목록에 붙이는 표시 */
 const SOFT_KINDS: readonly string[] = SECRET_KINDS, KIND_MARK: Record<string, string> = { keep_secret: ' (secret)', knowledge_gap: ' (gap)', feeling: ' (feeling)' };
 
@@ -85,12 +86,13 @@ export interface Part3 {
   rebuildAllSummaries(chat: Chat, mem: Mem, opts?: RebuildOpts): Promise<number | null>;
   rebuildSummaries(chat: Chat, mem: Mem, opts?: RebuildOpts): Promise<number | null>;
   arcText(chat: Chat, parts: SummarySrc[], signal?: AbortSignal, opts?: { extra?: string; max?: number }): Promise<string>;
-  pushArcFromChunks(chat: Chat, mem: Mem, merging: Summary[], signal?: AbortSignal): Promise<void>;
-  pushArc(chat: Chat, mem: Mem, merging: Summary[], signal?: AbortSignal): Promise<void>;
+  /** keepOnFail: 합치지 못했으면(실패 · 검수에 걸림) 묶음을 그대로 두고 false 를 돌려준다 (기본은 묶음의 앞머리를 이어 붙여서라도 연대기를 만든다) */
+  pushArcFromChunks(chat: Chat, mem: Mem, merging: Summary[], signal?: AbortSignal, keepOnFail?: boolean): Promise<boolean>;
+  pushArc(chat: Chat, mem: Mem, merging: Summary[], signal?: AbortSignal): Promise<boolean>;
   askGroups(chat: Chat, rows: Summary[], prompt: string, tag: string, signal?: AbortSignal): Promise<Summary[][] | null>;
   regroupChunksIntoArcs(chat: Chat, mem: Mem, signal?: AbortSignal): Promise<number | null>;
   regroup(chat: Chat, mem: Mem, signal?: AbortSignal): Promise<number | null>;
-  mergeArcsIntoOne(chat: Chat, mem: Mem, arcs: Summary[], signal?: AbortSignal): Promise<Summary>;
+  mergeArcsIntoOne(chat: Chat, mem: Mem, arcs: Summary[], signal?: AbortSignal): Promise<Summary | null>;
   regroupArcs(chat: Chat, mem: Mem, signal?: AbortSignal): Promise<number>;
   maybeConsolidateArcs(chat: Chat, mem: Mem, signal?: AbortSignal): Promise<void>;
   maybeFoldEras(chat: Chat, mem: Mem, signal?: AbortSignal): Promise<boolean>;
@@ -295,17 +297,25 @@ export const part3: Part3 & ThisType<MemoryApi> = {
   /** 여러 요약(묶음 · 연대기)을 하나의 연대기 글로 줄인다. extra: 프롬프트에 덧붙일 지시. 실패하면 '' */
   async arcText(chat, parts, signal, { extra = '', max = 2400 } = {}) {
     try {
-      const text = cleanMultiline(sanitizeRecord(await this.call(chat, `${this.promptText('arc')}${extra}\n\n${this.languageDirective()}`, parts.map(c => `[t${c.from + 1}–t${c.to + 1}]\n${c.text}`).join('\n\n'), 4000, signal, 'summary')), max);
-      if (!this.refusedReply(text)) return text;   // 거절 · 사과문은 연대기로 받지 않는다 (부른 쪽이 묶음을 이어 붙이거나 그대로 둔다)
-      this.logActivity('error', tr('memoria.engine.log.refused', { from: (parts[0]?.from ?? 0) + 1, to: (parts[parts.length - 1]?.to ?? 0) + 1 })); return '';
+      const sys = `${this.promptText('arc')}${extra}\n\n${this.languageDirective()}`, user = parts.map(c => `[t${c.from + 1}–t${c.to + 1}]\n${c.text}`).join('\n\n'), span = { from: (parts[0]?.from ?? 0) + 1, to: (parts[parts.length - 1]?.to ?? 0) + 1 };
+      const ask = async (note = '') => cleanMultiline(sanitizeRecord(await this.call(chat, sys, user + note, 4000, signal, 'summary')), max);
+      const text = await ask();
+      if (this.refusedReply(text)) { this.logActivity('error', tr('memoria.engine.log.refused', span)); return ''; }   // 거절 · 사과문은 연대기로 받지 않는다 (부른 쪽이 묶음을 이어 붙이거나 그대로 둔다)
+      // 합치기 검수 (모델을 따로 부르지 않는다): 넣은 것에 비해 너무 짧거나 가장 앞 기록의 내용이 사라졌으면 무엇이 빠졌는지 짚어 한 번 다시 쓰게 하고, 그래도 그러면 합치지 않는다 — 부른 쪽이 옛 글을 그대로 둔다
+      const src = parts.map(p => p.text), loss = mergeLoss(src, text, max); if (!loss) return text;
+      let again = ''; try { again = await ask(`\n\n(Your previous record ${loss === 'short' ? 'was far too short for this much material' : 'dropped the earliest records — the beginning of the story is missing'}. Write it again in the same structure, covering every record above from the first to the last.)`); } catch (e: any) { if (e?.name === 'AbortError' || signal?.aborted) throw e; }
+      if (again && !this.refusedReply(again) && !mergeLoss(src, again, max)) { this.logActivity('summary', tr('memoria.bonds.log.mergeFixed', span)); return again; }
+      this.logActivity('error', tr('memoria.bonds.log.mergeKept', span)); return '';
     }
     catch (e: any) { if (e?.name === 'AbortError' || signal?.aborted) throw e; console.debug('[장기기억] 연대기 병합 실패', e); return ''; }
   },
   /** 묶음 여러 개를 하나의 연대기로 줄여 밀어 넣는다. 병합 전 묶음 경계(src)를 남겨 둔다 — 나중에 삭제로 연대기 일부만 걸리면 안 걸린 묶음을 되살릴 수 있게 */
-  async pushArcFromChunks(chat, mem, merging, signal) {
-    if (!merging.length) return;
-    const text = await this.arcText(chat, merging, signal) || cleanStr(merging.map(c => c.text).join(' '), 2400);
+  async pushArcFromChunks(chat, mem, merging, signal, keepOnFail = false) {
+    if (!merging.length) return false;
+    let text = await this.arcText(chat, merging, signal); if (!text && keepOnFail) return false;
+    if (!text) text = merging.map(c => cleanMultiline(c.text, Math.max(200, Math.floor(2400 / merging.length) - 1))).join('\n');   // 합치지 못했는데 꼭 줄여야 할 때: 묶음마다 앞머리를 고르게 남긴다 (통째로 이어 붙여 자르면 뒤쪽 묶음이 사라진다 — 원래 글은 src 에 남는다)
     mem.arcs.push({ id: 'a' + uid(), from: merging[0].from, to: merging[merging.length - 1].to, text, src: merging.map(c => ({ from: c.from, to: c.to, text: c.text })) });
+    return true;
   },
   pushArc(chat, mem, merging, signal) { return this.pushArcFromChunks(chat, mem, merging, signal); },
   /**
@@ -329,14 +339,14 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     const chunks = mem.chunks; if (chunks.length < 2) return null;
     const groups = await this.askGroups(chat, chunks, MP.CHUNK_REGROUP_PROMPT, 'c', signal); if (!groups) return null;
     const remaining = []; let merged = 0;
-    for (const g of groups) { if (g.length < 2) { remaining.push(g[0]); continue; } await this.pushArcFromChunks(chat, mem, g, signal); merged++; }
+    for (const g of groups) { if (g.length < 2) { remaining.push(g[0]); continue; } if (await this.pushArcFromChunks(chat, mem, g, signal, true)) merged++; else remaining.push(...g); }   // 합친 글이 검수에 걸리면 묶음을 그대로 둔다
     mem.chunks = remaining;
     return merged;
   },
   regroup(chat, mem, signal) { return this.regroupChunksIntoArcs(chat, mem, signal); },
   /** 연대기 여러 개를 하나로 다시 줄인다 (src 는 이어 붙여 보존) */
-  async mergeArcsIntoOne(chat, mem, arcs, signal): Promise<Keep<typeof mem, Summary>> {
-    const text = await this.arcText(chat, arcs, signal) || cleanStr(arcs.map(a => a.text).join(' '), 2400);
+  async mergeArcsIntoOne(chat, mem, arcs, signal): Promise<Keep<typeof mem, Summary | null>> {
+    const text = await this.arcText(chat, arcs, signal); if (!text) return null;   // 합치지 못했으면(실패 · 검수에 걸림) 옛 연대기를 그대로 둔다 — 이어 붙여 자르면 뒤쪽 이야기를 잃는다
     return { id: 'a' + uid(), from: arcs[0].from, to: arcs[arcs.length - 1].to, text, src: arcs.flatMap(a => Array.isArray(a.src) && a.src.length ? a.src : [{ from: a.from, to: a.to, text: a.text }]) };
   },
   /**
@@ -349,7 +359,7 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     const pool = local.slice(start); if (pool.length < 2) return 0;
     const groups = await this.askGroups(chat, pool, MP.ARC_REGROUP_PROMPT, 'a', signal); if (!groups) return 0;
     const fin = []; let merged = 0;
-    for (const g of groups) { if (g.length < 2) { fin.push(g[0]); continue; } fin.push(await this.mergeArcsIntoOne(chat, mem, g, signal)); merged++; }
+    for (const g of groups) { if (g.length < 2) { fin.push(g[0]); continue; } const one = await this.mergeArcsIntoOne(chat, mem, g, signal); if (one) { fin.push(one); merged++; } else fin.push(...g); }
     const set = new Set(pool); mem.arcs = [...mem.arcs.filter(a => !set.has(a)), ...fin];
     if (fin.length >= 2) mem.arcCursor = fin[fin.length - 2].to + 1;   // 마지막 그룹은 다음에도 이어질 수 있다 — 그 앞까지만 "결론 남"
     return merged;
@@ -371,10 +381,13 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     const keep = Math.max(3, Math.round(Number(this.cfg().eraKeep) || 8));
     const local = mem.arcs.filter(a => !a.carried).sort((a, b) => a.from - b.from);
     if (local.length <= keep) return false;
+    if (mem.foldHold != null && mem.turns.length >= mem.foldHold && mem.turns.length - mem.foldHold < 10) return false;   // 접은 글이 검수에 걸려 미뤄 둔 접기 — 턴이 열 개 더 쌓인 뒤에 다시 해 본다
     const folding = local.slice(0, Math.max(3, local.length - keep + 2));
     const directive = '\n\nThese are the OLDEST records of a long story, being folded into its single standing "story so far". Up to 10 PLOT bullets. Spend them on what the whole story still stands on: how the characters met and what they became to each other, the turning points, lasting promises, secrets and who holds them, deaths, and anything still unresolved. Let routine scenes go.';
     const text = await this.arcText(chat, folding, signal, { extra: directive, max: 2800 });
-    if (!text || (this.get(mem.id) || mem) !== mem) return false;
+    if (!text || (this.get(mem.id) || mem) !== mem) { if (!text) mem.foldHold = mem.turns.length; return false; }
+    delete mem.foldHold;
+    await this.checkpoint(mem, '옛 이야기 접기 전').catch(() => { });   // 접기 전 줄거리는 복구 지점으로 남는다 (도구 탭에서 되돌릴 수 있다)
     const ids = new Set(folding.map(a => a.id));
     mem.arcs = [...mem.arcs.filter(a => !ids.has(a.id)), { id: 'a' + uid(), saga: true, from: folding[0].from, to: folding[folding.length - 1].to, text, src: folding.flatMap(a => (Array.isArray(a.src) && a.src.length ? a.src : [{ from: a.from, to: a.to, text: a.text }])) }];
     this.logActivity('summary', tr('memoria.engine.log.erasFolded', { n: folding.length }));

@@ -9,6 +9,7 @@ import type { Freeze, PacketResult, StableOpts } from './part4';
 import type { findStatusBars } from '../scene';
 import * as MP from '../prompts';
 import { createActivityLog } from '../craft';
+import { mendJson, salvageJson } from '../lenient';
 import type { RecallRun } from '../craft';
 
 /** 옛 모듈의 let 변수들 (다른 파일에서 바꿀 수 있게 한 객체에 모았다) */
@@ -99,6 +100,9 @@ export const MEMORY_DEFAULTS: Cfg = {
   threadSleepTurns: 60,     // 이 턴 수 동안 진전 없는 떡밥은 잠재운다 (서고에는 남고, 다시 언급되면 깨어남. 0 = 끔)
   eraKeep: 8,               // 연대기를 이 개수까지만 따로 두고, 넘치면 가장 오래된 것부터 하나의 '옛 이야기'로 접는다
   pledgeSweepTurns: 150,    // 서약 훑기 — 대화마다 한 번, 그 뒤로 답변이 이만큼 쌓일 때마다 오래된 서약을 지금까지의 요약과 견주어 끝난 것에 "풀린 듯" 의견을 붙인다 (호출 1회. 0 = 끔)
+  tieNotes: true,           // 사이 이름 · 종류와 변화 기록(관계 · 감정 · 상황 · 성장)을 턴 기록과 함께 받는다 — 사서 지시에 몇 줄이 붙을 뿐 호출은 늘지 않는다
+  formatHelp: 'auto',       // 답의 꼴 도움말(짧은 예시 답 · 자주 하는 실수)을 기록 지시에 붙일 때: 'auto' 형식을 틀린 적 있는 모델에게만 | 'always' 늘 | 'off' 붙이지 않음
+  feelingLines: 3,          // 장면에 있는 사람들끼리의 가장 최근 마음을 「지금」 쪽에 이 줄 수까지 싣는다 (0 = 끔 · 모델 호출 없음)
   statusMode: 'auto',       // 상태창 읽기: 'auto' 자동으로 찾기 | 'custom' 직접 정한 모양 | 'off'
   statusPattern: '',        // 직접 정한 모양(정규식) — 괄호로 묶은 부분을 상태창 내용으로 읽는다
   statusInject: true,       // 가장 최근 상태창을 AI 에게 알려 시간 · 날짜 · 장소를 잇는다
@@ -321,8 +325,13 @@ export function overlap(a: unknown, b: unknown): number {
 export const calibrate = (c: number, floor: number) => c <= floor ? 0 : (c - floor) * (0.55 / (1 - floor));
 
 /** 모델 답에서 JSON 객체 하나를 읽는다 — 사고 블록 · 코드 펜스 · 스타일/스크립트를 걷고, 여는 중괄호 후보를 앞에서부터 차례로 "뒤에서 줄이기 → 강제 닫기"까지 해 본다 */
-export function parseLoose<T = Loose>(text: unknown): T | null {
-  if (!text) return null;
+export function parseLoose<T = Loose>(text: unknown): T | null { return parseLooseEx<T>(text).value; }
+/**
+ * parseLoose 의 본체 — 읽은 값과 함께, 답이 끝까지 오지 못했는지(cut) · 형식이 틀려 고쳐 읽었는지(mended)를 알려 준다.
+ * 그대로 읽히지 않으면 조금 틀린 JSON(따옴표 없는 키 · 홑따옴표 · 끝 쉼표 · 4/5)을 고쳐 읽고, 출력 한도에서 잘린 답은 끝까지 적힌 항목까지만 살린다 (반쯤 적힌 마지막 항목은 버린다)
+ */
+export function parseLooseEx<T = Loose>(text: unknown): { value: T | null; cut: boolean; mended: boolean } {
+  const none = { value: null, cut: false, mended: false }; if (!text) return none;
   let t = String(text).trim().replace(/<(think|thinking|thought|reasoning|reflection)>[\s\S]*?<\/\1>/gi, '').trim();   // 블록 안의 예시 JSON 을 기록으로 잘못 읽지 않게
   const stray = t.match(/<\/(?:think|thinking|thought|reasoning|reflection)>/gi);   // 여는 태그 없이 닫는 태그만 남은 답(앞이 잘림) — 마지막 닫는 태그 뒤만
   if (stray) { const tag = stray[stray.length - 1]; t = t.slice(t.lastIndexOf(tag) + tag.length).trim(); }
@@ -331,12 +340,15 @@ export function parseLoose<T = Loose>(text: unknown): T | null {
   t = t.replace(/<(style|script)\b[^>]*>[\s\S]*?<\/\1>/gi, ' ');   // 스타일 · 스크립트의 중괄호를 JSON 시작으로 보지 않게
   const starts = []; for (let i = t.indexOf('{'); i >= 0 && starts.length < 12; i = t.indexOf('{', i + 1)) starts.push(i);
   const isObj: (v: unknown) => unknown = v => v && typeof v === 'object' && !Array.isArray(v);
+  const whole = (src: string): T | null => { for (let end = src.length; end > 0; end--) { if (src[end - 1] !== '}') continue; try { const v = JSON.parse(src.slice(0, end)); if (isObj(v)) return v; } catch { /* 더 줄인다 */ } } return null; };
   for (const start of starts) {
-    for (let end = t.length; end > start; end--) { if (t[end - 1] !== '}') continue; try { const v = JSON.parse(t.slice(start, end)); if (isObj(v)) return v; } catch { /* 더 줄인다 */ } }
-    const repaired = repairTruncatedJson(t.slice(start)); if (isObj(repaired)) return repaired as T;
-    if (/^\{\s*"/.test(t.slice(start, start + 24))) break;   // JSON 처럼 생긴 후보가 끝내 안 읽히면 더 안쪽 조각 객체를 답으로 집지 않는다 (빈 기록이 "성공"으로 처리돼 재시도조차 안 된다)
+    const raw = t.slice(start), strict = whole(raw); if (strict) return { value: strict, cut: false, mended: false };
+    const mended = mendJson(raw), fixed = mended !== raw ? whole(mended) : null; if (fixed) return { value: fixed, cut: false, mended: true };
+    for (const src of mended !== raw ? [raw, mended] : [raw]) for (const saved of salvageJson(src) || []) { try { const v = JSON.parse(saved); if (isObj(v)) return { value: v, cut: true, mended: src !== raw }; } catch { /* 한 항목 더 물러난다 */ } }
+    const repaired = repairTruncatedJson(raw) ?? (mended !== raw ? repairTruncatedJson(mended) : null); if (isObj(repaired)) return { value: repaired as T, cut: true, mended: false };
+    if (/^\{\s*["'\p{L}_]/u.test(raw.slice(0, 24))) break;   // JSON 처럼 생긴 후보가 끝내 안 읽히면 더 안쪽 조각 객체를 답으로 집지 않는다 (빈 기록이 "성공"으로 처리돼 재시도조차 안 된다)
   }
-  return null;
+  return none;
 }
 /** 끝이 잘린 JSON 을 괄호 순서대로 닫아 읽는다. 끝에서부터 쉼표 자리를 하나씩 물러나며(마지막 항목이 반쯤 쓰인 경우) 여는 괄호 스택을 거꾸로 닫아 본다 */
 export function repairTruncatedJson(s: string): unknown {

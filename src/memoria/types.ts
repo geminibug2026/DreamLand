@@ -11,7 +11,7 @@ export type Msg = LibMsg & { memCheck?: MemCheck; /** 글(해시)마다 맡아 �
 /** 대화방 (공용 꼴) */
 export type ChatM = Chat;
 
-export interface Turn { msgId: string; /** 사서가 적은 이야기의 며칠째 (첫날 = 1) */ day?: number; /** 사서가 적은 "지금이 언제인지" 한 줄 */ now?: string; /** 이 기록에 든 다른 메시지(내 말 · 묶음의 앞 답장)의 [id, 해시] — 그 가운데 하나라도 고쳐지거나 지워지면 다시 기록한다 (없으면 옛 기록: 마지막 답장만 본다) */ parts?: [string, string][]; /** 이 턴이 끝난 날의 작중 날짜 (YYYY-MM-DD — 상태창에서 읽었거나 직접 고친 것) */ date?: string; /** 기록할 때 장면에 있던 사람들 (정식 이름) */ present?: string[]; /** 장면 카드 — 이 턴에서 있었던 일을 순서대로, 원문 대사와 함께 (옛 묶음을 떠올릴 때 펼친다) */ beats?: Beat[]; /** 이 기록이 덮는 답변 수 (묶음 기록 · 없으면 1) */ span?: number; weight?: number; when?: string; where?: string; hash?: string; digest?: string; days?: number; failed?: boolean; error?: string; at?: number; /** 숨긴 메시지를 일부러 기록했다 (색인의 「숨겨진 메시지도 포함」) — 숨김을 이유로 걷어 내지 않는다 */ hid?: boolean; /** 중요 장면으로 표시한 답변의 기록 */ star?: boolean; [k: string]: unknown }
+export interface Turn { msgId: string; /** 끊긴 답변을 담은 기록 (연결이 끊기거나 멈춘 답변 — 끝 문장은 사실로 적지 않았다) */ cut?: boolean; /** 사서가 적은 이야기의 며칠째 (첫날 = 1) */ day?: number; /** 사서가 적은 "지금이 언제인지" 한 줄 */ now?: string; /** 이 기록에 든 다른 메시지(내 말 · 묶음의 앞 답장)의 [id, 해시] — 그 가운데 하나라도 고쳐지거나 지워지면 다시 기록한다 (없으면 옛 기록: 마지막 답장만 본다) */ parts?: [string, string][]; /** 이 턴이 끝난 날의 작중 날짜 (YYYY-MM-DD — 상태창에서 읽었거나 직접 고친 것) */ date?: string; /** 기록할 때 장면에 있던 사람들 (정식 이름) */ present?: string[]; /** 장면 카드 — 이 턴에서 있었던 일을 순서대로, 원문 대사와 함께 (옛 묶음을 떠올릴 때 펼친다) */ beats?: Beat[]; /** 이 기록이 덮는 답변 수 (묶음 기록 · 없으면 1) */ span?: number; weight?: number; when?: string; where?: string; hash?: string; digest?: string; days?: number; failed?: boolean; error?: string; at?: number; /** 숨긴 메시지를 일부러 기록했다 (색인의 「숨겨진 메시지도 포함」) — 숨김을 이유로 걷어 내지 않는다 */ hid?: boolean; /** 중요 장면으로 표시한 답변의 기록 */ star?: boolean; [k: string]: unknown }
 export interface MemItem {
   id: string; kind: string; summary: string; quote?: string; importance: number; entities?: string[]; tags?: string[]; hints?: string[];
   visibility?: string; owner?: string; trigger?: string; pinned?: boolean; disabled?: boolean; manual?: boolean;
@@ -59,7 +59,12 @@ export interface CastCard {
   [k: string]: unknown;
 }
 export interface BondStep { stage: string; basis?: string; calls?: string; unsaid?: string; turn?: number; msgId?: string; manual?: boolean; /** 같은 계단을 고쳐 쓰기 전의 글 */ was?: BondStep; [k: string]: unknown }
-export interface Bond{ id: string; from: string; to: string; log: BondStep[]; disabled?: boolean; manual?: boolean; [k: string]: unknown }
+export interface Bond{ id: string; from: string; to: string; log: BondStep[]; disabled?: boolean; manual?: boolean;
+  /** 사이 이름 — 관계 전체에서 읽은 마음의 핵심 한마디 ("죄책감 섞인 집착") 과 종류 (love · one_sided · family · friendship · colleague · rival · hostile · work · complicated). nameMsgId = 그 이름을 적은 답변, nameWas = 그 전 이름 (답변이 지워지면 되돌린다), nameManual = 직접 고친 이름 (사서가 덮어쓰지 않는다) */
+  name?: string; kind?: string; nameTurn?: number; nameMsgId?: string; nameManual?: boolean; nameWas?: { name?: string; kind?: string; turn?: number; msgId?: string } | null;
+  [k: string]: unknown }
+/** 변화 기록 한 줄 — 누가(누구에게) 무엇에서 무엇으로, 왜. kind: relationship · emotion · situation · growth. span = 요약에서 찾은 것이면 그 요약이 덮는 턴 범위(0부터), scan = 요약에서 찾았다 */
+export interface Shift { id: string; kind: string; who: string; toward?: string; from?: string; to: string; why?: string; turn: number; msgId?: string; span?: [number, number]; scan?: boolean; manual?: boolean; [k: string]: unknown }
 /** 캐논 · 상태 줄이 함께 갖는 이력 칸 (upsertRow) */
 export interface RowHistory { id: string; turn: number; createdTurn?: number; prev?: string | null; prevTurn?: number | null; prevMsgId?: string; msgId?: string; reMsgId?: string; manual?: boolean }
 export interface CanonRow extends RowHistory { key: string; value: string; scope: string; scopeName?: string; [k: string]: unknown }
@@ -114,6 +119,14 @@ export interface Mem {
   trackers?: Tracker[];
   /** 서약 훑기를 마지막으로 한 때 (그때까지 기록된 답변 수) */
   pledgeSweepAt?: number;
+  /** 변화 기록 (관계 · 감정 · 상황 · 성장) — 턴을 기록할 때 함께 받는다 */
+  shifts?: Shift[];
+  /** 지난 요약에서 사이 이름 · 변화를 찾아 둔 자리 (그 앞의 턴은 이미 훑었다) */
+  tieScanTo?: number;
+  /** 이 카드가 연기하는 인물: 'one' 한 인물 · 'many' 여러 인물(카드 이름은 해설자) · 없으면 자동 */
+  cardCast?: 'one' | 'many';
+  /** 옛 이야기 접기가 검수에 걸려 미뤄 둔 때 (그때의 턴 수) */
+  foldHold?: number;
   /** 작중 날짜 직접 고침 — 그 메시지부터 그 날짜로 이어진다 */
   dateFix?: { msgId: string; date: string }[];
   /** 검사 — 어긋난 곳 보고서 · 요약 채점 · 채울 범위 (engine/auditCore.ts) */
@@ -152,6 +165,9 @@ export interface Cfg {
   /** 작중 날짜를 상태창에서 읽어 턴에 적는다 */ storyDates?: boolean;
   bannedPhrases: string; banInChat: boolean; banTell: boolean; threadSleepTurns: number; eraKeep: number;
   /** 서약 훑기 주기(답변 수) — 오래된 서약을 요약과 견주어 끝난 것에 "풀린 듯" 의견을 붙인다 (0 = 끔) */ pledgeSweepTurns?: number;
+  /** 사이 이름 · 변화 기록을 턴 기록과 함께 받는다 */ tieNotes?: boolean;
+  /** 답의 꼴 도움말(예시 답 · 자주 하는 실수)을 붙일 때: 'auto' 형식을 틀린 적 있는 모델에게만 | 'always' | 'off' */ formatHelp?: string;
+  /** 장면에 있는 사람들끼리의 가장 최근 마음을 「지금」 쪽에 싣는 줄 수 (0 = 끔) */ feelingLines?: number;
   statusMode: string; statusPattern: string; statusInject: boolean; qrMode: string; replyCheck: boolean;
   /** 어긋난 곳 검사 방식: '' 옛 설정(replyCheck) 그대로 | 'off' | 'each' 답변마다 | 'batch' 답 N개마다 한 번 — replyCheck 가 켜져 있으면 늘 답변마다다 */ checkMode?: string;
   /** 답 몇 개마다 한 번 검사하나 (checkMode 'batch') */ checkEvery?: number;

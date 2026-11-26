@@ -1,0 +1,87 @@
+/* 장기기억 — 관계 · 변화 탭 (관계도 · 관계 한눈에 · 감정 변화 · 변화 기록). 색은 앱 테마의 변수만 섞어 쓴다 — 낮 · 밤 테마를 그대로 따른다 */
+
+/* ── 사이의 종류마다 한 가지 색 (--tk) ── */
+.mm-ti { --tk: var(--dim); min-width: 0; }
+.mm-tk-love { --tk: color-mix(in srgb, var(--bad) 72%, var(--accent)); }
+.mm-tk-one_sided { --tk: color-mix(in srgb, var(--bad) 46%, var(--dim)); }
+.mm-tk-family { --tk: var(--ok); }
+.mm-tk-friendship { --tk: color-mix(in srgb, var(--ok) 52%, var(--accent)); }
+.mm-tk-colleague { --tk: color-mix(in srgb, var(--text) 62%, var(--surface)); }
+.mm-tk-work { --tk: var(--dim); }
+.mm-tk-rival { --tk: var(--accent); }
+.mm-tk-hostile { --tk: var(--bad); }
+.mm-tk-complicated { --tk: color-mix(in srgb, var(--accent) 50%, var(--bad)); }
+.mm-tk-none { --tk: var(--dim); }
+.mm-ti-dot { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--tk); }
+
+/* ── 누르는 것들: 손가락으로 누르기 좋게 34px 넘게 ── */
+.mm-ti-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; max-width: 100%; padding: 4px 12px; border: 1px solid var(--line-2); background: transparent; color: var(--text); font: inherit; font-size: .86em; line-height: 1.3; overflow-wrap: anywhere; text-align: left; cursor: pointer; }
+.mm-ti-chip.on { background: var(--text); color: var(--bg); border-color: var(--text); } .mm-ti-chip.all { border-style: dashed; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.mm-ti-chip > b { font-weight: 400; font-size: .86em; opacity: .7; }
+.mm-ti-btn { flex: none; display: inline-flex; align-items: center; justify-content: center; min-width: 34px; min-height: 34px; padding: 0 8px; border: 1px solid var(--line-2); background: transparent; color: var(--text); font: inherit; cursor: pointer; }
+.mm-ti-btn.wide { padding: 0 12px; font-size: .84em; } .mm-ti-btn:disabled { opacity: .35; cursor: default; } .mm-ti-btn.del { border-color: transparent; color: var(--dim); } .mm-ti-btn.del:hover { color: var(--bad); }
+.mm-ti-chip:focus-visible, .mm-ti-btn:focus-visible, .mm-ti-jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.mm-ti-jump { display: inline-flex; align-items: center; min-height: 26px; padding: 2px 8px; border: 1px solid var(--line-2); background: transparent; color: var(--accent); font-size: 11.5px; cursor: pointer; position: relative; white-space: nowrap; }
+.mm-ti-jump::after { content: ""; position: absolute; inset: -5px -3px; } .mm-ti-jump.off { color: var(--dim); border-style: dashed; cursor: default; }
+
+/* ── 지난 요약에서 찾기 ── */
+.mm-ti-scan { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 14px; border: 1px dashed color-mix(in srgb, var(--accent) 60%, transparent); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+.mm-ti-scan > div { flex: 1 1 220px; min-width: 0; } .mm-ti-scan p { margin-top: 3px; font-size: .84em; color: var(--dim); line-height: 1.6; overflow-wrap: anywhere; } .mm-ti-scan .btn { min-height: 36px; }
+
+/* ── 관계도 ── */
+.mm-tm { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.mm-tm-chips, .mm-ti-kinds, .mm-ti-seg { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.mm-tm-stage { border: 1px solid var(--line-3); background: color-mix(in srgb, var(--text) 3%, var(--surface)); overflow: hidden; }
+.mm-tm-svg { display: block; width: 100%; height: auto; max-height: 76vh; margin: 0 auto; user-select: none; -webkit-user-select: none; } .mm-tm-svg.pan { touch-action: none; cursor: grab; }
+.mm-tm-edge { cursor: pointer; }
+.mm-tm-line { fill: none; stroke: var(--tk); stroke-width: 1.5; } .mm-tm-head { fill: var(--tk); stroke: none; } .mm-tm-hit { fill: none; stroke: transparent; stroke-width: 16; pointer-events: stroke; }
+.mm-tk-one_sided .mm-tm-line, .mm-tk-work .mm-tm-line { stroke-dasharray: 5 4; } .mm-tk-complicated .mm-tm-line { stroke-dasharray: 9 3 2 3; }
+.mm-tm-edge.on .mm-tm-line { stroke-width: 2.6; }
+.mm-tm-label { font: 500 11px var(--font, inherit); fill: color-mix(in srgb, var(--tk) 70%, var(--text)); stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; paint-order: stroke; }
+.mm-tm-edge.on .mm-tm-label { font-weight: 700; }
+.mm-tm-node { cursor: pointer; } .mm-tm-node rect { fill: var(--surface); stroke: var(--text); stroke-width: 1; } .mm-tm-node text { font: 600 12px var(--font, inherit); fill: var(--text); }
+.mm-tm-node.focus rect { fill: var(--text); } .mm-tm-node.focus text { fill: var(--bg); }
+.mm-tm-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; min-width: 0; }
+.mm-tm-note { flex: 1 1 140px; min-width: 0; font-size: .8em; color: var(--dim); overflow-wrap: anywhere; } .mm-tm-zoom { display: inline-flex; gap: 4px; margin-left: auto; }
+.mm-tm-picked { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 8px 10px; border-left: 3px solid var(--tk); background: color-mix(in srgb, var(--tk) 7%, var(--surface)); font-size: .9em; line-height: 1.6; overflow-wrap: anywhere; }
+.mm-tm-picked > span, .mm-tm-picked > em { min-width: 0; overflow-wrap: anywhere; } .mm-tm-picked > em { font-style: normal; font-weight: 600; color: color-mix(in srgb, var(--tk) 70%, var(--text)); } .mm-tm-picked .mm-ti-dot { align-self: center; }
+.mm-ti-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .78em; color: var(--dim); } .mm-ti-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+
+/* ── 줄 목록 (관계 한눈에 · 변화 기록) ── */
+.mm-ti-sub { display: flex; align-items: baseline; gap: 6px; margin-top: 4px; font-size: .8em; font-weight: 600; letter-spacing: .04em; color: var(--dim); } .mm-ti-sub b { font-weight: 400; font-size: 11.5px; }
+.mm-ti-rows { display: flex; flex-direction: column; min-width: 0; }
+.mm-ti-row { display: flex; align-items: center; gap: 6px; padding: 9px 0 9px 2px; min-width: 0; } .mm-ti-row + .mm-ti-row { border-top: 1px solid var(--line-3); }
+.mm-ti-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: .92em; } .mm-ti-main > p { line-height: 1.6; overflow-wrap: anywhere; min-width: 0; }
+.mm-ti-main > small { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--dim); font-size: .86em; line-height: 1.5; min-width: 0; } .mm-ti-main > small > span { min-width: 0; overflow-wrap: anywhere; }
+.mm-ti-pair { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; } .mm-ti-pair > b { min-width: 0; overflow-wrap: anywhere; }
+.mm-ti-arrow { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; padding: 1px 0; border-bottom: 1.5px solid var(--tk); }
+.mm-ti-arrow > em { font-style: normal; font-weight: 600; color: color-mix(in srgb, var(--tk) 70%, var(--text)); min-width: 0; overflow-wrap: anywhere; } .mm-ti-arrow > em.none { font-weight: 400; color: var(--dim); }
+.mm-ti-tip { font-style: normal; font-size: .62em; color: var(--tk); } .mm-ti-kind { padding: 0 6px; border: 1px solid var(--tk); color: color-mix(in srgb, var(--tk) 70%, var(--text)); white-space: nowrap; }
+.mm-ti-hand { padding: 0 6px; border: 1px dashed var(--line-2); white-space: nowrap; } .mm-ti-dim { color: var(--dim); }
+.mm-ti-tag { display: inline-block; margin-right: 7px; padding: 0 7px; border: 1px solid var(--line-2); font-style: normal; font-size: .8em; font-weight: 600; color: var(--dim); white-space: nowrap; vertical-align: 1px; }
+.mm-ti-tag.sk-relationship, .mm-ti-chip.sk-relationship:not(.on) { border-color: color-mix(in srgb, var(--accent) 60%, transparent); } .mm-ti-tag.sk-relationship { color: var(--accent); }
+.mm-ti-tag.sk-emotion, .mm-ti-chip.sk-emotion:not(.on) { border-color: color-mix(in srgb, var(--bad) 50%, transparent); } .mm-ti-tag.sk-emotion { color: color-mix(in srgb, var(--bad) 70%, var(--text)); }
+.mm-ti-tag.sk-situation, .mm-ti-chip.sk-situation:not(.on) { border-color: var(--line-1); } .mm-ti-tag.sk-situation { color: var(--text); }
+.mm-ti-tag.sk-growth, .mm-ti-chip.sk-growth:not(.on) { border-color: color-mix(in srgb, var(--ok) 60%, transparent); } .mm-ti-tag.sk-growth { color: var(--ok); }
+.mm-ti-change s, .mm-ti-line s { text-decoration: none; color: var(--dim); } .mm-ti-change em, .mm-ti-line em, .mm-ti-now em { font-style: normal; font-weight: 600; } .mm-ti-to { margin: 0 6px; color: var(--dim); }
+.mm-ti-filter { display: flex; flex-direction: column; gap: 8px; min-width: 0; } .mm-ti-who { width: 100%; min-height: 36px; }
+.mm-ti-more { align-self: flex-start; min-height: 34px; margin-top: 6px; font-size: .86em; }
+
+/* ── 감정 변화: 사람마다 접고 편다 ── */
+.mm-ti-people { display: flex; flex-direction: column; min-width: 0; }
+.mm-ti-person + .mm-ti-person { border-top: 1px solid var(--line-3); }
+.mm-ti-person > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-height: 40px; padding: 8px 2px; cursor: pointer; list-style: none; } .mm-ti-person > summary::-webkit-details-marker { display: none; }
+.mm-ti-person > summary::before { content: "▸"; flex: none; color: var(--dim); font-size: .8em; } .mm-ti-person[open] > summary::before { content: "▾"; }
+.mm-ti-person > summary > b { min-width: 0; overflow-wrap: anywhere; } .mm-ti-now { flex: 1 1 140px; min-width: 0; font-size: .9em; line-height: 1.5; overflow-wrap: anywhere; } .mm-ti-now i, .mm-ti-line i { font-style: normal; color: var(--dim); margin-right: 6px; font-size: .9em; }
+.mm-ti-count { flex: none; font-size: 11px; color: var(--dim); }
+.mm-ti-line { list-style: none; margin: 0 0 10px 6px; padding: 0 0 0 14px; border-left: 1px solid var(--line-2); display: flex; flex-direction: column; gap: 10px; }
+.mm-ti-line > li { position: relative; min-width: 0; font-size: .9em; } .mm-ti-line > li::before { content: ""; position: absolute; left: -18px; top: .55em; width: 7px; height: 7px; border-radius: 50%; background: var(--surface); border: 1px solid var(--line-1); } .mm-ti-line > li.cur::before { background: var(--accent); border-color: var(--accent); }
+.mm-ti-line p { line-height: 1.6; overflow-wrap: anywhere; } .mm-ti-line small { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 2px; color: var(--dim); font-size: .86em; } .mm-ti-line small > span { min-width: 0; overflow-wrap: anywhere; }
+
+/* ── 이 카드가 연기하는 인물 ── */
+.mm-ti-hint { font-size: .84em; color: var(--dim); line-height: 1.65; overflow-wrap: anywhere; }
+
+@media (min-width: 720px) {
+  .mm-ti-filter { flex-direction: row; align-items: center; justify-content: space-between; } .mm-ti-who { width: auto; min-width: 180px; max-width: 260px; }
+  .mm-tm-svg { max-width: 640px; }
+}

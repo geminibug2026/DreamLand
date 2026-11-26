@@ -16,6 +16,8 @@ import { pickBeats, beatLines } from '../calendar';
 import { VOICE_LINES, PLAN_HEAD } from '../directives';
 import { personaNameOf } from './part6';
 import { driftNoteLines } from './auditCore';
+import { hostOf, feelingRows } from './ties';
+import type { FeelingRow } from '../ties';
 import type { FreezeMark, StableEntry as StableLine, TranscriptHit } from '../craft';
 
 /** 장부를 지을 때의 옵션 (회상 옵션 + 주입 옵션) */
@@ -72,6 +74,8 @@ export interface PacketSections {
   cards?: { head: string; lines: string[] }[];
   /** 장면 속 인물이 마음에 둔 것 */
   minds?: { name: string; lines: string[] }[];
+  /** 장면에 함께 있는 사람들끼리의 가장 최근 마음 (매 턴 바뀌는 구간에만 싣는다) */
+  feelings?: FeelingRow[];
   /** 작가 계획 — 가린 줄만 */
   plans?: { id: string; veil: string }[];
   /** 날 세기 한 줄 */
@@ -152,6 +156,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
    */
   buildPacketSections(chat, mem, history, opt = {}) {
     const cfg = this.cfg(), T = mem.turns.length, narratorMode = this.perspective(mem) === NARRATOR;
+    const hostLabel = (h => h.many ? h.label : '')(hostOf(this, chat, mem));   // 여러 인물을 맡는 카드의 이름 — 인물로 싣지 않는다
     const r = this.recallEx(chat, mem, history, opt), inp = r.inputs, query = r.query, lastAssistantText = String(inp.scene || ''), recallContext = inp.aux;
     const recallCandidates = [...r.pinned, ...r.triggered, ...r.selected], publicRecall: MemItem[] = [], protectedRecall: MemItem[] = [];
     // 아직 원문으로 프롬프트에 실리는 구간의 기억은 회상으로 다시 싣지 않는다 — 몇 턴 전 일을 "기억"으로 또 끌어와 장면이 뒤로 돌아가게 만든다
@@ -206,7 +211,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
         return age <= 40 || s.manual === true || stateInScene(s);   // 오래 그대로인 상태는 그 인물이 장면에 있을 때만 — 자리에 없는 사람의 옛 상태는 다시 등장할 때 돌아온다 (직접 적은 줄은 그대로 싣는다)
       })
       .map(s => ({ s, scene: stateInScene(s) ? 1 : 0 })).sort((a, b) => (b.scene - a.scene) || ((b.s.turn || 0) - (a.s.turn || 0))).slice(0, 12).map(x => x.s);
-    const characters = mem.cast.filter(c => !c.disabled).map(c => ({ c, scene: inScene(c) ? 1 : 0 })).sort((a, b) => (b.scene - a.scene) || ((b.c.updated || 0) - (a.c.updated || 0))).slice(0, 10).map(x => ({ ...x.c, sceneNow: x.scene === 1 }));
+    const characters = mem.cast.filter(c => !c.disabled && !(hostLabel && ekey(c.name) === ekey(hostLabel))).map(c => ({ c, scene: inScene(c) ? 1 : 0 })).sort((a, b) => (b.scene - a.scene) || ((b.c.updated || 0) - (a.c.updated || 0))).slice(0, 10).map(x => ({ ...x.c, sceneNow: x.scene === 1 }));
     // 장면 인물의 지금 모습: 장면에 있는 사람의 상태는 사람마다 한 줄로 묶는다 (믿음은 그 사람의 생각이라 상태 보드에 남긴다)
     const nowIds = new Set(cfg.presentNow !== false ? states.filter(s => low(s.entity) !== 'scene' && s.claim !== 'belief' && stateInScene(s)).map(s => s.id) : []);
     // 누가 모르는지는 사서가 적은 "아는 사람"을 보고 글을 쓰는 모델이 가린다 — 장면 인물을 이름으로 짐작해 "X는 모른다"를 덧붙이지 않는다
@@ -334,7 +339,9 @@ export const part4: Part4 & ThisType<MemoryApi> = {
         for (const [id, blind] of unaware) { const rest = blind.filter(n => !is(n)); if (rest.length) unaware.set(id, rest); else unaware.delete(id); }
       }
     }
-    return { absent, cards, minds, plans, milestoneRoots: new Set(rootMiles.map(e => e.id)), trackerLine, returning, driftNotes: driftNoteLines(mem, opt.msgs, cfg.driftNote !== false), voice: String(cfg.recallVoice || 'natural'), bonds, voices, banned, styleGuard: cfg.styleGuard !== false, recallQuotes: cfg.recallQuotes !== false, banTell: cfg.banTell === true,
+    // 지금의 마음: 장면에 함께 있는 사람들끼리 가장 최근에 적힌 마음 몇 줄 — 얼려 둔 관계선보다 새것이라 매 턴 바뀌는 구간에 싣는다 (모델 호출 없음)
+    const feelings = feelingRows(this, mem, new Set([...sceneNames, meKey].filter(Boolean)), Math.max(0, Math.min(6, Math.round(Number(cfg.feelingLines) || 0))));
+    return { feelings, absent, cards, minds, plans, milestoneRoots: new Set(rootMiles.map(e => e.id)), trackerLine, returning, driftNotes: driftNoteLines(mem, opt.msgs, cfg.driftNote !== false), voice: String(cfg.recallVoice || 'natural'), bonds, voices, banned, styleGuard: cfg.styleGuard !== false, recallQuotes: cfg.recallQuotes !== false, banTell: cfg.banTell === true,
       lag, publicRecall: publicRecallDeduped, protectedRecall, hiddenProtected: r.hidden, locks, rules, scene, states, characters, milestones, items, summaries, supervisorPlan, narratorMode, turnNow: T, storyAges, storyTotalDays, storyDay, storyNow,
       sources: this.dossierPick(mem, query, recallContext), recallCandidates, trace: r.trace, notes, recent, unaware, deadlines, nowIds, address, transcript };
   },
@@ -484,6 +491,11 @@ export const part4: Part4 & ThisType<MemoryApi> = {
       for (const rows of [...by.values()].sort((a, b) => String(a[0].entity).localeCompare(String(b[0].entity)))) {
         const line = personNowLine(rows[0].entity, rows.map(s => ({ slot: canonSlot(s.slot), value: s.value, note: changeNote(s) }))); if (line) lines.push(line);
       }
+    }
+    if (P.feelings?.length && stateLimit > 0) {
+      // 지금의 마음 — 장면에 함께 있는 사람들끼리 가장 최근에 적힌 마음. 고정 장부의 관계선보다 새것이다
+      lines.push('## How They Feel Right Now (the latest turn of feeling on record between people in this scene — newer than Bonds where the two differ. Let it show in manner and choices; never state it outright)');
+      for (const f of P.feelings) lines.push(`- ${f.from} → ${f.to}: ${f.now}${f.was || f.why ? ` (${[f.was ? `was: ${f.was}` : '', f.why ? `since: ${f.why}` : ''].filter(Boolean).join('; ')})` : ''}`);
     }
     if (P.deadlines?.length && stateLimit > 0) {
       // 약속 · 기한 — 작중 시간으로 센 남은 날. 가까운 것부터
@@ -703,9 +715,10 @@ export const part4: Part4 & ThisType<MemoryApi> = {
   },
   addressRows(chat, mem, msgs) {
     let me = ''; try { me = chat ? S.persona(chat)?.name || '' : ''; } catch { /* 페르소나가 없어도 된다 */ }
-    const chars = (chat?.charIds || []).map(id => S.get('chars', id)?.name || '').filter(Boolean), solo = chars.length === 1;
-    const people: AddressPerson[] = mem.cast.filter(c => !c.disabled).map(c => ({ name: c.name, forms: c.aka || [] }));
-    for (const n of [me, ...chars]) if (n && !people.some(p => ekey(p.name) === ekey(this.canonName(mem, n)))) people.push({ name: n, forms: [] });
+    // 여러 인물을 맡는 카드: 답변을 쓴 "사람"이 없다 — 카드 이름은 사람으로 세지 않고, 누가 말했는지 서술에 적힌 대사만 센다
+    const host = (h => h.many ? h.label : '')(hostOf(this, chat, mem)), chars = (chat?.charIds || []).map(id => S.get('chars', id)?.name || '').filter(Boolean), solo = chars.length === 1 && !host;
+    const people: AddressPerson[] = mem.cast.filter(c => !c.disabled && !(host && ekey(c.name) === ekey(host))).map(c => ({ name: c.name, forms: c.aka || [] }));
+    for (const n of [me, ...chars]) if (n && !(host && ekey(n) === ekey(host)) && !people.some(p => ekey(p.name) === ekey(this.canonName(mem, n)))) people.push({ name: n, forms: [] });
     const sig = getStringHash(people.map(p => [p.name, ...p.forms].join('/')).join('|')), lead = chars[0] ? this.canonName(mem, chars[0]) : '', meName = me ? this.canonName(mem, me) : '';
     // 소설 모드: 메시지를 쓴 것은 서술자다 — 글 안의 대사는 여러 인물의 것이라, 누가 말했는지 글에 적힌 대사만 센다
     // (글쓴이를 말한 사람으로 치면 상대가 한 "주인님" · "형"이 전부 카드 주인이 한 말로 뒤집혀 실린다)
@@ -717,7 +730,8 @@ export const part4: Part4 & ThisType<MemoryApi> = {
       const partner = !solo || narrated ? '' : m.role === 'user' ? lead : meName, text = msgText(m), key = `${sig}|${speaker}|${partner}|${text.length}|${getStringHash(text)}`;
       let hit = addressCache.get(m);
       if (!hit || hit.key !== key) { hit = { key, hits: addressTermsIn(text, { speaker, people, partner }).filter(h => h.from !== NARRATION_VOICE) }; addressCache.set(m, hit); }
-      if (hit.hits.length) per.push({ at: i, hits: hit.hits });
+      const hits = host ? hit.hits.filter(h => ekey(h.from) !== ekey(host) && ekey(h.to) !== ekey(host)) : hit.hits;
+      if (hits.length) per.push({ at: i, hits });
     }
     return tallyAddress(per);
   },

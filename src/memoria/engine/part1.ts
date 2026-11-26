@@ -5,7 +5,7 @@ import { quickCall, tokens } from '../../lib/engine';
 import type { MemoryApi } from './api';
 import type { CommitOpts } from './part2';
 import type { Mem, Msg, ChatM, Cfg, MemCheck, Summary, Pledge, CanonRow, StatusRow } from '../types';
-import { BATCH_TOKENS, G, PROMPTS, NARRATOR, PUBLIC_ONLY, LANG_DIRECTIVES, MEMORY_DEFAULTS, SHELVES, PROMPT_KEYS, empty, cache, mesHashOf, mesHashLegacySet, turnMatches, cleanStr, getStringHash, untouchedPrompt, transformTags, redoTurns, ekey, visibleProse, sanitizeRecord, cleanMultiline, FOSSIL, fossilShape, parseLoose, rollbackOrDrop, statusCache, updateTimers, BUNDLE_SKIP, activityLog, CHAT_IDLE_MAX_WAIT_MS, overrides, audits, lasts, freezes, recallRuns, SETTLED_AT_SUMMARY, PACKET_HEADER, PACKET_FOOTER } from './base';
+import { BATCH_TOKENS, G, PROMPTS, NARRATOR, PUBLIC_ONLY, LANG_DIRECTIVES, MEMORY_DEFAULTS, SHELVES, PROMPT_KEYS, empty, cache, mesHashOf, mesHashLegacySet, turnMatches, cleanStr, getStringHash, untouchedPrompt, transformTags, redoTurns, ekey, visibleProse, sanitizeRecord, cleanMultiline, FOSSIL, fossilShape, parseLoose, parseLooseEx, rollbackOrDrop, statusCache, updateTimers, BUNDLE_SKIP, activityLog, CHAT_IDLE_MAX_WAIT_MS, overrides, audits, lasts, freezes, recallRuns, SETTLED_AT_SUMMARY, PACKET_HEADER, PACKET_FOOTER } from './base';
 import * as MP from '../prompts';
 import { findStatusBars, statusOneLine, isPauseDirective, isPauseMessage, verifyIssues, applyVerdicts } from '../scene';
 import { withDeadline, parsePhraseList, BUNDLE_EXCLUDED, resolveBundleName, switchBundle, noteUsage, looksRefused, looksBlocked } from '../craft';
@@ -15,6 +15,7 @@ import { parseStoryDate } from '../calendar';
 import type { Usage } from '../craft';
 import { t } from '../../i18n';
 import { applyUndo } from './undo';
+import { cutReply, dropTies, hostNoteOf, moveTies } from './ties';
 
 /** waitForChatIdle 이 받는 일 이름(한국어 id) → 화면 글 키 */
 const WAIT_WHAT: Record<string, string> = { '기록': 'record', '연속성 검사': 'check', '턴 기록': 'turn', '장면 연출': 'direct', '요약·서고 정리': 'tidy' };
@@ -77,7 +78,7 @@ export interface Part1 {
   langLine(): string;
   tok(want: number): number;
   call(chat: ChatM | null | undefined, system: string, user: string, maxTokens?: number, signal?: AbortSignal, task?: CallTask): Promise<string>;
-  callJson(chat: ChatM | null | undefined, system: string, user: string, maxTokens?: number, signal?: AbortSignal, task?: CallTask, note?: { replied?: boolean }): Promise<ReturnType<typeof parseLoose>>;
+  callJson(chat: ChatM | null | undefined, system: string, user: string, maxTokens?: number, signal?: AbortSignal, task?: CallTask, note?: { replied?: boolean; cut?: boolean; slip?: boolean; help?: string }): Promise<ReturnType<typeof parseLoose>>;
   enqueue<T>(fn: () => T | PromiseLike<T>): Promise<T>;
   perspective(mem?: Mem | null): string;
   isSharedPerspective(v: string | undefined): boolean;
@@ -242,12 +243,12 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     }
     finally { count(reply); }
   },
-  /** note.replied: 모델이 답은 했는가 (연결 오류와 "읽을 수 없는 답"을 가른다) */
+  /** note.replied: 모델이 답은 했는가 (연결 오류와 "읽을 수 없는 답"을 가른다) · note.cut: 답이 출력 한도에서 잘려 끝까지 적힌 항목만 읽었다 · note.slip: 형식이 틀려 고쳐 읽었거나 다시 물었다 · note.help: 다시 물을 때 덧붙일 도움말 */
   async callJson(chat, system, user, maxTokens, signal, task = 'record', note) {
-    let err = null;
+    let err = null, unread = false;   // unread: 답은 왔는데 읽지 못한 적이 있다 (연결 오류로 다시 보낸 것과 가른다)
     for (let attempt = 0; attempt < 3; attempt++) {   // 읽지 못한 답 · API 오류(순간 혼잡 · 속도 제한) 모두 간격을 두고 세 번까지
       if (attempt) await new Promise(r => setTimeout(r, attempt * 2500));
-      let j = null; try { j = parseLoose(await this.call(chat, system + (attempt ? '\n\nFORMAT WARNING: the previous reply could not be parsed. Respond with EXACTLY ONE minified JSON object — no code fences, no commentary, nothing before "{" or after "}".' : ''), user, maxTokens, signal, task)); err = null; if (note) note.replied = true; } catch (e: any) { if (e.name === 'AbortError' || signal?.aborted) throw e; err = e; console.warn(`[장기기억] 사서 호출 실패 (${attempt + 1}/3)`, e); }
+      let j = null; try { const read = parseLooseEx(await this.call(chat, system + (attempt ? '\n\nFORMAT WARNING: the previous reply could not be parsed. Respond with EXACTLY ONE minified JSON object — no code fences, no commentary, nothing before "{" or after "}".' + (note?.help || '') : ''), user, maxTokens, signal, task)); j = read.value; err = null; if (!j) unread = true; if (note) { note.replied = true; if (j) note.cut = read.cut; if (j && (read.mended || unread)) note.slip = true; } } catch (e: any) { if (e.name === 'AbortError' || signal?.aborted) throw e; err = e; console.warn(`[장기기억] 사서 호출 실패 (${attempt + 1}/3)`, e); }
       if (j) return j;
     }
     if (err) throw err;
@@ -514,6 +515,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     // 이 턴이 같은 계단을 고쳐 쓴 것이었으면 고치기 전 글로, 새 계단을 놓은 것이었으면 그 계단을 걷어낸다
     for (const b of mem.bonds || []) b.log = (b.log || []).flatMap(e => (e.manual || !e.msgId || e.msgId !== msgId ? [e] : e.was ? [e.was] : []));
     mem.bonds = (mem.bonds || []).filter(b => b.log.length);
+    dropTies(mem, msgId);   // 이 답변이 붙인 사이 이름 · 변화 기록
     mem.items = mem.items.filter(x => x.msgId !== msgId || x.manual || (x.updated ?? x.first ?? x.turn) !== (x.first ?? x.turn));   /* 이 턴에 처음 적힌 물건만 지운다 — 뒤 턴이 고친 물건은 남긴다 (맞추기가 생성 · 갱신 턴이 모두 사라졌는지 본다) */ mem.milestones = mem.milestones.filter(x => x.msgId !== msgId || x.manual);
   },
   /** 턴 번호를 대화 순서대로 다시 맞춘다 (at 자리에서 d 만큼) */
@@ -528,6 +530,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     mem.items.forEach(x => mv(x, 'turn', 'first', 'updated', 'dormant'));
     for (const c of mem.cast) { mv(c, 'first', 'updated', 'prevTurn', 'coreTurn'); for (const l of c.lines || []) if (l.msgId) mv(l, 'turn'); for (const g of c.growth || []) if (g.msgId) mv(g, 'turn'); }   // 직접 적은 줄(턴 0)은 턴 번호가 아니다
     for (const b of mem.bonds || []) for (const e of b.log || []) { mv(e, 'turn'); if (e.was) mv(e.was, 'turn'); }
+    moveTies(mem, sh);
     const span: (c: { from: number; to: number }) => void = c => { if (d < 0) { if (c.from > at) c.from--; if (c.to >= at) c.to--; } else { if (c.from >= at) c.from++; if (c.to >= at) c.to++; } };
     for (const c of [...mem.chunks, ...mem.arcs]) { if (c.carried) continue; span(c); for (const sc of Array.isArray(c.src) ? c.src : []) span(sc); }   // 이어받은 요약의 범위는 이 대화의 축이 아니다
     mem.chunks = mem.chunks.filter(c => c.to >= c.from); mem.arcs = mem.arcs.filter(c => c.carried || c.to >= c.from);
@@ -673,7 +676,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     }
     const parts = this.buildPacketSections(chat, mem, null, this.archiveQueryOpt(mem, reply.slice(0, 600), msgs));
     const archive = String(this.renderPacket({ ...parts, voices: [], banned: [], banTell: false }, { excerptLimit: 4 })).split('\n').filter((l: string) => l !== PACKET_HEADER && l !== PACKET_FOOTER).slice(this.packetGuidance(parts).length).join('\n');
-    const context = `<archive>\n${archive}\n</archive>\n\n<recent_messages>\n${recent.join('\n\n')}\n</recent_messages>`;
+    const context = `${hostNoteOf(this, chat, mem)}<archive>\n${archive}\n</archive>\n\n<recent_messages>\n${recent.join('\n\n')}\n</recent_messages>`;
     const userPrompt = `${context}\n\n<new_reply number="#${no}" by="${msg.name || char?.name || 'Character'}">\n${reply.slice(0, 8000)}\n</new_reply>`;
     let result = null;
     try {
@@ -775,7 +778,7 @@ export const part1: Part1 & ThisType<MemoryApi> = {
   firstUserMesIndex(msgs) { return msgs.findIndex(m => m?.role === 'user'); },
   recordDelayTurns() { return Math.max(0, Math.min(20, Math.round(Number(this.cfg().recordDelay) || 0))); },
   /** 이 응답을 기록하려면 그 뒤로 이야기가 몇 걸음 더 나아가야 하는가 */
-  requiredStepsFor(msgs, i) { const fu = this.firstUserMesIndex(msgs), greeting = fu < 0 || i < fu; return greeting ? Math.max(1, this.recordDelayTurns()) : this.recordDelayTurns(); },
+  requiredStepsFor(msgs, i) { const fu = this.firstUserMesIndex(msgs), greeting = fu < 0 || i < fu; return greeting || cutReply(msgs[i]) === 'flag' ? Math.max(1, this.recordDelayTurns()) : this.recordDelayTurns(); },   // 끊기거나 멈춘 답변은 바로 적지 않는다 — 다시 받거나 이어 쓸 수 있으니, 그대로 두고 이야기를 이어 갔을 때 기록한다
   /** 응답 뒤로 이야기가 몇 걸음 나아갔는지 — 사용자 메시지 수와 새 응답 수 중 많은 쪽 (입력 없이 전개 지시 · 풀사칭으로만 진행해도 확정되게) */
   storyStepsAfter(msgs, i) { let users = 0, replies = 0; for (let k = i + 1; k < msgs.length; k++) { const m = msgs[k]; if (!m) continue; if (m.role === 'user') users++; else replies++; } return Math.max(users, replies); },
   isSettledForRecord(msgs, i) { return this.storyStepsAfter(msgs, i) >= this.requiredStepsFor(msgs, i); },

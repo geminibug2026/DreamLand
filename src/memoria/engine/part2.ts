@@ -7,7 +7,7 @@ import type { Part1 } from './part1';
 import type { Part3 } from './part3';
 import type { Turn, Mem, Msg, ChatM, CastCard, Bond, BondStep, MemItem, MemDim, Beat, Pledge, Relation, StatusRow } from '../types';
 import { ago, SCOPES, NARRATOR, MEMORY_DEFAULTS, STANDING_KINDS, CHARACTER_LINES_MAX, CHARACTER_GROWTH_MAX, BOND_LOG_MAX, BOND_SETTLE_TURNS, cache, mesHashOf, list, low, cleanStr, clipStr, toSnake, num01, firstSentence, canonSlot, na, visibleProse, ekey, overlap, parseDurationDays, normKind, normLockKind, normVisibility, pledgeId, upsertRow } from './base';
-import { THREAD_KINDS, SECRET_KINDS, mentionsThread, ungroundedFigures, roughTokens, groundedIn, soundsHedged, noteThreadSightings, threadTouched, pickPledgesToCheck, ensembleLabel, crossScriptPairs } from '../craft';
+import { THREAD_KINDS, SECRET_KINDS, mentionsThread, ungroundedFigures, roughTokens, groundedIn, soundsHedged, noteThreadSightings, threadTouched, pickPledgesToCheck, crossScriptPairs } from '../craft';
 import { attributeQuote, type AddressPerson } from '../stage';
 import { parseStoryDate, syncDaysToDates } from '../calendar';
 import * as MP from '../prompts';
@@ -15,6 +15,10 @@ import { KNOW_DIRECTIVE, LEARN_DIRECTIVE, BEATS_DIRECTIVE, FEELING_DIRECTIVE } f
 import { chunkTurnsOf, repliesOf, startsWithFieldLabel, looksLikeAlias, looksLikeAge, mergeTraits, sameTrait } from './base';
 import { snapUndo, diffUndo, trimUndo, mergeUndo, type Undo } from './undo';
 import { t as tr } from '../../i18n';
+import { hostOf, stripHost, readTies, applyTies, cutReply, needsFormatHelp, noteFormatSlip, TIE_MARK, type TiesRead } from './ties';
+import { storyOnly } from '../guards';
+import { canonRecord, offFormat } from '../lenient';
+import { TIES_DIRECTIVE, formatGuard, formatHelp, CUT_NOTE, CUT_MARK, hostRecordLine } from '../tieprompts';
 
 /** 사서가 돌려준 JSON (읽기 전의 날것 — 칸마다 믿을 수 없다) */
 export interface RawExtraction {
@@ -124,7 +128,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
   /** 캐릭터 카드 · 페르소나 요지. lean: 이름만 — 인물의 바탕이 이미 서고에 있으면 카드 본문을 매번 다시 보낼 이유가 없다 */
   buildProfileReference(chat, lean = false, ai = null) {
     const parts: string[] = [], ch = S.get('chars', ai?.charId) || S.get('chars', chat?.charIds?.[0]), persona = chat ? S.persona(chat) : null;
-    if (ch) { const bits: string[] = []; if (ch.name) bits.push(`Name: ${ch.name}`); if (ch.description && !lean) bits.push(`About: ${cleanStr(ch.description, 800)}`); if (ch.personality && !lean) bits.push(`Personality: ${cleanStr(ch.personality, 400)}`); if (bits.length) parts.push(`[Main character card]\n${bits.join('\n')}`); }
+    if (ch) { const bits: string[] = []; if (ch.name) bits.push(`Name: ${ch.name}`); if (ch.description && !lean) bits.push(`About: ${cleanStr(ch.description, 800)}`); if (ch.personality && !lean) bits.push(`Personality: ${cleanStr(ch.personality, 400)}`); if (bits.length) parts.push(`${hostOf(this, chat, chat ? this.get(chat.id) : null).many ? '[Narrator card — one card voicing several characters; its name is a label, not a person]' : '[Main character card]'}\n${bits.join('\n')}`); }
     if (persona?.name || persona?.description) { const bits: string[] = []; if (persona.name) bits.push(`Name: ${persona.name}`); if (persona.description && !lean) bits.push(`About: ${cleanStr(persona.description, 600)}`); parts.push(`[Player persona]\n${bits.join('\n')}`); }
     return parts.join('\n\n');
   },
@@ -170,6 +174,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     return bare.length >= 4 ? this.validExcerpt(bare, userText, assistantText) : null;
   },
   sanitizeExtraction(raw, userText, assistantText) {
+    raw = (canonRecord(raw) as RawExtraction | null) || raw;   // 번역된 칸 이름 · 가벼운 모델이 쓰는 다른 칸 이름 · 5점 만점 중요도 · 글로 적은 목록을 정해 둔 꼴로
     const arr: (v: unknown) => RawRow[] = v => Array.isArray(v) ? v : [];
     const out = { turnSummary: clipStr(raw?.digest ?? raw?.turn_summary, 700), importance: num01(raw?.weight ?? raw?.importance, 0.4), elapsedDays: parseDurationDays(raw?.time_passed), clockDay: clockDayOf(raw?.clock?.day), clockNow: clipStr(raw?.clock?.now, 120), memories: [], worldRules: [], entityStates: [], locks: [], characters: [], milestones: [], items: [], bonds: [] } as unknown as Extraction;
     for (const m of arr(raw?.memories).slice(0, 12)) {
@@ -259,7 +264,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
    * 반환 { calls(사서 호출 수), summaries(뒤따를 요약 호출 수), tokens(읽을 양 — 글자 수로 어림) }
    */
   estimateIndexCost(chat, mem, msgs, todo) {
-    const K = this.batchSize(chat), fixed = roughTokens(this.promptText('archivist')) + 600, at = new Map(msgs.map((m, i) => [m.id, i]));   // 지시문 + 참고 자료(어림)
+    const K = this.batchSize(chat), fixed = roughTokens(this.promptText('archivist')) + 1300, at = new Map(msgs.map((m, i) => [m.id, i]));   // 지시문 + 참고 자료(어림)
     const size = (m?: Msg | null) => m ? roughTokens(visibleProse(msgText(m)).slice(0, 8000)) : 0;
     let body = 0, replies = 0, prev = -1;
     for (const ai of todo) {
@@ -288,15 +293,19 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     const persona0 = S.persona(chat), nameOf = (m: Msg) => m.name || (m.role === 'user' ? persona0?.name || 'User' : S.get('chars', m.charId)?.name || 'Assistant');
     // 사서에게는 화면에 보이는 이야기만 보여준다 — 연출 계획 · 상태창 · 그림 프롬프트 · 서식 태그를 걷어 낸다
     // 이야기 밖 대화(OOC)로 본 사용자 말은 사서에게 보내지 않는다 — 기억이 되지 않게 (답장이 그 지시대로 이야기를 이어 갔다면 답장은 기록된다)
-    const userText = batch ? batch.filter(m => m.role === 'user').map(m => visibleProse(msgText(m))).join('\n') : userMes && !this.isSideMessage(userMes) ? visibleProse(msgText(userMes)) : '';
-    const assistantText = batch ? batch.filter(m => m.role === 'assistant').map(m => visibleProse(msgText(m))).join('\n') : visibleProse(msgText(ai)), h0 = mesHashOf(ai);
+    // 메시지 중간의 이야기 밖 메모((OOC: …) · ((…)))와 내 메시지의 진행 지시 줄("전개: …")도 사서에게 보이지 않는다 — 지시는 일어난 일이 아니고, 그대로 이루어졌다면 답변에 적혀 있다
+    const seen = (m: Msg) => { const t = visibleProse(msgText(m)); return cfg.skipOoc !== false ? storyOnly(t, m.role === 'user') : t; };
+    // 끊긴 답변: 생성이 끊기거나 멈췄다고 적힌 것은 어디에 있든, 글만 보고 짐작하는 것은 RP 의 마지막 답변만 — 끊긴 자리를 표시해 끝 문장이 사실로 적히지 않게 한다
+    const cutSet = new Set((batch || [ai]).filter(m => m.role === 'assistant' && (cutReply(m) === 'flag' || (m === ai && chat.mode !== 'talk' && cutReply(m) === 'text'))));
+    const userText = batch ? batch.filter(m => m.role === 'user').map(seen).join('\n') : userMes && !this.isSideMessage(userMes) ? seen(userMes) : '';
+    const assistantText = batch ? batch.filter(m => m.role === 'assistant').map(seen).join('\n') : seen(ai), h0 = mesHashOf(ai);
     // 이 기록이 읽은 다른 메시지들의 해시 — 나중에 그 가운데 하나가 고쳐지거나 지워지면 맞추기가 이 턴을 걷어내고 다시 기록한다
     const parts0: [string, string][] = (batch ? batch : [userMes]).filter((m): m is Msg => !!m && m !== ai && !this.isSideMessage(m)).map(m => [m.id, mesHashOf(m)]);
     // 묶음은 차례대로 주고받은 그대로 보낸다 (묶음은 BATCH_TOKENS 에서 끊기므로 대개 다 들어간다 — 그래도 넘치면 앞부분부터 덜어 낸다)
     let exchange: string[] = [];
     if (batch && batch.length > 1) {
       let room = 80000;
-      for (const m of [...batch].reverse()) { const tag = m.role === 'user' ? 'user' : 'assistant', body = visibleProse(msgText(m)).slice(0, 8000); if (room - body.length < 0 && exchange.length) break; room -= body.length; exchange.unshift(`<${tag} name="${nameOf(m).replace(/"/g, "'")}">\n${body}\n</${tag}>`); }
+      for (const m of [...batch].reverse()) { const tag = m.role === 'user' ? 'user' : 'assistant', body = seen(m).slice(0, 8000); if (room - body.length < 0 && exchange.length) break; room -= body.length; exchange.unshift(`<${tag} name="${nameOf(m).replace(/"/g, "'")}">\n${body}${cutSet.has(m) ? CUT_MARK : ''}\n</${tag}>`); }
     }
     if (!assistantText.trim()) return mem;
     const order = new Map(msgs.map((m, i) => [m.id, i]));
@@ -325,11 +334,12 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     const shelfTagMap = new Map<string, MemItem>();
     const shelfLines = this.standingMemoriesNear(mem, `${userText}\n${assistantText}`, place()).map((m, i) => { const tag = `m${i + 1}`; shelfTagMap.set(tag, m); return `[${tag}] (${m.kind}) ${m.summary}`; });
     // 옛 비밀 · 속사정 가운데 이번 교환에 얽힌 것 — 누가 새로 알게 됐는지 함께 묻는다 (손으로 아는 사람을 고친 기억은 올리지 않는다)
+    const tieOn = cfg.tieNotes !== false;   // 사이 이름 · 변화 기록을 함께 받는다
     const guard = cfg.guardSecrets !== false, hayLower = low(`${userText}\n${assistantText}`), privTagMap = new Map<string, MemItem>();
     const privLines = !guard ? [] : mem.memories.filter(m => m.visibility !== 'public' && !m.disabled && !m.retired && !m.knowLock && m.turn != null && m.turn < place() && [m.owner, ...(m.entities || [])].some(n => n && String(n).length >= 2 && hayLower.includes(low(n))))
       .sort((a, b) => (b.importance || 0) - (a.importance || 0)).slice(0, 6)
       .map((m, i) => { const tag = `k${i + 1}`; privTagMap.set(tag, m); return `[${tag}] (${m.visibility}${m.owner ? `, held by ${m.owner}` : ''}${m.knowers?.length ? `; known to ${m.knowers.join(', ')}` : ''}${m.guessers?.length ? `; suspected by ${m.guessers.join(', ')}` : ''}) ${m.summary}`; });
-    const extraDirective = `${guard ? KNOW_DIRECTIVE : ''}${privLines.length ? LEARN_DIRECTIVE : ''}${(Number(cfg.sceneCards) || 0) > 0 ? BEATS_DIRECTIVE : ''}${FEELING_DIRECTIVE}`;
+    const extraDirective = `${guard ? KNOW_DIRECTIVE : ''}${privLines.length ? LEARN_DIRECTIVE : ''}${(Number(cfg.sceneCards) || 0) > 0 ? BEATS_DIRECTIVE : ''}${FEELING_DIRECTIVE}${tieOn ? TIES_DIRECTIVE : ''}`;
     const shelfDirective = shelfLines.length ? '\n\nSHELF CHECK: the file below lists earlier memories with tags like [m1] that touch the same people or things. If this exchange shows ON-SCREEN that one no longer holds — the object was used up, lost, handed over or destroyed; the plan was carried out or dropped; the fact was overturned; the taste or the tie changed — include a top-level array "outdated" naming the tag, what is true instead in one clause, and "said": a short phrase copied character for character from the exchange that shows the change, e.g. "outdated":[{"tag":"m2","now":"Mina threw the key into the river","said":"the key sank out of sight"}]. A memory that is merely not mentioned, or still true, is NOT outdated. What happened stays happened: only a standing matter can go out of date. Most exchanges outdate nothing.' : '';
     // 인물 명단 — 누가 아직 카드가 없는지 사서가 추측하지 않게 한다. 명단에 없는 등장인물(주역 포함)은 이번 턴에 바로 카드를 연다.
     // 쓰지 않는 카드도 올린다 — 사용자가 치운 인물을 사서가 새 카드로 되살리지 못하게
@@ -340,13 +350,13 @@ export const part2: Part2 & ThisType<MemoryApi> = {
       ? `Cast already on file: ${filedCast!.join(', ')}. Anyone present in this exchange who is NOT on this list — the leads included — gets a card now; for those already listed, file only meaningful changes. Spell every one of these names EXACTLY as written here (same script, same characters) everywhere you use them this turn: cast names, status "entity" and "owner", and memories "entities". A name respelled (romanized, translated, or abbreviated) opens a second record for the same person, and the two then hold different versions of where they are and how they feel.${lockedNote}\n`
       : 'The cast shelf is empty — no one has a card yet, not even the leads. Anyone characterized in this exchange gets a card now.\n';
     // 여러 인물을 한 카드가 맡는 대화: 카드 이름은 말머리일 뿐이다 — 그 이름으로 인물 카드 · 상태 · 기억을 열지 않고, 글에 나온 인물에게 말과 행동을 돌린다
-    const hostCard = tracking ? ensembleLabel(S.get('chars', chat.charIds?.[0])?.name, persona0?.name, mem.cast.filter(c => !c.disabled), (chat.charIds || []).length === 1) : '';
-    const hostLine = hostCard ? `The replies labelled "${hostCard}" come from one card that voices several characters. "${hostCard}" is only that label, not a person in the story: give every line and action to the character the text names, and never file a cast card, status, bond or memory entity under "${hostCard}".\n` : '';
+    const hostCard = (h => h.many ? h.label : '')(hostOf(this, chat, mem));   // 대화마다 정해 둔 값이 먼저, 없으면 카드 글 · 인물 명단으로 알아본다
+    const hostLine = hostCard ? hostRecordLine(hostCard) : '';
     const crossNames = tracking ? crossScriptPairs(mem.cast.map(c => c.name)).map(([a, b]) => `${mem.cast[a].name}|${mem.cast[b].name}`).filter(k => !nameHints.has(k)) : [];
     for (const k of crossNames) { nameHints.add(k); const [a, b] = k.split('|'); this.logActivity('update', tr('memoria.engine.log.sameName', { a, b })); }   // 표기만 다른 같은 이름으로 보이는 카드 — 저절로 합치지 않고 한 번 알린다 (인물 탭에서 병합)
     // 관계선의 현재 단계 — 사서가 이미 적힌 단계를 되풀이하거나 몇 단계를 건너뛰어 적지 않게
     const bondLines = (mem.bonds || []).filter(b => !b.disabled && this.bondNow(b)).sort((a, b) => (this.bondNow(b)!.turn || 0) - (this.bondNow(a)!.turn || 0)).slice(0, 12)
-      .map(b => { const n = this.bondNow(b)!; return `${b.from} → ${b.to}: ${n.stage}${n.calls ? ` (calls them: ${n.calls})` : ''}`; });
+      .map(b => { const n = this.bondNow(b)!; return `${b.from} → ${b.to}: ${n.stage}${n.calls ? ` (calls them: ${n.calls})` : ''}${!tieOn ? '' : b.name ? ` [name: ${b.name}${b.kind ? ` · ${b.kind}` : ''}]` : ' [unnamed]'}`; });
     // 카드 본문은 바탕을 적을 때 필요하다 — 주요 인물의 바탕이 다 적혔으면 이름만 보낸다 (턴마다 수백 토큰 절약)
     const coreSettled = mem.cast.length >= 2 && mem.cast.filter(c => !c.disabled).slice(0, 4).every(c => c.core || c.locked);
     const refBlock = await this.buildReferenceBlock(chat, { lean: coreSettled, ai });
@@ -359,21 +369,28 @@ export const part2: Part2 & ThisType<MemoryApi> = {
       castLine, hostLine,
       bondLines.length ? `Bonds on file (current stage — refile one only if this exchange moved it):\n${bondLines.join('\n')}\n` : '',
       recent ? `Already shelved (do not refile) — recent turn digests:\n${recent}\n` : '',
+      cutSet.size ? CUT_NOTE : '',
       ...(exchange.length ? [
         `The exchange to shelve — ${exchange.length} messages in the order they were sent. File them together as ONE turn: one digest that covers the whole batch, and every memory, state or bond change that happened anywhere in it.`,
         ...exchange,
       ] : [
         'The exchange to shelve:',
         `<user name="${userLabel}">\n${userText.slice(0, 4000)}\n</user>`,
-        `<assistant name="${charLabel}">\n${assistantText.slice(0, 6000)}\n</assistant>`,
+        `<assistant name="${charLabel}">\n${assistantText.slice(0, 6000)}${cutSet.size ? CUT_MARK : ''}\n</assistant>`,
       ]),
       // 긴 원문을 읽고 나면 출력 언어 지시가 흐려진다 — 맨 끝에서 한 번 더 짚는다 (자동일 때는 생략)
       cfg.language && cfg.language !== 'auto' ? `\n(${this.languageDirective()})` : '',
     ].filter(Boolean).join('\n');
-    let ext: Extraction | null = null, error = '', answered = false; const note: { replied?: boolean } = {};   // note.replied: 모델이 답은 했는가
+    let ext: Extraction | null = null, error = '', answered = false, ties: TiesRead | null = null;
+    // 답의 꼴 도움말(예시 답 · 자주 하는 실수)은 형식을 틀린 적 있는 모델에게만 처음부터 붙인다 — 잘 지키는 모델에게는 순서와 확인 한 줄만. 이번에 읽지 못하면 다시 물을 때 덧붙인다
+    const recConn = this.conn(chat, 'record'), helpMode = String(cfg.formatHelp || 'auto'), fullHelp = helpMode === 'always' || (helpMode !== 'off' && needsFormatHelp(recConn));
+    const guardOpts = { ties: tieOn, checks: !!(pledgeLines.length || shelfLines.length || privLines.length), beats: (Number(cfg.sceneCards) || 0) > 0, extras: [...(cfg.milestones ? ['milestones'] : []), ...(cfg.items ? ['items'] : [])], full: fullHelp };
+    const note: { replied?: boolean; cut?: boolean; slip?: boolean; help?: string } = { help: fullHelp || helpMode === 'off' ? '' : formatHelp(guardOpts) };   // note.replied: 모델이 답은 했는가
     try {   // 읽지 못한 답 · API 오류(순간 혼잡 · 속도 제한) 모두 간격을 두고 세 번까지 (callJson)
-      const parsed = await this.callJson(chat, `${this.promptText('archivist')}${this.archivistTrackingDirective()}${dueDirective}${pledgeDirective}${shelfDirective}${extraDirective}${this.langLine()}`, userPrompt, cfg.responseTokens || MEMORY_DEFAULTS.responseTokens, signal, 'record', note);
-      if (parsed) { answered = true; ext = this.sanitizeExtraction(parsed, userText, assistantText); }
+      const parsed = await this.callJson(chat, `${this.promptText('archivist')}${this.archivistTrackingDirective()}${dueDirective}${pledgeDirective}${shelfDirective}${extraDirective}${formatGuard(guardOpts)}${this.langLine()}`, userPrompt, cfg.responseTokens || MEMORY_DEFAULTS.responseTokens, signal, 'record', note);
+      if (parsed) { answered = true; ext = this.sanitizeExtraction(parsed, userText, assistantText); if (tieOn) ties = readTies(canonRecord(parsed)); if (hostCard) stripHost(ext, hostCard); }
+      if (parsed && note.cut) this.logActivity('record', tr('memoria.bonds.log.cutAnswer', { n: idx + 1 }));   // 답이 출력 한도에서 잘렸다 — 끝까지 적힌 항목만 기록한다
+      if (parsed && helpMode === 'auto' && !fullHelp && (note.slip || offFormat(parsed)) && noteFormatSlip(recConn)) this.logActivity('record', tr('memoria.bonds.log.formatHelp', { model: recConn?.model || '?' }));
     } catch (e: any) { if (e.name === 'AbortError' || signal?.aborted) throw e; error = e.message || String(e); }
     // 며칠째인지는 꼭 받는다: 사서가 빠뜨렸으면 그것만 다시 묻는다 (짧은 호출 한 번)
     if (ext && cfg.storyClock !== false && !ext.clockDay) {
@@ -441,14 +458,14 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     // 장면 인물 목록이 방금 적혔거나 몇 턴 안에 적힌 것일 때만 "있었다 · 없었다"를 따진다 — 묵은 목록으로 없던 사람을 만들지 않는다
     const sceneRow = mem.status.find(s => low(s.entity) === 'scene' && canonSlot(s.slot) === 'present'), presentNew = ext.entityStates.filter(st => low(st.entity) === 'scene' && canonSlot(st.slot) === 'present').map(st => st.value);
     const presentFresh = presentNew.length > 0 || (!!sceneRow && at - (sceneRow.turn ?? -99) <= 3);
-    const speakersNow = [userLabel, charLabel, ...(batch || []).map(nameOf)].filter(Boolean).map(n => this.canonName(mem, n));
+    const speakersNow = [userLabel, charLabel, ...(batch || []).map(nameOf)].filter(n => n && !(hostCard && ekey(n) === ekey(hostCard))).map(n => this.canonName(mem, n));   // 여러 인물을 맡는 카드의 이름은 그 자리에 있던 사람이 아니다
     const presentNames = [...new Set([...(presentFresh ? (presentNew.length ? presentNew : [sceneRow?.value || '']) : []).flatMap(v => String(v || '').split(/[,，、·]+/)).map(n => this.canonName(mem, n.trim())).filter(Boolean), ...speakersNow])];
     const hereKeys = new Set(presentNames.map(ekey)), exLower = low(exchangeText);
     const wasHere = (name: string) => { const c = this.canonName(mem, name); return hereKeys.has(ekey(c)) || (String(name).length >= 2 && exLower.includes(low(name))) || (c.length >= 2 && exLower.includes(low(c))); };
     if (presentFresh && presentNames.length) turn.present = presentNames.slice(0, 16);
     const people: AddressPerson[] = mem.cast.filter(c => !c.disabled).map(c => ({ name: c.name, forms: c.aka || [] }));
     for (const n of speakersNow) if (n && !people.some(p => ekey(p.name) === ekey(n))) people.push({ name: n, forms: [] });
-    const coveredMsgs = (batch || [userMes, ai]).filter((m): m is Msg => !!m && !this.isSideMessage(m)), soloChat = (chat.charIds || []).length <= 1;
+    const coveredMsgs = (batch || [userMes, ai]).filter((m): m is Msg => !!m && !this.isSideMessage(m)), soloChat = (chat.charIds || []).length <= 1 && !hostCard;
     const knownPerson = (n?: string | null) => { if (!n) return ''; const c = this.canonName(mem, n); return people.some(p => ekey(p.name) === ekey(c)) ? c : ''; };
     // 소설 모드에서는 글쓴이가 서술자다 — 글에 누가 말했는지 적히지 않은 대사를 카드 주인의 말로 치지 않는다 (사서가 적은 이름을 쓴다)
     const narrated = this.perspective(mem) === NARRATOR;
@@ -456,14 +473,14 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     const whoSaid = (quote: string | null, by0?: string | null, to0?: string | null) => {
       if (!quote) return { by: '', to: '' };
       let r = { by: '', to: '', found: false };
-      for (const m of coveredMsgs) { r = attributeQuote(visibleProse(msgText(m)), quote, { author: narrated ? '' : this.canonName(mem, nameOf(m)), people, partner: soloChat && !narrated ? this.canonName(mem, m.role === 'user' ? charLabel : userLabel) : '' }); if (r.found) break; }
+      for (const m of coveredMsgs) { r = attributeQuote(visibleProse(msgText(m)), quote, { author: narrated || (hostCard && m.role !== 'user') ? '' : this.canonName(mem, nameOf(m)), people, partner: soloChat && !narrated ? this.canonName(mem, m.role === 'user' ? charLabel : userLabel) : '' }); if (r.found) break; }
       const by = r.by || knownPerson(by0), to = r.to || knownPerson(to0);
       return { by, to: to && ekey(to) !== ekey(by) ? to : '' };
     };
     if (ext.beats?.length) {
       turn.beats = ext.beats.map(b => { const s = whoSaid(b.quote, b.by, b.to), w = [...new Set(b.with.map(n => this.canonName(mem, n)).filter(Boolean))]; return { text: b.text, ...(b.major ? { major: true } : {}), ...(w.length ? { with: w } : {}), ...(b.quote ? { q: b.quote } : {}), ...(s.by ? { by: s.by } : {}), ...(s.to ? { to: s.to } : {}) } as Beat; });
     }
-    const rows: ExtMemory[] = [{ kind: 'event', summary: episodeSummary, excerpt: rawEpisode === episodeSummary ? null : rawEpisode, importance: Math.max(0.25, ext.importance - 0.1), entities: [charLabel], tags: ['episode_raw'], visibility: 'public', owner: null }, ...ext.memories];
+    const rows: ExtMemory[] = [{ kind: 'event', summary: episodeSummary, excerpt: rawEpisode === episodeSummary ? null : rawEpisode, importance: Math.max(0.25, ext.importance - 0.1), entities: hostCard ? [] : [charLabel], tags: ['episode_raw'], visibility: 'public', owner: null }, ...ext.memories];
     for (const m of rows) {
       const visibility = m.visibility || 'public';
       mem.memories.push({ id: uid(), turn: at, msgId: ai.id, kind: m.kind, summary: m.summary, quote: m.excerpt || '', importance: m.importance, entities: [...new Set((m.entities || []).map(e => this.canonName(mem, e)).filter(Boolean))], tags: m.tags || [], hints: m.hints || [],
@@ -536,6 +553,8 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     }
     if (retiredNow) this.logActivity('record', tr('memoria.engine.log.retired', { n: retiredNow }));
     for (const b of ext.bonds || []) this.upsertBond(mem, b, at, { msgId: ai.id });
+    if (ties) applyTies(this, mem, ties, at, ai.id, hostCard);   // 사이 이름 · 변화 기록 (같은 호출에 함께 받은 것)
+    if (answered && tieOn) turn[TIE_MARK] = true; if (cutSet.size) turn.cut = true;
     if (tracking) for (const c of ext.characters || []) this.upsertCast(mem, c, at, ai.id);
     if (cfg.milestones) for (const e of ext.milestones || []) this.upsertMilestone(mem, e, at, ai.id);
     if (cfg.items) for (const it of ext.items || []) this.upsertItem(mem, it, at, ai.id);
@@ -830,7 +849,7 @@ export const part2: Part2 & ThisType<MemoryApi> = {
     const n = this.bondNow(b); if (!n) return '';
     const bits = [n.stage]; if (n.basis) bits.push(`shown by: ${n.basis}`); if (n.calls) bits.push(`calls them: ${n.calls}`); if (n.unsaid) bits.push(`unsaid: ${n.unsaid}`);
     const earlier: string[] = []; for (const e of b.log.slice(0, -1)) if (e.stage !== n.stage && earlier[earlier.length - 1] !== e.stage) earlier.push(e.stage);
-    return `- ${b.from} → ${b.to}: ${bits.join(' | ')}${path && earlier.length ? ` | path: ${earlier.slice(-2).join(' → ')} → now` : ''}`;
+    return `- ${b.from} → ${b.to}${b.name ? ` (${b.name})` : ''}: ${bits.join(' | ')}${path && earlier.length ? ` | path: ${earlier.slice(-2).join(' → ')} → now` : ''}`;
   },
 
   // ── 다른 이름으로도 부를 수 있게 ──

@@ -4,6 +4,7 @@ import { Component, memo, useEffect, useReducer, type ReactNode } from 'react';
 import { Btn, IconBtn, mountInto } from '../../kit';
 import type { ChatM } from '../types';
 import { Audit } from './Audit';
+import { Bonds } from './Bonds';
 import { Config } from './Config';
 import { Library } from './Library';
 import { Memories } from './Memories';
@@ -22,7 +23,7 @@ import { t, getLang, fmtDate } from '../../i18n';
 import * as core from '../../lib/core';
 
 /** [id, 이름 키, 아이콘] — 이름은 그릴 때 t() */
-export const TABS: [string, string, string][] = [['overview', 'memoria.archive.tab.overview', 'panel'], ['memories', 'memoria.archive.tab.memories', 'sparkle'], ['people', 'memoria.archive.tab.people', 'users'], ['world', 'memoria.archive.tab.world', 'globe'], ['summaries', 'memoria.archive.tab.summaries', 'note'], ['audit', 'memoria.audit.tab', 'check'], ['config', 'memoria.archive.tab.config', 'sliders'], ['tools', 'memoria.archive.tab.tools', 'gear'], ['library', 'memoria.archive.tab.library', 'folder']];
+export const TABS: [string, string, string][] = [['overview', 'memoria.archive.tab.overview', 'panel'], ['memories', 'memoria.archive.tab.memories', 'sparkle'], ['people', 'memoria.archive.tab.people', 'users'], ['bonds', 'memoria.bonds.tab', 'link'], ['world', 'memoria.archive.tab.world', 'globe'], ['summaries', 'memoria.archive.tab.summaries', 'note'], ['audit', 'memoria.audit.tab', 'check'], ['config', 'memoria.archive.tab.config', 'sliders'], ['tools', 'memoria.archive.tab.tools', 'gear'], ['library', 'memoria.archive.tab.library', 'folder']];
 
 // ════════ 모듈 상태 ════════
 const mounted = new Set<St>();
@@ -85,6 +86,7 @@ function View({ st }: { st: St }) {
   switch (st.tab) {
     case 'memories': return <Memories st={open} />;
     case 'people': return <People st={open} />;
+    case 'bonds': return <Bonds st={open} />;
     case 'world': return <World st={open} />;
     case 'summaries': return <Story st={open} />;
     case 'audit': return <Audit st={open} />;

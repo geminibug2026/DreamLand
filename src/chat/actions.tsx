@@ -698,7 +698,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
     const wait = replyDelay(pres.status, { online: mo('delayOnline'), idle: mo('delayIdle'), dnd: mo('delayDnd') }, { named, namedPct: mo('delayNamed') as number | undefined });
     if (wait) await new Promise<void>(r => { const t = setTimeout(r, wait); abort.signal.addEventListener('abort', () => { clearTimeout(t); r(); }, { once: true }); });
   }
-  const t0 = now(), impersonateBase = ui.input?.value || '';
+  const t0 = now(), impersonateBase = ui.input?.value || ''; let cutWhy = '';   // 답변이 끝까지 오지 못한 까닭: 'error' 연결이 끊김 · 'stop' 멈춤 · 'length' 출력 한도 ('' = 다 왔다)
   try {
     const talk = modeOf(chat) === 'talk' && !inScene && type !== 'impersonate';   // 대화 모드는 짧게 주고받는다
     const res = await streamReply(conn, { ...preset.params, ...(talk ? { maxTokens: Math.min(preset.params.maxTokens || 4096, (opt.proactive && +(S.settings.modes.autoTokens || 0)) || S.settings.modes.talkTokens || 400) } : {}), stop: [...(preset.params.stop || []), ...(S.settings.format?.stopStrings || [])], names: { char: speaker.name, user: persona.name, others: chars.filter(c => c.id !== speaker.id).map(c => c.name) } }, built.messages, {
@@ -707,8 +707,10 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
       onThink: d => { if (target && sw) { apiThink = true; sw.reasoning = (sw.reasoning || '') + d; schedule(); } },
     });
     used = res.via; fell = res.fell;
+    if (!talk && /^(length|max_tokens)$/i.test(String(res.finish || ''))) cutWhy = 'length';
     if (target && sw && !res.text.trim() && !sw.reasoning) toast(t('chat.gen.empty'), 'err');
   } catch (e) {
+    cutWhy = e instanceof Error && e.name === 'AbortError' ? 'stop' : 'error';
     if (!(e instanceof Error && e.name === 'AbortError')) { console.error(e); toast(errMsg(e), 'err'); }
   } finally {
     if (raf) cancelAnimationFrame(raf); clearTimeout(paintTm);
@@ -732,7 +734,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
         else if (type === 'regen') { target.swipes.pop(); target.sw = Math.max(0, target.swipes.length - 1); if (cur.chat === chat) rewindState(); else Live.rewind(chat, msgs); }
         if (cur.chat === chat) drawMsgs();
       } else {
-        sw.text = final || sw.text; sw.model = used.model; if (fell) sw.fb = used.name; else delete sw.fb; sw.ms = now() - t0; if (type !== 'continue') sw.ts = now(); if (opt.stamp && type === 'normal') { sw.ts = target.ts = opt.stamp; }
+        sw.text = final || sw.text; if (cutWhy) sw.cut = cutWhy; else delete sw.cut; /* 끊긴 답변은 표시해 둔다 — 장기기억이 끝 문장을 사실로 적지 않는다 */ sw.model = used.model; if (fell) sw.fb = used.name; else delete sw.fb; sw.ms = now() - t0; if (type !== 'continue') sw.ts = now(); if (opt.stamp && type === 'normal') { sw.ts = target.ts = opt.stamp; }
         if (cur.chat === chat) redraw(target);
       }
       if (talked?.cmds.length && final) { await runTalkCommands(chat, msgs, target, talked.cmds); if (cur.chat === chat) drawTop(); }

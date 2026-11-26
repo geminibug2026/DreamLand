@@ -11,6 +11,7 @@ import { t as tr } from '../../i18n';
 import { stripPhrases, pushRecallHistory, findConflicts, isEndedValue } from '../craft';
 import type { Claim, Conflict } from '../craft';
 import { VOLATILE } from './base';
+import { hostNoteOf } from './ties';
 
 /** 견줄 기록 한 줄 — src: 어디서 왔나, name: 상태의 인물 · 캐논의 키 · 인물 카드의 이름, field: 상태 칸 · 카드 칸 · 기억 종류, show: 화면에 보일 값 */
 export interface RecordClaim extends Claim { src: 'status' | 'canon' | 'cast' | 'memory'; name: string; field: string; show: string }
@@ -98,7 +99,8 @@ export interface Part5 {
   dump(mem: Mem): string;
   ask(chat: ChatM | null | undefined, question: string, signal?: AbortSignal, opt?: { msgs?: Msg[] | null }): Promise<string>;
   askLibrarian(chat: ChatM | null | undefined, question: string, signal?: AbortSignal, opt?: { msgs?: Msg[] | null }): Promise<string>;
-  buildEditorArchiveText(chat: ChatM, mem: Mem, instruction: string, msgs?: Msg[] | null): string;
+  /** handles: 주면 기억 · 요약을 긴 id 대신 짧은 번호(M1 · S1)로 적고, 번호 → id 를 여기에 담는다 (모델이 긴 id 를 잘못 옮겨 적지 않게) */
+  buildEditorArchiveText(chat: ChatM, mem: Mem, instruction: string, msgs?: Msg[] | null, handles?: Map<string, string>): string;
   propose(chat: ChatM | null | undefined, request: string, log?: EditorLogEntry[] | null, signal?: AbortSignal, opt?: { msgs?: Msg[] | null }): Promise<EditorProposal>;
   proposeEditorTurn(chat: ChatM | null | undefined, request: string, log?: EditorLogEntry[] | null, signal?: AbortSignal, opt?: { msgs?: Msg[] | null }): Promise<EditorProposal>;
   describeEditorOp(op: EditorOp | null | undefined): string;
@@ -168,7 +170,7 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     const contextBlock = this.renderPacket(P, { withExcerpts: false, recallLimit: 6, protectedLimit: 3, summaryLimit: 2 });
     const recent = vis.slice(-8).filter(m => m.role !== 'system').map(m => `${m.role === 'user' ? 'USER' : (m.name || 'Character')}: ${cleanStr(prose(m), 400)}`).join('\n');
     const lastUser = [...vis].reverse().find(m => m.role === 'user');
-    const user = `${P.narratorMode ? 'Recall cue from the latest scene or user contribution' : 'Latest player input'}:\n${lastUser ? clip(prose(lastUser), 1200) : '(none)'}\n(The reply to that input is already the last message below. Plan the reply AFTER it — the player has not written their next message yet, so stay open to whatever they do.)\n\nRecent messages:\n${recent}\n\nArchive ledger:\n${contextBlock}`;
+    const user = `${P.narratorMode ? 'Recall cue from the latest scene or user contribution' : 'Latest player input'}:\n${lastUser ? clip(prose(lastUser), 1200) : '(none)'}\n(The reply to that input is already the last message below. Plan the reply AFTER it — the player has not written their next message yet, so stay open to whatever they do.)\n\n${hostNoteOf(this, chat, mem)}Recent messages:\n${recent}\n\nArchive ledger:\n${contextBlock}`;
     let sys: (typeof cfg)['prompts']['supervisor'] = this.promptText('supervisor');
     if (P.narratorMode) sys = `${sys.replace(`- ${MP.PLAYER_CONTROL_RULE}`, '').replace(`- ${MP.PLAYER_KNOWLEDGE_RULE}`, '')}\n\nChat-specific writing mode (replaces generic player-only control and subtext-only guidance):\n${MP.NARRATOR_ROLE_GUIDANCE}\n${MP.NARRATOR_KNOWLEDGE_GUIDANCE}`;
     const ac = new AbortController(), timer = setTimeout(() => ac.abort(), 60000); signal?.addEventListener('abort', () => ac.abort());
@@ -241,7 +243,7 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     const q = String(question || '').trim(); if (!q) throw new Error(tr('memoria.engine.err.emptyQuestion')); if (!chat) throw new Error(tr('memoria.engine.err.noOpenChat'));
     const mem = await this.load(chat.id); if (!Array.isArray(msgs)) msgs = await Promise.resolve(S.msgs(chat.id)).catch(() => null);
     const context = this.renderPacket(this.buildPacketSections(chat, mem, null, { ...this.archiveQueryOpt(mem, q, msgs), rawRecall: true }), { recallLimit: 14, protectedLimit: 5 });   // 묻는 말에는 숨긴 옛 대화의 그 대목도 글자 그대로 찾아 보여 준다 (모델 호출은 늘지 않는다)
-    const answer = cleanRecord(await this.call(chat, MP.ASK_LIBRARIAN_PROMPT, `Archive records:\n${context}\n\nPlayer's question: ${q}`, 4000, signal, 'light'));
+    const answer = cleanRecord(await this.call(chat, MP.ASK_LIBRARIAN_PROMPT, `${hostNoteOf(this, chat, mem)}Archive records:\n${context}\n\nPlayer's question: ${q}`, 4000, signal, 'light'));
     if (!answer) throw new Error(tr('memoria.engine.err.emptyReply'));
     return answer;
   },
@@ -250,7 +252,8 @@ export const part5: Part5 & ThisType<MemoryApi> = {
    * 캐논 · 상태 · 서약 · 인물 · 관계선 전체 + 요청과 관련된 기억/요약(id 포함)을 편집용 글로.
    * 장부와 달리 id 를 보여 사서가 editMemory / editSummary 로 정확히 짚을 수 있게 한다. 턴 번호는 화면과 같이 t1 부터
    */
-  buildEditorArchiveText(chat, mem, instruction, msgs = null) {
+  buildEditorArchiveText(chat, mem, instruction, msgs = null, handles) {
+    const tagOf = (prefix: string, id: string) => { if (!handles) return id; const tag = `${prefix}${[...handles.keys()].filter(k => k.startsWith(prefix)).length + 1}`; handles.set(tag, id); return tag; };
     const P = this.buildPacketSections(chat, mem, null, this.archiveQueryOpt(mem, instruction, msgs)), lines: string[] = [];
     if (P.rules?.length) { lines.push('## Canon'); for (const r of P.rules) lines.push(`- (${r.scope}${r.scopeName ? `:${r.scopeName}` : ''}) ${r.key} = ${r.value}`); }
     if (P.states?.length) { lines.push('## Status Board'); for (const s of P.states) lines.push(`- ${s.entity}.${s.slot} = ${s.value}${s.claim === 'belief' ? ` (belief${s.owner ? ` of ${s.owner}` : ''})` : ''}`); }
@@ -261,9 +264,9 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     const totalDays = mem.turns.reduce((a, t) => a + (t.days || 0), 0);
     lines.push(`## Story Clock\n- turns recorded: t1–t${mem.turns.length}\n- total elapsed so far: ${totalDays >= 1 ? fmtDays(totalDays) : '1일 미만'}`);
     const recalled = [...(P.publicRecall || []), ...(P.protectedRecall || [])];
-    if (recalled.length) { lines.push('## Memories (id — turn — text)'); for (const m of recalled) lines.push(`- [${m.id}] (t${(m.turn ?? 0) + 1}) ${m.summary}`); }
+    if (recalled.length) { lines.push('## Memories (id — turn — text)'); for (const m of recalled) lines.push(`- [${tagOf('M', m.id)}] (t${(m.turn ?? 0) + 1}) ${m.summary}`); }
     const sums = P.summaries || [];
-    if (sums.length) { lines.push('## Summaries (id — turn range — text)'); for (const s of sums) lines.push(`- [${s.id}] (${s.carried ? 't0–t0' : `t${(s.from ?? 0) + 1}–t${(s.to ?? 0) + 1}`}) ${s.text}`); }
+    if (sums.length) { lines.push('## Summaries (id — turn range — text)'); for (const s of sums) lines.push(`- [${tagOf('S', s.id)}] (${s.carried ? 't0–t0' : `t${(s.from ?? 0) + 1}–t${(s.to ?? 0) + 1}`}) ${s.text}`); }
     return lines.join('\n');
   },
   /**
@@ -273,9 +276,11 @@ export const part5: Part5 & ThisType<MemoryApi> = {
   async propose(chat, request, log = [], signal, { msgs = null } = {}) {
     const text = String(request || '').trim(); if (!text) throw new Error(tr('memoria.engine.err.emptyRequest')); if (!chat) throw new Error(tr('memoria.engine.err.noOpenChat'));
     const mem = await this.load(chat.id); if (!Array.isArray(msgs)) msgs = await Promise.resolve(S.msgs(chat.id)).catch(() => null);
-    const archive = this.buildEditorArchiveText(chat, mem, text, msgs), hist = list(log).filter(l => l && (l.text || l.content)).slice(-6);
+    const handles = new Map<string, string>(), archive = this.buildEditorArchiveText(chat, mem, text, msgs, handles), hist = list(log).filter(l => l && (l.text || l.content)).slice(-6);
     const historyBlock = hist.length ? `Recent conversation (for context only, e.g. "취소해" refers to the last message):\n${hist.map(l => `${l.role === 'user' ? 'User' : 'Archivist'}: ${l.text ?? l.content}${l.role !== 'user' && l.ops?.length ? ` (변경 ${l.ops.length}건 제안)` : ''}`).join('\n')}\n\n` : '';
-    const parsed = await this.callJson(chat, `${MP.EDITOR_PROMPT}\n\n${this.languageDirective()}`, `Archive:\n${archive}\n\n${historyBlock}User's correction request: ${text}`, 3000, signal, 'light') as { reply?: unknown; ops?: EditorOp[] } | null;
+    const parsed = await this.callJson(chat, `${MP.EDITOR_PROMPT}\n\n${this.languageDirective()}`, `${hostNoteOf(this, chat, mem)}Archive:\n${archive}\n\n${historyBlock}User's correction request: ${text}`, 3000, signal, 'light') as { reply?: unknown; ops?: EditorOp[] } | null;
+    // 짧은 번호(M1 · S1)로 주고받은 것을 실제 id 로 되돌린다
+    for (const o of list(parsed?.ops) as EditorOp[]) if (o && typeof o === 'object' && o.id != null) { const real = handles.get(String(o.id).trim().replace(/[\[\]]/g, '').toUpperCase()); if (real) o.id = real; }
     if (!parsed || typeof parsed.reply !== 'string') throw new Error(tr('memoria.engine.err.badReply'));
     return { reply: String(parsed.reply).trim(), ops: list(parsed.ops).filter(o => o && typeof o === 'object' && typeof o.op === 'string') };
   },
@@ -425,6 +430,8 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     for (const x of m.memories) { for (const k of ['witnesses', 'guessers', 'dim', 'learned'] as const) if (x[k] != null && !Array.isArray(x[k])) delete x[k]; }
     for (const t of m.turns) { if (t.parts != null && !Array.isArray(t.parts)) delete t.parts; if (t.beats != null && !Array.isArray(t.beats)) delete t.beats; }
     if (m.trackers != null && !Array.isArray(m.trackers)) delete m.trackers; if (m.dateFix != null && !Array.isArray(m.dateFix)) delete m.dateFix;
+    if (m.shifts != null) { if (Array.isArray(m.shifts)) { m.shifts = m.shifts.filter(s => s && typeof s === 'object' && typeof s.who === 'string' && typeof s.to === 'string' && Number.isFinite(s.turn)); for (const s of m.shifts) if (!s.id) s.id = uid(); } else delete m.shifts; }
+    if (m.cardCast != null && m.cardCast !== 'one' && m.cardCast !== 'many') delete m.cardCast;
     if (m.conflictIgnore != null && !(Array.isArray(m.conflictIgnore) && m.conflictIgnore.every(x => typeof x === 'string'))) delete m.conflictIgnore;
     for (const c of m.cast) {   // 남긴 말 · 달라진 점 · 바탕 — 모양이 어긋난 것만 걷어 낸다
       c.lines = list(c.lines).filter(l => l && typeof l.text === 'string' && l.text.trim()).slice(-CHARACTER_LINES_MAX); c.growth = list(c.growth).filter(g => g && typeof g.text === 'string' && g.text.trim()).slice(-CHARACTER_GROWTH_MAX);
