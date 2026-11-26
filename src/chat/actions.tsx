@@ -204,7 +204,8 @@ export function shownText(m: Msg) {
 export function bodyHtml(m: Msg, keep = false) {
   const style = m.role === 'system' ? 'plain' : modeOf(cur.chat) === 'talk' && !m.scene ? 'chat' : S.settings.rpBubbles ? 'bubbles' : 'novel';
   const owners = assetOwners();
-  return (keep ? renderKept : render)(Assets.inline(Assets.expand(shownText(m), owners, `${m.id}:${m.sw}`), owners), { style, prose: m.role !== 'user' });
+  // 에셋 그림은 짧은 blob: 주소 · 틀 · 크기까지 글에 넣은 뒤 꾸미므로, 기억해 둔 결과(renderKept)도 설정 · 보관함이 바뀌면 새로 꾸며진다. 받는 중에는 덜 쓴 {{img:: 를 가린다
+  return (keep ? renderKept : render)(Assets.inline(Assets.expand(shownText(m), owners, `${m.id}:${m.sw}`, { partial: !keep }), owners), { style, prose: m.role !== 'user' });
 }
 /** 메시지 옆에 적는 시각: 이야기 시계를 쓰는 방은 이야기 시각, 시각을 쓰지 않는 방은 비움 */
 export const msgClock = (m: Msg, s: Swipe) => { const k = Clock.mode(cur.chat); return k === 'none' ? '' : k === 'story' ? fmtTime(Clock.timeOf(cur.chat, m)) : fmtTime(s.ts || m.ts); };
@@ -214,7 +215,7 @@ export function fillLate(had: { assets: boolean; illust: boolean }, owners: stri
   const fillAssets = !had.assets && Assets.count(owners) > 0;
   for (let i = cur.head; i < cur.msgs.length; i++) {
     const m = cur.msgs[i], s = m.swipes[m.sw]; if (!s || (m.role === 'system' && (m.dice || m.curtain))) continue;
-    if (!((!had.illust && s.illust?.length) || (fillAssets && bodyHtml(m, true).includes('asset-frame')))) continue;
+    if (!((!had.illust && s.illust?.length) || (fillAssets && /asset-(frame|miss)/.test(bodyHtml(m, true))))) continue;
     cur.revs.set(m.id, (cur.revs.get(m.id) || 0) + 1);
   }
   flush('msgs'); drawHud(); drawDossier(); if (cur.drawer) drawDrawer();
