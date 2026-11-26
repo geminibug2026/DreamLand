@@ -1,6 +1,6 @@
 // 홈: 오늘 밤의 창 · 이어서 · 캐릭터 목록(폴더 · 정렬 · 검색 · 카드 크기)
-import { memo, startTransition, useDeferredValue, useEffect, useMemo, useReducer, useRef, useState, type DragEvent, type ReactNode } from 'react';
-import { Btn, Emblem, Icon, IconBtn, InkName, useThumb } from '../kit';
+import { memo, useDeferredValue, useEffect, useMemo, useReducer, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { Btn, Emblem, Icon, IconBtn, InkName, useStages, useThumb } from '../kit';
 import type { Char, Folder } from '../types';
 import { charPicker, choiceBox, confirmBox, menu, promptBox, usePaged } from '../ui';
 import { moonPhase } from '../lib/moon';
@@ -133,7 +133,7 @@ const Recent = memo(function Recent({ recent }: { recent: (typeof S.chats)[numbe
       </button>;
     })}</div></div>;
 }, (a, b) => a.ver === b.ver);
-const DeskSec = memo(Desk);
+const DeskSec = memo(Desk), DESK_FIRST = 4;
 
 /** 캐릭터 한 칸. 보이는 값이 그대로면 다시 그리지 않는다 (검색 · 정렬 · 그림 하나가 준비될 때마다 쪽 전체를 다시 그리지 않게) */
 const Card = memo(function Card({ c, name, sub, fav, noPic, sel, drag, folder, redraw }: { c: Char; name: string; sub: string; fav: boolean; noPic: boolean; sel: boolean; drag: boolean; folder: string; redraw: () => void; av: string }) {
@@ -146,22 +146,12 @@ const Card = memo(function Card({ c, name, sub, fav, noPic, sel, drag, folder, r
   </button>;
 });
 
-/** 화면에 처음 그린 뒤 한 단계씩 오른다 (0 → n). 단계마다 그 화면이 실제로 그려진 다음(rAF 뒤의 작업)에, 끊어 그릴 수 있게(transition) 올린다 */
-function useStages(n: number) {
-  const [k, setK] = useState(0);
-  useEffect(() => {
-    if (k >= n) return; let tm = 0;
-    const raf = requestAnimationFrame(() => { tm = window.setTimeout(() => startTransition(() => setK(x => Math.min(n, x + 1)))); });
-    return () => { cancelAnimationFrame(raf); clearTimeout(tm); };
-  }, [k, n]);
-  return k;
-}
-
 function Home() {
   // ver: 캐릭터 · 대화방이 바뀌었거나 보기(정렬 · 폴더 …)를 바꿨을 때 오른다. 아래 셈은 ver 가 같으면 다시 하지 않는다
   const [ver, redraw] = useReducer((x: number) => x + 1, 0);
   // 홈에 올 때(켤 때 · 다른 화면에서 돌아올 때) 맨 위(성도 · 이어서)를 먼저 그려 보이고, 아래의 책상 · 캐릭터 목록은 그다음 화면부터 차례로 붙인다 (한 번에 수천 개를 만드느라 누른 뒤 화면이 멈추지 않게)
-  const stage = useStages(2);
+  // 차례: 책상 앞쪽 위젯 → 책상 나머지 → 캐릭터 목록 머리 · 카드 12장 → 나머지 카드. 한 단계가 한 화면 안에 끝나는 크기로 나눈다
+  const stage = useStages(4);
   useEffect(() => { const offs = [on('chars', redraw), on('chats', redraw)]; return () => offs.forEach(f => f()); }, []);
   const [q, setQ] = useState(view.q), dq = useDeferredValue(q);   // 글자는 바로 찍고, 목록은 한 박자 뒤에 따라온다 (타자가 밀리지 않게)
   const [pick, setPickRaw] = useState(view.pick), setPick = (i: number) => { view.pick = i; setPickRaw(i); };
@@ -251,8 +241,8 @@ function Home() {
   return <section className="home hm">
     <Stage picks={picks} pick={pick} setPick={setPick} ver={ver} />
     {recent.length ? <Recent recent={recent} ver={ver} /> : null}
-    {stage > 0 ? <DeskSec /> : null}
-    {stage > 1 ? <div>
+    {stage > 0 ? <DeskSec upto={stage > 1 ? undefined : DESK_FIRST} /> : null}
+    {stage > 2 ? <div>
       <SecHead title={t('home.chars')} sub="characters"><em>{tn('home.charCount', list.length)}</em><span className="hm-sp" />
         {narrow ? seg : <>
         <Btn label={t('common.import')} ic="import" cls="hm-line hm-wide" onClick={() => void importDialog()} />
@@ -285,7 +275,7 @@ function Home() {
       {folderBar}
       <div className={'hm-grid ' + SIZES[size][0]} ref={el => { grid.current = el; pg.listRef(el); }}>
 
-        {pg.rows.map(c => <Card key={c.id} c={c} name={c.name} sub={c.tags.slice(0, 2).join(' · ')} fav={!!c.fav} noPic={!c.avatar} av={c.avatar} sel={c.id === selId} drag={fs.length > 0} folder={folderName(c)} redraw={redraw} />)}
+        {(stage > 3 ? pg.rows : pg.rows.slice(0, 12)).map(c => <Card key={c.id} c={c} name={c.name} sub={c.tags.slice(0, 2).join(' · ')} fav={!!c.fav} noPic={!c.avatar} av={c.avatar} sel={c.id === selId} drag={fs.length > 0} folder={folderName(c)} redraw={redraw} />)}
         {list.length ? null : term || view.tag || view.fav ? <div className="fx-empty hm-none"><SearchNone /><p>{t('home.none.search')}</p></div>
           : view.folder && view.folder !== '-' ? <div className="fx-empty hm-none folder-empty"><FolderNone /><p>{t('home.folder.empty')}</p></div>
           : !S.chars.length ? <div className="fx-empty hm-none"><ArchEmpty /><p>{t('home.none.chars')}</p></div> : null}

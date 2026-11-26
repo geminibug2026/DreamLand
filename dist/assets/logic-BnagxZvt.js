@@ -1,1 +1,0 @@
-export{r as cfg,u as translate}from"./logic-BAd6g1p4.js";

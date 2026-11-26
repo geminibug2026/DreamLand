@@ -8,7 +8,7 @@ import { Illust } from '../lib/illust';
 import { Memory, parseLoose } from '../lib/memory';
 import { S } from '../lib/core';
 import { buildBook } from '../lib/f-bind';
-import { chatApi } from '../chat/actions';
+import { chatApi, drawTo } from '../chat/actions';
 import { quickCall } from '../lib/engine';
 import { go, route } from '../lib/router';
 import * as core from '../lib/core';
@@ -326,6 +326,7 @@ export async function jumpTo(chatId: string, msgId?: string) {
   go('chat', chatId); if (!msgId) return;
   for (let i = 0; i < 80; i++) {
     await core.sleep(110); if (route.page !== 'chat') return;
+    drawTo(String(msgId));   // "더 보기" 안쪽인데 아직 그리지 않은 메시지면 먼저 그린다
     const el = document.querySelector(`article.msg[data-id="${String(msgId).replace(/["\\]/g, '')}"]`);
     if (el) { el.scrollIntoView({ block: 'center' }); el.classList.add('alm-flash'); setTimeout(() => el.classList.remove('alm-flash'), 2000); return; }
     const more = document.querySelector<HTMLElement>('#page .more-btn'); if (more) more.click(); else if (document.querySelector('#page article.msg')) return toast(tr('diary.toast.msgGone'));

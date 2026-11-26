@@ -86,24 +86,28 @@ export function setDrawer(open: boolean) { cur.drawer = open; bump('layout', 'dr
 
 const whenIdle = (fn: () => void) => { if ('requestIdleCallback' in window) requestIdleCallback(fn, { timeout: 160 }); else setTimeout(fn, 24); };
 let drawJob = 0;
-/** 메시지 목록을 새로 그린다. lazy(방에 막 들어왔을 때)면 보이는 끝부분만 먼저 그리고, 그 위쪽은 틈나는 대로 이어 붙인다 */
-export function drawMsgs({ lazy = false } = {}) {
+/** 메시지 목록을 새로 그린다. lazy(방에 막 들어왔을 때)면 보이는 끝부분만 먼저 그리고, 그 위쪽은 틈나는 대로 이어 붙인다.
+ *  keep: 지금 그려 둔 만큼만 새로 그린다 (설정 · 시각이 바뀌어 모양만 다시 그릴 때 — 위쪽 수십 개를 한꺼번에 더 그리지 않게) */
+export function drawMsgs({ lazy = false, keep = false } = {}) {
   const list = cur.msgs, total = list.length, from = Math.max(0, total - cur.shown), FIRST = 12;
   cur.epoch++; cur.fresh.clear(); cur.from = from;
-  cur.head = lazy && total - from > FIRST + 8 ? total - FIRST : from;
+  // 처음 몫: 끝에서 12개까지, 글이 길면 화면 두어 장 몫(1500자 남짓)에서 멈춘다 — 긴 답이 이어지는 방을 열 때 한 번에 그리는 양을 줄인다. 그 위는 growUp 이 틈틈이 붙인다
+  let first = 0; for (let i = total - 1, n = 0; i >= from && first < FIRST; i--) { first++; n += (list[i].swipes[list[i].sw]?.text || '').length; if (first >= 3 && n > 1500) break; }
+  cur.head = keep ? Math.max(from, Math.min(cur.head, total)) : lazy && total - from > FIRST + 8 ? total - first : from;
   flush('msgs');
   growUp();
 }
 /** 그려 둔 첫 메시지(head)를 cur.from 까지 조금씩 위로 넓힌다. 이미 그린 메시지는 다시 만들지 않고, 보던 자리를 지킨다 */
-// 보는 자리에서 위로 화면 몇 장 넘게 그려 두었으면 멈췄다가, 위로 스크롤해 다가오면 이어 그린다 (보지 않을 수백 개를 미리 그리느라 다른 동작이 느려지지 않게)
+// 보는 자리에서 위로 화면 네 장 넘게 그려 두었으면 멈췄다가, 위로 스크롤해 다가오면 이어 그린다 (방을 열 때 처음 몫 100개도 마찬가지 — 보지 않을 위쪽을 미리 그리느라 연 뒤 몇 초 동안 화면이 바쁘지 않게)
+// 아직 그리지 않은 메시지가 필요한 곳(찾기 · 이 메시지로 가기 · 확장의 reveal/scrollTo)은 showAt · drawTo 로 그 자리부터 먼저 그린다
 let growPaused = 0;
 function growUp(first = false) {
-  const job = ++drawJob, list = cur.msgs, base = Math.max(0, list.length - truncation()); growPaused = 0;
+  const job = ++drawJob, list = cur.msgs; growPaused = 0;
   if (cur.head <= cur.from) return;
   let per = 6;   // 한 번에 이어 붙이는 개수 — 걸린 시간을 보고 늘리거나 줄인다
   const step = () => {
     const sc = ui.scroll; if (job !== drawJob || list !== cur.msgs || !sc?.isConnected) return;   // 그사이 다시 그렸거나 방을 나갔다
-    if (cur.head <= base && sc.scrollTop > sc.clientHeight * 4) { growPaused = job; return; }   // 처음 그리는 몫(최근 100개)은 쉬지 않고 채운다
+    if (sc.scrollTop > sc.clientHeight * 4) { growPaused = job; return; }
     const t = performance.now(), gap = sc.scrollHeight - sc.scrollTop;
     cur.head = Math.max(cur.from, cur.head - per); flush('msgs');
     selfScroll(sc, sc.scrollHeight - gap);   // 위에 붙인 만큼 밀리지 않게 보던 자리를 지킨다
@@ -112,6 +116,18 @@ function growUp(first = false) {
   };
   if (first) step(); else requestAnimationFrame(() => whenIdle(step));
 }
+/** i 번째 메시지가 그려져 있게 한다: 아직 위쪽을 그리지 않은 자리면 그 조금 위(4개)부터 아래까지 바로 그린다 (보던 자리는 지킨다).
+ *  widen: "더 보기" 너머에 있으면 창을 넓혀서라도 (찾기 · 이 메시지로 가기). 그린 위쪽은 다시 위로 올라갈 때 이어 그린다. 그려져 있으면 true */
+function showAt(i: number, widen = false) {
+  const list = cur.msgs, total = list.length; if (i < 0 || i >= total) return false;
+  const need = total - i + 4;
+  if (widen && need > cur.shown) { cur.shown = need; cur.from = Math.max(0, total - need); }
+  if (i < cur.from) return false;
+  if (i < cur.head) { const sc = ui.scroll, gap = sc ? sc.scrollHeight - sc.scrollTop : 0; cur.head = Math.max(cur.from, i - 4); flush('msgs'); if (sc) selfScroll(sc, sc.scrollHeight - gap); growUp(); }   // 위에만 붙으니 아래에서 잰 자리를 지키면 보던 화면이 그대로다
+  return true;
+}
+/** 그 메시지를 화면에 그려 둔다 ("더 보기" 안쪽인데 아직 그리지 않았으면 바로 그린다). DOM 에서 메시지를 찾기 전에 부른다. 창 밖이면 false */
+export const drawTo = (id: string) => showAt(cur.msgs.findIndex(m => m.id === id));
 /** 처음 그릴 메시지 수 = "더 보기" 한 번에 더 그리는 수 (실리태번 chat_truncation, 기본 100, 0 이면 전부) */
 export function truncation() { const n = (S.settings as unknown as { chatTruncation?: number | null }).chatTruncation; return n == null || n < 0 ? 100 : n > 0 ? Math.round(n) : Infinity; }
 /** 이전 메시지 더 보기: 이미 그린 메시지는 그대로 두고 위에 이어 붙인다 (보던 자리를 지킨다) */
@@ -755,7 +771,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
       if (!final && !sw.reasoning) {
         if (type === 'normal') { const i = msgs.indexOf(target); if (i >= 0) msgs.splice(i, 1); }
         else if (type === 'regen') { target.swipes.pop(); target.sw = Math.max(0, target.swipes.length - 1); if (cur.chat === chat) rewindState(); else Live.rewind(chat, msgs); }
-        if (cur.chat === chat) drawMsgs();
+        if (cur.chat === chat) drawMsgs({ keep: true });
       } else {
         sw.text = final || sw.text; if (cutWhy) sw.cut = cutWhy; else delete sw.cut; /* 끊긴 답변은 표시해 둔다 — 장기기억이 끝 문장을 사실로 적지 않는다 */ sw.model = used.model; if (fell) sw.fb = used.name; else delete sw.fb; sw.ms = now() - t0; if (type !== 'continue') sw.ts = now(); if (opt.stamp && type === 'normal') { sw.ts = target.ts = opt.stamp; }
         if (cur.chat === chat) redraw(target);
@@ -848,7 +864,7 @@ export async function track(chat: Room, msgs: Msg[]) {
 /** 그 메시지가 보이게 펼친 뒤 그리로 간다 (찾기 · 상태창의 "이 메시지로 가기") */
 export function jumpTo(m: Msg) {
   const i = cur.msgs.indexOf(m); if (i < 0) return;
-  cur.shown = Math.max(cur.shown, cur.msgs.length - i + 4); drawMsgs(); setTimeout(() => chatApi.scrollTo(m.id), 60);
+  showAt(i, true); setTimeout(() => chatApi.scrollTo(m.id), 60);
 }
 const saveState = (() => { let t = 0; return () => { clearTimeout(t); t = window.setTimeout(() => { if (cur.chat) void S.saveMsgs(cur.chat, cur.msgs); }, 300); }; })();
 /** 상태창이 대화 화면에 부탁하는 것들 */
@@ -862,7 +878,7 @@ export type HudOpts = ReturnType<typeof hudOpts>;
 /** 확장 기능에 열어 주는 채팅 조작 (옛 chat.js 의 chatApi 자리에 그대로 끼운다) */
 export const chatApi: ChatApi = {
   /** 접혀 있는 앞부분까지 펼쳐 그 메시지로 간다 */
-  reveal(id) { unpin(); const i = cur.msgs.findIndex(m => m.id === id); if (i < 0) return false; const need = cur.msgs.length - i + 4; if (need > cur.shown || i < cur.head) { cur.shown = Math.max(cur.shown, need); drawMsgs(); } const el = ui.msgs?.querySelector(`[data-id="${id}"]`); if (!el) return false; el.scrollIntoView({ block: 'center' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1600); return true; },
+  reveal(id) { unpin(); const i = cur.msgs.findIndex(m => m.id === id); if (i < 0) return false; showAt(i, true); const el = ui.msgs?.querySelector(`[data-id="${id}"]`); if (!el) return false; el.scrollIntoView({ block: 'center' }); el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1600); return true; },
   roomName: c => roomName(c), groupTitle: c => titleOf(c),
   current: () => ({ chat: cur.chat, msgs: cur.msgs, busy: cur.busy }),
   generate: (type = 'normal') => generate(type as GenType),
@@ -892,7 +908,7 @@ export const chatApi: ChatApi = {
     if (cur.drawer) drawDrawer();
   },
   setStatus: t => setStatus(t),
-  scrollTo: id => { unpin(); ui.msgs?.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }); },
+  scrollTo: id => { unpin(); drawTo(id); ui.msgs?.querySelector(`[data-id="${id}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }); },
   openDrawer: () => setDrawer(true),
   push: async m => { if (!cur.chat) return; cur.msgs.push(m); appendMsg(m); toBottom(); await save(); },
   stop: () => cur.abort?.abort(),

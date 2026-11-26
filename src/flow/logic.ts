@@ -8,7 +8,7 @@ import { confirmBox, menu, toast } from '../ui';
 import { go, route } from '../lib/router';
 import { macro, tokens } from '../lib/engine';
 import { X } from '../lib/hooks';
-import { chatApi } from '../chat/actions';
+import { chatApi, drawTo } from '../chat/actions';
 import { t } from '../i18n';
 
 export const cur = () => chatApi.current();
@@ -125,7 +125,7 @@ export async function removeCheckpoint(cp: Checkpoint) { const { chat } = cur();
 export const findCheckpoint = (key: unknown) => { const { chat } = cur(); const k = String(key || '').trim().toLowerCase(); return chat ? cps(chat).find(c => c.id === key || c.name.toLowerCase() === k) : null; };
 /** 그 메시지가 보이게 한다 (위쪽에 접혀 있으면 펼친다) */
 export async function showMessage(id: string) {
-  for (let i = 0; i < 60 && !document.querySelector(`.msgs [data-id="${id}"]`); i++) { const more = document.querySelector<HTMLElement>('.msgs > .more-btn'); if (!more) break; more.click(); await sleep(0); }
+  for (let i = 0; i < 60 && !(drawTo(id), document.querySelector(`.msgs [data-id="${id}"]`)); i++) { const more = document.querySelector<HTMLElement>('.msgs > .more-btn'); if (!more) break; more.click(); await sleep(0); }   // 아직 그리지 않은 메시지면 먼저 그린다
   const el = document.querySelector(`.msgs [data-id="${id}"]`);
   if (!el) return toast(t('flow.cp.msgMissing'));
   chatApi.scrollTo(id);

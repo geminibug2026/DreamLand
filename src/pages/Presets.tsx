@@ -1,6 +1,6 @@
 // 프리셋: 생성 설정 · 프리셋 변수 · 프롬프트 블록
 import { useLayoutEffect, useRef } from 'react';
-import { Btn, Icon, IconBtn } from '../kit';
+import { Btn, Icon, IconBtn, useStages } from '../kit';
 import { Form, LibraryPage, Shelf, confirmBox, stripShelf, toast, useDragSort, type FormDefs } from '../ui';
 import { PresetVarsEditor } from '../editors/PresetVars';
 import type { Block, Preset } from '../editors/types';
@@ -34,16 +34,9 @@ function PresetEditor({ p, api }: { p: Preset; api: EditorApi }) {
   // 방향키로 옮긴 뒤에는 그 줄의 손잡이를 다시 잡는다
   useLayoutEffect(() => { if (focus.current >= 0) { list.current?.children[focus.current]?.querySelector<HTMLElement>('.grip')?.focus(); focus.current = -1; } });
   const active = p.id === S.settings.activePreset, here = !active && hereId() === p.id;   // here: 기본은 아니지만 방금 보던 대화가 (캐릭터 연결로) 쓰는 프리셋
-  return <div className="editor">
-    <header className="editor-head"><h2>{p.name}</h2><div className="row">
-      {active ? <em className="badge on">{t('presets.inUse')}</em> : here ? <em className="badge on">{t('presets.inUseHere')}</em> : <Btn label={t('presets.use')} ic="check" cls="primary" onClick={() => { S.set({ activePreset: p.id }); api.refresh(); }} />}
-      <IconBtn ic="copy" title={t('common.duplicate')} onClick={async () => { await S.save('presets', { ...stripShelf(structuredClone(p)), id: uid(), name: p.name + ' (사본)', src: '', folder: p.folder }, true); api.refresh(); }} />
-      <IconBtn ic="code" title={t('presets.regex', { n: (p.regex || []).length })} onClick={() => go('regex', 'preset:' + p.id)} />
-      <IconBtn ic="import" title={t('common.export')} onClick={() => download(`${p.name}.dreamland-preset.json`, JSON.stringify(stripShelf(p), null, 2))} />
-      <IconBtn ic="upload" title={t('presets.exportSt')} onClick={() => { const P = p as unknown as cards.DPreset, tc = !!(P.st as { tc?: unknown } | undefined)?.tc; download(`${p.name}.json`, JSON.stringify(tc ? cards.presetToStTc(P) : cards.presetToSt(P), null, 4)); }} />
-      <IconBtn ic="trash" title={t('common.delete')} onClick={async () => { if (S.presets.length < 2) return toast(t('presets.lastOne')); if (await confirmBox(t('presets.confirmDelete', { name: p.name }), t('common.delete'), true)) { await S.remove('presets', p.id); if (active) S.set({ activePreset: S.presets[0].id }); api.refresh(); } }} />
-    </div></header>
-    <Form obj={p} defs={[{ k: 'name', label: t('common.name') },
+  // 첫 화면에는 이름 · 생성 설정까지만 그리고, 그 아래는 다음 화면부터 차례로 붙인다 (더 많은 설정 · 이어 쓰기 문구 → 변수 · 블록) — 같은 폼에 줄이 이어 붙어 다 그린 모습은 그대로다
+  const stage = useStages(2);
+  const defs: FormDefs = [{ k: 'name', label: t('common.name') },
       { section: t('presets.sec.gen') },
       { k: 'params.temperature', label: t('presets.p.temperature'), type: 'num', nullable: true, step: 0.05, third: true, ph: NONE() }, { k: 'params.topP', label: 'Top P', type: 'num', nullable: true, step: 0.01, third: true, ph: NONE() }, { k: 'params.topK', label: 'Top K', type: 'num', nullable: true, third: true, ph: NONE() },
       { k: 'params.maxTokens', label: t('presets.p.maxTokens'), type: 'num', third: true }, { k: 'params.contextSize', label: t('presets.p.contextSize'), type: 'num', third: true }, { k: 'params.effort', label: t('presets.p.effort'), type: 'select', opts: [['', t('presets.p.effortDefault')], 'low', 'medium', 'high', 'xhigh', 'max'], third: true },
@@ -59,8 +52,18 @@ function PresetEditor({ p, api }: { p: Preset; api: EditorApi }) {
       { k: 'params.stream', label: t('presets.p.stream'), type: 'check' }, { k: 'params.squash', label: t('presets.p.squash'), type: 'check' }, { k: 'params.cardOverrides', label: t('presets.p.cardOverrides'), type: 'check' }, { k: 'params.namesInGroup', label: t('presets.p.namesInGroup'), type: 'check' },
       { section: t('presets.sec.nudges') },
       { k: 'params.continueNudge', label: t('presets.p.continueNudge'), type: 'area', rows: 2, ph: CONTINUE_NUDGE }, { k: 'params.impersonatePrompt', label: t('presets.p.impersonatePrompt'), type: 'area', rows: 2, ph: IMPERSONATE_NUDGE }, { k: 'params.groupNudge', label: t('presets.p.groupNudge'), type: 'area', rows: 2, ph: GROUP_NUDGE },
-    ]} onChange={sv} />
-    <h3 className="form-sec">{t('presets.sec.vars')}</h3><PresetVarsEditor p={p} sv={sv} />
+    ], firstPart = defs.findIndex(d => !!d && 'section' in d && d.section === t('presets.more.title'));
+  return <div className="editor">
+    <header className="editor-head"><h2>{p.name}</h2><div className="row">
+      {active ? <em className="badge on">{t('presets.inUse')}</em> : here ? <em className="badge on">{t('presets.inUseHere')}</em> : <Btn label={t('presets.use')} ic="check" cls="primary" onClick={() => { S.set({ activePreset: p.id }); api.refresh(); }} />}
+      <IconBtn ic="copy" title={t('common.duplicate')} onClick={async () => { await S.save('presets', { ...stripShelf(structuredClone(p)), id: uid(), name: p.name + ' (사본)', src: '', folder: p.folder }, true); api.refresh(); }} />
+      <IconBtn ic="code" title={t('presets.regex', { n: (p.regex || []).length })} onClick={() => go('regex', 'preset:' + p.id)} />
+      <IconBtn ic="import" title={t('common.export')} onClick={() => download(`${p.name}.dreamland-preset.json`, JSON.stringify(stripShelf(p), null, 2))} />
+      <IconBtn ic="upload" title={t('presets.exportSt')} onClick={() => { const P = p as unknown as cards.DPreset, tc = !!(P.st as { tc?: unknown } | undefined)?.tc; download(`${p.name}.json`, JSON.stringify(tc ? cards.presetToStTc(P) : cards.presetToSt(P), null, 4)); }} />
+      <IconBtn ic="trash" title={t('common.delete')} onClick={async () => { if (S.presets.length < 2) return toast(t('presets.lastOne')); if (await confirmBox(t('presets.confirmDelete', { name: p.name }), t('common.delete'), true)) { await S.remove('presets', p.id); if (active) S.set({ activePreset: S.presets[0].id }); api.refresh(); } }} />
+    </div></header>
+    <Form obj={p} defs={stage || firstPart < 0 ? defs : defs.slice(0, firstPart)} onChange={sv} />
+    {stage > 1 ? <><h3 className="form-sec">{t('presets.sec.vars')}</h3><PresetVarsEditor p={p} sv={sv} />
     <h3 className="form-sec">{t('presets.sec.blocks')}</h3>
     <p className="hint">{t('presets.blocksHint')}</p>
     <div className="blocks" ref={el => { list.current = el; return drag(el); }}>{p.blocks.map((b, i) => {
@@ -77,7 +80,7 @@ function PresetEditor({ p, api }: { p: Preset; api: EditorApi }) {
         {isOpen && <div className="block-body"><Form obj={b} defs={blockDefs(b)} onChange={sv} /></div>}
       </div>;
     })}</div>
-    <Btn label={t('presets.block.add')} ic="plus" cls="ghost" onClick={() => { const b: Block = { id: uid(), kind: 'text', name: '새 프롬프트', role: 'system', content: '', enabled: true, depth: null }; const at = p.blocks.findIndex(x => x.kind === 'chatHistory'); p.blocks.splice(at < 0 ? p.blocks.length : at, 0, b); open.add(b.id); void api.save(); redraw(); }} />
+    <Btn label={t('presets.block.add')} ic="plus" cls="ghost" onClick={() => { const b: Block = { id: uid(), kind: 'text', name: '새 프롬프트', role: 'system', content: '', enabled: true, depth: null }; const at = p.blocks.findIndex(x => x.kind === 'chatHistory'); p.blocks.splice(at < 0 ? p.blocks.length : at, 0, b); open.add(b.id); void api.save(); redraw(); }} /></> : null}
   </div>;
 }
 

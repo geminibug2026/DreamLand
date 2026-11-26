@@ -16,7 +16,8 @@ class Guard extends Component<{ children: ReactNode }, { bad: boolean }> {
 }
 const inside = (r: DOMRect, x: number, y: number) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
 
-export function Desk() {
+/** upto: 앞에서 몇 개만 그린다 (홈이 처음 그릴 때 나눠 붙인다 — 없으면 전부). 꾸미는 중에는 늘 전부 */
+export function Desk({ upto }: { upto?: number } = {}) {
   const redraw = useEvents('desk:changed', 'chars', 'chats'), grid = useRef<HTMLDivElement | null>(null);
   touchVisit();
   const c = cfg(), all = layout(), on = all.filter(p => !p.off), off = all.filter(p => p.off);
@@ -60,7 +61,7 @@ export function Desk() {
     </header>
     {c.fold ? null : <>
       {editing ? <p className="dk-tip">{t('desk.edit.tip')}</p> : null}
-      {on.length ? <div className="dk-grid" ref={grid}>{on.map((p, i) => <article key={p.w.id} className={`dk-w ${p.size}${p.w.bare ? ' bare' : ''} fx-in`} style={{ ['--d' as string]: i * 40 + 'ms' }} data-id={p.w.id} aria-label={p.w.title}>
+      {on.length ? <div className="dk-grid" ref={grid}>{(upto == null || editing ? on : on.slice(0, upto)).map((p, i) => <article key={p.w.id} className={`dk-w ${p.size}${p.w.bare ? ' bare' : ''} fx-in`} style={{ ['--d' as string]: i * 40 + 'ms' }} data-id={p.w.id} aria-label={p.w.title}>
         {editing ? tools(p, i) : null}
         <div className="dk-in" inert={editing || undefined}>{p.w.bare ? <Guard>{p.w.render()}</Guard>
           : <div className="dk-card fx-frame"><header className="dk-h fx-head">{p.w.art ? p.w.art() : <i className="fx-dot" />}<h3>{p.w.title}</h3></header><div className="dk-b"><Guard>{p.w.render()}</Guard></div></div>}</div>

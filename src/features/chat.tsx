@@ -21,9 +21,9 @@ export const feature = {
     Live.poke = poke;
     Live.settings = liveSettings as typeof Live.settings; Live.editState = editState as typeof Live.editState;   // 옛 모듈이 여는 설정 창 · 고치기 창도 새 것으로
     on('route', orderHooks);   // 기능이 모두 뜬 뒤(첫 화면을 그릴 때)부터 화면을 옮길 때마다 차례를 맞춘다
-    on('clock', c => { if (c === cur.chat && shown()) { drawTop(); drawMsgs(); if (cur.drawer) drawDrawer(); armAuto(); } });
+    on('clock', c => { if (c === cur.chat && shown()) { drawTop(); drawMsgs({ keep: true }); if (cur.drawer) drawDrawer(); armAuto(); } });
     on('clock:tick', c => { if (c === cur.chat && shown()) drawTop(); });
-    on('settings', p => { const o = (p || {}) as object; if (shown() && ('bubbles' in o || 'showMeta' in o || 'avatarShape' in o)) drawMsgs(); });
+    on('settings', p => { const o = (p || {}) as object; if (shown() && ('bubbles' in o || 'showMeta' in o || 'avatarShape' in o)) drawMsgs({ keep: true }); });
     document.addEventListener('keydown', onKey);
     document.addEventListener('visibilitychange', onVisible);
     setInterval(watchPresence, 30000);

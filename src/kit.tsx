@@ -1,5 +1,5 @@
 // 기본 부품: 아이콘 · 달 · 엠블럼 · 버튼 · 초상 + 화면을 다시 그리게 하는 훅
-import { useEffect, useReducer, useState, useSyncExternalStore, type CSSProperties, type HTMLAttributes, type MouseEvent, type ReactNode } from 'react';
+import { startTransition, useEffect, useReducer, useState, useSyncExternalStore, type CSSProperties, type HTMLAttributes, type MouseEvent, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { on } from './lib/core';
@@ -96,6 +96,18 @@ export function Avatar({ o, cls = '' }: { o?: { avatar?: string; name?: string; 
 /** 아직 옮기지 않은 옛 코드가 만든 DOM 조각을 그대로 끼워 넣는다 (옮기는 동안만 쓴다) */
 export function Dom({ node }: { node: Node | null | undefined }) {
   return <span style={{ display: 'contents' }} ref={el => { if (el) el.replaceChildren(...(node ? [node] : [])); }} />;
+}
+
+/** 화면에 처음 그린 뒤 한 단계씩 오른다 (0 → n). 단계마다 그 화면이 실제로 그려진 다음(rAF 뒤의 작업)에, 끊어 그릴 수 있게(transition) 올린다.
+ *  화면 아래쪽(첫 화면 밖)을 다음 화면부터 붙여, 누른 뒤 첫 화면이 바로 뜨게 한다 (홈 · 프리셋) */
+export function useStages(n: number) {
+  const [k, setK] = useState(0);
+  useEffect(() => {
+    if (k >= n) return; let tm = 0;
+    const raf = requestAnimationFrame(() => { tm = window.setTimeout(() => startTransition(() => setK(x => Math.min(n, x + 1)))); });
+    return () => { cancelAnimationFrame(raf); clearTimeout(tm); };
+  }, [k, n]);
+  return k;
 }
 
 /** 이 이름의 알림이 오면 다시 그린다. 돌려주는 함수를 부르면 직접 다시 그린다 */
