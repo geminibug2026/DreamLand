@@ -8,6 +8,7 @@ import { plainUrl } from '../lib/blobUrl';
 import { toast } from '../ui';
 import { modal } from '../ui/dom';
 import { chatApi } from '../chat/actions';
+import { onFrame } from '../lib/frame';
 import { t } from '../i18n';
 
 type Pic = Pick<Sprite, 'id' | 'data'>;
@@ -115,7 +116,7 @@ function applyStanding(layout: Element, chat: ChatX, chars: CharX[], state: Map<
 }
 
 let raf = 0, syncing = false;
-export function schedule() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; sync(); }); }
+export function schedule() { if (!raf) { raf = 1; onFrame(() => { raf = 0; sync(); }); } }
 /** 대화 화면의 초상 · 아바타 · 스탠딩을 지금 표정에 맞춘다 */
 export function sync() {
   if (syncing) return; syncing = true;

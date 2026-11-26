@@ -207,6 +207,17 @@ export function bodyHtml(m: Msg, keep = false) {
   // 에셋 그림은 짧은 blob: 주소 · 틀 · 크기까지 글에 넣은 뒤 꾸미므로, 기억해 둔 결과(renderKept)도 설정 · 보관함이 바뀌면 새로 꾸며진다. 받는 중에는 덜 쓴 {{img:: 를 가린다
   return (keep ? renderKept : render)(Assets.inline(Assets.expand(shownText(m), owners, `${m.id}:${m.sw}`, { partial: !keep }), owners), { style, prose: m.role !== 'user' });
 }
+/** 받는 중인 본문을 새 글로 맞춘다: 앞에서부터 그대로인 조각(다 쓴 문단)은 두고, 달라진 데부터만 바꾼다.
+ *  결과는 innerHTML = html 과 같다. 매 화면 본문 전체를 새로 만들지 않아 스타일 계산 · 배치가 늘어난 끝부분만큼만 든다 (긴 답일수록 차이가 크다) */
+let parseDoc: Document | null = null;
+function patchBody(el: Element, html: string) {
+  const box = (parseDoc ||= document.implementation.createHTMLDocument('')).body; box.innerHTML = html;   // 그림을 불러오지 않는 빈 문서에서 읽는다
+  let a = el.firstChild, b = box.firstChild;
+  while (a && b && a.isEqualNode(b)) { a = a.nextSibling; b = b.nextSibling; }
+  while (a) { const n = a.nextSibling; a.remove(); a = n; }
+  while (b) { const n = b.nextSibling; el.appendChild(b); b = n; }
+  box.textContent = '';
+}
 /** 메시지 옆에 적는 시각: 이야기 시계를 쓰는 방은 이야기 시각, 시각을 쓰지 않는 방은 비움 */
 export const msgClock = (m: Msg, s: Swipe) => { const k = Clock.mode(cur.chat); return k === 'none' ? '' : k === 'story' ? fmtTime(Clock.timeOf(cur.chat, m)) : fmtTime(s.ts || m.ts); };
 
@@ -689,7 +700,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
     if (!shown()) return;   // 다른 방을 보고 있다: 이 방으로 돌아오면 목록이 cur.paint 에서 받는 중인 글을 그린다
     // 본문만 바뀌었으면 React 를 거치지 않고 그 자리의 글만 바꾼다 (생각 글이 늘었거나 아직 그리지 않았으면 메시지를 다시 그린다)
     const rl = (sw?.reasoning || '').length;
-    if (bodyEl?.isConnected && rl === reasonLen) bodyEl.innerHTML = html;
+    if (bodyEl?.isConnected && rl === reasonLen) patchBody(bodyEl, html);
     else { flush('m:' + target.id); reasonLen = rl; bodyEl = ui.msgs?.querySelector(`article.msg[data-id="${CSS.escape(target.id)}"] .msg-body`) || null; }
     if (S.settings.autoScroll) followBottom(atBottom);
     // 상태창 변수 블록(<UpdateVariable>)은 화면에 숨는다 — 답이 끝난 것처럼 보여도 아직 받는 중이면 그렇다고 알린다

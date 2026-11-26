@@ -11,6 +11,7 @@ import { toast } from '../ui';
 import { X } from '../lib/hooks';
 import { esc } from '../lib/core';
 import { chatApi } from '../chat/actions';
+import { onFrame } from '../lib/frame';
 import { t } from '../i18n';
 
 export const GLOBE = 'M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM3 12h18M12 3c2.6 2.7 3.9 5.7 3.9 9s-1.3 6.3-3.9 9c-2.6-2.7-3.9-5.7-3.9-9s1.3-6.3 3.9-9z';
@@ -140,6 +141,6 @@ export function watchChat() {
   new MutationObserver(recs => {
     let hit = false;
     for (const r of recs) for (const n of r.addedNodes) if (has(n)) { fresh.add(n); hit = true; }
-    if (hit && !queued) { queued = true; requestAnimationFrame(run); setTimeout(run, 100); }
+    if (hit && !queued) { queued = true; onFrame(run); setTimeout(run, 100); }
   }).observe(document.documentElement, { childList: true, subtree: true });
 }

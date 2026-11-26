@@ -1,5 +1,5 @@
 // 홈: 오늘 밤의 창 · 이어서 · 캐릭터 목록(폴더 · 정렬 · 검색 · 카드 크기)
-import { memo, useDeferredValue, useEffect, useMemo, useReducer, useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { memo, startTransition, useDeferredValue, useEffect, useMemo, useReducer, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { Btn, Emblem, Icon, IconBtn, InkName, useThumb } from '../kit';
 import type { Char, Folder } from '../types';
 import { charPicker, choiceBox, confirmBox, menu, promptBox, usePaged } from '../ui';
@@ -146,9 +146,22 @@ const Card = memo(function Card({ c, name, sub, fav, noPic, sel, drag, folder, r
   </button>;
 });
 
+/** 화면에 처음 그린 뒤 한 단계씩 오른다 (0 → n). 단계마다 그 화면이 실제로 그려진 다음(rAF 뒤의 작업)에, 끊어 그릴 수 있게(transition) 올린다 */
+function useStages(n: number) {
+  const [k, setK] = useState(0);
+  useEffect(() => {
+    if (k >= n) return; let tm = 0;
+    const raf = requestAnimationFrame(() => { tm = window.setTimeout(() => startTransition(() => setK(x => Math.min(n, x + 1)))); });
+    return () => { cancelAnimationFrame(raf); clearTimeout(tm); };
+  }, [k, n]);
+  return k;
+}
+
 function Home() {
   // ver: 캐릭터 · 대화방이 바뀌었거나 보기(정렬 · 폴더 …)를 바꿨을 때 오른다. 아래 셈은 ver 가 같으면 다시 하지 않는다
   const [ver, redraw] = useReducer((x: number) => x + 1, 0);
+  // 홈에 올 때(켤 때 · 다른 화면에서 돌아올 때) 맨 위(성도 · 이어서)를 먼저 그려 보이고, 아래의 책상 · 캐릭터 목록은 그다음 화면부터 차례로 붙인다 (한 번에 수천 개를 만드느라 누른 뒤 화면이 멈추지 않게)
+  const stage = useStages(2);
   useEffect(() => { const offs = [on('chars', redraw), on('chats', redraw)]; return () => offs.forEach(f => f()); }, []);
   const [q, setQ] = useState(view.q), dq = useDeferredValue(q);   // 글자는 바로 찍고, 목록은 한 박자 뒤에 따라온다 (타자가 밀리지 않게)
   const [pick, setPickRaw] = useState(view.pick), setPick = (i: number) => { view.pick = i; setPickRaw(i); };
@@ -238,8 +251,8 @@ function Home() {
   return <section className="home hm">
     <Stage picks={picks} pick={pick} setPick={setPick} ver={ver} />
     {recent.length ? <Recent recent={recent} ver={ver} /> : null}
-    <DeskSec />
-    <div>
+    {stage > 0 ? <DeskSec /> : null}
+    {stage > 1 ? <div>
       <SecHead title={t('home.chars')} sub="characters"><em>{tn('home.charCount', list.length)}</em><span className="hm-sp" />
         {narrow ? seg : <>
         <Btn label={t('common.import')} ic="import" cls="hm-line hm-wide" onClick={() => void importDialog()} />
@@ -279,6 +292,6 @@ function Home() {
         <button className="hm-c add" onClick={() => void addChar()}><div className="hm-im"><Icon name="plus" size={26} /></div><b>{t('home.newChar')}</b><small>{t('home.newCharSub')}</small></button>
       </div>
       {pg.pager}
-    </div>
+    </div> : null}
   </section>;
 }

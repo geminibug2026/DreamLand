@@ -15,6 +15,7 @@ import { cur, flat, guard, shownTitle } from './util';
 import { Illust } from './illust';
 import { IllustPic } from '../chat/IllustPic';
 import { t, tn } from '../i18n';
+import { onFrame } from '../lib/frame';
 
 /** 삽화 한 장: 액자 + 그림 + 그림 위 도구 + 아래 제목 줄. 대화 화면의 figure.illust 안에 들어간다 */
 export function Figure({ fig, m, sw, it }: { fig: HTMLElement; m: Msg; sw: Swipe; it: Slot }) {
@@ -53,7 +54,7 @@ function Extras({ m, sw, pending, failed, drafts, hidden, note }: { m: Msg; sw: 
 
 let timer = 0;
 // 답변을 받는 중이 아니면 다음 화면을 그리기 전에 꾸민다 (꾸미기 전 모습이 한 번 비쳤다가 바뀌며 흔들리지 않게)
-export function schedule() { if (timer) return; const run = () => { timer = 0; try { decorate(); } catch (e) { console.warn('[삽화]', e); } }; timer = cur().busy ? window.setTimeout(run, 400) : requestAnimationFrame(run); }
+export function schedule() { if (timer) return; const run = () => { timer = 0; try { decorate(); } catch (e) { console.warn('[삽화]', e); } }; if (cur().busy) timer = window.setTimeout(run, 400); else { timer = -1; onFrame(run); } }
 function decorate() {
   sweep();
   const { chat, msgs } = cur(); if (!chat || !msgs) return;

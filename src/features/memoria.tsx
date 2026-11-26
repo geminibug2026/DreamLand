@@ -16,6 +16,7 @@ import { X } from '../lib/hooks';
 import { chatApi } from '../chat/actions';
 import * as memMod from '../lib/memory';
 import * as core from '../lib/core';
+import { onFrame } from '../lib/frame';
 
 const OWNER = 'memoria';
 
@@ -72,7 +73,7 @@ function decorateAllChecks() {
   for (const el of els) { if (byId) decorateCheck(el, byId.get(el.dataset.id || '')); else el.querySelector('.mm-check-badge')?.remove(); }
 }
 let decoWait = false;
-const queueDecorate = () => { if (decoWait) return; decoWait = true; requestAnimationFrame(() => { decoWait = false; try { decorateAllChecks(); } catch (e) { console.warn('[장기기억] 점검 표시', e); } }); };
+const queueDecorate = () => { if (decoWait) return; decoWait = true; onFrame(() => { decoWait = false; try { decorateAllChecks(); } catch (e) { console.warn('[장기기억] 점검 표시', e); } }); };
 function Issue({ i }: { i: CheckIssue }) {
   const tone = /^\s*\[말투\]/.test(i.problem || ''), problem = String(i.problem || '').replace(/^\s*\[말투\]\s*/, '');
   return <article className="mm-diff mm-issue"><b>{`“${i.quote || ''}”`}</b><div>{tone ? <em className="mm-tag dash" title={t('memoria.feat.check.toneTitle')}>{t('memoria.feat.check.tone')}</em> : null}{tone ? ' ' : ''}{problem}</div>

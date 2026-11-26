@@ -4,6 +4,7 @@ import type { FeatureDef } from '../main';
 import type { Chat, Msg } from '../lib/types';
 import { S, on } from '../lib/core';
 import { X } from '../lib/hooks';
+import { onFrame } from '../lib/frame';
 import { chatApi } from '../chat/actions';
 import { reactNode, useCss } from '../addons/parts';
 import { t } from '../i18n';
@@ -48,7 +49,7 @@ function decorate() {
     (el.querySelector('.msg-body')?.parentElement || el).insertBefore(box, el.querySelector('.msg-body')?.nextSibling || null);
   }
 }
-const queue = () => { if (queued) return; queued = true; requestAnimationFrame(decorate); };
+const queue = () => { if (queued) return; queued = true; onFrame(decorate); };
 
 function setup() {
   useCss('crew.css');

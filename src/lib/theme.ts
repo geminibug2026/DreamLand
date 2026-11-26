@@ -166,6 +166,8 @@ export function initFx() {
   const cv = document.querySelector('#sky canvas') as HTMLCanvasElement, g = cv.getContext('2d') as CanvasRenderingContext2D;
   let W = 0, H = 0, parts: Part[] = [], raf = 0, last = 0, kind = 'none';
   const seed = () => {
+    // 효과가 꺼져 있으면 화폭 크기를 다시 잡지 않는다 (잡을 때마다 화면만 한 그림판을 새로 만든다 — 휴대폰은 주소창 · 자판이 나올 때마다 resize 가 온다). 비어 있는 화폭은 그대로 투명하다
+    if (kind === 'none') { if (W) g.clearRect(0, 0, W, H); parts = []; return; }
     const d = Math.min(2, devicePixelRatio || 1); W = cv.width = innerWidth * d; H = cv.height = innerHeight * d;
     const n = kind === 'stars' ? Math.round(innerWidth * innerHeight / 22000) : kind === 'petals' ? Math.round(innerWidth / 60) : 0;
     parts = Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, r: (Math.random() * 1.2 + 0.4) * d, p: Math.random() * 6.28, s: 0.3 + Math.random() * 0.8 }));

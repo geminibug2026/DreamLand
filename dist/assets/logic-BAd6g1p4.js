@@ -1,4 +1,4 @@
-import{a as e,o as t}from"./parts-BWePtHos.js";import{i as n,s as r,u as i}from"./i18n-Cl9xTOSk.js";import{_n as a,u as o}from"./actions-DWE0f-jC.js";import{E as s,o as c,p as l}from"./core-Cyap_agR.js";import{ct as u,ot as d,v as f}from"./engine-YQjQmWnh.js";import{c as p}from"./advanced-gJvZEWN-.js";var m=`ko|Korean|한국어
+import{a as e,o as t}from"./parts-BWePtHos.js";import{i as n,s as r,u as i}from"./i18n-Cl9xTOSk.js";import{_n as a,u as o}from"./actions-BSTM1kRe.js";import{E as s,o as c,p as l}from"./core-Cyap_agR.js";import{ct as u,ot as d,v as f}from"./engine-YQjQmWnh.js";import{c as p}from"./advanced-gJvZEWN-.js";var m=`ko|Korean|한국어
 en|English|영어
 ja|Japanese|일본어
 zh-CN|Chinese (Simplified)|중국어 (간체)
