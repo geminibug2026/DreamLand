@@ -5,7 +5,7 @@ import { flushSync } from 'react-dom';
 import { Btn, Icon } from '../kit';
 import { orderHooks } from '../chat/order';
 import { bump, cur, runs, ui, useCh } from '../chat/store';
-import { onChatScroll, running, armAuto, assetOwners, catchUp, charsOf, drawDrawer, drawMain, drawSide, fillLate, modeOf, truncation } from '../chat/actions';
+import { onChatScroll, releaseView, running, armAuto, assetOwners, catchUp, charsOf, drawDrawer, drawMain, drawSide, fillLate, modeOf, truncation } from '../chat/actions';
 import { Side, sideRef } from '../chat/Side';
 import { Dossier, Top } from '../chat/Top';
 import { Hud } from '../chat/Hud';
@@ -78,7 +78,7 @@ function ChatPage({ arg }: { arg?: unknown }) {
       // 예전 꼴로 저장된 긴 방: 한가할 때 미리 조각으로 옮겨 둔다 (처음 보낼 때 목록 전체를 다시 쓰느라 멈추지 않게). 답변 중이면 미룬다
       if (S.splitDue(chat.id)) { const go2 = () => { if (!live || cur.chat !== chat || cur.msgs !== list) return; if (running()) { setTimeout(go2, 3000); return; } void S.putMsgs(chat.id, list).catch(e => console.warn('[메시지 저장]', e)); }; setTimeout(go2, 2500); }
     })();
-    return () => { live = false; ui.layout = ui.scroll = ui.msgs = ui.side = null; ui.input = null; };
+    return () => { live = false; releaseView(); ui.layout = ui.scroll = ui.msgs = ui.side = null; ui.input = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return <section className={['chat-layout', cur.drawer && 'with-drawer', cur.sideOpen && 'show-side'].filter(Boolean).join(' ')} ref={layout}>

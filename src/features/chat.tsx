@@ -9,6 +9,7 @@ import { editState } from '../chat/Hud';
 import { on } from '../lib/core';
 import { route } from '../lib/router';
 import { Live } from '../lib/live';
+import { warmRecent } from '../chat/warm';
 
 const shown = () => route.page === 'chat' && !!cur.chat && !!ui.scroll;
 
@@ -27,5 +28,6 @@ export const feature = {
     document.addEventListener('keydown', onKey);
     document.addEventListener('visibilitychange', onVisible);
     setInterval(watchPresence, 30000);
+    on('ready', () => void warmRecent());   // 확장까지 다 뜬 뒤 한가할 때: 최근 방을 처음 열 때 드는 일을 미리 (src/chat/warm.ts)
   },
 };

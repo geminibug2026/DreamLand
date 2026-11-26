@@ -186,7 +186,8 @@ export function Messages() {
   const seps = new Map<number, string>(); let day = '';
   if (clockOn) for (let i = Math.min(cur.from, cur.head); i < total; i++) { const m = list[i]; if (!m.ts) continue; const d = dayOf(Clock.timeOf(chat, m)); if (d !== day) { day = d; seps.set(i, d); } }
   const out: ReactNode[] = [];
-  for (let i = Math.max(0, cur.head); i < total; i++) {
+  const end = cur.cut > 0 && cur.cut < total ? cur.cut : total;   // 먼 옛 메시지로 건너가 있으면 그 언저리까지만
+  for (let i = Math.max(0, cur.head); i < end; i++) {
     const m = list[i], prev = list[i - 1], sep = seps.get(i);
     if (sep !== undefined) out.push(<div className="daysep" key={`sep:${cur.epoch}:${i}`}><span>{sep}</span></div>);
     const cont = grouped && m.role !== 'system' && !!prev && prev.role === m.role && (prev.charId || '') === (m.charId || '') && !prev.dice && dayKey(prev.ts) === dayKey(m.ts);
