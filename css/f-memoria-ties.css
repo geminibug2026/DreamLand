@@ -85,3 +85,14 @@
   .mm-ti-filter { flex-direction: row; align-items: center; justify-content: space-between; } .mm-ti-who { width: auto; min-width: 180px; max-width: 260px; }
   .mm-tm-svg { max-width: 640px; }
 }
+
+/* 관계 한눈에: 동그라미 표식 대신 색 줄과 화살표 — 「서이건  사이 이름 →  해준」, 아래 줄은 종류 배지 다음에 설명이 이어서 흐른다 */
+.mm-ti-swatch { flex: none; display: inline-block; width: 16px; height: 3px; border-radius: 2px; background: var(--tk); }
+.mm-ti-legend > span { gap: 6px; }
+.mm-ti-pair { gap: 4px 7px; } .mm-ti-arrow { gap: 0; }
+.mm-ti-tip { font-style: normal; font-size: 1em; font-weight: 700; line-height: 1; color: var(--tk); }
+.mm-ti-main > small.mm-ti-line { display: block; line-height: 1.9; }
+.mm-ti-line > span { overflow-wrap: anywhere; } .mm-ti-line > span + span { margin-left: 2px; }
+.mm-ti-line .mm-ti-kind, .mm-ti-line .mm-ti-hand { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; margin-right: 6px; font-size: 12px; font-weight: 600; line-height: 1; vertical-align: middle; }
+@media (max-width: 820px) { .mm-ti-line .mm-ti-kind, .mm-ti-line .mm-ti-hand { height: 24px; padding: 0 9px; font-size: 12.5px; } }
+

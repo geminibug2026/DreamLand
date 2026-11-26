@@ -8430,6 +8430,8 @@
   "extras.set.aiMoodD": "用表情标签和回复用词匹配含义 · 0 次调用",
   "extras.set.aiOff": "关闭",
   "extras.set.aiOffD": "角色不发送贴纸",
+  "extras.set.stkBtn": "在输入框显示贴纸按钮",
+  "extras.set.stkBtnHint": "关闭后输入框更简洁。仍可从输入框“+”菜单的“发送贴纸”发送。",
   "extras.set.stkRp": "RP 模式下角色也发送贴纸",
   "extras.set.stkRpHint": "默认只在聊天模式发送。",
   "extras.set.vision": "同时把我的贴纸作为图片附上",

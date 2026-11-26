@@ -8510,6 +8510,8 @@
   "extras.set.aiMoodD": "Matches the expression label and reply words to meanings · 0 calls",
   "extras.set.aiOff": "Off",
   "extras.set.aiOffD": "Characters send no stickers",
+  "extras.set.stkBtn": "Show the sticker button in the message box",
+  "extras.set.stkBtnHint": "Off keeps the message box tidy. You can still send stickers from the + menu (Send sticker).",
   "extras.set.stkRp": "Characters send stickers in RP mode too",
   "extras.set.stkRpHint": "By default only in talk mode.",
   "extras.set.vision": "Attach my sticker as an image too",

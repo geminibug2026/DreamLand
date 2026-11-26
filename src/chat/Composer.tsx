@@ -15,7 +15,8 @@ import { QrBar } from '../stscript/QrBar';
 import { listen, sttSupported } from '../lib/stt';
 import { toast } from '../ui';
 import { I } from '../lib/icons';
-import { StickerBtn } from '../extras/StickerPicker';
+import { StickerBtn, openStickerPicker, sendSticker } from '../extras/StickerPicker';
+import { cfg as extrasCfg } from '../extras/cfg';
 import { ModelChip } from '../reach/models';
 
 if (!I.mic) I.mic = 'M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3';
@@ -118,16 +119,17 @@ export function Composer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const plus = (e: MouseEvent<HTMLButtonElement>) => menu(e.currentTarget, [
+  const plus = (e: MouseEvent<HTMLButtonElement>) => { const anchor = e.currentTarget; menu(anchor, [
     { label: t('chat.composer.impersonate'), ic: 'feather', hint: t('chat.composer.impersonateHint'), onclick: () => void generate('impersonate') },
     { label: t('chat.composer.continue'), ic: 'play', onclick: () => void generate('continue') },
     { label: t('chat.composer.narrate'), ic: 'note', onclick: async () => { const v = await promptBox(t('chat.composer.narrateTitle'), '', { area: true }); if (v) void command('/sys ' + v); } },
     { label: t('chat.composer.roll'), ic: 'dice', onclick: async () => { const v = await promptBox(t('chat.composer.rollTitle'), '1d20'); if (v) void command('/roll ' + v); } },
     { label: t('chat.composer.translateInput'), ic: 'lang', hint: S.settings.translate.inputLang, onclick: () => void translateInput() },
+    !extrasCfg().stk.btn && { label: t('extras.stk.open'), ic: 'sticker', onclick: () => openStickerPicker(anchor, s => void sendSticker(s)) },   // 입력창 딱지 단추를 꺼 두면 여기서
     ...X.composer.map(a => ({ label: a.label, ic: a.icon || 'sparkle', onclick: () => { if (input.current) void a.run(input.current); } })),
     '-',
     { label: t('chat.composer.cmdHelp'), ic: 'code', onclick: () => void command('/help') },
-  ]);
+  ]); };
   const muted = new Set(chat.muted || []), lastAi = [...cur.msgs].reverse().find(m => m.role === 'assistant')?.charId;
   return <footer className="composer">
     {chars.length > 1 ? <div className="speakers"><span className="speakers-label">{t('chat.composer.whoSpeaks')}</span>{chars.map((c, i) =>

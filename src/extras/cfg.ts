@@ -2,8 +2,8 @@
 import { S } from '../lib/core';
 
 export interface ExtrasCfg {
-  /** 딱지: 캐릭터가 보내는 방식(pick = 직접 고름 · mood = 감정으로 자동 · off) · RP 에서도 · 내 딱지를 그림으로도 붙이기 · 최근 쓴 것 */
-  stk: { ai: 'pick' | 'mood' | 'off'; rp: boolean; vision: boolean; recent: string[]; moodRate: number };
+  /** 딱지: 캐릭터가 보내는 방식(pick = 직접 고름 · mood = 감정으로 자동 · off) · RP 에서도 · 내 딱지를 그림으로도 붙이기 · 최근 쓴 것 · 입력창에 단추 보이기(기본 끔 — 끄면 입력창 「+」 메뉴에서 보낸다) */
+  stk: { ai: 'pick' | 'mood' | 'off'; rp: boolean; vision: boolean; recent: string[]; moodRate: number; btn: boolean };
   /** 반응: 최근 쓴 것 · 대화 모드에서 알리기 · RP 에서도 알리기 */
   react: { recent: string[]; talk: boolean; rp: boolean };
   /** 손끝 울림: 켬 · 세기(0.5~1.6) · 답장 · 캐릭터 명령 · 게임 · 전화 */
@@ -14,7 +14,7 @@ export interface ExtrasCfg {
   trash: { days: number };
 }
 const DEF: ExtrasCfg = {
-  stk: { ai: 'pick', rp: false, vision: false, recent: [], moodRate: 0.35 },
+  stk: { ai: 'pick', rp: false, vision: false, recent: [], moodRate: 0.35, btn: false },
   react: { recent: [], talk: true, rp: false },
   buzz: { on: false, level: 1, reply: true, ai: true, game: true, call: true },
   css: { ok: {} },

@@ -67,12 +67,12 @@ export function Bonds({ st }: { st: StOpen }) {
   const mapSec = <Sec title={t('memoria.bonds.map.title')} desc={t('memoria.bonds.map.desc')}>
     {edges.length ? <>
       <TieMap edges={edges} v={v.map} redraw={redraw} />
-      {used.length ? <div className="mm-ti-legend">{used.map(k => <span key={k} className={`mm-tk-${k}`}><i className="mm-ti-dot" />{kindLabel(k)}</span>)}</div> : null}
+      {used.length ? <div className="mm-ti-legend">{used.map(k => <span key={k} className={`mm-tk-${k}`}><i className="mm-ti-swatch" />{kindLabel(k)}</span>)}</div> : null}
       <p className="mm-ti-sub">{focus ? t('memoria.bonds.list.of', { name: focus }) : t('memoria.bonds.list.title')}<b className="fx-num">{listed.length}</b></p>
       <div className="mm-ti-rows">{listed.map(b => { const now = bondNow(b)!, k = tieKind(b.kind); return <div key={b.id} className={`mm-ti-row mm-tk-${k || 'none'}`}>
         <div className="mm-ti-main">
-          <p className="mm-ti-pair"><b>{shown(b.from)}</b><span className="mm-ti-arrow"><i className="mm-ti-dot" />{b.name ? <em><Tr>{b.name}</Tr></em> : <em className="none">{t('memoria.bonds.list.unnamed')}</em>}<i className="mm-ti-tip">▶</i></span><b>{shown(b.to)}</b></p>
-          <small>{k ? <span className="mm-ti-kind">{kindLabel(k)}</span> : null}<span><Tr>{now.stage}</Tr></span>{b.nameManual ? <span className="mm-ti-hand">{t('memoria.bonds.list.manual')}</span> : null}</small>
+          <p className="mm-ti-pair"><b>{shown(b.from)}</b><span className="mm-ti-arrow">{b.name ? <em><Tr>{b.name}</Tr></em> : <em className="none">{t('memoria.bonds.list.unnamed')}</em>}</span><i className="mm-ti-tip" aria-hidden="true">→</i><b>{shown(b.to)}</b></p>
+          <small className="mm-ti-line">{k ? <span className="mm-ti-kind">{kindLabel(k)}</span> : null}<span><Tr>{now.stage}</Tr></span>{b.nameManual ? <span className="mm-ti-hand">{t('memoria.bonds.list.manual')}</span> : null}</small>
         </div>
         <button type="button" className="mm-ti-btn" title={t('memoria.bonds.edit.btn')} aria-label={t('memoria.bonds.edit.btn')} onClick={() => void editTie(st, b)}><Ico name="edit" size={15} /></button>
       </div>; })}</div>

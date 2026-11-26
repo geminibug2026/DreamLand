@@ -70,8 +70,9 @@ export function openStickerPicker(anchor: Element, onPick: (s: Sticker) => void)
   root.render(<PickerBody chat={chatApi.current().chat} close={close} onPick={s => { close(); onPick(s); }} />);
 }
 
-/** 입력창 옆 단추 */
+/** 입력창 옆 단추 — 설정(곁들임 › 딱지)에서 켰을 때만. 꺼 두면 입력창 「+」 메뉴의 「딱지 보내기」로 보낸다 */
 export function StickerBtn() {
+  if (!cfg().stk.btn) return null;
   return <IconBtn ic="sticker" title={t('extras.stk.open')} onClick={e => openStickerPicker(e.currentTarget, s => void sendSticker(s))} />;
 }
 

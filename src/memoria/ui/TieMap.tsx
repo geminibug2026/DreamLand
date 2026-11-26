@@ -55,6 +55,6 @@ export function TieMap({ edges, v, redraw }: { edges: TieEdge[]; v: TieMapView; 
         <button type="button" className="mm-ti-btn" title={t('memoria.bonds.map.zoomIn')} aria-label={t('memoria.bonds.map.zoomIn')} disabled={z >= ZOOM_MAX} onClick={() => zoomBy(1.3)}>+</button>
       </span>
     </div>
-    {picked ? <p className={`mm-tm-picked mm-tk-${picked.kind || 'none'}`}><i className="mm-ti-dot" /><span><b>{picked.from}</b>{' → '}<b>{picked.to}</b></span><em>{picked.full}</em></p> : null}
+    {picked ? <p className={`mm-tm-picked mm-tk-${picked.kind || 'none'}`}><i className="mm-ti-swatch" /><span><b>{picked.from}</b>{' → '}<b>{picked.to}</b></span><em>{picked.full}</em></p> : null}
   </div>;
 }

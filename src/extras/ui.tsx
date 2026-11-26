@@ -26,6 +26,7 @@ export function ExtrasStudio() {
     <section className="card xt-card"><span className="fx-lbl kr ink fx-head">{t('extras.set.stk')}</span>
       <p className="hint">{t('extras.set.stkHint')}</p>
       {seg(c.stk.ai, [['pick', t('extras.set.aiPick'), t('extras.set.aiPickD')], ['mood', t('extras.set.aiMood'), t('extras.set.aiMoodD')], ['off', t('extras.set.aiOff'), t('extras.set.aiOffD')]], v => set(() => { c.stk.ai = v; }), t('extras.set.aiMode'))}
+      <Check label={t('extras.set.stkBtn')} hint={t('extras.set.stkBtnHint')} on={c.stk.btn} onChange={v => set(() => { c.stk.btn = v; })} />
       <Check label={t('extras.set.stkRp')} hint={t('extras.set.stkRpHint')} on={c.stk.rp} onChange={v => set(() => { c.stk.rp = v; })} />
       <Check label={t('extras.set.vision')} hint={t('extras.set.visionHint')} on={c.stk.vision} onChange={v => set(() => { c.stk.vision = v; })} />
       <StickerManager />

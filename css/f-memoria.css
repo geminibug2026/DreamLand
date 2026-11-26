@@ -521,17 +521,26 @@ button.mm-outcome { cursor: pointer; background: none; font-family: inherit; lin
 /* 꺼 둔 · 끝난 · 빠진 항목: 흐리게 보이되 읽히게 (반투명 .5 는 휴대폰에서 거의 안 읽혔다) */
 .mm-card.off, .mm-row.off, .mm-bond-row.off, .mm-pp-item.off { opacity: .66; } .mm-row.done { opacity: .7; } .mm-row.mm-dormant, .mm-recall.off { opacity: .74; }
 /* 배지는 한 규격: 종류 · 회상 · #번호 · 턴 · 꼬리표 · 서약 종류 · 제외 · 결말 · 그룹 · 지금 대화 — 같은 높이 · 같은 글자 크기 · 같은 여백.
+   #번호 이름표를 줄 전체에 쓰는 인물 탭 「함께한 장면」 줄(.mm-pp-scene)은 배지가 아니라 빼 둔다 — 높이를 묶으면 여러 줄 글이 아래 줄로 넘쳐 겹쳤다 (:where 라 우선순위는 그대로)
    (종류 배지는 작고 #번호는 커서 한 줄에서 들쭉날쭉했다) 휴대폰은 조금 크게, 누름 자리는 #번호처럼 눌리는 것만 넓힌다 */
-.mm-kind, .mm-when, .mm-st-jump, .mm-turn, .mm-tag, .mm-lock, .mm-flag, .mm-outcome, .mm-libtag, .mm-libnow {
+.mm-kind, .mm-when, .mm-st-jump:where(:not(.mm-pp-scene)), .mm-turn, .mm-tag, .mm-lock, .mm-flag, .mm-outcome, .mm-libtag, .mm-libnow {
   display: inline-flex; align-items: center; justify-content: center; gap: 4px; box-sizing: border-box; height: 22px; min-height: 22px; padding: 0 8px; margin-top: 0;
   font-family: inherit; font-size: 12px; font-weight: 600; font-style: normal; line-height: 1; letter-spacing: .02em; white-space: nowrap; vertical-align: middle; flex: none;
 }
 .mm-turn { border: 1px solid var(--ink-line, var(--line)); color: var(--dim); }
-.mm-st-jump, .mm-outcome { position: relative; } .mm-st-jump::after, .mm-outcome::after { content: ""; position: absolute; inset: -6px -3px; }
+.mm-st-jump:where(:not(.mm-pp-scene)), .mm-outcome { position: relative; } .mm-st-jump:where(:not(.mm-pp-scene))::after, .mm-outcome::after { content: ""; position: absolute; inset: -6px -3px; }
 /* 이름 · 표시 칩도 같은 글자 크기와 같은 한 줄 높이 (길면 줄을 바꿀 수 있게 높이는 최소로만) */
 .mm-chip { min-height: 22px; padding: 2px 8px; font-size: 12px; line-height: 1.35; vertical-align: middle; }
 @media (max-width: 820px) {
-  .mm-kind, .mm-when, .mm-st-jump, .mm-turn, .mm-tag, .mm-lock, .mm-flag, .mm-outcome, .mm-libtag, .mm-libnow { height: 24px; min-height: 24px; font-size: 12.5px; padding: 0 9px; }
+  .mm-kind, .mm-when, .mm-st-jump:where(:not(.mm-pp-scene)), .mm-turn, .mm-tag, .mm-lock, .mm-flag, .mm-outcome, .mm-libtag, .mm-libnow { height: 24px; min-height: 24px; font-size: 12.5px; padding: 0 9px; }
   .mm-chip { min-height: 24px; padding: 2px 9px; font-size: 12.5px; }
 }
+/* 전환점: 윗줄은 배지 · 때와 사람 · 단추, 그 아래 제목 한 줄, 설명은 폭 전체 (배지와 제목이 한 줄에 엉켜 꺾이던 것) */
+.mm-mile-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.mm-mile-top { display: flex; align-items: center; gap: 6px; min-width: 0; } .mm-mile-top .mm-tag { margin-left: 0; }
+.mm-mile-meta { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); font-size: .82em; }
+.mm-mile-top .mm-actions { flex: none; margin-left: auto; display: flex; align-items: center; }
+.mm-mile-title { display: block; font-size: 1.04em; line-height: 1.45; overflow-wrap: anywhere; } .mm-mile.minor .mm-mile-title { font-weight: 600; }
+.mm-mile .mm-mile-body > p { margin: 0; line-height: 1.65; }
+.mm-mile { padding: 10px 0; }
 

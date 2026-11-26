@@ -8430,6 +8430,8 @@
   "extras.set.aiMoodD": "표정 라벨 · 답장 속 낱말과 뜻을 맞춰요 · 호출 0",
   "extras.set.aiOff": "끔",
   "extras.set.aiOffD": "캐릭터는 딱지를 보내지 않아요",
+  "extras.set.stkBtn": "입력창에 딱지 단추 보이기",
+  "extras.set.stkBtnHint": "꺼 두면 입력창이 깔끔해져요. 딱지는 입력창 + 메뉴의 「딱지 보내기」로 보낼 수 있어요.",
   "extras.set.stkRp": "RP 모드에서도 캐릭터가 딱지 보내기",
   "extras.set.stkRpHint": "기본은 대화 모드에서만 보내요.",
   "extras.set.vision": "내 딱지를 그림으로도 붙이기",
