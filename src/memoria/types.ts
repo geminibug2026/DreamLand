@@ -32,6 +32,10 @@ export interface MemItem {
   dim?: MemDim[];
   /** 인용한 말을 한 사람 · 들은 사람 */
   by?: string; to?: string;
+  /** 그때의 일 — past(회상) · dream(꿈 · 환상) · told(전해 들은 이야기). 없으면 지금 일 (지금 상태를 바꾸지 않았다) */
+  when?: 'past' | 'dream' | 'told';
+  /** 본문에 모른다고 나온 사람 (기록할 때의 근거) · 가진 사람이 일부러 숨기는 상대 */
+  unaware?: string[]; keepFrom?: string[];
   [k: string]: unknown;
 }
 export interface MemDim { who: string; level: 'partial' | 'none'; kept?: string }
@@ -72,6 +76,8 @@ export interface StatusRow extends RowHistory { entity: string; slot: string; va
 export interface Pledge { id: string; kind: string; summary: string; status: string; turn?: number; msgId?: string; manual?: boolean; resolvedTurn?: number | null; resolution?: string | null; priority?: number; owner?: string; createdTurn?: number; created?: number; suggestResolved?: boolean; suggestTurn?: number | null; suggestBy?: string; resolvedBy?: string; updMsgId?: string; reMsgId?: string; prev?: { summary: string; status: string; priority?: number; owner?: string } | null; prevTurn?: number | null; sleptTurn?: number | null;
   /** 사서가 "풀린 듯"이라며 적은 경위 (근거가 모자라 닫지 않았을 때 — ✔로 확정하면 해소 경위가 된다) */
   suggestHow?: string | null;
+  /** 어떻게 끝났는가 — kept(지킴) · broken(어김) · dropped(없던 일) · replaced(다른 약속으로 바뀜). 사서가 "풀린 듯"이라 할 때의 판정은 suggestOutcome */
+  outcome?: 'kept' | 'broken' | 'dropped' | 'replaced'; suggestOutcome?: 'kept' | 'broken' | 'dropped' | 'replaced' | null;
   /** 닫히지 않았지만 움직인 떡밥의 "지금" 한 줄 — turn · msgId 는 그 줄을 적은 턴과 답변, was 는 그 전 줄 (답변이 지워지면 되돌린다) */
   latest?: PledgeNow | null;
   /** 이 떡밥이 마지막으로 언급된 턴과 그 답변, 그 전 값 · 언급으로 깨어난 턴과 그 답변 (계산으로 적는다) */
@@ -131,6 +137,10 @@ export interface Mem {
   dateFix?: { msgId: string; date: string }[];
   /** 검사 — 어긋난 곳 보고서 · 요약 채점 · 채울 범위 (engine/auditCore.ts) */
   audit?: import('./engine/auditCore').AuditState;
+  /** 최근 답마다 실린 기억 (메시지 메뉴 "이 답에 실린 기억") */
+  shownLog?: ShownEntry[];
+  /** 최근에 읽은 답마다 사서가 준 답 (스와이프로 같은 답에 돌아오면 다시 쓴다 — 최근 몇 개만) */
+  recCache?: { k: string; raw: string; tags: Record<string, string>; clock?: { day?: number; now?: string }; at: number }[];
   /** 옛 서고의 이름 (chunks · chunked 로 옮긴다) */
   chapters?: Summary[]; chaptered?: number;
   [k: string]: unknown;
@@ -143,6 +153,9 @@ export interface Cfg {
   chunkTurns: number; /** 대화 모드 방의 요약 주기 (0 = chunkTurns 그대로) */ chunkTurnsTalk: number; /** 대화 모드: 답장 몇 개를 모아 한 번에 기록하나 (1 = 답장마다) */ talkBatch: number; /** RP: 답장 몇 개를 모아 한 번에 기록하나 */ rpBatch: number; arcMergeAt: number; consolidateEvery: number; arcConsolidateEvery: number; maxMemories: number; responseTokens: number; summaryContextCount: number;
   fossil: { settling: number; fossilized: number; deep: number }; language: string;
   cast: boolean; lockEdited: boolean; items: boolean; milestones: boolean; storyClock: boolean; refProfile: boolean; refLore: boolean;
+  /** 회상 · 꿈 · 전해 들은 이야기를 표시해 지금 상태를 바꾸지 않게 · 중요한 기록의 근거 글귀를 원문과 맞춰 보기 */
+  timeRoles?: boolean; evidence?: boolean;
+  /** 회상 다듬기 — 짧은 입력에 직전 장면 섞기 · 질문 종류별 비중 · 흔한 결 거르기 */ recallTune?: boolean; /** 임베딩 평균을 빼고 견주기 (recallTune 이 켜져 있을 때) */ embedCenter?: boolean;
   trim: boolean; keepRecent: number; /** 자동 숨김: 늘 원문으로 둘 최근 답변 수 · 그보다 옛것을 몇 개씩 묶어 숨기나 */ keepTurns: number; hideUnit: number; /** 옛 묶음 떠올리기 (기본 끔) */ chapterRecall: boolean; autoHide: boolean; preserveRecent: number;
   supervisor: boolean; associative: boolean; authorizePrivate: boolean; perspective: string; audit: boolean; reasoningHeadroom: number;
   position: string; depth: number; prompt: string;
@@ -227,8 +240,11 @@ export interface HistLine { role: string; content: string }
 export interface SceneNow { any: boolean; location?: string; date?: string; time?: string; present?: string; mood?: string }
 export interface RecallParts { cos: number; lex: number; imp: number; rec: number; bonus: number }
 export interface RecallRow { id: string; kind: string; summary: string; included: boolean; reason?: string; excluded?: string; via?: string; score?: number; parts?: RecallParts }
+/** 답 하나(스와이프마다)를 만들 때 실린 기억 · 아깝게 빠진 기억 (k: 메시지 id:스와이프 번호) */
+export interface ShownEntry { k: string; at: number; tokens: number; intent?: string; short?: boolean; centered?: boolean; sections: { name: string; tokens: number }[]; rows: { id: string; kind: string; summary: string; inc: boolean; why?: string; out?: string; score?: number; mode?: string }[] }
 export interface PacketDiag {
   sections: { name: string; tokens: number }[]; rows?: RecallRow[]; fallback?: boolean; narrator?: boolean; hidden: number;
+  /** 회상이 본 질문 종류 · 짧은 입력 보정 · 흔한 결 거르기 */ intent?: string; shortQ?: boolean; centered?: boolean;
   split?: { stableTokens?: number; nowTokens?: number; refreshed?: boolean; frozenAtTurn?: number | null; delta?: number };
 }
 export interface Packet { text: string; fixed?: string | boolean; trim: number; diag?: PacketDiag; stable?: string; live?: string; tokens: number; picked: unknown[] }
@@ -267,6 +283,7 @@ export interface MemoryUi {
   syncHidden(chat: ChatM, msgs: Msg[]): number;
   post(chat: ChatM, msgs: Msg[], signal?: AbortSignal): Promise<unknown>;
   received(chat: ChatM, msg: Msg, msgs?: Msg[] | null): Promise<unknown>;
+  shownFor?(mem: Mem | null | undefined, msg: Msg): ShownEntry | null;
   prepare(chat: ChatM, msgs: Msg[], o?: { type?: string; background?: boolean }): unknown;
   // 막간 · 연속성 검사
   isSideMessage(msg: Msg): boolean;

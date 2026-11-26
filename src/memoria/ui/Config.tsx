@@ -140,6 +140,9 @@ export function Config({ st }: { st: St }) {
       <Tog k="dueDates" label={t('memoria.config.aid.dueDates.label')} hint={t('memoria.config.aid.dueDates.hint')} after={re} />
       <Tog k="presentNow" label={t('memoria.config.aid.presentNow.label')} hint={t('memoria.config.aid.presentNow.hint')} after={re} />
       <Tog k="guardSecrets" label={t('memoria.config.aid.guardSecrets.label')} hint={t('memoria.config.aid.guardSecrets.hint')} after={re} />
+      <Tog k="timeRoles" label={t('memoria.config.aid.timeRoles.label')} hint={t('memoria.config.aid.timeRoles.hint')} />
+      <Tog k="evidence" label={t('memoria.config.aid.evidence.label')} hint={t('memoria.config.aid.evidence.hint')} />
+      <Tog k="recallTune" label={t('memoria.config.aid.recallTune.label')} hint={t('memoria.config.aid.recallTune.hint')} after={re} />
       <Tog k="storyDates" label={t('memoria.config.aid.storyDates.label')} hint={t('memoria.config.aid.storyDates.hint')} after={re} />
       <Num k="sceneCards" label={t('memoria.config.aid.sceneCards.label')} title={t('memoria.config.aid.sceneCards.title')} min={0} max={2} step={1} after={re} />
       <Num k="mindLines" label={t('memoria.config.aid.mindLines.label')} title={t('memoria.config.aid.mindLines.title')} min={0} max={3} step={1} after={re} />
@@ -172,7 +175,8 @@ export function Config({ st }: { st: St }) {
       {api ? <Sel k="embed.kind" label={t('memoria.config.embed.kind.label')} title={t('memoria.config.embed.kind.title')} opts={Object.entries(EMBED_KINDS)} cls="half" /> : null}
       {api ? <Txt k="embed.model" label={t('memoria.config.embed.model')} ph="text-embedding-3-small" cls="half" /> : null}
       {api ? <Num k="embed.floor" label={t('memoria.config.embed.floor.label')} title={t('memoria.config.embed.floor.title')} min={0} max={0.9} step={0.05} cls="half" int={false}>
-        <small className="hint">{t('memoria.config.embed.floor.hint')}</small></Num> : null}</Grid>
+        <small className="hint">{t('memoria.config.embed.floor.hint')}</small></Num> : null}
+      {api ? <Tog k="embedCenter" label={t('memoria.config.embed.center.label')} hint={t('memoria.config.embed.center.hint')} after={re} /> : null}</Grid>
       {api ? <div className="row wrap">
         <Btn label={t('memoria.config.test')} ic="plug" cls="ghost" title={t('memoria.config.testTitle')} onClick={e => void busyBtn(e.currentTarget, async () => { const v = await Mm.embedCall(['connection test']); if (v?.[0]?.length) toast(t('memoria.config.embed.testOk', { dim: v[0].length }), 'ok'); else toast(t('memoria.config.embed.testEmpty'), 'err'); })} />
         <Btn label={t('memoria.config.embed.recalc.label')} ic="refresh" cls="ghost" title={t('memoria.config.embed.recalc.title')} onClick={e => void busyBtn(e.currentTarget, async () => {

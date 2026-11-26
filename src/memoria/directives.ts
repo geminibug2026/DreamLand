@@ -6,7 +6,23 @@ export const KNOW_DIRECTIVE = `
 WHO KNOWS, WHO REMEMBERS — optional extra fields, use them only where the text supports them:
 - "guess_by" on a private or secret memory: characters who visibly suspect it without having the details. A name goes in "known_by" or "guess_by", never both.
 - "forgets" on any memory of something a character lived through but will not properly keep — they were asleep, unconscious, blackout drunk, feverish, drugged, or had the memory taken: [{"who":"Name","level":"partial|none","kept":"the little that stays with them, in one clause, or null"}]. Only when the text gives the cause. Never for the player's character unless the text states it outright.
-- "by" and "to" on a memory that carries a "quote": who spoke that line and who it was spoken to, names exactly as on file; null when the text leaves it unclear. Being in the room is not being addressed.`;
+- "by" and "to" on a memory that carries a "quote": who spoke that line and who it was spoken to, names exactly as on file; null when the text leaves it unclear. Being in the room is not being addressed.
+- "unaware" on a private or secret memory: characters the text plainly shows do NOT know it — the text says they were somewhere else when it happened, or states that they don't know. Never infer it from silence or from simply not being mentioned.
+- "keep_from" on a private or secret memory: characters the holder is actively hiding it from, as the text shows (lying to them, hiding the evidence, asking others to keep quiet). Not knowing is "unaware"; being deliberately kept in the dark is "keep_from" — a name can be in both.`;
+
+/** 그때의 일인가 — 회상 · 꿈 · 전해 들은 이야기는 기록하되 "지금"을 바꾸지 않는다 */
+export const WHEN_DIRECTIVE = `
+
+WHEN IT HAPPENED — optional field "when" on memories, status and bonds; leave it out for the story's present:
+- "past": a flashback the story shows, or someone recounting what happened long before the present scene.
+- "dream": a dream, vision or hallucination the story itself shows as one.
+- "told": a report, rumor or story someone tells about events the scene does not show (file the telling, as the hearsay rule says).
+Only the present changes the present. Status, bonds and cast growth come from present events alone — a flashback or a dream never moves anyone's location, mood, holdings or ties, however vivid it is. What a flashback reveals still goes on the memories shelf, marked "when":"past", because it is true that it happened back then.`;
+
+/** 근거 글귀 — "지금 사실"을 바꾸는 기록에만 받아, 원문에 없으면 버린다 */
+export const EVIDENCE_DIRECTIVE = `
+
+EVIDENCE: add "said" — a few words (4 to 15) copied character for character from this exchange that show it — to every status entry except the scene's own slots, and to every memory that is "secret" or has importance 0.8 or more. Copy, never compose or translate. If no words in the exchange show it, do not file it.`;
 
 /** 옛 비밀을 이번에 알게 된 사람 — 꼬리표 목록([k1])이 있을 때만 덧붙인다 */
 export const LEARN_DIRECTIVE = `

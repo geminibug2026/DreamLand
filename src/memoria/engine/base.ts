@@ -64,6 +64,7 @@ export const MEMORY_DEFAULTS: Cfg = {
   enabled: false, auto: true, recordDelay: 0, tokenBudget: 8000, topK: 10, minScore: 0.12, minCosine: 0.08, mmrLambda: 0.74, maxPerKind: 3, maxPerTurn: 2, multiQueryRecent: 3,
   chunkTurns: 30, chunkTurnsTalk: 0, talkBatch: 5, rpBatch: 10, arcMergeAt: 6, consolidateEvery: 30, arcConsolidateEvery: 100, maxMemories: 400, responseTokens: 24000, summaryContextCount: 3, fossil: { settling: 12, fossilized: 40, deep: 120 }, language: 'auto',
   cast: true, lockEdited: true, items: false, milestones: false, storyClock: true, refProfile: true, refLore: false,
+  timeRoles: true, evidence: true, recallTune: true, embedCenter: true,   // 회상 · 꿈 · 들은 이야기는 지금 상태를 바꾸지 않는다 · 상태 변화 · 비밀 · 무거운 기억은 원문 근거 글귀가 맞아야 받는다
   trim: false, keepRecent: 20, autoHide: true, preserveRecent: 20, keepTurns: 40, hideUnit: 20, chapterRecall: false,   // 자동 숨김: 최근 40답변은 늘 원문, 그 앞은 20개씩 묶어 숨긴다 · 옛 묶음 떠올리기는 기본 끔
     // 요약된 옛 메시지는 기본으로 AI 에게서 숨긴다 (요약이 대신한다 — 긴 대화의 프롬프트가 일정하게 유지된다)
   supervisor: false, associative: true, authorizePrivate: true, perspective: '', audit: true, reasoningHeadroom: 8000,
@@ -134,6 +135,10 @@ export const SLOT_ALIASES: Record<string, string> = {
 };
 export const VOLATILE = new Set(['mood', 'outfit', 'holding', 'activity', 'expression', 'condition']);
 export const PAST_QUERY_RE = /(처음|예전|옛날|그때|그 때|지난번|언제였|언제 였|기억나|기억 나|기억해|기억하|첫날|첫 만남|만났을 때|했었|였었|하던 때|remember when|back then|first met|first time|used to|at first|way back|昔|最初|あの時|あのとき|覚えて)/i;
+/** 지금 형편을 묻는 말 — 최근 기억에 조금 더 무게를 둔다 (지난 일을 묻는 말이 먼저다) */
+export const NOW_QUERY_RE = /(지금|현재|요즘|오늘|방금|아직도|어디야|어디 있|뭐 ?하고 있|뭐 ?해\?|right now|currently|at the moment|these days|nowadays|today|现在|目前|最近|いま|今は|今どこ)/i;
+/** 자세한 사실을 묻는 말 — 이름 · 수 · 한 말 같은 낱말 일치와 원문 인용에 무게를 둔다 */
+export const DETAIL_QUERY_RE = /(정확히|자세히|구체적|몇 ?(?:개|명|살|번|시|일|년|월|층|호|마리|권|잔)|얼마(?:나|였|야|지)|이름이 뭐|이름이 뭐였|뭐라고 ?(?:했|말했|그랬)|무슨 말을|누가 ?(?:그랬|했|줬)|어디서 ?(?:샀|났|봤|만났|받)|exactly|precisely|in detail|how many|how much|how old|what was (?:the|her|his|their) name|what did .{1,24} say|which one|具体|到底|几个|多少|叫什么|正確に|詳しく|何人|いくつ|何て言)/i;
 export const DOSSIER_CHUNK = 700;
 export const DOSSIER_MAX = 400000;
 export const CHARACTER_LINES_MAX = 6, CHARACTER_GROWTH_MAX = 5, BOND_LOG_MAX = 8, BOND_SETTLE_TURNS = 4;

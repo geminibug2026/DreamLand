@@ -8,7 +8,8 @@ import type { CmdApi, PromptPiece } from '../memoria/types';
 import type { ChatM, Mem, MemCheck, CheckIssue, Msg } from '../memoria/types';
 import { TABS, activityText, alive, mount, openArchive, setActivity, setFocus } from '../memoria/ui/Archive';
 import { installConfigEvents } from '../memoria/ui/Config';
-import { Ico, KindBadge, Meter, None, SceneLine, cur, ensureCfg, isCur, msgsOf, saveCfg, turnTag } from '../memoria/ui/parts';
+import { Ib, Ico, KindBadge, Meter, None, SceneLine, Sec, cur, ensureCfg, isCur, msgsOf, saveCfg, turnTag } from '../memoria/ui/parts';
+import { secName } from '../memoria/ui/Overview';
 import { backfill, recordNow } from '../memoria/ui/Tools';
 import { Memory, Auditor } from '../lib/memory';
 import { X } from '../lib/hooks';
@@ -99,6 +100,28 @@ function MsgMemories({ mem, turnMsgId }: { mem: Mem; turnMsgId: string }) {
   const at = mem.turns.findIndex(x => x.msgId === turnMsgId), turn = mem.turns[at], rows = mem.memories.filter(m => m.msgId === turnMsgId);
   return <div className="mm mm-list">{turn?.digest ? <p className="mm-sum"><b>{`t${at + 1}${turn.star ? ' ★' : ''}`}</b>{' — '}{turn.digest}</p> : null}
     {rows.map(m => <article key={m.id} className="mm-card"><header><KindBadge k={m.kind} /><span className="mm-turn">{turnTag(mem, m)}</span>{m.retired ? <span className="tokbadge">{t('memoria.memories.only.retired')}</span> : null}</header><p className="mm-sum">{m.summary}</p>{m.quote ? <blockquote>{`"${m.quote}"`}</blockquote> : null}</article>)}{!rows.length ? <None text={t('memoria.feat.act.memsNone')} /> : null}</div>;
+}
+
+/** 이 답에 실린 기억 — 답이 도착할 때 엔진이 적어 둔 것을 보여 준다. 고정(핀)하면 다음 답부터 늘 실린다 */
+function ShownMemories({ mem, msg }: { mem: Mem; msg: Msg }) {
+  const M = Memory, [, bump] = useState(0), e = M.shownFor?.(mem, msg);
+  if (!e) return <div className="mm mm-list"><None text={t('memoria.feat.shown.none')} /></div>;
+  const inc = e.rows.filter(r => r.inc), miss = e.rows.filter(r => !r.inc), total = e.sections.reduce((n, s) => n + s.tokens, 0) || 1;
+  const pin = async (id: string) => { const m = mem.memories.find(x => x.id === id); if (!m) return; m.pinned = !m.pinned; await M.save(mem); bump(n => n + 1); toast(m.pinned ? t('memoria.feat.shown.pinned') : t('memoria.feat.shown.unpinned'), 'ok'); };
+  const row = (r: typeof e.rows[number]) => {
+    const m = mem.memories.find(x => x.id === r.id);
+    return <div key={r.id} className={`mm-recall${r.inc ? '' : ' off'}`}><em className={`mm-flag${r.inc ? ' on' : ''}`}>{r.inc ? t('memoria.overview.included') : t('memoria.overview.excluded')}</em>
+      <div className="mm-recall-main"><div><KindBadge k={r.kind} />{' '}{m?.summary || r.summary}</div>
+        <small>{[m ? turnTag(mem, m) : t('memoria.feat.shown.gone'), r.why || t('memoria.overview.related'), r.out ? `→ ${r.out}` : ''].filter(Boolean).join(' · ')}</small></div>
+      {m ? <Ib name="pin" cls={m.pinned ? 'on' : ''} title={m.pinned ? t('memoria.memories.unpin') : t('memoria.feat.shown.pinTitle')} onClick={() => void pin(r.id)} /> : null}</div>;
+  };
+  return <div className="mm mm-list mm-shown">
+    <p className="hint">{t('memoria.feat.shown.head', { tokens: e.tokens.toLocaleString(), inc: inc.length, miss: miss.length })}</p>
+    {e.intent || e.short || e.centered ? <div className="mm-chips">{e.intent ? <span className="mm-chip">{t('memoria.feat.shown.intent.' + e.intent)}</span> : null}{e.short ? <span className="mm-chip">{t('memoria.feat.shown.short')}</span> : null}{e.centered ? <span className="mm-chip">{t('memoria.feat.shown.centered')}</span> : null}</div> : null}
+    {e.sections.length ? <div className="mm-chips">{e.sections.map((s, i) => <span key={i} className="mm-chip"><i className={`mm-dot s${i % 6}`} />{`${secName(s.name)} ${Math.round(s.tokens / total * 100)}%`}</span>)}</div> : null}
+    <Sec title={t('memoria.feat.shown.inc')}>{inc.length ? inc.map(row) : <None text={t('memoria.feat.shown.incNone')} />}</Sec>
+    {miss.length ? <Sec title={t('memoria.feat.shown.miss')} desc={t('memoria.feat.shown.missDesc')}>{miss.map(row)}</Sec> : null}
+  </div>;
 }
 
 // ════════ 대화를 연 뒤 · 답변을 받은 뒤 틈날 때 미리 읽어 두기 ════════
@@ -195,6 +218,13 @@ function setup() {
     const mem = await M.load(chat!.id), turn = M.turnOfMsg?.(mem, msg.id), no = cur().msgs.indexOf(msg) + 1;
     if (!turn) return toast(t('memoria.feat.act.memsNoTurn', { n: no }));
     openModal({ title: t('memoria.feat.act.memsTitle', { n: no }), wide: true, body: <MsgMemories mem={mem} turnMsgId={turn.msgId} />, actions: [{ label: t('common.close') }, { label: t('memoria.feat.archive'), ic: 'book', onclick: () => openArchive(chat!, 'memories') }] });
+  } });
+
+  /** 이 답(지금 보이는 스와이프)을 만들 때 실린 기억과 아깝게 빠진 기억 — 왜 실렸는지 보고, 그 자리에서 고정할 수 있다 (모델 호출 없음) */
+  x.actions.push({ owner: OWNER, id: 'memoria-shown', get label() { return t('memoria.feat.shown.act'); }, icon: 'eye', run: async (msg, chat) => {
+    if (msg.role !== 'assistant') return toast(t('memoria.feat.act.onlyAssistant'));
+    const mem = await M.load(chat!.id), no = cur().msgs.indexOf(msg) + 1;
+    openModal({ title: t('memoria.feat.shown.title', { n: no }), wide: true, body: <ShownMemories mem={mem} msg={msg} />, actions: [{ label: t('common.close') }, { label: t('memoria.feat.archive'), ic: 'book', onclick: () => openArchive(chat!, 'overview') }] });
   } });
 
   // ── 입력 칸에 글을 쓰는 중인지 엔진에 알린다 (요약 · 서고 정리가 곧 올 답변과 겹치지 않게 미룬다) ──

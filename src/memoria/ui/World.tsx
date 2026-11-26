@@ -175,13 +175,16 @@ export function World({ st }: { st: StOpen }) {
   const editPledge = (p?: Pledge) => editPledgeBox(st, p);
   const flip = async (p: Pledge) => {
     p.status = p.status === 'active' ? 'resolved' : 'active';
-    if (p.status === 'active') { p.turn = T; p.resolvedTurn = null; p.resolvedBy = null as unknown as undefined; p.resolution = null; p.sleptTurn = null; }   // 깨운 떡밥은 방금 다뤄진 것으로 친다 — 곧바로 다시 잠들지 않게
-    else if (p.suggestResolved && p.suggestHow) p.resolution = p.suggestHow;   // 사서가 "풀린 듯"이라며 적어 둔 경위가 있으면 확정할 때 그대로 남긴다
-    p.suggestResolved = false; p.suggestTurn = null; p.suggestBy = null as unknown as undefined; p.suggestHow = null;   // 직접 결정했으니 사서 의견은 정리
+    if (p.status === 'active') { p.turn = T; p.resolvedTurn = null; p.resolvedBy = null as unknown as undefined; p.resolution = null; p.sleptTurn = null; delete p.outcome; }   // 깨운 떡밥은 방금 다뤄진 것으로 친다 — 곧바로 다시 잠들지 않게
+    else if (p.suggestResolved) { if (p.suggestHow) p.resolution = p.suggestHow; if (p.suggestOutcome) p.outcome = p.suggestOutcome; }   // 사서가 "풀린 듯"이라며 적어 둔 경위 · 지켰는지 어겼는지가 있으면 확정할 때 그대로 남긴다
+    p.suggestResolved = false; p.suggestTurn = null; p.suggestBy = null as unknown as undefined; p.suggestHow = null; p.suggestOutcome = null;   // 직접 결정했으니 사서 의견은 정리
     await M.save(mem); st.draw();
   };
+  // 끝난 까닭(지킴 · 어김 · 없던 일 · 바뀜)을 눌러서 고친다 — 어긴 약속은 장부의 "Broken" 칸에 남아 그 일을 당한 사람의 태도에 배어난다
+  const OUTCOMES = [undefined, 'kept', 'broken', 'dropped', 'replaced'] as const;
+  const cycleOutcome = async (p: Pledge) => { const i = OUTCOMES.indexOf(p.outcome), next = OUTCOMES[(i + 1) % OUTCOMES.length]; if (next) p.outcome = next; else delete p.outcome; await M.save(mem); M.reinjectNow?.(st.chat); st.draw(); };
   // 「아직 유효」: 사서의 "해소된 듯" 의견을 물리고 다시 싣는다 — 방금 다뤄진 것으로 치고, 서약 훑기가 옛 요약만 보고 같은 의견을 다시 붙이지 않게 표시해 둔다
-  const uphold = async (p: Pledge) => { p.suggestResolved = false; p.suggestTurn = null; p.suggestBy = null as unknown as undefined; p.suggestHow = null; p.upheld = true; p.turn = T; await M.save(mem); M.reinjectNow?.(st.chat); st.draw(); };
+  const uphold = async (p: Pledge) => { p.suggestResolved = false; p.suggestTurn = null; p.suggestBy = null as unknown as undefined; p.suggestHow = null; p.suggestOutcome = null; p.upheld = true; p.turn = T; await M.save(mem); M.reinjectNow?.(st.chat); st.draw(); };
   // 서약 훑기 — 눌렀을 때 모델을 한 번 불러, 오래된 서약 가운데 지금까지의 요약이 이미 끝났다고 보여 주는 것에 "해소된 듯" 표시를 붙인다 (닫거나 지우지 않는다)
   const sweep = async () => {
     toast(t('memoria.world.pledge.sweeping'));
@@ -202,8 +205,9 @@ export function World({ st }: { st: StOpen }) {
       {p.kind === 'author_plan' && p.status === 'active' ? <small className="mm-lock-now" title={t('memoria.world.pledge.veilTitle')}>{` ${p.veil ? t('memoria.world.pledge.veilShown', { text: p.veil }) : t('memoria.world.pledge.veilNone')}`}</small> : null}
       {p.kind === 'feeling' && (p.cause || p.needs) ? <small className="mm-lock-now">{` ${[p.cause, p.needs].filter(Boolean).join(' → ')}`}</small> : null}
       {p.latest?.text && p.status !== 'resolved' ? <small className="mm-lock-now" title={t('memoria.world.pledge.nowTitle')}>{` ${t('memoria.world.pledge.now', { text: p.latest.text })}`}</small> : null}
+      {p.status === 'resolved' ? <button type="button" className={`mm-tag mm-outcome o-${p.outcome || 'none'}`} title={t('memoria.world.pledge.outcomeTitle')} onClick={() => void cycleOutcome(p)}>{t(`memoria.world.pledge.outcome.${p.outcome || 'none'}`)}</button> : null}
       {p.resolution && p.status === 'resolved' ? <small className="mm-resolution" title={t('memoria.world.pledge.resolution')}>{` — ${p.resolution}`}</small> : null}
-      {p.suggestResolved && p.status === 'active' ? <><em className="mm-suggest" title={(p.suggestHow ? t('memoria.world.pledge.suggestHowTitle', { how: p.suggestHow }) : t('memoria.world.pledge.suggestTitle')) + (pledgeHeldBack(p) ? t('memoria.world.pledge.heldNote') : '')}><Ico name="bell" size={12} />{pledgeHeldBack(p) ? t('memoria.world.pledge.suggestHeld') : t('memoria.world.pledge.suggest')}</em>
+      {p.suggestResolved && p.status === 'active' ? <><em className="mm-suggest" title={(p.suggestHow ? t('memoria.world.pledge.suggestHowTitle', { how: p.suggestHow }) : t('memoria.world.pledge.suggestTitle')) + (pledgeHeldBack(p) ? t('memoria.world.pledge.heldNote') : '')}><Ico name="bell" size={12} />{pledgeHeldBack(p) ? t('memoria.world.pledge.suggestHeld') : t('memoria.world.pledge.suggest')}{p.suggestOutcome ? ` · ${t(`memoria.world.pledge.outcome.${p.suggestOutcome}`)}` : ''}</em>
         <button type="button" className="mm-tag dash mm-revive" title={t('memoria.world.pledge.stillValidTitle')} onClick={() => void uphold(p)}>{t('memoria.world.pledge.stillValid')} ↺</button></> : null}</>,
       <Ib name={p.status === 'active' ? 'check' : 'refresh'} title={p.status === 'active' ? t('memoria.world.pledge.markResolved') : p.status === 'dormant' ? t('memoria.world.pledge.wake') : t('memoria.world.pledge.reactivate')} onClick={() => flip(p)} />, <Ib name="edit" title={t('common.edit')} onClick={() => editPledge(p)} />, <Del st={st} arr="pledges" x={p} what={t('memoria.world.pledge.what')} />))}{pledgeMore}
       {!mem.pledges.length ? <None text={t('memoria.world.pledge.empty')} /> : null}</div>

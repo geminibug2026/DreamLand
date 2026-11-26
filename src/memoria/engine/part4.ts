@@ -54,7 +54,7 @@ export interface PacketSections {
   bonds: Bond[]; voices: PacketVoice[]; banned: string[]; styleGuard: boolean; recallQuotes: boolean; banTell: boolean;
   publicRecall: MemItem[]; protectedRecall: MemItem[]; hiddenProtected: number; locks: PacketLock[]; rules: CanonRow[]; scene: PacketScene; states: StatusRow[];
   characters: PacketCast[]; milestones: Milestone[]; items: Item[]; summaries: PacketSummary[]; supervisorPlan: Plan | null; narratorMode: boolean; turnNow: number;
-  storyAges: Map<number, number> | null; storyTotalDays: number; storyDay?: number; storyNow?: string; lag?: number; sources: DossierExcerpt[]; recallCandidates: MemItem[]; trace: Map<string, RecallTrace>;
+  storyAges: Map<number, number> | null; storyTotalDays: number; storyDay?: number; storyNow?: string; lag?: number; sources: DossierExcerpt[]; recallCandidates: MemItem[]; trace: Map<string, RecallTrace>; recallIntent?: string; recallShort?: boolean; recallCentered?: boolean;
   notes: Map<string, string>; recent: string[];
   /** 자리가 모자라도 지킬 전환점 (직접 고정한 것의 id) */
   milestoneRoots?: Set<string>;
@@ -62,6 +62,8 @@ export interface PacketSections {
   unaware?: Map<string, string[]>;
   /** 작중 시간으로 센 기한 (가까운 것부터) */
   deadlines?: { lock: PacketLock; label: string }[];
+  /** 최근에 어긴 약속 · 새어 나간 비밀 — 그 일을 당한 사람은 잊지 않는다 (120턴 안, 셋까지) */
+  broken?: Pledge[];
   /** 장면 인물의 지금 모습으로 묶을 상태 줄 (id) — presentNow 가 꺼져 있으면 비어 있다 */
   nowIds?: Set<string>;
   /** 장면에 함께 있는 두 사람 사이의 부름말 */
@@ -95,7 +97,7 @@ export interface SplitPacket { text: string; stableText: string; nowText: string
 export type PacketDiagRow = { id: string; summary: string; kind: string; turn?: number | null; included: boolean; excluded: string } & Partial<RecallTrace>;
 export interface PacketDiag {
   sections: { name: string; tokens: number }[]; hidden: number; fallback: boolean; narrator: boolean; narratorMode: boolean; direction: boolean; budget: number;
-  split: SplitDiag | null; rows: PacketDiagRow[];
+  split: SplitDiag | null; rows: PacketDiagRow[]; intent?: string; shortQ?: boolean; centered?: boolean;
 }
 /** 어디에 실을지 나눈 글 — stable: 대화 기록 앞 · live: 대화 안(깊이) */
 export interface PacketPlaced { stable: string; live: string; text: string }
@@ -343,7 +345,8 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     const feelings = feelingRows(this, mem, new Set([...sceneNames, meKey].filter(Boolean)), Math.max(0, Math.min(6, Math.round(Number(cfg.feelingLines) || 0))));
     return { feelings, absent, cards, minds, plans, milestoneRoots: new Set(rootMiles.map(e => e.id)), trackerLine, returning, driftNotes: driftNoteLines(mem, opt.msgs, cfg.driftNote !== false), voice: String(cfg.recallVoice || 'natural'), bonds, voices, banned, styleGuard: cfg.styleGuard !== false, recallQuotes: cfg.recallQuotes !== false, banTell: cfg.banTell === true,
       lag, publicRecall: publicRecallDeduped, protectedRecall, hiddenProtected: r.hidden, locks, rules, scene, states, characters, milestones, items, summaries, supervisorPlan, narratorMode, turnNow: T, storyAges, storyTotalDays, storyDay, storyNow,
-      sources: this.dossierPick(mem, query, recallContext), recallCandidates, trace: r.trace, notes, recent, unaware, deadlines, nowIds, address, transcript };
+      sources: this.dossierPick(mem, query, recallContext), recallCandidates, trace: r.trace, recallIntent: r.intent || '', recallShort: !!r.shortQ, recallCentered: !!r.centered, notes, recent, unaware, deadlines, nowIds, address, transcript,
+      broken: mem.pledges.filter(l => l.status === 'resolved' && l.outcome === 'broken' && !l.disabled && T - 1 - (l.resolvedTurn ?? -999) <= 120).sort((a, b) => (b.resolvedTurn ?? 0) - (a.resolvedTurn ?? 0)).slice(0, 3) };
   },
   parts(chat, mem, history, opt) { return this.buildPacketSections(chat, mem, history, opt); },
   /** 장부 맨 앞의 사용 규칙 — 출처 우선순위, 기록과 문체의 구분(styleGuard), 지식 경계 */
@@ -418,6 +421,8 @@ export const part4: Part4 & ThisType<MemoryApi> = {
       stable.push('## Pledges (what the story must keep — a secret stays known only to the people its entry names, an open thread stays open. An entry may describe something from long ago; it is kept, not happening now: standing pressure in the background, not events happening right now; never rush to stage or resolve them. A [foreshadow] entry is a setup waiting for its payoff: let it surface when the story is ready, not before)');
       for (const l of P.locks) entry('Pledges', l.id || l.summary, `- [${normLockKind(l.kind)}] ${l.summary}${normLockKind(l.kind) === 'feeling' && (l.cause || l.needs) ? ` (${[l.cause ? `from: ${l.cause}` : '', l.needs ? `would ease if: ${l.needs}` : ''].filter(Boolean).join('; ')})` : ''}${l.latest?.text ? ` — now: ${l.latest.text}` : ''}`);
     }
+    // 어긴 약속 · 새어 나간 비밀: 풀린 서약은 장부에서 빠지지만, 어긴 것은 그 일을 당한 사람의 마음에 남는다 — 다시 꺼내 무대에 올리라는 뜻이 아니라 대하는 태도에 배어 있게
+    if (P.broken?.length) { stable.push('## Broken (promises someone failed or went back on, secrets let out against their keeper — already over, but the people it was owed to have not forgotten: let it color how they treat the one who broke it, without restaging it)'); for (const l of P.broken) entry('Broken', l.id, `- [${normLockKind(l.kind)}] ${l.summary}${l.resolution ? ` — ${l.resolution}` : ''}`); }
     if (P.plans?.length) { stable.push(PLAN_HEAD); for (const p of P.plans) entry('Plan', p.id, `- ${p.veil}`); }
     // ── 여기부터는 매 턴 달라지는 구역 (캐시가 다시 쓰이는 구간은 여기서 끝난다)
     const lines: string[] = [], quotesOn = withExcerpts && P.recallQuotes !== false, lineOpt = { ages: P.storyAges, T: P.turnNow, banned, notes: P.notes, unaware: P.unaware, absent: P.absent };
@@ -649,7 +654,7 @@ export const part4: Part4 & ThisType<MemoryApi> = {
     }
     if (!w.text) return null;
     const inc = fallback ? [] : [...P.publicRecall.slice(0, L.recallLimit ?? Infinity), ...P.protectedRecall.slice(0, L.protectedLimit ?? Infinity)], ids = new Set(inc.map(m => m.id)), elig = new Set([...P.publicRecall, ...P.protectedRecall].map(m => m.id));
-    const diag = { sections: packetSections(w.text), hidden: P.hiddenProtected, fallback, narrator: P.narratorMode, narratorMode: P.narratorMode, direction: !!P.supervisorPlan, budget, split,
+    const diag = { sections: packetSections(w.text), hidden: P.hiddenProtected, fallback, narrator: P.narratorMode, narratorMode: P.narratorMode, direction: !!P.supervisorPlan, budget, split, intent: P.recallIntent || '', shortQ: !!P.recallShort, centered: !!P.recallCentered,
       rows: P.recallCandidates.map(m => ({ id: m.id, summary: m.summary, kind: m.kind, turn: m.turn, ...P.trace.get(m.id), included: ids.has(m.id), excluded: ids.has(m.id) ? '' : elig.has(m.id) ? tr('memoria.engine.excluded.budget') : tr('memoria.engine.excluded.dup') })) };
     const out = { ...w, picked: inc, tokens: used, trim, diag, fixed: '' };
     if (!opts.preview) {

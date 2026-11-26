@@ -17,6 +17,8 @@ const memDefs = (owners: string[]): FormDefs => {
     { k: 'summary', label: t('memoria.memories.f.summary'), type: 'area', rows: 3 }, { k: 'kind', label: t('memoria.memories.f.kind'), type: 'select', opts: Object.entries(KINDS), third: true }, { k: 'visibility', label: t('memoria.memories.f.visibility'), type: 'select', opts: Object.entries(VIS), third: true }, { k: 'owner', label: t('memoria.memories.f.owner'), third: true, ph: owners.join(', ') },
     { k: 'knowers', label: t('memoria.memories.f.knowers'), type: 'tags', hint: t('memoria.memories.f.knowersHint') },
     { k: 'guessers', label: t('memoria.memories.f.guessers'), type: 'tags', hint: t('memoria.memories.f.guessersHint') },
+    { k: 'unaware', label: t('memoria.memories.f.unaware'), type: 'tags', half: true, hint: t('memoria.memories.f.unawareHint') }, { k: 'keepFrom', label: t('memoria.memories.f.keepFrom'), type: 'tags', half: true, hint: t('memoria.memories.f.keepFromHint') },
+    { k: 'when', label: t('memoria.memories.f.when'), type: 'select', opts: [['', t('memoria.memories.era.now')], ['past', t('memoria.memories.era.past')], ['dream', t('memoria.memories.era.dream')], ['told', t('memoria.memories.era.told')]], hint: t('memoria.memories.f.whenHint') },
     { k: 'importance', label: t('memoria.memories.f.importance'), type: 'range', min: 0, max: 1, step: 0.05 }, { k: 'quote', label: t('memoria.memories.f.quote') },
     { k: 'entities', label: t('memoria.memories.f.entities'), type: 'tags', half: true }, { k: 'hints', label: t('memoria.memories.f.hints'), type: 'tags', half: true }, { k: 'tags', label: t('memoria.memories.f.tags'), type: 'tags', half: true }, { k: 'trigger', label: t('memoria.memories.f.trigger'), half: true, ph: t('memoria.memories.f.triggerPh') },
     { k: 'pinned', label: t('memoria.memories.f.pinned'), type: 'check' }, { k: 'disabled', label: t('memoria.memories.f.disabled'), type: 'check' }];
@@ -33,7 +35,11 @@ export async function editMem(st: StOpen, m?: MemItem) {
   const same = (a?: string[], b?: string[]) => [...(a || [])].sort().join('\u0001') === [...(b || [])].sort().join('\u0001');
   if (m && (!same(m.knowers, d.knowers) || !same(m.guessers, d.guessers))) { d.knowLock = true; d.learned = undefined; }
   if (!d.guessers.length) d.guessers = undefined;
-  if (m) { if (d.summary !== m.summary) { d.manual = true; delete m.av; } Object.assign(m, d); delete m.av; await M.save(mem); }   // 직접 다듬은 기억은 스와이프 롤백 · 상한 정리 · 서고 정리에서 보호한다
+  // 모르는 사람 · 숨기는 상대: 비공개 기억에만, 아는 사람과 겹치지 않게
+  const pick = (xs?: string[]) => { const known = new Set([d.owner, ...(d.knowers || [])].filter(Boolean)), out = (d.visibility || 'public') === 'public' ? [] : [...new Set((xs || []).map(e => M.canonName(mem, cut(e, 60))).filter(n => n && !known.has(n)))].slice(0, 6); return out.length ? out : undefined; };
+  d.unaware = pick(d.unaware); d.keepFrom = pick(d.keepFrom);
+  if (!d.when) d.when = undefined;
+  if (m) { if (d.summary !== m.summary) { d.manual = true; delete m.av; } Object.assign(m, d); delete m.av; for (const k of ['unaware', 'keepFrom', 'when'] as const) if (m[k] === undefined) delete m[k]; await M.save(mem); }   // 직접 다듬은 기억은 스와이프 롤백 · 상한 정리 · 서고 정리에서 보호한다
   else { await M.add(st.chat.id, d); toast(t('memoria.memories.added'), 'ok'); }
   st.draw();
 }
@@ -51,15 +57,17 @@ export function Memories({ st }: { st: StOpen }) {
   const setMute = async (inp: HTMLInputElement) => { const next = parsePhraseList(inp.value).slice(0, 60); inp.value = next.join(', '); if (next.join('\u0001') === (mem.recallMute || []).join('\u0001')) return; if (next.length) mem.recallMute = next; else delete mem.recallMute; await Mx().save(mem); };
   const card = (m: MemItem) => {
     const n = no.get(m.msgId as string) ?? -1, others = (m.knowers || []).filter(k => k && k !== m.owner), hidden = (m.visibility || 'public') !== 'public', vis = m.visibility || '';
+    const knowsNow = new Set([m.owner, ...(m.knowers || [])].filter(Boolean)), blind = (m.unaware || []).filter(n => !knowsNow.has(n)), hideFrom = (m.keepFrom || []).filter(n => !knowsNow.has(n));
     return <article key={m.id} className={`mm-card${m.disabled || m.retired ? ' off' : ''}${m.pinned ? ' pinned' : ''}`}>
-      <header><KindBadge k={m.kind} />{n >= 0 ? <button className="mm-st-jump" type="button" title={t('memoria.memories.jumpTitle')} data-mes={n}>{`#${n}`}</button> : <span className="mm-turn" title={t('memoria.memories.noSource')}>{turnTag(mem, m)}</span>}
+      <header><KindBadge k={m.kind} />{m.when ? <span className={`mm-when w-${m.when}`} title={t(`memoria.memories.era.${m.when}Title`)}>{t(`memoria.memories.era.${m.when}`)}</span> : null}{n >= 0 ? <button className="mm-st-jump" type="button" title={t('memoria.memories.jumpTitle')} data-mes={n}>{`#${n}`}</button> : <span className="mm-turn" title={t('memoria.memories.noSource')}>{turnTag(mem, m)}</span>}
         <span className="mm-vis" title={`${VIS[vis] || VIS.public}${m.owner ? t('memoria.memories.ownerSuffix', { owner: m.owner }) : ''}${others.length ? t('memoria.memories.knowersSuffix', { names: others.join(', ') }) : ''}`}><Ico name={VIS_IC[vis] || 'globe'} size={13} />{hidden ? (m.owner || VIS[vis]) : null}</span>
         <span className="mm-imp" title={t('memoria.memories.importance')}><Meter v={m.importance || 0} max={1} />{pct(m.importance)}</span>{m.shown ? <span className="mm-echo" title={t('memoria.memories.echoTitle')}>{t('memoria.memories.echo', { shown: m.shown, echoes: m.echoes || 0 })}</span> : null}
         {m.retired ? <Revive title={t('memoria.memories.reviveTitle') + (m.retired.now ? t('memoria.memories.retiredNow', { now: m.retired.now }) : '')} onClick={() => { delete m.retired; void save(); }} /> : null}
         <span className="mm-actions"><Ib name="book" title={t('memoria.memories.source')} onClick={() => showSource(st, m)} />{m.retired ? null : <Ib name="glass" title={t('memoria.memories.retire')} onClick={() => { m.retired = { turn: -1, now: '', manual: true }; void save(); }} />}<Ib name="pin" title={m.pinned ? t('memoria.memories.unpin') : t('memoria.memories.pin')} onClick={() => { m.pinned = !m.pinned; void save(); }} cls={m.pinned ? 'on' : ''} />
           <Ib name={m.disabled ? 'eyeoff' : 'eye'} title={m.disabled ? t('memoria.memories.enable') : t('memoria.memories.disable')} onClick={() => { m.disabled = !m.disabled; void save(); }} /><Ib name="edit" title={t('common.edit')} onClick={() => editMem(st, m)} /><Del st={st} arr="memories" x={m} what={t('memoria.memories.thisMemory')} /></span></header>
       <p className="mm-sum"><Tr>{m.summary}</Tr></p>{m.quote ? <blockquote>{`"${m.quote}"`}</blockquote> : null}
-      {(m.entities || []).length || (m.tags || []).length || (m.hints || []).length || m.trigger || (hidden && others.length) ? <div className="mm-chips">{hidden && others.length ? <span className="mm-chip know" title={t('memoria.memories.knowChipTitle')}><Ico name={VIS_IC[vis] || 'lock'} size={11} />{t('memoria.memories.knowChip', { names: others.join(', ') })}</span> : null}
+      {(m.entities || []).length || (m.tags || []).length || (m.hints || []).length || m.trigger || (hidden && (others.length || blind.length || hideFrom.length)) ? <div className="mm-chips">{hidden && others.length ? <span className="mm-chip know" title={t('memoria.memories.knowChipTitle')}><Ico name={VIS_IC[vis] || 'lock'} size={11} />{t('memoria.memories.knowChip', { names: others.join(', ') })}</span> : null}
+        {hidden && blind.length ? <span className="mm-chip unaware" title={t('memoria.memories.unawareChipTitle')}>{t('memoria.memories.unawareChip', { names: blind.join(', ') })}</span> : null}{hidden && hideFrom.length ? <span className="mm-chip keepfrom" title={t('memoria.memories.keepFromChipTitle')}>{t('memoria.memories.keepFromChip', { names: hideFrom.join(', ') })}</span> : null}
         {(m.entities || []).map((e, i) => <Chip key={'e' + i} text={'@' + e} cls="ent" />)}{(m.tags || []).map((t, i) => <Chip key={'t' + i} text={'#' + t} />)}{(m.hints || []).map((t, i) => <Chip key={'h' + i} text={'?' + t} cls="hint" />)}{m.trigger ? <Chip text={'⚑ ' + m.trigger} cls="trig" /> : null}</div> : null}
     </article>;
   };

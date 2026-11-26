@@ -4,7 +4,10 @@ import { S, DB, uid, now, msgText, emit } from '../../lib/core';
 import type { MemoryApi } from './api';
 import type { HistoryMsg } from './part3';
 import type { CastInput } from './part2';
-import type { Mem, MemItem, Msg, ChatM, Plan, Relation, Bond, BondStep, CastNote, CanonRow, StatusRow } from '../types';
+import type { PacketResult } from './part4';
+import type { Mem, MemItem, Msg, ChatM, Plan, Relation, Bond, BondStep, CastNote, CanonRow, StatusRow, RecallRow, ShownEntry } from '../types';
+/** 답마다 적어 두는 "실린 기억" — 실린 것 · 아깝게 빠진 것 몇 개, 최근 답 몇 개 몫만 */
+const SHOWN_ROWS = 24, SHOWN_MISS = 8, SHOWN_KEEP = 30;
 import { KINDS, LOCKS, VIS, SCOPES, NARRATOR, PUBLIC_ONLY, SHELVES, SHELF_LABELS, DOSSIER_MAX, CHARACTER_LINES_MAX, CHARACTER_GROWTH_MAX, empty, clamp01, str, list, snake, clip, low, cleanStr, toSnake, canonSlot, copy, cleanRecord, visibleProse, prose, ekey, cleanMultiline, parseLoose, fmtDays, ago, normKind, normLockKind, normVisibility, overrides, audits, lasts, freezes, recallRuns, PACKET_HEADER, PACKET_FOOTER } from './base';
 import * as MP from '../prompts';
 import { t as tr } from '../../i18n';
@@ -93,6 +96,8 @@ export interface Part5 {
   direct(chat: ChatM, msgs: Msg[], signal?: AbortSignal): Promise<Plan | null>;
   runSupervisor(chat: ChatM, msgs: Msg[], signal?: AbortSignal): Promise<Plan | null>;
   received(chat: ChatM, msg: Msg, msgs?: Msg[] | null): Promise<void>;
+  noteShown(mem: Mem, msg: Msg, last: PacketResult | null | undefined): boolean;
+  shownFor(mem: Mem | null | undefined, msg: Msg): ShownEntry | null;
   auditRecallEcho(chat: ChatM, msg: Msg, msgs?: Msg[] | null): Promise<void>;
   noteRecallHistory(chatId: string, at: number, ids: string[]): void;
   maskBannedInPrompt(messages: PromptMsg[] | null | undefined, type?: string): number;
@@ -188,9 +193,12 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     // 이 답변에 실렸던 회상을 이력에 적는다 — 다음 턴들의 "쉬어가기" 판단에 쓴다 (빈 묶음도 한 턴으로 센다). msgs: 대화 메시지 (답변의 자리를 알아야 다시 쓴 답변을 갈아 끼울 수 있다)
     const at = a && Array.isArray(msgs) ? msgs.findIndex(m => m === msg || m.id === msg.id) : -1;
     if (a && at >= 0) this.noteRecallHistory(chat.id, at, a.ids);
-    const mem = this.get(chat.id); if (!mem || !a?.ids.length || this.cfg().audit === false || now() - a.at > 30 * 60000) return;   // 낡은 감사표는 버린다
-    const reply = low(visibleProse(msgText(msg))); if (reply.length < 40) return;   // 너무 짧은 답변은 판단 근거가 못 된다
-    let touched = false;
+    const mem0 = this.get(chat.id), fresh = !!a && now() - a.at <= 30 * 60000;
+    // 이 답(스와이프마다 따로)을 만들 때 실린 기억 · 아깝게 빠진 기억을 적어 둔다 — 메시지 메뉴의 "이 답에 실린 기억"이 보여 준다 (모델 호출 없음)
+    const logged = !!mem0 && fresh && this.noteShown(mem0, msg, lasts.get(chat.id));
+    const mem = mem0; if (!mem || !a?.ids.length || this.cfg().audit === false || !fresh) { if (mem && logged) await this.save(mem); return; }   // 낡은 감사표는 버린다
+    const reply = low(visibleProse(msgText(msg))); if (reply.length < 40) { if (logged) await this.save(mem); return; }   // 너무 짧은 답변은 판단 근거가 못 된다
+    let touched = logged;
     for (const id of a.ids) {
       const m = mem.memories.find(x => x.id === id); if (!m || m.pinned || m.manual || m.disabled) continue;
       const toks = [...new Set(low(`${m.summary} ${(m.entities || []).join(' ')}`).match(/[\p{L}\p{N}]{2,}/gu) || [])]; if (toks.length < 3) continue;
@@ -201,6 +209,17 @@ export const part5: Part5 & ThisType<MemoryApi> = {
     }
     if (touched) await this.save(mem);
   },
+  noteShown(mem, msg, last) {
+    if (!last || last.fixed || !last.diag || !msg?.id) return false;
+    const rows = (last.diag.rows || []) as (RecallRow & { mode?: string })[];
+    const inc = rows.filter(r => r.included).slice(0, SHOWN_ROWS), miss = rows.filter(r => !r.included).sort((x, y) => (y.score || 0) - (x.score || 0)).slice(0, SHOWN_MISS);
+    const k = `${msg.id}:${msg.sw ?? 0}`, d = last.diag, entry: ShownEntry = { k, at: now(), tokens: last.tokens || 0, ...(d.intent ? { intent: d.intent } : {}), ...(d.shortQ ? { short: true } : {}), ...(d.centered ? { centered: true } : {}), sections: (last.diag.sections || []).slice(0, 16).map(x => ({ name: String(x.name), tokens: x.tokens || 0 })),
+      rows: [...inc, ...miss].map(r => ({ id: r.id, kind: r.kind, summary: cleanStr(r.summary, 160), inc: !!r.included, ...(r.reason ? { why: cleanStr(r.reason, 160) } : {}), ...(r.excluded ? { out: cleanStr(r.excluded, 80) } : {}), ...(r.score != null ? { score: Math.round(r.score * 100) / 100 } : {}), ...(r.mode ? { mode: r.mode } : {}) })) };
+    const log = (Array.isArray(mem.shownLog) ? mem.shownLog : []).filter(e => e && e.k !== k);
+    log.unshift(entry); mem.shownLog = log.slice(0, SHOWN_KEEP);
+    return true;
+  },
+  shownFor(mem, msg) { return !mem || !msg ? null : (Array.isArray(mem.shownLog) ? mem.shownLog : []).find(e => e && e.k === `${msg.id}:${msg.sw ?? 0}`) || null; },
   auditRecallEcho(chat, msg, msgs) { return this.received(chat, msg, msgs); },
   /** 최근 답변들에 실린 회상 이력에 한 줄 (at = 그 답변의 메시지 자리, 0부터) */
   noteRecallHistory(chatId, at, ids) { recallRuns.set(chatId, pushRecallHistory(recallRuns.get(chatId), at, ids)); },

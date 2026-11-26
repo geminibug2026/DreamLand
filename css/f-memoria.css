@@ -456,3 +456,13 @@
   .mm-st-jump:not(.mm-pp .mm-st-jump), .mm-revive, .mm-said .mm-line button { position: relative; }
   .mm-st-jump:not(.mm-pp .mm-st-jump)::after, .mm-revive::after { content: ""; position: absolute; inset: -8px -3px; } .mm-said .mm-line button::after { content: ""; position: absolute; inset: -11px -9px; }
 }
+
+/* 그때의 일(회상 · 꿈 · 들은 말) · 서약이 끝난 까닭 · 모르는 사람 / 숨기는 상대 */
+.mm-when { font-size: .72em; font-weight: 600; padding: 1px 7px; border: 1px dashed var(--ink-line, var(--line)); color: var(--dim); white-space: nowrap; }
+.mm-when.w-dream { border-style: dotted; font-style: italic; }
+button.mm-outcome { cursor: pointer; background: none; font-family: inherit; line-height: 1.5; }
+.mm-outcome.o-none { border-style: dashed; opacity: .75; }
+.mm-outcome.o-kept { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
+.mm-outcome.o-broken { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 50%, transparent); }
+.mm-chip.unaware { border-style: dashed; }
+.mm-chip.keepfrom { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }

@@ -498,13 +498,14 @@ export const part1: Part1 & ThisType<MemoryApi> = {
     });
     for (const l of mem.pledges) {
       if (l.status === 'resolved' && (l.resolvedBy === msgId || (bySummary(l.resolvedBy, l.resolvedTurn, l) && l.resolution === SETTLED_AT_SUMMARY))) { l.status = 'active'; l.resolvedTurn = null; l.resolvedBy = ''; }   // 이 턴에서 "해소됨" 판정을 받은 서약은 다시 활성으로
-      if (l.suggestResolved && (l.suggestBy === msgId || (at >= 0 && !l.suggestBy && l.suggestTurn === at))) { l.suggestResolved = false; l.suggestTurn = null; l.suggestBy = ''; l.suggestHow = null; }
+      if (l.suggestResolved && (l.suggestBy === msgId || (at >= 0 && !l.suggestBy && l.suggestTurn === at))) { l.suggestResolved = false; l.suggestTurn = null; l.suggestBy = ''; l.suggestHow = null; l.suggestOutcome = null; }
       // 이 답변이 붙인 "지금" 한 줄 · 언급 · 깨움 · 기한은 그 답변과 함께 물린다
       while (l.latest && l.latest.msgId === msgId) l.latest = l.latest.was || null;
       if (msgId && l.seenBy === msgId) { l.seenTurn = l.seenPrev ?? null; l.seenPrev = null; l.seenBy = ''; }
       if (msgId && l.wokeBy === msgId) { if (l.status === 'active') { l.status = 'dormant'; l.sleptTurn = l.sleptTurn ?? l.wokeTurn ?? null; } l.wokeTurn = null; l.wokeBy = ''; }
       while (msgId && l.due && l.due.msgId === msgId) l.due = l.due.was || null;
       if (l.resolution && l.status !== 'resolved') l.resolution = null;
+      if (l.outcome && l.status !== 'resolved') delete l.outcome;   // 다시 열린 서약은 지켰는지 어겼는지도 함께 물린다
     }
     // 인물 카드를 통째로 지울지는 여기서 보지 않는다(맞추기가 판단한다). 이 턴에 바뀐 칸만 한 단계 이전 값으로 되돌린다
     for (const c of mem.cast) {

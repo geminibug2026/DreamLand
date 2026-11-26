@@ -5,7 +5,7 @@ import { embedTexts, embedKind, embedModel } from '../../lib/embed';
 import type { MemoryApi } from './api';
 import type { StatusBar } from './part1';
 import type { CastCard, Cfg, ChatM, Mem, MemItem, Msg, Summary, SummarySrc, Turn } from '../types';
-import { G, NARRATOR, PUBLIC_ONLY, PAST_QUERY_RE, str, list, clip, low, cleanStr, visibleProse, sanitizeRecord, ekey, vec, cos, cueText, indexText, vecOf, cleanMultiline, normScope, sameKnowledgeScope, storyFossilWeight, grams, lexical, gramOverlap, calibrate, parseLoose, toDays, ago, dcache, dvec, normLockKind, normVisibility, overrides, pendingEmbeds, queryEmbedCache, preps, overlap, canonSlot, VOLATILE, STANDING_KINDS, SETTLED_AT_SUMMARY, recallRuns, mergeTraits } from './base';
+import { G, NARRATOR, PUBLIC_ONLY, PAST_QUERY_RE, NOW_QUERY_RE, DETAIL_QUERY_RE, str, list, clip, low, cleanStr, visibleProse, sanitizeRecord, ekey, vec, cos, cueText, indexText, vecOf, cleanMultiline, normScope, sameKnowledgeScope, storyFossilWeight, grams, lexical, gramOverlap, calibrate, parseLoose, toDays, ago, dcache, dvec, normLockKind, normVisibility, overrides, pendingEmbeds, queryEmbedCache, preps, overlap, canonSlot, VOLATILE, STANDING_KINDS, SETTLED_AT_SUMMARY, recallRuns, mergeTraits } from './base';
 import * as MP from '../prompts';
 import { chunkTurnsOf } from './base';
 import { THREAD_KINDS, SECRET_KINDS, withDeadline, hasPhrase, splitClosedLine, isEndedValue, ungroundedFigures, recallCooldown, rareQueryWords, rareStrong, strayHidden, pickTranscript, transcriptTerms } from '../craft';
@@ -41,7 +41,31 @@ export interface ChunkRecord { text: string; unverified: string[] }
 export interface RecallTraceParts { cos: number; lex: number; imp: number; rec: number; bonus: number; sem: number }
 export interface RecallTrace { reason: string; mode: 'pinned' | 'trigger' | 'direct' | 'association'; score?: number; parts?: RecallTraceParts; via?: string }
 /** 회상 결과 */
-export interface RecallResult { selected: MemItem[]; pinned: MemItem[]; triggered: MemItem[]; hidden: number; trace: Map<string, RecallTrace>; query: string; inputs: RecallInputs }
+export interface RecallResult { selected: MemItem[]; pinned: MemItem[]; triggered: MemItem[]; hidden: number; trace: Map<string, RecallTrace>; query: string; inputs: RecallInputs;
+  /** 질문 종류 (current 지금 형편 · history 지난 일 · detail 자세한 사실) · 짧은 입력이라 직전 장면을 함께 봤나 · 임베딩의 흔한 결을 걸렀나 */
+  intent?: RecallIntent; shortQ?: boolean; centered?: boolean }
+export type RecallIntent = '' | 'current' | 'history' | 'detail';
+/** 서고 임베딩의 평균 — 모든 기억에 고루 닮은 결(같은 이야기 · 같은 인물이라 생기는 공통 성분)을 빼고 견주려고 (기억 수 · 모델이 바뀌면 다시 잰다) */
+interface EmbedCenter { sig: string; mu: Float32Array; mm: number; per: Map<string, { vm: number; vv: number }> }
+const embedCenters = new WeakMap<Mem, EmbedCenter>(), CENTER_MIN = 12;
+function embedCenter(mem: Mem, ok: (m?: string) => boolean): EmbedCenter | null {
+  const rows = mem.memories.filter(m => !m.disabled && m.av instanceof Float32Array && ok(m.avm as string | undefined)) as (MemItem & { av: Float32Array })[];
+  if (rows.length < CENTER_MIN) return null;
+  const dim = rows[0].av.length, use = rows.filter(m => m.av.length === dim); if (use.length < CENTER_MIN) return null;
+  const sig = `${use.length}:${dim}:${use[0].id}:${use[use.length - 1].id}:${String(use[0].avm || '')}`, had = embedCenters.get(mem); if (had && had.sig === sig) return had;
+  const mu = new Float32Array(dim); for (const m of use) for (let i = 0; i < dim; i++) mu[i] += m.av[i];
+  for (let i = 0; i < dim; i++) mu[i] /= use.length;
+  const mm = cos(mu, mu), per = new Map(use.map(m => [m.id, { vm: cos(m.av, mu), vv: cos(m.av, m.av) }]));
+  const c = { sig, mu, mm, per }; embedCenters.set(mem, c); return c;
+}
+/** 평균을 뺀 두 벡터의 코사인 (a 쪽 내적은 미리 잰 값을 받는다) */
+function centeredCos(C: EmbedCenter, q: Float32Array, qm: number, qq: number, m: MemItem): number | null {
+  const p = C.per.get(m.id), v = m.av as Float32Array | undefined; if (!p || !v) return null;
+  const den = Math.sqrt(Math.max(1e-9, qq - 2 * qm + C.mm) * Math.max(1e-9, p.vv - 2 * p.vm + C.mm));
+  return (cos(q, v) - qm - p.vm + C.mm) / den;
+}
+/** 평균을 빼고 보면 거의 닮지 않은 짝(흔한 결로만 닮음)은 의미 유사도를 덜 믿는다: 0 이하 → 0.4배, 0.1 이상 → 그대로 */
+const genericGate = (cc: number | null) => cc == null ? 1 : cc <= 0 ? 0.4 : cc >= 0.1 ? 1 : 0.4 + 6 * cc;
 /** 연상의 씨앗 · 연상으로 이어진 기억 */
 export interface RecallSeed { m: MemItem; score: number }
 export interface AssocLink { m: MemItem; score: number; via: string; cues: string[] }
@@ -731,15 +755,27 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     const cfg = this.cfg(), T = mem.turns.length, inp = opt.inputs || this.recallInputs(mem, history, opt), query = String(inp.query || '');
     const out: RecallResult = { selected: [], pinned: [], triggered: [], hidden: 0, trace: new Map(), query, inputs: inp };
     const active = mem.memories.filter(m => !m.disabled); if (!active.length) return out;
+    const tune = cfg.recallTune !== false;   // 짧은 입력 · 질문 종류 · 흔한 결 거르기
     // 볼 수 있는 기억만 후보: 비공개 기억은 소유자, 또는 "아는 사람"으로 적힌 인물의 시점에서만
     const auth = this.authorizedEntities(chat, mem), cands: Cand[] = [], eligible: MemItem[] = [];
     const aux = inp.aux.slice(0, cfg.multiQueryRecent), sceneText = String(inp.scene || '');
     const qv = vec(query), auxV = aux.map(vec), sv = sceneText.trim() ? vec(sceneText.slice(0, 2400)) : null;   // 장면 연속 보정: 입력이 짧아도 직전 답변이 담은 장면으로 회상을 이어간다
     const qT = new Set(low(query).match(/[\p{L}\p{N}]+/gu) || []), qG = grams(query), ql = low(query);
     const pastQ = PAST_QUERY_RE.test(ql);   // 과거 회상형 질의면 최신성 페널티(화석화)를 걸지 않는다 — 오래된 기억도 동등하게 겨룬다
+    // 질문 종류: 지난 일(위) · 자세한 사실(이름 · 수 · 한 말) · 지금 형편 — 저마다 문맥 · 낱말 · 중요도 · 최신성의 비중을 조금씩 옮긴다
+    const intent: RecallIntent = !tune || !ql.trim() ? '' : pastQ ? 'history' : DETAIL_QUERY_RE.test(ql) ? 'detail' : NOW_QUERY_RE.test(ql) ? 'current' : '';
+    const W = intent === 'current' ? { c: 0.58, lex: 0.16, imp: 0.10, rec: 0.16 } : intent === 'detail' ? { c: 0.54, lex: 0.28, imp: 0.10, rec: 0.08 } : { c: 0.62, lex: 0.18, imp: 0.12, rec: 0.08 };
+    // 짧은 입력("응", "그래서?", 행동 한 줄): 입력만으로는 낱말이 닿지 않는다 — 직전 장면의 끝을 낱말 축에 함께 넣고, 장면 문맥을 거의 입력만큼 믿는다
+    const bare = ql.replace(/[\s\p{P}\p{S}]+/gu, ''), shortQ = tune && !!sceneText.trim() && (bare.length < 12 || qT.size < 3);
+    const tail = shortQ ? sceneText.slice(-500) : '', tT = shortQ ? new Set(low(tail).match(/[\p{L}\p{N}]+/gu) || []) : null, tG = shortQ ? grams(tail) : null, sW = shortQ ? 0.95 : 0.85;
+    out.intent = intent; out.shortQ = shortQ;
     const ages = cfg.storyClock !== false ? this.storyAges(mem) : null;   // 이야기 속에서 흐른 시간도 노화 축으로 (시간을 자주 건너뛰는 롤플 대응)
     const sceneQuery = sv ? sceneText.slice(0, 2400) : '', rawFloor = Number(cfg.embed.floor), floor = Number.isFinite(rawFloor) ? Math.max(0, Math.min(0.9, rawFloor)) : 0.35;
     const apiQ = this.queryVec(query), apiAux = aux.map(t => this.queryVec(t)), apiS = sceneQuery ? this.queryVec(sceneQuery) : null, model = cfg.embed.model;
+    // 흔한 결 거르기: 서고 임베딩의 평균을 빼고 다시 견준다 — 같은 이야기라 모든 기억이 조금씩 닮는 탓에 아무 입력에나 걸리는 기억을 덜 믿는다
+    const C = tune && cfg.embedCenter !== false && (apiQ || apiS) ? embedCenter(mem, m => this.vecOk(m)) : null;
+    const qPre = (q: Float32Array | null | undefined) => q && C && q.length === C.mu.length ? { q, qm: cos(q, C.mu), qq: cos(q, q) } : null, cQ = qPre(apiQ), cS = qPre(apiS);
+    out.centered = !!C;
     // 장면 인물 사전확률: 지금 장면에 있는 인물(이름 · 다른 이름이 최근 글에 나옴). 한국어 롤플은 대명사 · 호칭 생략이 많아 질의에 이름이 없어도 장면 속 인물과 얽힌 기억이 관련 있을 확률이 높다
     const presence: Keep<typeof model, string> = low(`${query}\n${inp.aux.join('\n')}\n${sceneText}`), present = new Set<string>();
     for (const c of mem.cast) if (!c.disabled && [c.name, ...(c.aka || [])].some(n => n && String(n).length >= 2 && presence.includes(low(n)))) present.add(low(c.name));
@@ -761,19 +797,20 @@ export const part3: Part3 & ThisType<MemoryApi> = {
       if (m.trigger) { try { if (new RegExp(m.trigger, 'i').test(ql)) { out.triggered.push(m); out.trace.set(m.id, { reason: tr('memoria.engine.why.trigger'), mode: 'trigger' }); continue; } } catch { /* 잘못된 정규식은 무시 */ } }
       const v = vecOf(m); let c = cos(qv, v.sum);
       for (const a of auxV) c = Math.max(c, cos(a, v.sum) * 0.92);
-      if (sv) c = Math.max(c, cos(sv, v.sum) * 0.85);
-      if (v.cue) { let cc = cos(qv, v.cue); if (sv) cc = Math.max(cc, cos(sv, v.cue) * 0.85); c = Math.max(c, cc * 0.97); }   // 단서 축: 인용 · 단서는 장면의 말 그대로라 입력과 결이 맞는다
+      if (sv) c = Math.max(c, cos(sv, v.sum) * sW);
+      if (v.cue) { let cc = cos(qv, v.cue); if (sv) cc = Math.max(cc, cos(sv, v.cue) * sW); c = Math.max(c, cc * 0.97); }   // 단서 축: 인용 · 단서는 장면의 말 그대로라 입력과 결이 맞는다
       // 임베딩이 양쪽에 다 있으면 의미 유사도를 보정 스케일로 — 요약 축과 단서 축 모두에 질의 · 보조 질의 · 장면을 각각 잰다 (감쇠는 내장 축과 같은 계수)
-      let sem = 0;
+      let sem = 0, gate = 1;
       if ((apiQ || apiS) && m.av instanceof Float32Array && this.vecOk(m.avm)) {
         sem = apiQ ? calibrate(cos(apiQ, m.av), floor) : 0;
         for (const aq of apiAux) if (aq) sem = Math.max(sem, calibrate(cos(aq, m.av), floor) * 0.92);
-        if (apiS) sem = Math.max(sem, calibrate(cos(apiS, m.av), floor) * 0.85);
-        if (m.acv instanceof Float32Array) { if (apiQ) sem = Math.max(sem, calibrate(cos(apiQ, m.acv), floor) * 0.97); if (apiS) sem = Math.max(sem, calibrate(cos(apiS, m.acv), floor) * 0.85 * 0.97); }
+        if (apiS) sem = Math.max(sem, calibrate(cos(apiS, m.av), floor) * sW);
+        if (m.acv instanceof Float32Array) { if (apiQ) sem = Math.max(sem, calibrate(cos(apiQ, m.acv), floor) * 0.97); if (apiS) sem = Math.max(sem, calibrate(cos(apiS, m.acv), floor) * sW * 0.97); }
+        if (C && sem > 0) { const cc = [cQ && centeredCos(C, cQ.q, cQ.qm, cQ.qq, m), cS && centeredCos(C, cS.q, cS.qm, cS.qq, m)].filter((x): x is number => typeof x === 'number'); gate = cc.length ? genericGate(Math.max(...cc)) : 1; sem *= gate; }
         c = Math.max(c, sem);
       }
       // 어휘 축: 단어 일치와 글자 조각 일치 중 더 강하게 닿는 쪽 — 한국어는 조사 · 어미 변형 때문에 단어 축만으로는 절반이 샌다
-      const idx = indexText(m), lex = Math.max(lexical(qT, idx), gramOverlap(qG, idx) * 0.9);
+      const idx = indexText(m), lex = Math.max(lexical(qT, idx), gramOverlap(qG, idx) * 0.9, tT && tG ? Math.max(lexical(tT, idx), gramOverlap(tG, idx) * 0.9) * 0.8 : 0);
       const hitEnts = (m.entities || []).filter(e => e && ql.includes(low(e))), entityHit = hitEnts.length > 0;
       const hintHit = (m.hints || []).some(h => { const hl = low(h); return hl.length >= 2 && ql.includes(hl) && !hitEnts.some(e => low(e).includes(hl)); });   // 이미 맞은 인물 이름에 통째로 든 단서는 같은 일치의 중복이다
       const presenceHit = !entityHit && present.size > 0 && (m.entities || []).some(e => present.has(low(e)));
@@ -792,10 +829,12 @@ export const part3: Part3 & ThisType<MemoryApi> = {
       // 옛일을 되짚는 질문이거나, 그 기억에만 있는 드문 낱말로 직접 가리켰으면 나이로 깎지 않는다 · 연달아 실렸어도 미루지 않는다
       const rec = pastQ ? 0.55 : rare ? Math.max(0.55, Math.exp(-age / 18) * fossil) : Math.exp(-age / 18) * fossil, bonus = (entityHit ? 0.08 : 0) + (hintHit ? 0.07 : 0) + (presenceHit ? 0.05 : 0) + rareBoost;
       const cool = coolHistory.length && !rare ? recallCooldown(coolHistory, m.id, { before: coolBefore, direct: direct || pastQ, echoed: (m.echoes || 0) > 0 && !((m.coldRun || 0) > 0) }) : 1;
-      const score = (0.62 * Math.max(0, c) + 0.18 * lex + 0.12 * (m.importance || 0) + 0.08 * rec + bonus) * cool * (m.retired ? 0.7 : 1);
+      // 그때의 일(회상 · 꿈 · 들은 말)은 지금 형편을 물을 때 덜 앞세운다 (그 내용을 바로 꺼냈어도 — 지금을 묻는 말이다). 꿈은 따로 꺼내지 않으면 조금 뒤로. 자세한 사실을 물으면 원문 인용이 있는 기억을 조금 앞세운다
+      const era = m.when ? (intent === 'current' ? 0.85 : m.when === 'dream' && intent !== 'history' && !direct ? 0.92 : 1) : 1, quoteBonus = intent === 'detail' && m.quote ? 0.03 : 0;
+      const score = (W.c * Math.max(0, c) + W.lex * lex + W.imp * (m.importance || 0) + W.rec * rec + bonus + quoteBonus) * cool * era * (m.retired ? 0.7 : 1);
       if (score < cfg.minScore) continue;
       cands.push({ m, score, v: v.sum });
-      out.trace.set(m.id, { mode: 'direct', score, parts: { cos: Math.max(0, c), lex, imp: m.importance || 0, rec, bonus, sem }, reason: [rareHits.length && tr('memoria.engine.why.rare', { words: rareHits.map(r => r.word).join(', ') }), cool < 0.8 && tr('memoria.engine.why.cooled'), m.retired && tr('memoria.engine.why.retired'), entityHit && tr('memoria.engine.why.entity'), hintHit && tr('memoria.engine.why.hint'), presenceHit && tr('memoria.engine.why.present'), lex >= 0.035 && tr('memoria.engine.why.lexical'), c >= cfg.minCosine && tr('memoria.engine.why.context')].filter(Boolean).join(' · ') || tr('memoria.engine.why.score') });
+      out.trace.set(m.id, { mode: 'direct', score, parts: { cos: Math.max(0, c), lex, imp: m.importance || 0, rec, bonus, sem }, reason: [rareHits.length && tr('memoria.engine.why.rare', { words: rareHits.map(r => r.word).join(', ') }), cool < 0.8 && tr('memoria.engine.why.cooled'), m.retired && tr('memoria.engine.why.retired'), gate < 0.8 && tr('memoria.engine.why.generic'), era < 1 && tr('memoria.engine.why.era'), entityHit && tr('memoria.engine.why.entity'), hintHit && tr('memoria.engine.why.hint'), presenceHit && tr('memoria.engine.why.present'), lex >= 0.035 && tr('memoria.engine.why.lexical'), c >= cfg.minCosine && tr('memoria.engine.why.context')].filter(Boolean).join(' · ') || tr('memoria.engine.why.score') });
     }
     cands.sort((a, b) => b.score - a.score);
     if (cfg.associative !== false) {
@@ -897,8 +936,11 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     const visNorm = normVisibility(m.visibility);
     // 비밀은 "누가 아는가"까지 적어야 지켜진다 — 소유자만 적으면 함께 아는 인물까지 모르는 척하게 된다.
     // 지금 장면에 있는데 모르는 사람은 이름으로 짚는다 — "모르는 사람이 있다"보다 "이 사람이 모른다"가 지키기 쉽다
-    const others = (m.knowers || []).filter(k => ekey(k) !== ekey(m.owner || '')), blind = unaware?.get(m.id) || [];
-    const known = (others.length ? ` · also known to ${others.join(', ')}` : '') + (m.guessers?.length ? ` · only suspected by ${m.guessers.join(', ')}` : '') + (blind.length ? ` · not known to ${blind.join(', ')}` : '');
+    // 모르는 사람: 기록할 때 본문 근거로 적어 둔 사람(unaware) — 나중에 알게 됐으면 아는 사람 쪽에 있으므로 뺀다. 일부러 숨기는 상대(keepFrom)는 따로 짚는다 — "모른다"와 "알려선 안 된다"는 다르다
+    const knowsNow = new Set([m.owner, ...(m.knowers || [])].filter(Boolean).map(n => ekey(n!)));
+    const others = (m.knowers || []).filter(k => ekey(k) !== ekey(m.owner || '')), blind = [...new Set([...(unaware?.get(m.id) || []), ...(m.unaware || [])])].filter(n => !knowsNow.has(ekey(n)));
+    const hideFrom = (m.keepFrom || []).filter(n => !knowsNow.has(ekey(n)));
+    const known = (others.length ? ` · also known to ${others.join(', ')}` : '') + (m.guessers?.length ? ` · only suspected by ${m.guessers.join(', ')}` : '') + (blind.length ? ` · not known to ${blind.join(', ')}` : '') + (hideFrom.length ? ` · being kept from ${hideFrom.join(', ')}` : '');
     // 그 자리에 없던 사람 · 온전히 기억하지 못하는 사람 — 그 사람이 본 것처럼, 기억하는 것처럼 쓰지 않게
     const away = absent?.get(m.id) || [], gaps = (away.length ? ` [not witnessed by ${away.join(', ')}]` : '')
       + (m.dim || []).slice(0, 3).map(d => d.level === 'none' ? ` [${d.who} has no memory of this]` : ` [${d.who} remembers it only dimly${d.kept ? ` — ${d.kept}` : ''}]`).join('');
@@ -913,7 +955,9 @@ export const part3: Part3 & ThisType<MemoryApi> = {
     const agoNote = d >= 1 ? ` · ~${ago(d)} ago in-story` : '';   // 이야기 속에서 하루 넘게 지난 기억은 얼마나 옛일인지
     const when = m.manual || m.turn == null ? 'noted' : back <= 0 ? 'this exchange' : back === 1 ? 'last exchange' : `${back} exchanges back`;   // 절대 턴 번호 대신 상대 최신성
     const core = (m.importance ?? 0) >= 0.8 || m.pinned ? ' · core' : '';   // 오래돼도 무거운 기억에는 core 표시
-    return `- (${m.kind}${core}, ${when}${agoNote})${vis} ${m.summary}${quote ? ` — ${speaker}"${quote}"` : ''}${gaps}${dated}`;
+    // 그때의 일: 회상 장면 · 꿈 · 전해 들은 이야기 — 지금 상태가 아니다
+    const era = m.when === 'past' ? ' · flashback, not the present' : m.when === 'dream' ? ' · a dream, not what happened' : m.when === 'told' ? ' · as told by someone, not seen' : '';
+    return `- (${m.kind}${core}${era}, ${when}${agoNote})${vis} ${m.summary}${quote ? ` — ${speaker}"${quote}"` : ''}${gaps}${dated}`;
   },
   /** 인물 한 줄. c.brief: 장면 밖 인물 — 누구인지와 핵심 한 줄만. c.sceneNow: 지금 장면에 있다 (외형을 싣는다) */
   formatCharacterLine(c) {
