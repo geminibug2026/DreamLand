@@ -94,7 +94,8 @@ function SendBtn() {
 }
 function Attach() {
   useCh('attach');
-  return <div className="attach">{cur.attach.map((u, i) => <div className="attach-item" key={i}><img src={u} /><IconBtn ic="x" title={t('chat.composer.removeImage')} cls="tiny" onClick={() => { cur.attach.splice(i, 1); bump('attach'); }} /></div>)}</div>;
+  if (!cur.attach.length) return null;
+  return <div className="attach">{cur.attach.map((u, i) => <div className="attach-item" key={i}><img src={u} alt="" /><button type="button" className="attach-x" title={t('chat.composer.removeImage')} aria-label={t('chat.composer.removeImage')} onClick={() => { cur.attach.splice(i, 1); bump('attach'); }}><Icon name="x" size={11} /></button></div>)}</div>;
 }
 async function addImages(files: File[]) {
   for (const f of files) { if (!f.type.startsWith('image/')) continue; cur.attach.push(await shrinkImage(await readDataURL(f), 1568, 'image/jpeg', 0.88)); }
@@ -142,9 +143,10 @@ export function Composer() {
         : <button className="chip scene-chip" title={t('chat.composer.openSceneHint')} onClick={async () => { const v = await promptBox(t('chat.composer.openScenePrompt'), '', { placeholder: t('chat.composer.openScenePlaceholder') }); if (v !== null) void openScene({ title: v.trim() }); }}>{t('chat.composer.openScene')}</button>) : null}</div>
     <GameBarSlot />
     <Choices />
-    <Attach />
     <ThreadsBar />
     <div className="composer-box">
+      {/* 붙인 그림: 입력 칸 안, 글 줄 위에 작은 미리보기로 (따로 떨어진 줄이 생기지 않게) */}
+      <Attach />
       <IconBtn ic="plus" title={t('chat.composer.more')} onClick={plus} />
       <IconBtn ic="image" title={t('chat.composer.attach')} onClick={async () => addImages(await pickFiles({ accept: 'image/*', multiple: true }))} />
       <textarea className="composer-input" ref={input} rows={1} spellCheck={false} placeholder={talk ? t('chat.composer.placeholderTalk') : t(matchMedia('(max-width: 820px)').matches ? 'chat.composer.placeholderRpShort' : 'chat.composer.placeholderRp')} />
