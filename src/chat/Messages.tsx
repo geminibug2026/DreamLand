@@ -19,6 +19,7 @@ import { S } from '../lib/core';
 import { X } from '../lib/hooks';
 import { Illust } from '../lib/illust';
 import { IllustPic } from './IllustPic';
+import { sceneLabel } from '../scenebook/tagrules';
 import { Clock } from '../lib/clock';
 import { t, getLang, fmtDate } from '../i18n';
 import { I } from '../lib/icons';
@@ -63,7 +64,7 @@ export function illustDialog(m: Msg, preset = '') {
 
 function Illusts({ m, s }: { m: Msg; s: Swipe }) {
   if (!s.illust?.length) return null;
-  const big = (it: IllustItem) => openModal({ title: '', wide: true, body: <div className="col"><img className="full-img" src={Illust.url(it.id) || Illust.data(it.id)} />{it.title && <b>{it.title}</b>}<p className="hint">{[it.camera, it.prompt, ...(it.characters || []).map(x => typeof x === 'string' ? x : `${x.name || ''}: ${[x.outfit, x.action].filter(Boolean).join(', ')}`)].filter(Boolean).join(' · ')}</p></div> });
+  const big = (it: IllustItem) => openModal({ title: '', wide: true, body: <div className="col"><img className="full-img" src={Illust.url(it.id) || Illust.data(it.id)} />{sceneLabel(it) && <b>{sceneLabel(it)}</b>}<p className="hint">{[it.camera, it.prompt, ...(it.characters || []).map(x => typeof x === 'string' ? x : `${x.name || ''}: ${[x.outfit, x.action].filter(Boolean).join(', ')}`)].filter(Boolean).join(' · ')}</p></div> });
   return <div className="illusts">{s.illust.map(it => <figure className="illust" key={it.slotId || it.id}>
     <IllustPic id={it.id} alt={t('chat.illust.alt')} onClick={() => big(it)} />
     <figcaption>

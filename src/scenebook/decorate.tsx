@@ -4,6 +4,9 @@ import { Icon } from '../kit';
 import { Btn, IBtn, make, mountNode, sweep, useBump } from './parts';
 import { frameLayout } from './frames';
 import { FrameArt } from './frameArt';
+import { Chevron } from './glyph';
+import { sceneLabel } from './tagrules';
+import { placementOf } from './comic';
 import { placeAt } from './place';
 import { compose, draw, quickDraw, regen } from './work';
 import { figRefresh, quickEdit, saveSoon, slotMenu, slotViewer } from './slot';
@@ -17,31 +20,44 @@ import { Illust } from './illust';
 import { IllustPic } from '../chat/IllustPic';
 import { t, tn } from '../i18n';
 import { onFrame } from '../lib/frame';
+import { on } from '../lib/core';
 
 /** 삽화 한 장: 액자 + 그림 + 그림 위 도구 + 아래 제목 줄. 대화 화면의 figure.illust 안에 들어간다 */
 export function Figure({ fig, m, sw, it }: { fig: HTMLElement; m: Msg; sw: Swipe; it: Slot }) {
   const bump = useBump(), img = useRef<HTMLImageElement>(null), c = Illust.cfg(), v = it.versions[it.sel];
-  // 액자: 그림 비율에 맞춰 그리므로 버전을 넘기면 다시 씌운다
-  const lay = frameLayout(v?.config?.width || img.current?.naturalWidth || 832, v?.config?.height || img.current?.naturalHeight || 1216, c);
-  useLayoutEffect(() => { fig.dataset.frame = lay.frame; });
+  // 액자: 그림 비율에 맞춰 그리므로 버전을 넘기면 다시 씌운다. 웹툰 컷은 액자 없이 이어 보인다
+  const lay = frameLayout(v?.config?.width || img.current?.naturalWidth || 832, v?.config?.height || img.current?.naturalHeight || 1216, it.cut ? { ...c, frame: 'none', frameWide: '' } : c);
+  useLayoutEffect(() => { fig.dataset.frame = lay.frame; fig.classList.toggle('sb-cut', !!it.cut); });
   // 큰 그림에서 버전을 넘기면 이 칸도 따라 바뀐다
   useEffect(() => { const k = it.slotId, set = figRefresh.get(k) || new Set(); set.add(bump); figRefresh.set(k, set); return () => { set.delete(bump); if (!set.size) figRefresh.delete(k); }; }, [it.slotId, bump]);
-  // 터치 화면: 그림 위 도구는 숨겨 두고, 한 번 누르면 잠시 보이고 그동안 한 번 더 누르면 크게 본다 (마우스는 올리면 보인다)
-  const tapT = useRef(0);
-  const tap = () => {
-    if (matchMedia('(hover: none)').matches && !fig.classList.contains('sb-tools-on')) { fig.classList.add('sb-tools-on'); clearTimeout(tapT.current); tapT.current = window.setTimeout(() => fig.classList.remove('sb-tools-on'), 3500); return; }
-    clearTimeout(tapT.current); fig.classList.remove('sb-tools-on'); slotViewer(m, sw, it);
+  // 같은 자리에 다시 그린 그림이 붙으면(수정 · 재생성) 이 칸도 새 버전으로 바꾼다 — 대화 화면은 같은 칸을 그대로 두기 때문
+  const seen = useRef(it.versions.length);
+  useEffect(() => on('illust:jobs', () => { if (it.versions.length !== seen.current) { seen.current = it.versions.length; bump(); } }), [it, bump]);
+  // 터치: 처음엔 그림만. 한 번 누르면 도구가 보이고, 그동안 한 번 더 누르면 크게 본다. 다른 곳을 누르거나 5초 지나면 숨는다 (마우스는 올리면 보인다 · 설정에서 항상 보이기)
+  const hide = useRef<(() => void) | null>(null), ptr = useRef('');
+  const reveal = () => {
+    hide.current?.();
+    const outside = (e: PointerEvent) => { if (!fig.contains(e.target as Node)) off(); };
+    const off = () => { clearTimeout(timer); document.removeEventListener('pointerdown', outside, true); fig.classList.remove('sb-tools-on'); hide.current = null; };
+    const timer = window.setTimeout(off, 5000); document.addEventListener('pointerdown', outside, true); fig.classList.add('sb-tools-on'); hide.current = off;
   };
+  useEffect(() => () => hide.current?.(), []);
+  const tap = () => {
+    const touch = ptr.current ? ptr.current !== 'mouse' : matchMedia('(hover: none)').matches; ptr.current = '';
+    if (Illust.cfg().imageTools !== 'always' && touch && !fig.classList.contains('sb-tools-on')) { reveal(); return; }
+    hide.current?.(); slotViewer(m, sw, it);
+  };
+  const tool = (f: () => unknown) => guard(() => { hide.current?.(); return f(); });
   // ‹ 2/4 › 는 바로 바뀌고, 저장은 넘기기를 멈춘 뒤 한 번
   const step = (d: number) => { Illust.select(it, it.sel + d); bump(); saveSoon(); };
   return <>
     <div className="sb-frame" style={lay.wrapStyle}>
-      <div className="sb-pic" style={lay.picStyle}><IllustPic imgRef={img} id={it.id} w={v?.config?.width || 832} h={v?.config?.height || 1216} alt={it.title || t('scenebook.illust')} onClick={e => { e.stopPropagation(); e.preventDefault(); tap(); }} /></div>
+      <div className="sb-pic" style={lay.picStyle} onPointerDown={e => { ptr.current = e.pointerType; }}><IllustPic imgRef={img} id={it.id} w={v?.config?.width || 832} h={v?.config?.height || 1216} alt={sceneLabel(it) || t('scenebook.illust')} onClick={e => { e.stopPropagation(); e.preventDefault(); tap(); }} /></div>
       <FrameArt lay={lay} />
-      <div className="sb-fig-actions" aria-label={t('scenebook.fig.tools')}><IBtn ic="edit" title={t('scenebook.fig.editRegen')} cls="tiny" onClick={guard(() => quickEdit(m, it))} /><IBtn ic="refresh" title={t('scenebook.fig.newSeed')} cls="tiny" onClick={guard(() => regen(m, it, -1))} /></div>
+      <div className="sb-fig-actions" aria-label={t('scenebook.fig.tools')}><IBtn ic="edit" title={t('scenebook.fig.editRegen')} cls="tiny" onClick={tool(() => quickEdit(m, it))} /><IBtn ic="refresh" title={t('scenebook.fig.newSeed')} cls="tiny" onClick={tool(() => regen(m, it, -1))} /></div>
     </div>
     <figcaption><span className="sb-fig-title">{shownTitle(it.title)}</span>
-      {it.versions.length > 1 ? <div className="sb-ver" role="group" aria-label={t('scenebook.fig.versions')}><button type="button" title={t('scenebook.fig.prev')} aria-label={t('scenebook.fig.prev')} onClick={() => step(-1)}><Icon name="left" size={13} /></button><span className="sb-ver-count">{`${it.sel + 1}/${it.versions.length}`}</span><button type="button" title={t('scenebook.fig.next')} aria-label={t('scenebook.fig.next')} onClick={() => step(1)}><Icon name="right" size={13} /></button></div> : null}
+      {it.versions.length > 1 ? <div className="sb-ver" role="group" aria-label={t('scenebook.fig.versions')}><button type="button" title={t('scenebook.fig.prev')} aria-label={t('scenebook.fig.prev')} onClick={() => step(-1)}><Chevron side="left" /></button><span className="sb-ver-count">{`${it.sel + 1}/${it.versions.length}`}</span><button type="button" title={t('scenebook.fig.next')} aria-label={t('scenebook.fig.next')} onClick={() => step(1)}><Chevron side="right" /></button></div> : null}
       <IBtn ic="more" title={t('scenebook.more')} cls="tiny" onClick={e => menu(e.currentTarget, slotMenu(m, sw, it))} /></figcaption>
   </>;
 }
@@ -52,12 +68,13 @@ const figWidth = (c: { compact?: boolean; displayWidth?: number }) => c.compact 
 function Extras({ m, sw, pending, failed, drafts, hidden, note }: { m: Msg; sw: Swipe; pending: Job[]; failed: Job[]; drafts: Scene[]; hidden: number; note: PlanRecord | null }) {
   const cfg = Illust.cfg();
   return <>
-    {pending.length ? <div className="sb-pendings">{pending.map(j => <div key={j.id} className={`sb-pending ${j.state}`} style={{ aspectRatio: `${j.config.width} / ${j.config.height}`, maxWidth: `min(100%, ${figWidth(cfg)}px)` }}><Icon name="image" size={22} /><b>{j.state === 'running' ? t('scenebook.job.running') : t('scenebook.fig.waitingTurn')}</b><span>{j.label}</span></div>)}</div> : null}
-    {failed.map(j => <div key={j.id} className="sb-note bad"><Icon name="x" size={15} /><span>{`${j.label} · ${j.error}`}</span><Btn label={t('scenebook.retry')} cls="ghost" onClick={guard(() => { j.seen = true; draw(m, [j.scene], j.config, j.slot, true); })} /><IBtn ic="x" title={t('common.close')} cls="tiny" onClick={() => { j.seen = true; schedule(); }} /></div>)}
+    {pending.length ? <div className="sb-pendings">{pending.map(j => <div key={j.id} className={`sb-pending ${j.state}`} style={{ aspectRatio: `${j.config.width} / ${j.config.height}`, maxWidth: `min(100%, ${figWidth(cfg)}px)` }}><Icon name="image" size={22} /><b>{j.state === 'running' ? t('scenebook.job.running') : t('scenebook.fig.waitingTurn')}</b>{j.label ? <span>{j.label}</span> : null}</div>)}</div> : null}
+    {failed.map(j => <div key={j.id} className="sb-note bad"><Icon name="x" size={15} /><span>{[j.label, j.error].filter(Boolean).join(' · ')}</span><div className="sb-note-acts"><Btn label={t('scenebook.retry')} cls="ghost" onClick={guard(() => { j.seen = true; draw(m, [j.scene], j.config, j.slot, true); })} /><IBtn ic="x" title={t('common.close')} cls="tiny" onClick={() => { j.seen = true; schedule(); }} /></div></div>)}
+    {/* 단추는 한 묶음으로: 좁은 화면에서는 글 아래 한 줄에 함께 (하나만 따로 떨어지지 않게) */}
     {drafts.length ? <div className="sb-note draft"><Icon name="sparkle" size={15} /><span><b>{tn('scenebook.fig.draftsReady', drafts.length)}</b>{' '}{drafts.map(d => shownTitle(d.title)).filter(Boolean).join(' · ')}</span>
-      <Btn label={t('scenebook.draw')} ic="image" cls="primary" onClick={guard(() => quickDraw(m))} /><Btn label={t('scenebook.compose')} ic="edit" cls="ghost" onClick={guard(() => compose(m))} />
-      <IBtn ic="trash" title={t('scenebook.fig.discardDraft')} cls="tiny" onClick={async () => { if (!(await confirmBox(t('scenebook.fig.discardAsk'), t('scenebook.fig.discard'), true))) return; sw.illustDraft = []; delete sw.illustDraftConfig; await chatApi.save(); schedule(); }} /></div> : null}
-    {note ? <div className="sb-note"><Icon name="image" size={15} /><span>{note.error || t('scenebook.fig.noPlan')}</span><Btn label={t('scenebook.analyze')} ic="sparkle" cls="ghost" onClick={guard(() => compose(m, { manual: false }))} /><Btn label={t('scenebook.plans')} cls="ghost" onClick={showPlans} /><IBtn ic="x" title={t('common.close')} cls="tiny" onClick={async () => { note.seen = true; await chatApi.save(); schedule(); }} /></div> : null}
+      <div className="sb-note-acts"><Btn label={t('scenebook.draw')} ic="image" cls="primary" onClick={guard(() => quickDraw(m))} /><Btn label={t('scenebook.compose')} ic="edit" cls="ghost" onClick={guard(() => compose(m))} />
+      <IBtn ic="trash" title={t('scenebook.fig.discardDraft')} cls="tiny" onClick={async () => { if (!(await confirmBox(t('scenebook.fig.discardAsk'), t('scenebook.fig.discard'), true))) return; sw.illustDraft = []; delete sw.illustDraftConfig; await chatApi.save(); schedule(); }} /></div></div> : null}
+    {note ? <div className="sb-note"><Icon name="image" size={15} /><span>{note.error || t('scenebook.fig.noPlan')}</span><div className="sb-note-acts"><Btn label={t('scenebook.analyze')} ic="sparkle" cls="ghost" onClick={guard(() => compose(m, { manual: false }))} /><Btn label={t('scenebook.plans')} cls="ghost" onClick={showPlans} /><IBtn ic="x" title={t('common.close')} cls="tiny" onClick={async () => { note.seen = true; await chatApi.save(); schedule(); }} /></div></div> : null}
     {hidden ? <button type="button" className="chip sb-hidden-chip" onClick={async () => { for (const it of sw.illust || []) it.hidden = false; await chatApi.save(); chatApi.redraw(); }}>{tn('scenebook.fig.showHidden', hidden)}</button> : null}
   </>;
 }
@@ -73,6 +90,7 @@ function decorate() {
   const { chat, msgs } = cur(); if (!chat || !msgs) return;
   const c = Illust.cfg(), jobs = Illust.queue();
   document.documentElement.style.setProperty('--sb-w', figWidth(c) + 'px');   // 꾸미기 전의 그림 칸도 같은 너비로 시작한다
+  document.documentElement.dataset.sbTools = c.imageTools === 'always' ? 'always' : 'tap';   // 터치 화면의 그림 위 도구: 한 번 누르면 · 항상
   let byId: Map<string, (typeof msgs)[number]> | null = null;   // 메시지가 수천 개여도 칸마다 처음부터 찾지 않게 (꾸밀 칸이 있을 때만 만든다)
   for (const art of document.querySelectorAll<HTMLElement>('.msgs article.msg[data-id]')) {
     // 원래 칸이 사라졌으면(그림을 지움) 문단 뒤의 우리 칸도 걷는다
@@ -82,6 +100,8 @@ function decorate() {
     for (const box of art.querySelectorAll<HTMLElement>('.illusts')) {
       const figs = [...box.querySelectorAll<HTMLElement>('figure.illust')]; box.dataset.sb = '1';
       if (figs.length !== sw.illust?.length) continue;   // 화면이 아직 바뀐 자료를 못 따라왔다
+      // 답변 아래의 웹툰 컷은 좁은 틈으로 위아래로 이어 보인다
+      const shownSlots = sw.illust.filter(x => !x.hidden); box.classList.toggle('sb-strip', shownSlots.length > 0 && shownSlots.every(x => x.cut));
       figs.forEach((fig, i) => {
         const it = sw.illust?.[i]; if (!it) return;
         const cl = moved.get(fig), lost = !!cl && !cl.isConnected;   // 본문을 다시 그려 문단 뒤의 칸이 지워졌으면 다시 놓는다
@@ -95,7 +115,9 @@ function decorate() {
 }
 /** 삽화를 둘 문단 요소 (못 찾으면 null — 답변 아래 그대로) */
 function spot(art: HTMLElement, sw: Swipe, it: Slot, c: { placement?: string }): Element | null {
-  if ((c.placement !== 'inline' && c.placement !== 'auto') || !(it.anchor || it.at)) return null;
+  // 웹툰 컷은 그릴 때의 컷 놓는 자리(문단마다 · 답변 아래)를 따른다
+  const place = it.cut ? (it.place || placementOf(c)) : c.placement;
+  if ((place !== 'inline' && place !== 'auto') || !(it.anchor || it.at)) return null;
   const body = art.querySelector('.msg-body'), paras = body ? [...body.children].filter(el => !el.matches('figure, details, pre, table, style, script') && flat(el.textContent)) : [];
   const i = placeAt(it, paras.map(el => el.textContent || ''), Illust.blocks(sw.text).map(b => b.content));
   if (i < 0) return null;

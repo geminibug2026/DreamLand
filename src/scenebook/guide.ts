@@ -2,7 +2,7 @@
 import { t } from '../i18n';
 
 const STEPS = ['engine', 'cast', 'auto', 'prompt', 'draw'];
-const TOPICS = ['format', 'framing', 'quickEdit', 'frame', 'look', 'menu', 'automatic', 'planMode', 'noPlan', 'analysis', 'budget', 'retry', 'seed', 'placement',
+const TOPICS = ['format', 'camera', 'framing', 'pages', 'cuts', 'quickEdit', 'viewer', 'tools', 'frame', 'look', 'menu', 'automatic', 'planMode', 'noPlan', 'analysis', 'budget', 'retry', 'seed', 'placement',
   'scope', 'refs', 'imageRead', 'anchor', 'delete', 'queue', 'presets', 'adult', 'missing', 'where', 'saving', 'progress', 'share', 'scopeCopy', 'refDelete', 'revise',
   'review', 'export', 'model', 'size', 'steps', 'guidance', 'sampler', 'rescale', 'quality', 'order', 'conn', 'maxScenes', 'context', 'style', 'transparent', 'display', 'player'];
 const pair = (k: string): [string, string] => [t(`scenebook.guide.${k}.title`), t(`scenebook.guide.${k}.body`)];

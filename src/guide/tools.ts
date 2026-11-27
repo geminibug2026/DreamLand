@@ -143,7 +143,7 @@ const SETTINGS: Record<string, 'b' | 's' | [number, number] | string[]> = {
   theme: 's', font: 's', chatFont: 's', fontSize: [12, 24], lineHeight: [1.2, 2.4], chatWidth: [480, 1600], bubbles: 'b', rpBubbles: 'b', motion: 'b', autoScroll: 'b', showMeta: 'b', enterSend: ['true', 'false', 'auto'], defaultMode: ['rp', 'talk'],
   'translate.auto': 'b', 'translate.autoInput': 'b', 'translate.lang': 's', 'translate.inputLang': 's',
   'memory.enabled': 'b', 'memory.auto': 'b', 'tracker.enabled': 'b', 'tracker.hud': 'b',
-  'illust.auto': 'b', 'illust.every': [1, 20], 'illust.maxScenes': [1, 4],
+  'illust.auto': 'b', 'illust.every': [1, 20], 'illust.maxScenes': [1, 6], 'illust.pageFormat': ['single', 'cuts', 'manga', 'comic', 'webtoon'], 'illust.panelCount': [0, 4], 'illust.cutLayout': ['story', 'stack'], 'illust.speechBubbles': 'b', 'illust.imageTools': ['tap', 'always'],
   'mvu.mode': ['inline', 'extra'],
   ...MEM_SETTINGS,
   'modes.choices': 'b', 'modes.choiceCount': [2, 5], 'modes.stagger': 'b', 'modes.together': 'b', 'modes.scenes': 'b', 'modes.presenceDelay': 'b', 'modes.talkTokens': [100, 4000],

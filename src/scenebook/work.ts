@@ -8,23 +8,33 @@ import { chatApi } from '../chat/actions';
 import * as IL from '../lib/illust';
 import * as C from '../lib/core';
 import { blankScene, cur, lastReply, mustBeOpen } from './util';
+import { sceneLabel } from './tagrules';
 import { Illust } from './illust';
 import { t } from '../i18n';
 
 /** 마지막 처리 결과 (스튜디오 · 장면 패널의 상태 줄) */
 export const flow = { note: '' };
 
-const doneFor = (msg: Msg, title?: string) => async (err?: Error | null) => {
-  if (err) { flow.note = t('scenebook.work.failNote', { error: err.message }); return toast(t('scenebook.work.failToast', { error: err.message }), 'err'); }
-  flow.note = t('scenebook.work.done', { title: title || t('scenebook.illust') });
-  if (cur().msgs?.includes(msg)) { await chatApi.save(); chatApi.redraw(); toast(t('scenebook.work.done', { title: title || t('scenebook.illust') }), 'ok'); }
-  else toast(t('scenebook.work.doneElsewhere'));
+/** 한 번에 넣은 그림들: 다 그린 뒤 한 번만 알린다 (실패는 그때그때) */
+interface Batch { left: number; made: number; title: string }
+const doneFor = (msg: Msg, batch: Batch) => async (err?: Error | null) => {
+  batch.left--;
+  if (err) { flow.note = t('scenebook.work.failNote', { error: err.message }); toast(t('scenebook.work.failToast', { error: err.message }), 'err'); }
+  else batch.made++;
+  const here = cur().msgs?.includes(msg);
+  if (!err && here) { await chatApi.save(); chatApi.redraw(); }
+  if (batch.left > 0 || !batch.made) return;
+  // 제목은 사람이 붙였을 때만 (「삽화」 같은 자리표시는 붙이지 않는다)
+  const line = batch.made > 1 ? t('scenebook.work.doneN', { n: batch.made }) : batch.title ? t('scenebook.work.done', { title: batch.title }) : t('scenebook.work.doneOne');
+  flow.note = line;
+  if (here) toast(line, 'ok'); else toast(t('scenebook.work.doneElsewhere'));
 };
 /** 장면들을 대기열에 넣는다. slot 을 주면 첫 장면은 그 자리의 새 버전이 된다. exact: 기록된 설정 그대로 (다시 그리기). 아니면 그림체 · 장면별 화면 비율을 적용한다 */
 export function draw(msg: Msg, scenes: Scene[], config?: GenConfig | null, slot: string | null = null, exact = false, quiet = false) {
   const { chat } = cur(); mustBeOpen(msg);
   Illust.validate(Illust.genConfig(config));
-  scenes.forEach((sc, i) => Illust.enqueue(chat as Chat, msg, sc, doneFor(msg, sc.title), { manual: true, config, slot: i === 0 ? slot : null, exact }));
+  const batch: Batch = { left: scenes.length, made: 0, title: scenes.length === 1 ? sceneLabel(scenes[0]) : '' };
+  scenes.forEach((sc, i) => Illust.enqueue(chat as Chat, msg, sc, doneFor(msg, batch), { manual: true, config, slot: i === 0 ? slot : null, exact }));
   if (scenes.length && !quiet) toast(t('scenebook.work.queued'));
   schedule();
 }
@@ -45,13 +55,13 @@ export async function generateDrafts() {
   }
   if (count) await chatApi.save(); schedule(); return { count, left };
 }
-/** 답변에서 장면을 뽑아 초안으로 저장 */
-export async function analyzeInto(msg: Msg): Promise<Scene[]> {
+/** 답변에서 장면을 뽑아 초안으로 저장. format: 이 답변만 다른 그림 형식으로 (수동 생성) */
+export async function analyzeInto(msg: Msg, format?: string): Promise<Scene[]> {
   const { chat, msgs } = cur(); mustBeOpen(msg);
   if (msg.role !== 'assistant') throw new Error(t('scenebook.err.notReply'));
   chatApi.setStatus(t('scenebook.analyzing'));
   try {
-    const scenes = (await Illust.analyze(chat as Chat, msgs as Msg[], msg, null, { manual: true })).map(sc => Illust.compileScene(chat as Chat, sc)), sw = msg.swipes[msg.sw];
+    const scenes = (await Illust.analyze(chat as Chat, msgs as Msg[], msg, null, { manual: true, ...(format ? { format } : {}) })).map(sc => Illust.compileScene(chat as Chat, sc)), sw = msg.swipes[msg.sw];
     sw.illustDraft = scenes; sw.illustDraftConfig = Illust.genConfig(); await chatApi.save(); schedule();
     return scenes;
   } finally { chatApi.setStatus(''); }

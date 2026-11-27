@@ -2,7 +2,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../kit';
 import { Form, type FieldDef, choiceBox, confirmBox, menu, toast } from '../ui';
-import { Area, Btn, Chk, Empty, Fld, Group, IBtn, Sel, Text, openModal, useBump } from './parts';
+import { Area, Btn, Chk, Empty, Fld, Group, IBtn, Sel, Seg, Text, openModal, useBump } from './parts';
+import { CUT_LAYOUTS, PAGE_FORMATS, PANEL_COUNTS, SCENE_COUNTS, pagesAllowed } from './comic';
+import { FormatGlyph } from './glyph';
 import { Frames, frameChoices, frameLayout, validFrame } from './frames';
 import { FrameArt } from './frameArt';
 import { LOOKS } from './framing';
@@ -27,7 +29,7 @@ import { locale, t, tn } from '../i18n';
 
 type TabId = 'gen' | 'cast' | 'refs' | 'gallery' | 'queue';
 let studioTab: TabId = 'gen', castScope: string | null = null;
-const GEN_EXTRA = ['naiKey', 'maxScenes', 'every', 'sessionLimit', 'contextMessages', 'analysisMode', 'placement', 'displayWidth', 'compact', 'autoSize', 'look', 'leanPrompt', 'frame', 'frameWide', 'frameInk', 'analysisTokens'];
+const GEN_EXTRA = ['naiKey', 'maxScenes', 'every', 'sessionLimit', 'contextMessages', 'analysisMode', 'placement', 'displayWidth', 'compact', 'autoSize', 'look', 'leanPrompt', 'frame', 'frameWide', 'frameInk', 'analysisTokens', 'pageFormat', 'panelCount', 'speechBubbles', 'cutLayout', 'imageTools'];
 const TIERS = ['Paper', 'Tablet', 'Scroll', 'Opus'];
 const tierName = (t?: number | null) => t != null ? (TIERS[t] || t) : null;
 const queueText = () => { const I = Illust, w = I.queue().filter(x => x.state === 'waiting').length; return I.queueRunning() && I.queue().some(x => x.state === 'running') ? t('scenebook.studio.q.drawing') + (w ? t('scenebook.studio.q.waitSuffix', { n: w }) : '') : I.queuePaused() ? t('scenebook.studio.q.paused') + (w ? t('scenebook.studio.q.waitSuffix', { n: w }) : '') : w ? t('scenebook.studio.q.wait', { n: w }) : ''; };
@@ -92,7 +94,23 @@ function GenPage({ reopen }: { reopen: () => void }) {
   };
   const [state, bad] = verify();
   const f = (defs: (FieldDef | false | undefined)[]) => <Form obj={d} defs={defs} onChange={save} />, conns: [string, string][] = [['', t('scenebook.studio.pick')], ...C.chatConns().map((x): [string, string] => [x.id, x.name])];
-  const sizes = <div className="row wrap sb-sizes">{([[t('scenebook.orient.portrait'), 832, 1216], [t('scenebook.orient.square'), 1024, 1024], [t('scenebook.orient.landscape'), 1216, 832]] as [string, number, number][]).map(([l, w, hh]) => <button key={l} type="button" className={'chip' + (d.width === w && d.height === hh ? ' on' : '')} onClick={() => { d.width = w; d.height = hh; save(); reopen(); }}>{`${l} ${w}×${hh}`}</button>)}</div>;
+  // 크기: 이름 위 · 픽셀 아래 두 줄의 같은 칸 셋 (휴대폰에서도 글자가 칸 밖으로 넘치지 않게)
+  const sizes = <div className="sb-sizes" role="radiogroup" aria-label={t('scenebook.studio.sizePick')}>{([[t('scenebook.orient.portrait'), 832, 1216], [t('scenebook.orient.square'), 1024, 1024], [t('scenebook.orient.landscape'), 1216, 832]] as [string, number, number][]).map(([l, w, hh]) => { const on = d.width === w && d.height === hh;
+    return <button key={l} type="button" role="radio" aria-checked={on} className={'sb-size' + (on ? ' on' : '')} onClick={() => { d.width = w; d.height = hh; save(); reopen(); }}><span className="sb-size-shape" style={{ aspectRatio: `${w} / ${hh}` }} /><b>{l}</b><small>{`${w}×${hh}`}</small></button>; })}</div>;
+  // 그림 형식: 삽화 · 웹툰 컷 · 만화 페이지. 칸이 든 그림(웹툰 컷 · 만화)은 NovelAI V5 에서만. 최대 장 수는 형식 바로 아래
+  const v5ok = pagesAllowed(d), fmt = v5ok && PAGE_FORMATS.includes(d.pageFormat as never) ? String(d.pageFormat) : 'single', cuts = fmt === 'cuts', page = !['single', 'cuts'].includes(fmt);
+  const pickFormat = (id: string) => { if (id === fmt) return; if (id === 'cuts' && (d.maxScenes || 1) < 2) d.maxScenes = 4; d.pageFormat = id; save(); };   // 웹툰 컷을 처음 고를 때 한 장이면 네 장으로
+  const formatBox = <>
+    <div className="sb-formats" role="radiogroup" aria-label={t('scenebook.page.format')}>{PAGE_FORMATS.map(id => { const on = id === fmt, off = !v5ok && id !== 'single';
+      return <button key={id} type="button" role="radio" aria-checked={on} disabled={off} className={'sb-format' + (on ? ' on' : '')} title={t('scenebook.page.fmtHelp.' + id)} onClick={() => pickFormat(id)}><FormatGlyph id={id} /><span>{t('scenebook.page.fmt.' + id)}</span></button>; })}</div>
+    <p className="hint sb-format-help">{t('scenebook.page.fmtHelp.' + fmt)}{!v5ok ? ` ${t('scenebook.page.needV5')}` : ''}</p>
+    <div className="sb-shape"><span className="field-label">{t(page ? 'scenebook.page.maxPages' : cuts ? 'scenebook.page.maxStrips' : 'scenebook.page.maxScenes')}</span><Seg key={`n${d.maxScenes}`} label={t('scenebook.page.maxScenes')} choices={SCENE_COUNTS.map(n => [String(n), String(n)])} value={String(d.maxScenes || 1)} onChange={v => { d.maxScenes = +v; save(); }} /></div>
+    <small className="hint">{t(cuts ? 'scenebook.page.maxStripsHint' : 'scenebook.page.maxHint')}</small>
+    {page || cuts ? <div className="sb-shape"><span className="field-label">{t('scenebook.page.panels')}</span><Seg label={t('scenebook.page.panels')} choices={PANEL_COUNTS.map(n => [String(n), n ? t('scenebook.page.panelsN', { n }) : t('scenebook.page.panelsAuto')])} value={String(d.panelCount || 0)} onChange={v => { d.panelCount = +v; save(); }} /></div> : null}
+    {cuts ? <><div className="sb-shape"><span className="field-label">{t('scenebook.page.layout')}</span><Seg label={t('scenebook.page.layout')} choices={CUT_LAYOUTS.map(id => [id, t('scenebook.page.layout.' + id)])} value={d.cutLayout === 'stack' ? 'stack' : 'story'} onChange={v => { d.cutLayout = v; save(); }} /></div>
+      <small className="hint">{t('scenebook.page.layoutHint.' + (d.cutLayout === 'stack' ? 'stack' : 'story'))}</small></> : null}
+    {page || cuts ? <><Chk label={t('scenebook.page.bubbles')} checked={!!d.speechBubbles} onChange={v => { d.speechBubbles = v; save(); }} /><small className="hint">{t('scenebook.page.bubblesHint')}</small></> : null}
+  </>;
   const customFrames = Frames.list(), presetName = useRef<HTMLInputElement>(null);
   const addFrame = guard(async () => { const [file] = await C.pickFiles({ accept: 'image/png,image/webp' }); if (!file) return; const rec = await Frames.add(file); Illust.saveCfg({ frame: `image:${rec.id}` }); toast(t('scenebook.studio.frame.added'), 'ok'); reopen(); });
   const frameMenu = (anchor: Element) => menu(anchor, customFrames.map(fr => ({ label: t('scenebook.studio.deleteNamed', { name: fr.name }), ic: 'trash', onclick: guard(async () => {
@@ -117,7 +135,7 @@ function GenPage({ reopen }: { reopen: () => void }) {
     <section className="sb-quickpreset"><Fld label={t('scenebook.studio.preset.quick')}>{presets.length
       ? <Sel opts={[...(active ? [] : [['', t('scenebook.studio.preset.custom')] as [string, string]]), ...presets.map((p): [string, string] => [p.name, p.name + (p.name === active ? ` · ${t('scenebook.preset.active')}` : '')])]} value={active} onChange={name => { const p = presets.find(x => x.name === name); if (p) applyPreset(p); }} />
       : <small className="hint">{t('scenebook.studio.preset.quickEmpty')}</small>}</Fld></section>
-    <Group title={t('scenebook.studio.g.image')}>{f([
+    <Group title={t('scenebook.studio.g.image')} id="image">{f([
       { k: 'backend', label: t('scenebook.studio.backend'), type: 'select', opts: Object.entries(BACKENDS), half: true, live: true },
       nai && { k: 'model', label: t('scenebook.gen.model'), type: 'select', opts: Object.entries(MODELS).map(([id, m]): [string, string] => [id, m.label]), half: true, live: true },
       nai && { k: 'naiKey', label: t('scenebook.studio.naiKey'), type: 'password', hint: t('scenebook.studio.naiKeyHint') },
@@ -126,7 +144,8 @@ function GenPage({ reopen }: { reopen: () => void }) {
       { k: 'width', label: t('scenebook.gen.width'), type: 'num', min: 64, max: 4096, step: 64, half: true }, { k: 'height', label: t('scenebook.gen.height'), type: 'num', min: 64, max: 4096, step: 64, half: true }, { el: sizes },
       { k: 'autoSize', label: t('scenebook.studio.autoSize'), type: 'check', hint: t('scenebook.studio.autoSizeHint') },
       (nai || sd) && { k: 'steps', label: 'Steps', type: 'num', min: 1, max: 150, step: 1, half: true }, (nai || sd) && { k: 'scale', label: 'Guidance', type: 'num', min: 0, max: 30, step: 0.1, half: true },
-      { k: 'look', label: t('scenebook.studio.look'), type: 'select', opts: LOOKS.map(([id, label]): [string, string] => [id, label]), hint: t('scenebook.studio.lookHint') }])}</Group>
+      { k: 'look', label: t('scenebook.studio.look'), type: 'select', opts: LOOKS.map(([id, label]): [string, string] => [id, t(label)]), hint: t('scenebook.studio.lookHint') }])}</Group>
+    <Group title={t('scenebook.page.format')} id="format">{formatBox}</Group>
     <Group title={t('scenebook.prompt')}>{f([{ k: 'style', label: t('scenebook.studio.styleLabel'), type: 'area', rows: 3, ph: 'watercolor, soft lighting …' }, { k: 'negative', label: t('scenebook.uc'), type: 'area', rows: 2 }, { k: 'quality', label: t('scenebook.qualityAuto'), type: 'check' },
       { k: 'leanPrompt', label: t('scenebook.studio.lean'), type: 'check', hint: t('scenebook.studio.leanHint') }])}
       <div className="row wrap">{UC_PRESETS.map(([id, text]) => <Btn key={id} label={t('scenebook.studio.uc.' + id)} ic="plus" cls="ghost" title={t('scenebook.studio.uc.hint')} onClick={() => { Illust.saveCfg({ negative: mergeTags(text, String(Illust.cfg().negative || '')) }); reopen(); }} />)}</div>
@@ -137,7 +156,7 @@ function GenPage({ reopen }: { reopen: () => void }) {
       <div className="sb-alen"><Fld label={t('scenebook.studio.alen')} hint={t('scenebook.studio.alenHint')}><Sel opts={[['auto', t('scenebook.studio.alenAuto', { n: Illust.analysisTokens({ ...c, ...d, analysisTokens: 0 }).toLocaleString() })], ['manual', t('scenebook.studio.alenManual')]]} value={Number(d.analysisTokens) >= 1000 ? 'manual' : 'auto'} onChange={v => { d.analysisTokens = v === 'manual' ? 16000 : 0; save(); }} /></Fld>
         {Number(d.analysisTokens) >= 1000 ? f([{ k: 'analysisTokens', label: t('scenebook.studio.alenTokens'), type: 'num', min: 1000, max: 128000, step: 1000, half: true }]) : null}</div>
       <div className="row"><Btn label={t('scenebook.studio.analyzeLast')} ic="sparkle" onClick={guard(() => compose(lastReply(), { manual: false }))} /><small className="hint">{t('scenebook.studio.analyzeLastHint')}</small></div></Group>
-    <Group title={t('scenebook.studio.g.limits')}>{f([{ k: 'maxScenes', label: t('scenebook.studio.maxScenesPer'), type: 'num', min: 1, max: 6, step: 1, third: true }, { k: 'every', label: t('scenebook.studio.v.every'), type: 'num', min: 1, max: 20, step: 1, third: true }])}
+    <Group title={t('scenebook.studio.g.limits')}>{f([{ k: 'every', label: t('scenebook.studio.v.every'), type: 'num', min: 1, max: 20, step: 1, half: true }])}
       <small className="hint">{tn('scenebook.studio.usage', Illust.usage())}</small></Group>
     <Group title={t('scenebook.studio.g.advanced')}>{f([
       nai && { k: 'sampler', label: t('scenebook.gen.sampler'), type: 'select', opts: SAMPLERS, half: true }, nai && { k: 'scheduler', label: v5 ? t('scenebook.studio.schedulerV5') : t('scenebook.gen.scheduler'), type: 'select', opts: v5 ? ['karras'] : SCHEDULERS, half: true },
@@ -146,7 +165,9 @@ function GenPage({ reopen }: { reopen: () => void }) {
       { k: 'useCoords', label: t('scenebook.studio.useCoords'), type: 'check' }, { k: 'useOrder', label: t('scenebook.useOrder'), type: 'check' },
       nai && v5 && { k: 'transparent', label: t('scenebook.gen.transparent'), type: 'check' },
       nai && { k: 'budgetGuard', label: t('scenebook.gen.budget'), type: 'check', hint: t('scenebook.studio.budgetHint') }])}</Group>
-    <Group title={t('scenebook.studio.g.display')}>{f([{ k: 'placement', label: t('scenebook.anchor'), type: 'select', opts: [['end', t('scenebook.para.end')], ['inline', t('scenebook.studio.inline')], ['auto', t('scenebook.studio.placeAuto')]], half: true, hint: t('scenebook.studio.placeHint') }, { k: 'displayWidth', label: t('scenebook.studio.widthPx'), type: 'num', min: 240, max: 1200, step: 10, half: true }, { k: 'compact', label: t('scenebook.studio.compact'), type: 'check' }])}
+    <Group title={t('scenebook.studio.g.display')}>{f([{ k: 'placement', label: t('scenebook.anchor'), type: 'select', opts: [['end', t('scenebook.para.end')], ['inline', t('scenebook.studio.inline')], ['auto', t('scenebook.studio.placeAuto')]], half: true, hint: t('scenebook.studio.placeHint') }, { k: 'displayWidth', label: t('scenebook.studio.widthPx'), type: 'num', min: 240, max: 1200, step: 10, half: true }, { k: 'compact', label: t('scenebook.studio.compact'), type: 'check' },
+      { k: 'imageTools', label: t('scenebook.studio.imageTools'), type: 'select', opts: [['tap', t('scenebook.studio.imageTools.tap')], ['always', t('scenebook.studio.imageTools.always')]], hint: t('scenebook.studio.imageToolsHint') }])}
+      {cuts ? <small className="hint">{t('scenebook.studio.placeCutsNote')}</small> : null}
       <span className="field-label">{t('scenebook.guide.topic.frame.title')}</span>
       {/* 삽화 액자: 고르는 칸마다 대화에서 쓰는 것과 같은 계산으로 액자를 그려 보여 준다 */}
       <div className="sb-frames" role="radiogroup" aria-label={t('scenebook.guide.topic.frame.title')}>{frameChoices().map(item => { const lay = frameLayout(4, 5, { frame: item.id, frameInk: d.frameInk });
@@ -374,7 +395,7 @@ function GalleryPage({ reopen, all }: { reopen: () => void; all: Card[] }) {
   const chatName = (a: { owner: string }) => { const c = S.get('chats', chatOf(a)); return c ? (c.name || c.charIds.map(id => S.get('chars', id)?.name).filter(Boolean).join(', ') || t('scenebook.studio.gal.chat')) : t('scenebook.studio.gal.deletedChat'); };
   const [used] = useState(() => new Set((cur().msgs || []).flatMap(m => (m.swipes || []).flatMap(sw => (sw.illust || []).flatMap(it => [it.id, ...(it.versions || []).map(v => v.id)])))));
   const target = () => { const m = lastReply(); if (!m) throw new Error(t('scenebook.studio.gal.openChatFirst')); return m; };
-  const openJob = (j: Job) => openModal({ title: j.label || t('scenebook.illust'), cls: 'col', actions: [
+  const openJob = (j: Job) => openModal({ title: j.label || jobOff()[j.state] || '', cls: 'col', actions: [
     { label: t('scenebook.record'), ic: 'note', cls: 'ghost', onclick: () => { inspect({ scene: j.scene, config: j.config, ts: j.ts }); return false; } },
     (j.state === 'failed' || j.state === 'uncertain') && cur().msgs?.includes(j.msg) && { label: t('scenebook.retry'), cls: 'primary', onclick: () => { try { j.seen = true; draw(j.msg, [j.scene], j.config, j.slot, true); reopen(); } catch (e) { toast(errText(e), 'err'); return false; } } }] },
     () => <><p>{j.error || t('scenebook.studio.gal.notFinal')}</p><small className="hint">{[configLine(j.config), when(j.ts)].filter(Boolean).join(' · ')}</small></>);
@@ -431,11 +452,11 @@ function GalleryPage({ reopen, all }: { reopen: () => void; all: Card[] }) {
   const thisYear = new Date().getFullYear(), dayLabel = (ts: number) => new Date(ts).toLocaleDateString(locale(), { ...(new Date(ts).getFullYear() !== thisYear ? { year: 'numeric' } : {}), month: 'long', day: 'numeric', weekday: 'short' });
   const oneChat = !!inChat || scope === 'chat' || scope === 'loose';
   const tile = (a: Card) => { const picked = sel.has(a.id);
-    return <button key={a.id} type="button" className={'sb-shot' + (picked ? ' picked' : '')} title={a.title || t('scenebook.illust')} aria-label={t('scenebook.studio.gal.view', { title: a.title || t('scenebook.illust') })} {...(picking ? { 'aria-pressed': picked } : {})} onClick={() => (picking ? flip(a.id) : void open(a))}>
+    return <button key={a.id} type="button" className={'sb-shot' + (picked ? ' picked' : '')} title={a.hint || sceneLabel(a) || undefined} aria-label={t('scenebook.studio.gal.view', { title: sceneLabel(a) || chatName(a) })} {...(picking ? { 'aria-pressed': picked } : {})} onClick={() => (picking ? flip(a.id) : void open(a))}>
       <Thumb id={a.id} />{picking ? <i className="sb-shot-pick" aria-hidden="true">{picked ? <Icon name="check" size={13} /> : null}</i> : null}{a.review ? <em className="sb-shot-mark" title={t('scenebook.studio.gal.hasReview')}>{t('scenebook.studio.gal.reviewMark')}</em> : null}
       {sceneLabel(a) ? <span>{sceneLabel(a)}</span> : null}<small>{oneChat ? new Date(a.ts).toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' }) : chatName(a)}</small></button>; };   // 제목은 사람이 직접 붙였을 때만 (「삽화」 · 「장면 1」 같은 자리표시는 안 보인다)   // 날짜는 머리줄에 있다
   const body: ReactNode[] = []; let lastDay = '';
-  if (off) for (const j of jobs.slice(0, limit)) body.push(<button key={j.id} type="button" className="sb-shot" title={j.label || t('scenebook.illust')} aria-label={t('scenebook.studio.gal.checkJob', { title: j.label || t('scenebook.illust') })} onClick={() => openJob(j)}><i className={`sb-shot-off ${j.state}`}>{jobOff()[j.state]}</i><span>{j.label || t('scenebook.illust')}</span><small>{j.error || configLine(j.config)}</small></button>);
+  if (off) for (const j of jobs.slice(0, limit)) body.push(<button key={j.id} type="button" className="sb-shot" title={j.label || undefined} aria-label={t('scenebook.studio.gal.checkJob', { title: j.label || jobOff()[j.state] })} onClick={() => openJob(j)}><i className={`sb-shot-off ${j.state}`}>{jobOff()[j.state]}</i>{j.label ? <span>{j.label}</span> : null}<small>{j.error || configLine(j.config)}</small></button>);
   else if (folders) for (const g of groups.slice(0, limit)) body.push(<button key={g.id} type="button" className="sb-shot sb-folder" title={chatName({ owner: 'chat:' + g.id })} onClick={() => setScope('in:' + g.id)}><Thumb id={g.top.id} /><em className="sb-folder-n">{t('scenebook.studio.gal.picsN', { n: g.n })}</em><span>{chatName({ owner: 'chat:' + g.id })}</span><small>{[new Date(g.top.ts).toLocaleDateString(locale(), { ...(new Date(g.top.ts).getFullYear() !== thisYear ? { year: '2-digit' } : {}), month: 'numeric', day: 'numeric' }), g.size ? sizeText(g.size) : ''].filter(Boolean).join(' · ')}</small></button>);
   else for (const a of pics.slice(0, limit)) { const k = dayKey(a.ts); if (k !== lastDay) { lastDay = k; body.push(<h4 key={'d' + k} className="sb-gal-day"><span>{dayLabel(a.ts)}</span><small>{t('scenebook.studio.gal.picsN', { n: dayCount.get(k) || 0 })}</small></h4>); } body.push(tile(a)); }
   return <div className="sb-gallery-page">
@@ -476,7 +497,7 @@ function QueuePage({ reopen }: { reopen: () => void }) {
       <IBtn ic="refresh" title={t('scenebook.studio.refresh')} onClick={reopen} /></div>
     <p className="hint">{`${paused ? t('scenebook.studio.queue.pausedNote') + ' ' : ''}${wait ? t('scenebook.studio.queue.cooldown', { n: wait }) + ' ' : ''}${t('scenebook.studio.queue.note')}`}</p>
     {!items.length ? <Empty>{t('scenebook.studio.queue.empty')}</Empty> : <div className="col">{items.map(j => <div key={j.id} className={`sb-job ${j.state}`}><span className="sb-job-state">{jobLabels()[j.state] || j.state}</span>
-      <div className="col"><b>{j.label || t('scenebook.illust')}</b><small>{[configLine(j.config), j.automatic ? t('scenebook.studio.queue.auto') : t('scenebook.studio.queue.manual'), j.slot ? t('scenebook.studio.queue.redraw') : '', new Date(j.ts).toLocaleTimeString(locale())].filter(Boolean).join(' · ')}</small>{j.error ? <small className="err">{j.error}</small> : null}</div>
+      <div className="col">{j.label ? <b>{j.label}</b> : null}<small>{[configLine(j.config), j.automatic ? t('scenebook.studio.queue.auto') : t('scenebook.studio.queue.manual'), j.slot ? t('scenebook.studio.queue.redraw') : '', new Date(j.ts).toLocaleTimeString(locale())].filter(Boolean).join(' · ')}</small>{j.error ? <small className="err">{j.error}</small> : null}</div>
       {j.state === 'waiting' ? <IBtn ic="x" title={t('scenebook.studio.queue.cancelJob')} cls="tiny" onClick={() => { I.cancelWaiting(x => x === j); }} /> : null}
       {(j.state === 'failed' || j.state === 'uncertain' || j.state === 'cancelled') && cur().msgs?.includes(j.msg) ? <Btn label={t('scenebook.retry')} cls="ghost" onClick={guard(() => { j.seen = true; draw(j.msg, [j.scene], j.config, j.slot, true); })} /> : null}
       {j.state === 'done' && cur().msgs?.includes(j.msg) ? <Btn label={t('scenebook.studio.queue.view')} cls="ghost" onClick={() => { go('chat', j.chat.id); setTimeout(() => chatApi.scrollTo(j.msg.id), 400); }} /> : null}</div>)}</div>}

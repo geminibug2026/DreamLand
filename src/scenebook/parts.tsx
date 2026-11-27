@@ -41,7 +41,7 @@ export function Text({ obj, k, label, ph = '', onInput, cls = '' }: { obj: objec
   const bump = useBump(), o = obj as Bag;
   return <Fld label={label} cls={cls}><input className="inp" value={String(o[k] ?? '')} placeholder={ph} spellCheck={false} autoComplete="off" onChange={e => { o[k] = e.target.value; onInput?.(); bump(); }} /></Fld>;
 }
-const openGroups = new Set(['image']);
+const openGroups = new Set(['image', 'format']);
 /** 접었다 펴는 묶음. 펴 둔 것은 화면을 다시 그려도 기억한다 (id 를 주면 제목 대신 그것으로 기억한다 — 제목은 언어마다 다르다) */
 export function Group({ title, id, children }: { title: string; id?: string; children: ReactNode }) {
   const key = id ?? title, [open] = useState(() => openGroups.has(key));

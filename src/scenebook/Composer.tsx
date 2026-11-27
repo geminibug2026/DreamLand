@@ -3,7 +3,9 @@ import { useEffect, useRef, useState } from 'react';
 import { Form, type FieldDef, confirmBox, menu, toast } from '../ui';
 import { Area, Btn, Chk, Empty, Fld, IBtn, Sel, Seg, Text, openModal, useBump, type Box } from './parts';
 import { Board } from './Board';
-import { orientations } from './framing';
+import { orientations, cameraIssue } from './framing';
+import { CameraWarn, PanelEditor } from './panels';
+import { placementOf } from './comic';
 import { draw } from './work';
 import { schedule } from './decorate';
 import { guide } from './dialogs';
@@ -93,12 +95,19 @@ function SceneTab({ t }: { t: Tools }) {
       t.snap(); st.drafts = out; t.redo(); toast(tr('scenebook.ed.analyzed'), 'ok');
     } catch (err) { t.note(''); toast(tr('scenebook.ed.analyzeFail', { error: errText(err) }), 'err'); } finally { if (alive.current) setBusy(false); }
   };
+  // 만화 페이지 · 웹툰: 형식 바꾸기(한 장으로 되돌리기 포함) · 칸 나눔 · 칸 높이 · 칸마다 글과 인물
+  const bump = useBump(), page = s.page?.panels?.length ? s.page : null, lint = page ? null : cameraIssue(s);
+  const setPage = (p: NonNullable<Scene['page']>) => { t.snap(); s.page = p; bump(); };
+  const kinds: [string, string][] = [...['manga', 'comic', 'webtoon'].map((id): [string, string] => [id, tr('scenebook.page.kind.' + id)]), ['single', tr('scenebook.page.toSingle')]];
   return <div className="col sb-ed-pane">
     {x.inline ? <AnchorPicker t={t} /> : null}
-    <div className="sb-shape"><span className="field-label">{tr('scenebook.ratio')}</span><Seg label={tr('scenebook.ratio')} choices={orientations()} value={s.size ?? ''} onChange={val => { t.snap(); if (val) s.size = val; else delete s.size; }} /></div>
-    <Area obj={s} k="prompt" label={tr('scenebook.ed.scenePrompt')} rows={5} ph={tr('scenebook.ed.scenePromptPh')} onInput={t.touch} />
+    {page ? <Fld label={tr('scenebook.page.format')}><Sel opts={kinds} value={s.pageFormat || 'manga'} onChange={v => { t.snap(); if (v === 'single') { const k = page.panels[0]; s.prompt = [s.prompt, k?.text].filter(Boolean).join(', '); if (!s.characters.length && k) s.characters = k.characters; delete s.page; delete s.pageFormat; } else s.pageFormat = v; t.redo(); }} /></Fld>
+      : <div className="sb-shape"><span className="field-label">{tr('scenebook.ratio')}</span><Seg label={tr('scenebook.ratio')} choices={orientations()} value={s.size ?? ''} onChange={val => { t.snap(); if (val) s.size = val; else delete s.size; }} /></div>}
+    <Area obj={s} k="prompt" label={page ? tr('scenebook.page.shared') : tr('scenebook.ed.scenePrompt')} rows={page ? 2 : 5} ph={tr('scenebook.ed.scenePromptPh')} onInput={t.touch} hint={page ? tr('scenebook.page.sharedHint') : undefined} />
     {showFinal ? <Chk label={tr('scenebook.ed.finalDirect')} checked onChange={v => { s.finalPrompt = v; t.touch(); }} hint={tr('scenebook.ed.finalDirectHint')} /> : null}
-    <div className="sb-two"><Area obj={s} k="camera" label={tr('scenebook.camera')} rows={3} ph="medium shot, from the side …" onInput={t.touch} /><Area obj={s} k="negative" label={tr('scenebook.ed.sceneNeg')} rows={3} onInput={t.touch} /></div>
+    {page ? <PanelEditor page={page} format={s.pageFormat} onChange={setPage} /> : <>
+      <div className="sb-two"><Area obj={s} k="camera" label={tr('scenebook.camera')} rows={3} ph="from side, upper body …" onInput={() => { t.touch(); bump(); }} /><Area obj={s} k="negative" label={tr('scenebook.ed.sceneNeg')} rows={3} onInput={t.touch} /></div>
+      {lint?.issue ? <CameraWarn issue={lint.issue} onFix={lint.fix ? () => { t.snap(); s.camera = lint.fix; t.redo(); } : undefined} /> : null}</>}
     <details className="sb-fold"><summary>{tr('scenebook.ed.common')}</summary><div className="col"><Area obj={st.cfg} k="style" label={tr('scenebook.style')} rows={3} onInput={t.touch} /><Area obj={st.cfg} k="negative" label={tr('scenebook.ed.commonNeg')} rows={2} onInput={t.touch} /><Chk label={tr('scenebook.ed.quality')} checked={st.cfg.quality} onChange={v => { st.cfg.quality = v; t.touch(); }} /></div></details>
     <details className="sb-fold"><summary>{tr('scenebook.ed.askAi')}</summary><div className="col">
       <Fld label={tr('scenebook.ed.direction')}><textarea className="inp" rows={2} placeholder={tr('scenebook.ed.directionPh')} value={dir} onChange={e => setDir(e.target.value)} /></Fld>
@@ -119,6 +128,9 @@ function CastTab({ t }: { t: Tools }) {
   const lib = Illust.library(x.chat).filter(p => !cast.some(q => q.name === p.name));
   const add = (base?: Person | null) => { if (cast.length >= castMax()) return toast(tr('scenebook.ed.castMax', { n: castMax() })); t.snap(); cast.push(base || { name: tr('scenebook.person.n', { n: cast.length + 1 }), prompt: '', negative: '', x: 0.5, y: 0.5 }); st.person = cast.length - 1; t.redo(); };
   const num = (k: 'x' | 'y', ref: typeof fx) => <input ref={ref} className="inp" type="number" min={0} max={1} step={0.01} defaultValue={c?.[k] ?? 0.5} onChange={e => { if (c) c[k] = Math.min(1, Math.max(0, +e.target.value || 0)); moved(); }} />;
+  // 페이지는 인물이 칸마다 따로 있다: 칸에서 고친다 (자리는 칸 안에서 AI 가 정하고, 페이지 위의 자리로는 그릴 때 바꾼다)
+  if (s.page?.panels?.length) return <div className="col sb-ed-pane"><p className="hint">{tr('scenebook.page.castNote')}</p>
+    {s.page.panels.map((p, i) => <div className="sb-caption" key={i}><b>{tr('scenebook.page.panelLabel', { n: i + 1 })}</b><span>{p.characters.map(x => x.name).filter(Boolean).join(' · ') || tr('scenebook.page.nobody')}</span></div>)}</div>;
   return <div className="sb-cast">
     <div className="sb-cast-visual">
       <Board model={boardModel} width={cfg.width} height={cfg.height} bg={x.preview} selected={person} onMove={moved} onSelect={i => { st.person = i; bump(); }}
@@ -148,7 +160,8 @@ function FinalTab({ t }: { t: Tools }) {
   const [pos, setPos] = useState(made.p?.base ?? ''), [neg, setNeg] = useState(made.p?.negative ?? '');
   if (!made.p) return <p className="err">{made.err}</p>;
   const p = made.p, boardModel = cfg.backend !== 'nai' || MODELS[cfg.model]?.family === 5 ? 'nai-diffusion-5-full' : cfg.model;
-  const lock = (prompt: string, negative: string) => { Object.assign(s, { prompt, negative, camera: '', finalPrompt: true }); t.touch(); };
+  // 최종 프롬프트를 직접 고치면 그대로 보낸다. 페이지였으면 칸 대신 지금 보이는 최종 프롬프트 · 칸마다의 인물이 남는다
+  const lock = (prompt: string, negative: string) => { if (s.page) { s.characters = p.scene.characters; delete s.page; delete s.pageFormat; } Object.assign(s, { prompt, negative, camera: '', finalPrompt: true }); t.touch(); };
   return <div className="col sb-ed-pane">
     <p className="hint">{tr('scenebook.ed.finalHint')}</p>
     <p className="sb-ed-preset"><span className="field-label">{tr('scenebook.ed.presetUsed')}</span><b>{Illust.presetOf(cfg)?.name || tr('scenebook.ed.presetNone')}</b></p>
@@ -214,7 +227,7 @@ export function openComposer({ chat, msg, scenes, config, slot = null, preview =
   };
   const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape' && box.el === document.getElementById('modals')?.lastElementChild) { e.stopImmediatePropagation(); e.preventDefault(); askClose(); } };
   const box: Box = openModal({ title: slot ? tr('scenebook.ed.titleRedraw') : tr('scenebook.compose'), wide: true, cls: 'sb-ed', onClose: () => { document.removeEventListener('keydown', onEsc, true); if (st.dirty && !slot) saveDraft(true).catch(e => toast(errText(e), 'err')); } },
-    b => <Composer x={{ chat, msg, sw, slot, preview, inline: Illust.cfg().placement !== 'end' && !!Illust.cfg().placement, blocks: Illust.blocks(C.msgText(msg)), st, saveDraft, close: () => b.close() }} />);
+    b => <Composer x={{ chat, msg, sw, slot, preview, inline: placementOf(Illust.cfg()) !== 'end', blocks: Illust.blocks(C.msgText(msg)), st, saveDraft, close: () => b.close() }} />);
   document.addEventListener('keydown', onEsc, true);
   box.el.addEventListener('mousedown', e => { if (e.target === box.el) e.stopImmediatePropagation(); }, true);   // 바깥을 잘못 눌러도 편집하던 내용이 사라지지 않게
   box.el.querySelector('.modal-head .ibtn')?.addEventListener('click', e => { e.stopImmediatePropagation(); e.stopPropagation(); askClose(); }, true);   // 닫기 단추도 물어보고 닫는다

@@ -1,0 +1,1 @@
+export{t as go,n as pageNames}from"./router-D7XY4Rwb.js";

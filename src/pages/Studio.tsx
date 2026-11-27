@@ -47,7 +47,7 @@ function Studio() {
       <p className="hint" key="h">{t('studio.tr.hint')}</p>),
     '삽화': () => card([{ section: t('studio.tab.illust') },
       { k: 'illust.auto', label: t('studio.il.auto'), type: 'check' },
-      { k: 'illust.mode', label: t('studio.il.mode'), type: 'select', opts: [['plan', t('studio.il.modePlan')], ['call', t('studio.il.modeCall')]], half: true }, { k: 'illust.every', label: t('studio.il.every'), type: 'num', min: 1, third: true }, { k: 'illust.maxScenes', label: t('studio.il.maxScenes'), type: 'num', min: 1, max: 4, third: true },
+      { k: 'illust.mode', label: t('studio.il.mode'), type: 'select', opts: [['plan', t('studio.il.modePlan')], ['call', t('studio.il.modeCall')]], half: true }, { k: 'illust.every', label: t('studio.il.every'), type: 'num', min: 1, third: true }, { k: 'illust.maxScenes', label: t('studio.il.maxScenes'), type: 'num', min: 1, max: 6, third: true },
       { k: 'illust.backend', label: t('studio.il.backend'), type: 'select', opts: [['nai', 'NovelAI'], ['openai', t('studio.il.openai')], ['gemini', t('studio.il.gemini')], ['a1111', 'Stable Diffusion WebUI']], half: true, live: true },
       nai && { k: 'illust.naiKey', label: t('studio.il.naiKey'), type: 'password', half: true },
       nai && { k: 'illust.model', label: t('studio.il.model'), type: 'select', opts: NAI_MODELS, half: true },

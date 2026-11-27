@@ -46,8 +46,9 @@ function setup() {
   void Frames.load().then(() => { const f = Illust.cfg(); if ([f.frame, f.frameWide].some(v => String(v || '').startsWith('image:')) && shown()) chatApi.redraw(); });   // 가져온 액자 그림은 읽은 뒤에 씌운다
   let lookSig = '';
   on('settings', p => {   // 표시 설정이 바뀌면 열려 있는 대화의 삽화를 다시 그린다
-    if (!(p as { illust?: unknown } | undefined)?.illust) return; const c = Illust.cfg(), sig = [c.placement, c.displayWidth, c.compact, c.frame, c.frameWide, c.frameInk, Frames.list().length].join('|'), changed = lookSig && sig !== lookSig; lookSig = sig;
+    if (!(p as { illust?: unknown } | undefined)?.illust) return; const c = Illust.cfg(), sig = [c.placement, c.displayWidth, c.compact, c.frame, c.frameWide, c.frameInk, c.imageTools, Frames.list().length].join('|'), changed = lookSig && sig !== lookSig; lookSig = sig;
     if (changed && shown()) chatApi.redraw();
+    schedule();   // 그림 위 도구 보이기 같은 표시 설정은 대화 화면이 바뀌지 않아도 바로 적용한다
   });
   on('message:received', data => {
     const d = data as { msg?: Msg; chat?: { id?: string } } | undefined, msg = d?.msg, plan = Illust.takePlan(), c = Illust.cfg(), sw = msg?.swipes?.[msg.sw];

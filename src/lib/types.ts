@@ -9,7 +9,10 @@ export interface IllustWho { name?: string; outfit?: string; action?: string }
 /** 장면 속 인물 한 명 */
 export interface IllustPerson { name?: string; prompt?: string; negative?: string; x?: number; y?: number; id?: string }
 /** 편집 · 생성에 쓰는 장면 */
-export interface IllustScene { title?: string; prompt?: string; camera?: string; negative?: string; anchor?: string; /** 둘 문단 번호 (원문 기준, 1부터) */ at?: number; finalPrompt?: boolean; characters: IllustPerson[]; size?: string }
+export interface IllustScene { title?: string; prompt?: string; camera?: string; negative?: string; anchor?: string; /** 둘 문단 번호 (원문 기준, 1부터) */ at?: number; finalPrompt?: boolean; characters: IllustPerson[]; size?: string;
+  /** 만화 페이지 · 세로 웹툰의 칸 */ page?: IllustPage; /** manga · comic · webtoon */ pageFormat?: string; /** 말풍선에 대사 */ bubbles?: boolean; /** 웹툰 컷 · 놓는 자리 (auto · end) */ cut?: boolean; place?: string }
+/** 만화 페이지: 격자 id · 손으로 적은 칸 배치 · 칸들 (local: 인물 좌표가 칸 안의 좌표) */
+export interface IllustPage { grid?: string; layout?: string; local?: boolean; panels: { text: string; height?: string; characters: IllustPerson[] }[] }
 export interface IllustRefUse { id: string; kind: string; mode?: string; strength?: number; fidelity?: number; information?: number; /** 참조 그림의 옷차림도 따라 그린다 (V5 의 인물 참조) */ sameOutfit?: boolean }
 /** 그림 한 장에 얼려 두는 생성 설정 */
 export interface IllustGenConfig {
@@ -22,13 +25,13 @@ export interface IllustGenConfig {
 export interface IllustReview { summary?: string; issues?: string[]; created?: number }
 export interface IllustVersion { id: string; seed?: number | null; ts?: number; scene?: IllustScene; config?: IllustGenConfig | null; review?: IllustReview; /** 그릴 때 쓴 그림체 프리셋 이름 */ preset?: string }
 /** 답변에 붙은 삽화 한 자리 (버전 여러 장) */
-export interface IllustSlot { id: string; slotId: string; title?: string; anchor?: string; at?: number; hidden?: boolean; sel: number; versions: IllustVersion[] }
+export interface IllustSlot { id: string; slotId: string; title?: string; anchor?: string; at?: number; hidden?: boolean; sel: number; versions: IllustVersion[]; /** 웹툰 컷 (액자 없이 이어 보인다) · 그릴 때의 놓는 자리 */ cut?: boolean; place?: string }
 export interface IllustPlanRecord { status?: string; raw?: string; error?: string; repairs?: string[]; warnings?: string[]; seen?: boolean; ts?: number }
 /** 메시지에 붙은 삽화 자리 (버전 여러 장). 옛 판의 한 장짜리 { id, title, camera, prompt, characters } 도 같은 자리에 있다 */
 export type IllustItem = IllustSlot & { camera?: string; prompt?: string; negative?: string; characters?: (string | IllustWho)[]; [k: string]: unknown };
 /** 그리기 전 장면 초안 */
 export interface IllustDraftChar { name: string; prompt: string; negative: string; x: number; y: number }
-export interface IllustDraft { title: string; camera: string; prompt: string; negative: string; finalPrompt: boolean; anchor: string; at?: number; characters: IllustDraftChar[]; size?: string; [k: string]: unknown }
+export interface IllustDraft { title: string; camera: string; prompt: string; negative: string; finalPrompt: boolean; anchor: string; at?: number; characters: IllustDraftChar[]; size?: string; page?: IllustPage; pageFormat?: string; bubbles?: boolean; cut?: boolean; place?: string; [k: string]: unknown }
 export interface Swipe {
   text: string; ts?: number; reasoning?: string; tr?: string; showTr?: boolean; model?: string; ms?: number;
   expr?: string; exprPick?: string; illust?: IllustItem[]; illustPlan?: IllustPlanRecord; illustDraft?: IllustScene[]; illustDraftConfig?: IllustGenConfig; state?: TrackState;

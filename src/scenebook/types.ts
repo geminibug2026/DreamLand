@@ -13,6 +13,8 @@ export interface IllustCfg extends GenConfig {
   autoSize?: boolean; look?: string; leanPrompt?: boolean; frame: string; frameWide: string; frameInk: string;
   analysisPrompt?: string; planPrompt?: string; presets: Preset[]; history: HistoryEntry[]; characterVisuals: Record<string, Visual>;
   /** 갤러리에서만 뺀 그림 id */ galleryHide?: string[]; /** 장면 쓰기(분석) 답 길이: 0 = 자동 */ analysisTokens?: number;
+  /** 그림 형식: single · cuts · manga · comic · webtoon */ pageFormat?: string; /** 페이지 칸 수 (0 = 자동) */ panelCount?: number; speechBubbles?: boolean;
+  /** 웹툰 컷 놓는 자리: story · stack */ cutLayout?: string; /** 터치 화면의 그림 위 도구: tap · always */ imageTools?: string;
 }
 export interface Job {
   id: string; chat: Chat; msg: Msg; sw: Swipe; scene: Scene; slot: string | null; config: GenConfig; automatic: boolean;
@@ -27,7 +29,7 @@ export interface FrameRec { id: string; owner: string; kind: string; name: strin
 export interface Conn { id: string; name: string; model?: string }
 export interface Persona { id: string; name: string; visual?: { appearance?: string; outfit?: string; negative?: string } }
 export type Card = (Char | Persona) & { visual?: { appearance?: string; outfit?: string; negative?: string } };
-export interface Composed { base: string; negative: string; coords: boolean; looks: { name: string; caption: string; negative: string; x: number; y: number }[] }
+export interface Composed { base: string; full: string; negative: string; coords: boolean; looks: { name: string; caption: string; negative: string; x: number; y: number }[]; scene: Scene; source: Scene; config?: Partial<GenConfig> }
 export interface PlanRead { found: boolean; scenes: Scene[]; raw: string; error?: string; repairs?: string[]; warnings?: string[]; asked?: boolean }
 export interface RefSupport { vibe: boolean; precise: number; total: number; outfit: boolean; fidelity: boolean; strengthMax: number; bucket: boolean }
 export interface ModelInfo { label: string; family: number; characters: number; references: RefSupport; quality: string }
@@ -35,7 +37,7 @@ export type { Char, Chat };
 
 // ── 삽화 엔진(src/lib/illust.ts 의 Illust)을 이 묶음이 보는 꼴 ──
 export interface EnqueueOpts { manual?: boolean; config?: GenConfig | null; slot?: string | null; exact?: boolean }
-export interface AnalyzeOpts { existing?: Scene[] | null; direction?: string; scope?: string; manual?: boolean }
+export interface AnalyzeOpts { existing?: Scene[] | null; direction?: string; scope?: string; manual?: boolean; /** 이 답변만 다른 그림 형식으로 */ format?: string }
 export interface IllustApi {
   cfg(): IllustCfg;
   saveCfg(patch: Partial<IllustCfg>, o?: { reason?: string; force?: boolean }): IllustCfg;
