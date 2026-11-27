@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../kit';
 import { Form, type FieldDef, choiceBox, confirmBox, menu, toast } from '../ui';
-import { Area, Btn, Chk, Empty, Fld, Group, IBtn, Sel, Seg, Text, openModal, useBump } from './parts';
+import { Area, Btn, Chk, Empty, Fld, Group, IBtn, Sel, Seg, Text, openGroups, openModal, useBump } from './parts';
 import { CUT_LAYOUTS, PAGE_FORMATS, PANEL_COUNTS, SCENE_COUNTS, pagesAllowed } from './comic';
 import { FormatGlyph } from './glyph';
 import { Frames, frameChoices, frameLayout, validFrame } from './frames';
@@ -29,7 +29,7 @@ import { locale, t, tn } from '../i18n';
 
 type TabId = 'gen' | 'cast' | 'refs' | 'gallery' | 'queue';
 let studioTab: TabId = 'gen', castScope: string | null = null;
-const GEN_EXTRA = ['naiKey', 'maxScenes', 'every', 'sessionLimit', 'contextMessages', 'analysisMode', 'placement', 'displayWidth', 'compact', 'autoSize', 'look', 'leanPrompt', 'frame', 'frameWide', 'frameInk', 'analysisTokens', 'pageFormat', 'panelCount', 'speechBubbles', 'cutLayout', 'imageTools'];
+const GEN_EXTRA = ['naiKey', 'maxScenes', 'every', 'contextMessages', 'analysisMode', 'placement', 'displayWidth', 'compact', 'autoSize', 'look', 'leanPrompt', 'frame', 'frameWide', 'frameInk', 'analysisTokens', 'pageFormat', 'panelCount', 'speechBubbles', 'cutLayout', 'imageTools'];
 const TIERS = ['Paper', 'Tablet', 'Scroll', 'Opus'];
 const tierName = (t?: number | null) => t != null ? (TIERS[t] || t) : null;
 const queueText = () => { const I = Illust, w = I.queue().filter(x => x.state === 'waiting').length; return I.queueRunning() && I.queue().some(x => x.state === 'running') ? t('scenebook.studio.q.drawing') + (w ? t('scenebook.studio.q.waitSuffix', { n: w }) : '') : I.queuePaused() ? t('scenebook.studio.q.paused') + (w ? t('scenebook.studio.q.waitSuffix', { n: w }) : '') : w ? t('scenebook.studio.q.wait', { n: w }) : ''; };
@@ -59,14 +59,31 @@ function ConnBar() {
   return <div className="sb-conn" data-state={st[1]}><span className="sb-conn-label">{st[0]}</span>
     {nai ? <Btn label={t('scenebook.studio.check')} ic="refresh" cls="ghost" onClick={() => void check()} /> : null}{nai ? <Btn label={t('scenebook.studio.connHelp')} ic="plug" cls="ghost" onClick={connHelp} /> : null}<Btn label={t('scenebook.guide')} ic="note" cls="ghost" onClick={guide} /></div>;
 }
-function Workflow({ redraw }: { redraw: () => void }) {
-  const c = Illust.cfg();
-  const help = c.automatic === 'off' ? t('scenebook.studio.wf.offHelp')
-    : `${c.mode === 'plan' ? t('scenebook.studio.wf.planHelp') : t('scenebook.studio.wf.callHelp')} → ${c.automatic === 'review' ? t('scenebook.studio.wf.draftOnly') : t('scenebook.studio.wf.drawAttach')} · ${c.every > 1 ? tn('scenebook.studio.wf.everyN', c.every) : t('scenebook.studio.wf.everyReply')}`;
+// 장면을 답변 끝에 같이 쓰면 답이 길어진다: 잘리지 않게 권하는 최대 응답 길이와, 그만큼 떼어 줘도 대화가 들어갈 자리
+const REPLY_ADVICE = 40000, CHAT_ROOM = 16000;
+const replyPreset = () => { const chat = cur().chat; return chat ? C.S.presetFor(chat as never) : C.S.preset(); };
+function Workflow({ redraw, toWriter }: { redraw: () => void; toWriter: () => void }) {
+  const c = Illust.cfg(), on = c.automatic !== 'off', call = c.mode === 'call', n = REPLY_ADVICE.toLocaleString();
+  const help = !on ? t('scenebook.studio.wf.offHelp') : `${c.automatic === 'review' ? t('scenebook.studio.wf.draftOnly') : t('scenebook.studio.wf.drawAttach')} · ${c.every > 1 ? tn('scenebook.studio.wf.everyN', c.every) : t('scenebook.studio.wf.everyReply')}`;
+  const p = on && !call ? replyPreset() : null, now = Number(p?.params?.maxTokens) || 0;
+  const helperName = () => { const id = (C.S.settings as { helpers?: Record<string, string> }).helpers?.illust, x = id ? C.chatConns().find(k => k.id === id) : null; return x ? x.name : t('scenebook.studio.chatConn'); };
+  const setReply = guard(async () => {
+    const pr = replyPreset(), ctx = Number(pr.params.contextSize) || 128000;
+    if (ctx < REPLY_ADVICE + CHAT_ROOM) throw new Error(t('scenebook.studio.wf.replyNoRoom', { preset: pr.name, ctx: ctx.toLocaleString(), n }));
+    await C.S.save('presets', { ...pr, params: { ...pr.params, maxTokens: REPLY_ADVICE }, updatedAt: Date.now() });
+    toast(t('scenebook.studio.wf.replyDone', { preset: pr.name, n })); redraw();
+  });
   return <section className="sb-workflow">
     <div className="sb-wf-row"><Fld label={t('scenebook.studio.automatic')}><Sel opts={[['off', t('scenebook.studio.auto.off')], ['review', t('scenebook.studio.auto.review')], ['generate', t('scenebook.studio.auto.generate')]]} value={c.automatic} onChange={v => { Illust.saveCfg({ automatic: v as IllustCfg['automatic'] }); redraw(); }} /></Fld>
-      <Fld label={t('scenebook.studio.wf.method')}><Sel opts={[['plan', t('scenebook.studio.wf.methodPlan')], ['call', t('scenebook.studio.wf.methodCall')]]} value={c.mode} onChange={v => { Illust.saveCfg({ mode: v }); redraw(); }} /></Fld>
       <Btn label={t('scenebook.prompt')} ic="edit" cls="ghost" title={t('scenebook.studio.wf.promptTitle')} onClick={() => promptEditor(2)} /></div>
+    {/* 장면 쓰는 곳: 답변에 함께(요청 그대로) · 답변 후 보조 모델(요청 +1). 고른 쪽의 장단점을 바로 아래에 */}
+    {on ? <div className="sb-wf-src"><span className="field-label">{t('scenebook.studio.wf.method')}</span>
+      <div className="sb-wf-tiles" role="radiogroup" aria-label={t('scenebook.studio.wf.method')}>{(['plan', 'call'] as const).map(id => { const sel = (id === 'call') === call, k = id === 'call' ? 'Call' : 'Plan';
+        return <button key={id} type="button" role="radio" aria-checked={sel} className={'sb-wf-tile' + (sel ? ' on' : '')} onClick={() => { if (!sel) { Illust.saveCfg({ mode: id }); redraw(); } }}><b>{t('scenebook.studio.wf.method' + k)}</b><small>{t('scenebook.studio.wf.method' + k + 'Sub')}</small></button>; })}</div>
+      <p className="hint">{call ? t('scenebook.studio.wf.callHelp') : t('scenebook.studio.wf.planHelp')}</p>
+      {call ? <div className="sb-wf-line"><span>{t('scenebook.studio.wf.helperLine', { conn: helperName(), tokens: Illust.analysisTokens(c).toLocaleString() })}</span><button type="button" className="btn" onClick={toWriter}>{t('scenebook.studio.wf.helperEdit')}</button></div>
+        : p && now < REPLY_ADVICE ? <div className="sb-wf-line sb-wf-advice"><span>{t('scenebook.studio.wf.replyAdvice', { n, preset: p.name, now: now ? now.toLocaleString() : '-' })}</span><button type="button" className="btn" onClick={setReply}>{t('scenebook.studio.wf.replySet', { n })}</button></div> : null}
+    </div> : null}
     <p className="hint">{help}</p><p className="hint sb-wf-status" role="status">{statusText()}</p>
   </section>;
 }
@@ -150,7 +167,7 @@ function GenPage({ reopen }: { reopen: () => void }) {
       { k: 'leanPrompt', label: t('scenebook.studio.lean'), type: 'check', hint: t('scenebook.studio.leanHint') }])}
       <div className="row wrap">{UC_PRESETS.map(([id, text]) => <Btn key={id} label={t('scenebook.studio.uc.' + id)} ic="plus" cls="ghost" title={t('scenebook.studio.uc.hint')} onClick={() => { Illust.saveCfg({ negative: mergeTags(text, String(Illust.cfg().negative || '')) }); reopen(); }} />)}</div>
       <div className="row"><Btn label={t('scenebook.studio.editShare')} ic="edit" cls="ghost" onClick={() => promptEditor(0, reopen)} /><small className="hint">{t('scenebook.studio.editShareHint')}</small></div></Group>
-    <Group title={t('scenebook.manual')}><Form obj={S.settings} defs={[{ k: 'helpers.illust', label: t('scenebook.guide.topic.conn.title'), type: 'select', opts: [['', t('scenebook.studio.chatConn')], ...C.chatConns().map((x): [string, string] => [x.id, `${x.name}${x.model ? ' · ' + x.model : ''}`])], hint: t('scenebook.studio.analysisConnHint') }]} onChange={() => S.set({})} />
+    <Group title={t('scenebook.studio.g.writer')} id="writer"><Form obj={S.settings} defs={[{ k: 'helpers.illust', label: t('scenebook.guide.topic.conn.title'), type: 'select', opts: [['', t('scenebook.studio.chatConn')], ...C.chatConns().map((x): [string, string] => [x.id, `${x.name}${x.model ? ' · ' + x.model : ''}`])], hint: t('scenebook.studio.analysisConnHint') }]} onChange={() => S.set({})} />
       {f([{ k: 'analysisMode', label: t('scenebook.guide.topic.analysis.title'), type: 'select', opts: [['quick', t('scenebook.studio.quick')], ['precise', t('scenebook.studio.precise')]], half: true }, { k: 'contextMessages', label: t('scenebook.guide.topic.context.title'), type: 'num', min: 0, max: 30, step: 1, half: true }])}
       {/* 장면 쓰기 답 길이: 자동(장면 수에 맞춤) 또는 직접. 생각하는 AI 가 길이를 생각에 다 써서 빈 답이 오면 늘린다 */}
       <div className="sb-alen"><Fld label={t('scenebook.studio.alen')} hint={t('scenebook.studio.alenHint')}><Sel opts={[['auto', t('scenebook.studio.alenAuto', { n: Illust.analysisTokens({ ...c, ...d, analysisTokens: 0 }).toLocaleString() })], ['manual', t('scenebook.studio.alenManual')]]} value={Number(d.analysisTokens) >= 1000 ? 'manual' : 'auto'} onChange={v => { d.analysisTokens = v === 'manual' ? 16000 : 0; save(); }} /></Fld>
@@ -538,11 +555,13 @@ export function Studio() {
     return () => { alive.current = false; offJobs(); offSet(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // 머리의 「바꾸기」: 생성 탭의 장면 쓰기 묶음을 펴서 그 자리로
+  const toWriter = async () => { openGroups.add('writer'); await open('gen'); requestAnimationFrame(() => document.querySelector('.sb-studio details[data-g="writer"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' })); };
   const reopen = () => { if (shown) void open(shown.id); }, busy = Illust.queue().filter(active).length;
   let page: ReactNode = null; const k = shown ? `${shown.id}-${shown.n}` : '';   // 탭을 다시 열 때마다 새로 만든다
   if (shown) page = shown.err ? <p className="err" key={k}>{shown.err}</p> : shown.id === 'gen' ? <GenPage key={k} reopen={reopen} /> : shown.id === 'cast' ? <CastPage key={k} reopen={reopen} /> : shown.id === 'refs' ? <RefsPage key={k} reopen={reopen} refs={shown.refs || []} /> : shown.id === 'gallery' ? <GalleryPage key={k} reopen={reopen} all={shown.all || []} /> : <QueuePage key={k} reopen={reopen} />;
   return <>
-    <div className="sb-head" ref={head}><ConnBar key={hv} /><Workflow redraw={() => setHv(v => v + 1)} />
+    <div className="sb-head" ref={head}><ConnBar key={hv} /><Workflow redraw={() => setHv(v => v + 1)} toWriter={toWriter} />
       <div className="sb-quick sb-tiles"><Btn label={t('scenebook.compose')} ic="edit" onClick={guard(() => compose())} /><Btn label={t('scenebook.readImage')} ic="image" onClick={() => imageImport(() => { setHv(v => v + 1); void open('gen'); })} /><Btn label={t('scenebook.plans')} ic="note" onClick={showPlans} /></div></div>
     <div className="tabs sb-tabs" role="tablist" aria-label={t('scenebook.studio.tabsLabel')}>{tabs().map(([k, l, ic]) => <button key={k} type="button" className={'tab' + (k === tab ? ' on' : '')} role="tab" onClick={() => void open(k)}><Icon name={ic} size={15} />{l}{k === 'queue' && busy ? <em className="badge on">{String(busy)}</em> : null}</button>)}</div>
     {note ? <p className="hint sb-indexing" role="status">{note}</p> : null}

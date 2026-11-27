@@ -144,7 +144,7 @@ export const SAMPLERS = ['k_euler_ancestral', 'k_euler', 'k_dpmpp_2m', 'k_dpmpp_
 export const SCHEDULERS = ['karras', 'exponential', 'polyexponential', 'native'];
 export const BACKENDS: Record<string, string> = { nai: 'NovelAI', get openai() { return t('illust.backend.openai'); }, get gemini() { return t('illust.backend.gemini'); }, a1111: 'Stable Diffusion WebUI' };
 /** core 의 기본값에 없는 삽화 설정 (처음 읽을 때 채워 넣는다) */
-export const ILLUST_EXTRA: Bag = { automatic: null, seed: -1, scheduler: 'karras', cfgRescale: 0, useCoords: true, useOrder: true, budgetGuard: true, transparent: false, sessionLimit: 12, analysisMode: 'quick',
+export const ILLUST_EXTRA: Bag = { automatic: null, seed: -1, scheduler: 'karras', cfgRescale: 0, useCoords: true, useOrder: true, budgetGuard: true, transparent: false, analysisMode: 'quick',
   presets: [], references: [], library: [], characterVisuals: {}, history: [], placement: 'end', displayWidth: 400, compact: false, sdSampler: 'Euler a',
   leanPrompt: false, autoSize: true, look: '', frame: 'soft', frameWide: '', frameInk: '', galleryHide: [], analysisTokens: 0,
   pageFormat: 'single', panelCount: 0, speechBubbles: false, cutLayout: 'story', imageTools: 'tap' };

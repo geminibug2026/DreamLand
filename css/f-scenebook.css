@@ -29,6 +29,13 @@
 .sb-workflow::before { content: ""; position: absolute; inset: -4px; background: var(--handles); pointer-events: none; }
 .sb-workflow .hint { margin: 0; } .sb-wf-status { font-weight: 600; }
 .sb-wf-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; } .sb-wf-row > .field { flex: 1 1 200px; } .sb-wf-row .inp { background: var(--surface); }
+.sb-wf-src { display: flex; flex-direction: column; gap: 8px; }
+.sb-wf-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.sb-wf-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-height: 58px; padding: 9px 12px; border: 1px solid var(--ink-line); background: var(--surface); color: var(--dim); text-align: left; cursor: pointer; }
+.sb-wf-tile b { color: var(--text); font-size: .95em; } .sb-wf-tile small { font-size: .8em; line-height: 1.35; }
+.sb-wf-tile.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); color: var(--text); }
+.sb-wf-line { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px 12px; border-left: 2px solid var(--ink-line); background: var(--surface2); font-size: .88em; line-height: 1.55; }
+.sb-wf-line .btn { min-height: 34px; padding: 4px 14px; font-size: .95em; background: var(--surface); } .sb-wf-advice { border-left-color: var(--accent, var(--ink)); }
 .sb-page { min-width: 0; } .sb-gen, .sb-cast-page, .sb-refs, .sb-gallery-page, .sb-queue { display: flex; flex-direction: column; gap: 12px; }
 .sb-savebar { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 30px; }
 .sb-sizes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; flex: 1 1 100%; min-width: 0; }
