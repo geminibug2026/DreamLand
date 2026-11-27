@@ -1,1 +1,0 @@
-import{b as e}from"./core-C-CFkon9.js";import{i as t,o as n}from"./router-1eW0DuhG.js";var r=e=>e instanceof Error?e.message:String(e),i=()=>{n.page===`home`?e(`chars`,null):t()};export{i as n,r as t};

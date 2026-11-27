@@ -40,7 +40,7 @@ export function Lock({ wall, out, onUnlock }: { wall: Wall; out: boolean; onUnlo
       {fav && pr ? <p className="pn-lock-who"><i className={'pn-dot ' + pr.status} />{fav.name} · {pr.activity || STATUS[pr.status]}</p> : null}
       <LockMusic />
     </div>
-    {P.notifs.length ? <NotifStack list={P.notifs} max={3} /> : <Emb kind="window" className="pn-lock-quiet" />}
+    {P.notifs.length || P.sns ? <NotifStack list={P.notifs} sns={P.sns} max={2} /> : <Emb kind="window" className="pn-lock-quiet" />}
     <div className="pn-lock-foot">
       <button type="button" className="pn-round" aria-label={t('phone.app.calls')} title={t('phone.app.calls')} onClick={e => { onUnlock(); P.open('calls', undefined, e.currentTarget); }}><Fill name="phone" size={24} /></button>
       <button type="button" className="pn-unlock" onClick={onUnlock}><Glyph name="lock" size={16} /><span>{t('phone.lock.hint')}</span></button>

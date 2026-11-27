@@ -12,7 +12,7 @@ import { t } from '../i18n';
 import { Glyph } from './art';
 import { PhoneCtx, type AppId, type PhoneApi } from './ui';
 import { setPrefs, usePrefs } from './prefs';
-import { favChar, homeChat, nameOf, notifications, talkChats, lineOf, type Notif } from './data';
+import { favChar, homeChat, nameOf, notifications, snsNotice, talkChats, lineOf, type Notif } from './data';
 import { hhmm, setTimeSource, useMinute } from './time';
 import { useWall } from './wall';
 import { Lock } from './Lock';
@@ -25,9 +25,10 @@ import { Gallery } from './apps/Gallery';
 import { Calendar } from './apps/Calendar';
 import { Notes } from './apps/Notes';
 import { Music } from './apps/Music';
+import { Board } from './apps/Board';
 import { Settings } from './apps/Settings';
 
-const APPS: Record<AppId, ComponentType<{ arg?: unknown }>> = { messages: Messages, calls: Calls, contacts: Contacts, photos: Gallery, calendar: Calendar, notes: Notes, music: Music, settings: Settings };
+const APPS: Record<AppId, ComponentType<{ arg?: unknown }>> = { messages: Messages, calls: Calls, contacts: Contacts, photos: Gallery, calendar: Calendar, notes: Notes, music: Music, board: Board, settings: Settings };
 interface Layer { id: AppId; arg?: unknown; key: number; ox: number; oy: number; out?: boolean }
 /** 몇 분 안에 다시 열면 잠금 화면 없이 보던 곳으로 */
 const RESUME_MS = 3 * 60000;
@@ -129,7 +130,7 @@ export function Phone({ chat, onGone }: { chat: Chat | null; onGone: () => void 
   // ── 열려 있는 동안만: 자료가 바뀌면 다시 셈하고(한 프레임에 한 번), 새로 온 메시지는 머리 알림으로 ──
   useEffect(() => {
     let raf = 0; const bump = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; startTransition(() => setV(x => x + 1)); }); };
-    const offs = ['chats', 'chars', 'message:sent', 'call:end', 'settings', 'chat:open', 'msgs:wrote', 'clock'].map(e => on(e, bump));
+    const offs = ['chats', 'chars', 'message:sent', 'call:end', 'settings', 'chat:open', 'msgs:wrote', 'clock', 'feed:changed'].map(e => on(e, bump));
     offs.push(on<{ msg: Msg; chat: Chat }>('message:received', d => {
       bump(); const c = d?.chat, m = d?.msg; if (!c || !m || m.role !== 'assistant' || modeOf(c) !== 'talk' || c.temp) return;
       const text = msgText(m), f = fresh.get(c.id); fresh.set(c.id, { at: Date.now(), text, n: (f?.n || 0) + 1 });
@@ -168,10 +169,10 @@ export function Phone({ chat, onGone }: { chat: Chat | null; onGone: () => void 
     return () => { backFirst.delete(pop); removeEventListener('keydown', key); };
   }, []);
 
-  const notifs = useMemo(() => notifications(p, fresh), [p, v, fresh]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const notifs = useMemo(() => notifications(p, fresh), [p, v, fresh]), sns = useMemo(() => snsNotice(), [v]);   // eslint-disable-line react-hooks/exhaustive-deps
   const setCcS = useStable((o: boolean) => { setCc(o ? 'in' : 'out'); if (!o) later(() => setCc(''), 220); });
   // 조작 고리는 자료가 바뀔 때만 새로 만든다 (앱 · 조절 센터를 여닫는 것으로는 홈 · 위젯이 다시 그려지지 않게)
-  const api: PhoneApi = useMemo(() => ({ home, fav, p, v, fresh, notifs, open, back, home2, leave, toChat, dial, read, mute, setCc: setCcS, edit, setEdit }), [home, fav, p, v, fresh, notifs, edit]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const api: PhoneApi = useMemo(() => ({ home, fav, p, v, fresh, notifs, sns, open, back, home2, leave, toChat, dial, read, mute, setCc: setCcS, edit, setEdit }), [home, fav, p, v, fresh, notifs, sns, edit]);   // eslint-disable-line react-hooks/exhaustive-deps
   const live = stack.filter(l => !l.out), lockInk = wall.sharp || p.theme === 'night' || p.theme === 'mono' || p.wall === 'g:ink' ? 'light' : 'dark', homeInk = wall.soft || p.theme === 'night' || p.theme === 'mono' || p.wall === 'g:ink' ? 'light' : 'dark';
   return <PhoneCtx.Provider value={api}>
     <div className={'pn-veil' + (closing ? ' out' : '')} onClick={() => leave()} aria-hidden="true" />

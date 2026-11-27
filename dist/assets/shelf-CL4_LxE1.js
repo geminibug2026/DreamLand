@@ -1,0 +1,1 @@
+export{t as shelf}from"./shelf-DXEg4GG-.js";

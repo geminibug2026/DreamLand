@@ -74,7 +74,7 @@ export function Control({ out, onClose }: { out: boolean; onClose: () => void })
     <Slider ic="sun" label={t('phone.cc.bright')} value={P.p.bright} min={0.45} max={1} onChange={v => setPrefs({ bright: Math.round(v * 100) / 100 })} />
     <Slider ic="sound" label={t('phone.cc.chime')} value={(ux.soundVolume ?? 60) / 100} onChange={v => { ux.soundVolume = Math.round(v * 100); save(); }} />
     <NowPlaying />
-    <NotifStack list={P.notifs} max={2} />
+    <NotifStack list={P.notifs} sns={P.sns} max={2} />
     <div className="pn-cc-theme"><span>{t('phone.set.theme')}</span>
       <div className="pn-swatches" role="radiogroup" aria-label={t('phone.set.theme')}>{THEMES.map(k => <button key={k} type="button" role="radio" aria-checked={P.p.theme === k} aria-label={t('phone.theme.' + k)} title={t('phone.theme.' + k)} style={{ background: SWATCH[k] }} className={P.p.theme === k ? 'on' : undefined} onClick={() => setPrefs({ theme: k })} />)}</div></div>
     <button type="button" className="pn-cc-grab" aria-label={t('phone.cc.close')} onClick={onClose}

@@ -7,6 +7,7 @@ import { Live } from '../lib/live';
 import { Stickers } from '../extras/stickers';
 import { daysTogether } from '../lib/together';
 import type { Prefs } from './prefs';
+import { F } from '../feed/store';
 
 /** 대화 모드 방 (임시 채팅 제외), 최근 순 */
 export const talkChats = (): Chat[] => S.chats.filter(c => modeOf(c) === 'talk' && !c.temp).sort((a, b) => b.updatedAt - a.updatedAt);
@@ -58,6 +59,14 @@ export function notifications(p: Prefs, fresh: Map<string, { at: number; text: s
     if (missed.length) out.push({ id: 'c' + c.id, kind: 'call', chat: c, charId: missed[0].charId || ch?.id || '', title: S.get('chars', missed[0].charId)?.name || nameOf(c), line: { text: '' }, at: missed[0].at, count: missed.length });
   }
   return out.sort((a, b) => b.at - a.at);
+}
+
+// ── 게시판 소식 ── 내 글에 온 마음 · 답글 · 재게시 · 투표 가운데 아직 보지 않은 것 (읽음은 게시판의 「본 때」 하나)
+export interface SnsNote { count: number; at: number; by: string; kind: string; text: string }
+export function snsNotice(): SnsNote | null {
+  const fresh = F.notices.filter(q => q.ts > F.seenAt); if (!fresh.length) return null;
+  const q = fresh.reduce((a, b) => b.ts > a.ts ? b : a), n = F.notes.find(x => x.id === q.note);
+  return { count: fresh.length, at: q.ts, by: q.by, kind: q.kind, text: n?.text || '' };
 }
 
 // ── 통화 기록 ──

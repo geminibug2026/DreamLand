@@ -1,7 +1,6 @@
 // 홈 화면: 쪽 두 장(위젯 · 앱과 위젯)을 옆으로 넘기고(브라우저의 스크롤 맞춤 — 손가락을 따라 그리는 JS 없음), 아래에 독.
 // 길게 누르면 편집: 위젯을 빼고 · 옮기고 · 더한다 (끌기 대신 단추로 — 휴대폰에서 버벅이지 않게)
 import { memo, useEffect, useRef, useState, type CSSProperties, type PointerEvent as RPE } from 'react';
-import { go } from '../lib/router';
 import { t, tn } from '../i18n';
 import { Fill, Glyph } from './art';
 import { WIDGETS, Widget } from './widgets';
@@ -30,12 +29,12 @@ function AppIcon({ a, badge = 0 }: { a: AppDef; badge?: number }) {
 
 export const Home = memo(function Home({ wall }: { wall: Wall }) {
   const P = usePhone(), [page, setPage] = useState(0), [adding, setAdding] = useState(false), [picked, setPicked] = useState(''), pager = useRef<HTMLDivElement>(null), press = useRef<{ x: number; y: number; t: number } | null>(null);
-  // 둘째 쪽 맨 위 한 줄(다섯): 음악 · 캘린더 · 메모 · 밤의 게시판(휴대폰을 내려놓고 기존 게시판으로) · 설정
+  // 둘째 쪽 맨 위 한 줄(다섯): 음악 · 캘린더 · 메모 · 밤의 게시판 · 설정
   const APPS: AppDef[] = [
     { id: 'music', ic: 'music', label: () => t('phone.app.music'), app: 'music' },
     { id: 'calendar', ic: 'calendar', label: () => t('phone.app.calendar'), app: 'calendar' },
     { id: 'notes', ic: 'notes', label: () => t('phone.app.notes'), app: 'notes' },
-    { id: 'board', ic: 'board', label: () => t('phone.app.board'), run: () => P.leave(() => go('feed')) },
+    { id: 'board', ic: 'board', label: () => t('phone.app.board'), app: 'board' },
     { id: 'settings', ic: 'settings', label: () => t('phone.app.settings'), app: 'settings' },
   ];
   // 지금 보는 쪽: 쪽마다 반 넘게 보이면 그 쪽 (스크롤마다 셈하지 않는다)
@@ -65,7 +64,7 @@ export const Home = memo(function Home({ wall }: { wall: Wall }) {
     <div className="pn-pages" ref={pager} onPointerDown={down} onPointerMove={moved} onPointerUp={cancel} onPointerCancel={cancel} onScroll={cancel}>
       <section className="pn-page" data-page="0" aria-label={t('phone.home.page', { n: 1 })}><div className="pn-grid">{grid(lists[0][0])}</div></section>
       <section className="pn-page" data-page="1" aria-label={t('phone.home.page', { n: 2 })}>
-        <div className="pn-grid"><div className="pn-approw">{APPS.map(a => <AppIcon key={a.id} a={a} />)}</div>{grid(lists[1][0])}</div>
+        <div className="pn-grid"><div className="pn-approw">{APPS.map(a => <AppIcon key={a.id} a={a} badge={a.id === 'board' ? P.sns?.count || 0 : 0} />)}</div>{grid(lists[1][0])}</div>
       </section>
     </div>
     <div className="pn-dots" role="tablist" aria-label={t('phone.home.pages')}>{[0, 1].map(i => <button key={i} type="button" role="tab" aria-selected={page === i} aria-label={t('phone.home.page', { n: i + 1 })} className={page === i ? 'on' : undefined} onClick={() => toPage(i)} />)}</div>

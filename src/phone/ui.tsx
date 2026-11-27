@@ -6,15 +6,16 @@ import { ago } from '../chat/actions';
 import { t, locale } from '../i18n';
 import { Glyph } from './art';
 import type { Prefs } from './prefs';
-import type { Notif } from './data';
+import type { Notif, SnsNote } from './data';
 
-export type AppId = 'messages' | 'calls' | 'contacts' | 'photos' | 'calendar' | 'notes' | 'music' | 'settings';
+export type AppId = 'messages' | 'calls' | 'contacts' | 'photos' | 'calendar' | 'notes' | 'music' | 'board' | 'settings';
 export interface PhoneApi {
   /** 휴대폰의 바탕이 되는 대화 (연 자리 · 가장 최근 대화 모드 방) */ home: Chat | null;
   fav: Char | null; p: Prefs;
   /** 저장된 자료가 바뀔 때 오르는 번호 (목록 셈을 다시 할 때) */ v: number;
   /** 열려 있는 동안 새로 온 메시지 */ fresh: Map<string, { at: number; text: string; n: number }>;
   notifs: Notif[];
+  /** 게시판에서 나에게 온 새 소식 (없으면 null) */ sns: SnsNote | null;
   open(app: AppId, arg?: unknown, from?: Element | null): void;
   back(): void; home2(): void;
   /** 휴대폰을 닫고 나서 after 를 한다 (다른 화면으로 가기 · 전화 걸기) */
