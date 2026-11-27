@@ -132,20 +132,30 @@ function stIf(condIn: string, c: Ctx): boolean {
   if (/^[.$]?[A-Za-z][\w-]*$/.test(s)) { const r = macro('{{' + s + '}}', c); if (r !== '{{' + s + '}}') v = r; } else v = macro(s, c);
   return !['', 'false', 'off', '0'].includes(v.trim().toLowerCase()) !== neg;
 }
+/** <USER> · <BOT> · <CHAR> (대소문자 무시) */
+const ANGLE_MACRO = /<USER>|<BOT>|<CHAR>/gi;
+/** 날짜 · 시각 글꼴은 한 번 만들어 둔다 (toLocale…String 은 부를 때마다 새로 만든다) */
+const DTF = {
+  time: new Intl.DateTimeFormat('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+  date: new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }),
+  weekday: new Intl.DateTimeFormat('ko-KR', { weekday: 'long' }),
+};
 export function macro(textIn: string | null | undefined, c: Ctx = {}): string {
   let text = textIn as string;
-  if (!text || (text.indexOf('{{') < 0 && text.indexOf('<') < 0)) return text || '';
+  if (!text) return '';
+  // {{ 가 없으면 바꿀 것은 <USER> · <BOT> · <CHAR> 뿐이다 (정규식 바꿀 문장은 거의 다 HTML 이라 '<' 만으로는 거르지 못한다 — 답이 흐르는 동안 일치마다 불린다)
+  if (text.indexOf('{{') < 0) return text.indexOf('<') < 0 ? text : text.replace(ANGLE_MACRO, m => (m[1] === 'u' || m[1] === 'U') ? c.user ?? '' : c.char ?? '');
   if (X.macroLike.length && text.indexOf('{{') >= 0) for (const f of X.macroLike) { try { text = f(text, c); } catch (e) { console.warn('[매크로]', e); } }
   const vars = c.vars || {}, g = S.settings.globalVars;
   if (X.gate && text.indexOf('{{#each') >= 0) text = X.gate.each(text, c);   // {{#each char}}…{{/each}}: 그룹의 캐릭터마다 되풀이
   if (text.indexOf('{{') >= 0 && hasCondBlock(text)) text = condBlocks(text, (cond, st) => st ? stIf(cond, c) : evalCond(macro(askCond(cond, c), c), condEnv(c)));   // {{#if 조건}}…{{else}}…{{/if}} · 실리태번의 {{if 값}}
-  const d = Clock.now(c.chat);   // 방마다 따로 가는 시계 (기본은 현실 시각)
+  let dd: Date | null = null; const day = () => (dd ||= Clock.now(c.chat));   // 방마다 따로 가는 시계 (기본은 현실 시각) — 시각 매크로가 있을 때만 잰다
   const simple: Record<string, unknown> = {
     user: c.user, char: c.char, charifnotgroup: c.char, group: c.group || c.char, groupnotmuted: notMuted(c) || c.group || c.char, persona: c.persona, description: c.description,
     personality: c.personality, scenario: c.scenario, mesexamples: c.mesExamples, model: c.model, input: c.input,
     lastmessage: c.lastMessage, lastusermessage: c.lastUserMessage, lastcharmessage: c.lastCharMessage,
-    time: d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }), date: d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }),
-    weekday: d.toLocaleDateString('ko-KR', { weekday: 'long' }), isotime: d.toTimeString().slice(0, 5), isodate: d.toISOString().slice(0, 10),
+    get time() { return DTF.time.format(day()); }, get date() { return DTF.date.format(day()); },
+    get weekday() { return DTF.weekday.format(day()); }, get isotime() { return day().toTimeString().slice(0, 5); }, get isodate() { return day().toISOString().slice(0, 10); },
     newline: '\n', noop: '', trim: '\u0000TRIM\u0000',
   };
   const pickSeen: Record<string, number> = {};   // 한 글 안에서 같은 {{pick}} 이 여러 번 나오면 차례로 다른 자리

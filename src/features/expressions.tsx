@@ -9,7 +9,8 @@ import { DEFAULT_LABELS, TAG_QUICK, canonLabel, extractTag, hidePartial } from '
 import { MODES, Sprites, byKeyword, candidates, cfg, charIdOf, classify, currentOf, fullName, lastReply, live, nameOf, ownerOf, persist, save, setExpr, stripLater, tagInstruction, toggleStanding, typingIn, universe } from '../expressions/store';
 import { schedule, sync, watchStage } from '../expressions/stage';
 import { openPicker } from '../expressions/Picker';
-import { ExprStudio } from '../expressions/Studio';
+import { lazyComp } from '../lib/lazy';
+const ExprStudio = lazyComp(() => import('../expressions/Studio').then(m => m.ExprStudio));   // 표정 작업실은 처음 열 때 받는다
 import { DB, on, S } from '../lib/core';
 import { go } from '../lib/router';
 import { toast } from '../ui';

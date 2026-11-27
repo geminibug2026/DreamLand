@@ -11,7 +11,14 @@ import { t } from '../i18n';
 import { forget, prep } from '../threads/bridge';
 import { dirty, lens, onReceived, onSent, pieces, show, speaker } from '../threads/run';
 import { thOf, thPeek, type ThChat } from '../threads/types';
-import { InnerPanel, LinksPanel, blendDialog, notesDialog, stageDialog } from '../threads/ui';
+import { lazyComp } from '../lib/lazy';
+// 패널 · 창은 처음 열 때 받는다
+type ThUi = typeof import('../threads/ui');
+const InnerPanel = lazyComp(() => import('../threads/ui').then(m => m.InnerPanel));
+const LinksPanel = lazyComp(() => import('../threads/ui').then(m => m.LinksPanel));
+const notesDialog = (...a: Parameters<ThUi['notesDialog']>) => void import('../threads/ui').then(m => m.notesDialog(...a));
+const blendDialog = (...a: Parameters<ThUi['blendDialog']>) => void import('../threads/ui').then(m => m.blendDialog(...a));
+const stageDialog = (...a: Parameters<ThUi['stageDialog']>) => void import('../threads/ui').then(m => m.stageDialog(...a));
 
 const OWNER = 'threads';
 let wired = false;

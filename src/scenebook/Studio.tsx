@@ -3,7 +3,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../kit';
 import { Form, type FieldDef, confirmBox, menu, toast } from '../ui';
 import { Area, Btn, Chk, Empty, Fld, Group, IBtn, Sel, Text, openModal, useBump } from './parts';
-import { Frames, frameChoices, frameLayout, validFrame, type FrameLayout } from './frames';
+import { Frames, frameChoices, frameLayout, validFrame } from './frames';
+import { FrameArt } from './frameArt';
 import { LOOKS } from './framing';
 import { prepareReference } from './refimg';
 import { shelf, type Card } from './shelf';
@@ -34,9 +35,7 @@ const statusText = () => queueText() || flow.note || t('scenebook.studio.autoSav
 const active = (x: Job) => x.state === 'waiting' || x.state === 'running';
 
 /** 액자의 선 장식 · 가져온 액자 그림 (그림 뒤에 놓는다) */
-export const FrameArt = ({ lay }: { lay: FrameLayout }) => <>
-  {lay.ornament ? <svg xmlns="http://www.w3.org/2000/svg" viewBox={lay.ornament.viewBox} className="sb-ornament" aria-hidden="true" focusable="false" dangerouslySetInnerHTML={{ __html: lay.ornament.inner }} /> : null}
-  {lay.art ? <img className="sb-frame-art" src={lay.art} alt="" draggable={false} /> : null}</>;
+export { FrameArt };
 
 function connHelp() {
   openModal({ title: t('scenebook.studio.connHelp'), cls: 'col' }, () => <><p>{t('scenebook.studio.connHelp.intro')}</p><ol className="sb-help-steps">

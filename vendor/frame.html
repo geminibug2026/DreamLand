@@ -7,7 +7,10 @@ addEventListener("message", function on(e) {
   if (dlDone || e.source !== parent || !e.data || typeof e.data.dlHtml !== "string") return;
   dlDone = true; removeEventListener("message", on);
   var I = e.data.init || {}, v = /\/frame$/.test(location.pathname) ? "vendor/" : "", h = e.data.dlHtml, script = !!I.script;
-  var js = function (f) { return '<script src="' + v + f + '"><\/script>'; }, css = function (f) { return '<link rel="stylesheet" href="' + v + f + '">'; };
+  // 스크립트 파일은 자리표시로 적어 두고, 앱이 들고 있는 글을 받으면 그 글을 바로 넣는다 (화면마다 같은 파일을 다시 받지 않게 — 이 틀은 출처가 없어 브라우저 캐시를 못 쓴다).
+  // 앱이 주지 못하면(옛 앱 · 시간 초과) 예전처럼 파일 주소로 받는다
+  var need = [], mark = "\u0001DLJS" + Math.random().toString(36).slice(2) + "_";
+  var js = function (f) { need.push(f); return mark + (need.length - 1) + "\u0001"; }, css = js;
   var has = function (re) { return re.test(h); };
   // Tailwind 는 클래스를 실제로 쓰는 화면에만 (프로그램이 260KB 라 화면마다 풀면 무겁다). 안 쓰는 화면에는 Tailwind 가 그때 만들어 내는 바탕 스타일(4KB)만 깐다 — 모양은 같다
   var usesTw = function (src) {
@@ -42,14 +45,32 @@ addEventListener("message", function on(e) {
         .replace(/(setProperty\s*\(\s*(["'])min-height\2\s*,\s*(["']))([^"']*?)(\3\s*\))/gi, function (m, a, q1, q2, b, c) { return /\d(?:\.\d+)?vh\b/i.test(b) ? a + toVar(b) + c : m; });
     }
   }
-  var init = JSON.stringify(I).replace(/</g, "\\u003c");
-  var pre = '<script>window.__dlInit=' + init + '<\/script>' + lib + (script || I.more ? js("th-more.js") : "") + js("th-shim.js");
+  // 시작 자료(최근 메시지 수백 개가 들 수 있다)는 받은 객체를 그대로 창에 둔다 — 글로 바꿔 문서에 적으면 화면마다 수백 KB 를 다시 읽는다.
+  // 문서를 새로 쓸 때 창(전역)이 바뀌는 옛 브라우저라 자료가 사라졌으면 앱에 알린다: 앱이 그 뒤로는 글로 적는 방식으로 다시 띄운다
+  var objInit = !I.inline;
+  var pre = (objInit ? '<script>window.__dlInit||parent.postMessage({dlInlineInit:1},"*")<\/script>' : '<script>window.__dlInit=' + JSON.stringify(I).replace(/</g, "\\u003c") + '<\/script>')
+    + lib + (script || I.more ? js("th-more.js") : "") + js("th-shim.js");
   var post = js("th-size.js");
   var m = h.match(/<head[^>]*>/i) || h.match(/<html[^>]*>/i) || h.match(/<!doctype[^>]*>/i);
   h = m ? h.replace(m[0], function () { return m[0] + pre; }) : pre + h;
   var i = h.toLowerCase().lastIndexOf("</body>");
   h = i >= 0 ? h.slice(0, i) + post + h.slice(i) : h + post;
-  document.open(); document.write(h); document.close();
+  var write = function (texts) {
+    h = h.split(mark).map(function (part, i) {
+      if (!i) return part;
+      var k = part.indexOf("\u0001"), f = need[+part.slice(0, k)], t = texts && typeof texts[f] === "string" ? texts[f] : null;
+      var tag = /\.css$/.test(f) ? (t != null ? "<style>" + t.replace(/<\/(style)/gi, "<\\/$1") + "</style>" : '<link rel="stylesheet" href="' + v + f + '">')
+        : t != null ? "<script>" + t.replace(/<\/(script)/gi, "<\\/$1") + "<\/script>" : '<script src="' + v + f + '"><\/script>';
+      return tag + part.slice(k + 1);
+    }).join("");
+    if (objInit) window.__dlInit = I;
+    document.open(); document.write(h); document.close();
+  };
+  if (!I.libs || !need.length) return write(null);
+  var got = false;
+  addEventListener("message", function lib(ev) { if (ev.source !== parent || !ev.data || !ev.data.dlLibs || got) return; got = true; removeEventListener("message", lib); write(ev.data.dlLibs); });
+  parent.postMessage({ dlNeed: need }, "*");
+  setTimeout(function () { if (!got) { got = true; write(null); } }, 4000);
 });
 parent.postMessage({ dlFrameReady: 1 }, "*");
 </script>

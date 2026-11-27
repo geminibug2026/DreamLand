@@ -404,3 +404,43 @@ html.dl-app .modal-wrap { padding-top: max(20px, env(safe-area-inset-top, 0px));
 /* 어두운 바탕(게임 화면 · 홈 표지 · 사진 보기)에서는 포인트 색을 원래 밝기 그대로 글자에 쓴다 (밝은 테마의 진한 글자용 포인트 색은 어두운 바탕에서 안 보인다) */
 .gs, html.gs-on .modal-wrap:has(.gm) .modal, .hm-hero, .hm .hm-core, .hm-pt, .hm-im, .hm-hero .emb, .hm-im .emb, .hm-pt .emb, .dk-port, .dk-port .emb, .dk-sky, .as-film, .ast-lb, .call-side { --accent-ink: var(--accent); --bad-ink: var(--bad); }
 
+/* 화면 코드를 처음 받는 동안 (느린 연결에서만 보인다) */
+.page-wait { padding: 48px 16px; text-align: center; font-size: .92rem; }
+
+/* ── 확장 · 스크립트 목록 (확장 화면): 모든 목록이 같은 꼴 ──
+   첫 줄: 아이콘 · 이름 · 덧말(판 · 만든이 · 상태) · 스위치 / 그 아래 설명은 줄 전체 너비로 / 맨 아래 작은 할 일 단추.
+   카드 안에 카드를 겹치지 않고, 한 상자 안의 줄을 가는 선으로 나눈다 */
+.xr-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.xr-head .form-sec { flex: 1 1 auto; margin: 0; min-width: 0; }
+.xr-hbtn { flex: none; min-height: 38px; padding: 0 14px; font-size: .92em; }
+.xr-list, .xr-group { border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); overflow: hidden; }
+.xr-list > .xr + .xr, .xr-subs > .xr + .xr { border-top: 1px solid var(--line); }
+.xr-groups { display: flex; flex-direction: column; gap: 10px; }
+.xr { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.xr-top { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.xr-ic, .xr-av { width: 34px; height: 34px; border-radius: 50%; flex: none; }
+.xr-ic { display: grid; place-items: center; background: var(--soft); color: var(--accent-ink); }
+.xr-av { object-fit: cover; background: var(--soft); }
+.xr-tt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.xr-tt b { font-size: .98em; font-weight: 650; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xr-tt small { color: var(--dim); font-size: .8em; line-height: 1.4; display: flex; flex-wrap: wrap; align-items: center; column-gap: 0; }
+.xr-dot { font-style: normal; margin: 0 6px; opacity: .6; }
+.xr-st { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; color: var(--dim); }
+.xr-st::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .55; }
+.xr-st.on { color: var(--accent-ink); } .xr-st.on::before { opacity: 1; background: var(--accent); }
+.xr-st.warn { color: var(--dim); } .xr-st.warn::before { background: transparent; box-shadow: inset 0 0 0 1.5px currentColor; opacity: 1; }
+.xr-desc { margin: 0; color: var(--text); opacity: .82; font-size: .88em; line-height: 1.55; overflow-wrap: anywhere; }
+.xr-desc.err { color: var(--bad-ink, var(--bad)); opacity: 1; }
+.xr-acts { display: flex; justify-content: flex-end; gap: 6px; }
+.xr-act { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 10px; border-radius: var(--r-xs, 6px); border: 1px solid var(--line); background: none; color: var(--dim); font: inherit; font-size: .82em; cursor: pointer; }
+.xr-act:hover, .xr-act:focus-visible { color: var(--text); border-color: var(--dim); }
+.xr-act.danger:hover, .xr-act.danger:focus-visible { color: var(--bad-ink, var(--bad)); border-color: var(--bad); }
+.xr-empty { margin: 0; padding: 16px 14px; color: var(--dim); font-size: .9em; }
+/* 캐릭터 한 상자: 맨 위가 캐릭터, 그 아래 스크립트들은 조금 들여 작게 */
+.xr-group > .xr:first-child { background: color-mix(in srgb, var(--soft) 45%, transparent); }
+.xr-subs { border-top: 1px solid var(--line); }
+.xr.sub { padding: 10px 14px 10px 26px; }
+.xr.sub .xr-ic { width: 28px; height: 28px; background: none; border: 1px solid var(--line); }
+.xr.sub .xr-tt b { font-weight: 600; font-size: .94em; }
+.xr.sub .xr-desc { padding-left: 40px; }
+@media (min-width: 720px) { .xr:not(.sub) .xr-desc, .xr:not(.sub) .xr-acts { padding-left: 46px; } .xr-acts { justify-content: flex-start; } }

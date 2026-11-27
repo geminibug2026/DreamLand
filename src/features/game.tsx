@@ -15,8 +15,23 @@ import { inCall } from '../call/logic';
 import { MINIS, gameOf, hideTags, ruleOf, rulesPrompt, sheetOf, sheetPrompt, statCfg, type GameSwipe, type MiniId } from '../game/state';
 import { latestStat, varsPrompt } from '../game/vars';
 import { hook as linkVars } from '../game/sync';
-import { Sheet, drawFor, openGame, openMiniPicker, playMini, redrawGame } from '../game/ui';
-import { closeStage, openStage, stageOpenFor } from '../game/Stage';
+import { lazyComp } from '../lib/lazy';
+import { bump } from '../chat/store';
+
+// 게임 화면(시트 · 무대 · 미니게임 · 전투 · 그림)은 처음 쓸 때 받는다. 답변을 다루는 규칙 · 계산은 위에서 그대로 싣는다 (게임 중인 방에서만 돈다)
+let stage: typeof import('../game/Stage') | null = null;
+const UI = () => import('../game/ui');
+const STAGE = () => import('../game/Stage').then(m => (stage = m));
+const Sheet = lazyComp(() => UI().then(m => m.Sheet));
+const openGame = (c: Chat) => void UI().then(m => m.openGame(c));
+const openMiniPicker = (c: Chat) => void UI().then(m => m.openMiniPicker(c));
+const playMini = (c: Chat, id: MiniId) => void UI().then(m => m.playMini(c, id));
+const drawFor = (c: Chat, m: Msg) => UI().then(u => u.drawFor(c, m));
+/** 게임 화면을 다시 그린다 (game/ui 의 redrawGame 과 같다 — 화면들은 'game' 을 듣는다. 코드를 받지 않아도 된다) */
+const redrawGame = () => bump('game');
+const stageOpenFor = () => stage?.stageOpenFor() ?? null;
+const closeStage = () => { stage?.closeStage(); };
+const openStage = (id: string, onClose: () => void) => void STAGE().then(m => m.openStage(id, onClose));
 import type { GameChat } from '../game/state';
 
 const OWNER = 'game';

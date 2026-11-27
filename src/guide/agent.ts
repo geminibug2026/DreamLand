@@ -8,6 +8,7 @@ import { getLang, t } from '../i18n';
 import { runRounds, withRetry, wrapResult, type Turn } from './protocol';
 import { contextSnapshot, runTool, setToolCtx, toolDef, toolDocs } from './tools';
 import { applyChange, undoChange } from './changes';
+import { loadCss } from '../addons/parts';
 import { mustConfirm } from './reach';
 import { attachBlock } from './attach';
 import type { Attach, Change, Item, Plan, Ref, Status, Talk, TalkHead } from './types';
@@ -400,5 +401,6 @@ export function openGuide(o: { refs?: Ref[]; draft?: string; fresh?: boolean } =
   if (o.fresh && !G.busy) { G.talk = null; G.status = 'idle'; G.editing = -1; }
   if (o.refs) G.refs = o.refs.slice(0, 8); if (o.draft != null) G.draft = o.draft;
   G.open = true; G.focus++; void load(); poke();
+  void Promise.all([loadCss('guide.css'), import('./ui')]).then(([, m]) => { m.mountGuide(); poke(); });   // 화면은 처음 열 때 올린다 (이미 있으면 그대로)
 }
 export const closeGuide = () => { G.open = false; poke(); };

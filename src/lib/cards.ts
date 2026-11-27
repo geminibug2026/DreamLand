@@ -857,7 +857,8 @@ export async function importST(src: Source, want: Want, progress: Progress = () 
     }
   }
 
-  if (want.regex) for (const r of K.arr<StRegex>(settings.extension_settings?.regex)) { await upsert('regex', stRegexToRegex(r), tag('re/' + (r.id || r.scriptName))); T.regex++; }
+  if (want.regex) { let n = St.regex.reduce((m, r) => Math.max(m, +(r.order as number) || 0), 0);   // 순서를 적어 둔다: 한꺼번에 만든 것은 다시 켰을 때 차례가 뒤섞일 수 있다
+    for (const r of K.arr<StRegex>(settings.extension_settings?.regex)) { const rx = stRegexToRegex(r); rx.order = ++n; await upsert('regex', rx, tag('re/' + (r.id || r.scriptName))); T.regex++; } }
 
   if (want.quick) for (const f of inv.quick) await safe(T, f, async () => {
     const q = JSON.parse(await src.text('QuickReplies/' + f));
@@ -952,10 +953,11 @@ export async function importME(src: Source, want: Want, progress: Progress = () 
     }
   }
 
+  let reOrder = St.regex.reduce((m, r) => Math.max(m, +(r.order as number) || 0), 0);
   if (want.regex) for (const r of await meTable<MeRegexRow>(src, 'regex_scripts')) {
     const targets = K.arr(K.parseMaybe(r.targetCharacterIds, []));
     const rx = stRegexToRegex({ ...r, scriptName: r.name, placement: K.arr(K.parseMaybe(r.placement, [])), trimStrings: K.arr(K.parseMaybe(r.trimStrings, [])), applyMode: r.applyMode || (K.bool(r.promptOnly) ? 'prompt' : 'display'), findRegex: /^\/[\s\S]+\/[a-z]*$/.test(r.findRegex || '') ? r.findRegex : `/${String(r.findRegex || '').replace(/\//g, '\\/')}/${r.flags || 'g'}` }, charMap.get(targets[0])?.id || 'global');
-    await upsert('regex', rx, tag('re/' + r.id)); T.regex++;
+    rx.order = ++reOrder; await upsert('regex', rx, tag('re/' + r.id)); T.regex++;
   }
 
   if (want.chats) {

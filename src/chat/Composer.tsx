@@ -3,7 +3,8 @@ import { useEffect, useLayoutEffect, useReducer, useRef, useState, type MouseEve
 import { Avatar, Icon, IconBtn } from '../kit';
 import { menu, promptBox } from '../ui';
 import { bump, cur, ui, useCh } from './store';
-import { GameBar } from '../game/ui';
+import { lazyComp } from '../lib/lazy';
+import { gameOf } from '../game/state';
 import { charsOf, clearChoices, closeScene, command, commandList, generate, makeChoices, modeOf, openScene, pickChoice, running, send, stopAll, translateInput } from './actions';
 import type { CmdItem } from './types';
 import { enterSends } from '../features/usersettings';
@@ -139,7 +140,7 @@ export function Composer() {
       {talk ? (chat.scene?.on
         ? <button className="chip scene-chip on" title={t('chat.composer.closeSceneHint')} onClick={() => void closeScene()}>{t('chat.composer.closeScene')}</button>
         : <button className="chip scene-chip" title={t('chat.composer.openSceneHint')} onClick={async () => { const v = await promptBox(t('chat.composer.openScenePrompt'), '', { placeholder: t('chat.composer.openScenePlaceholder') }); if (v !== null) void openScene({ title: v.trim() }); }}>{t('chat.composer.openScene')}</button>) : null}</div>
-    <GameBar />
+    <GameBarSlot />
     <Choices />
     <Attach />
     <ThreadsBar />
@@ -154,3 +155,7 @@ export function Composer() {
     {slash.node}
   </footer>;
 }
+
+// 게임 막대는 게임 중인 방에서만 — 그 코드는 그때 받는다
+const GameBar = lazyComp(() => import('../game/ui').then(m => m.GameBar));
+function GameBarSlot() { useCh('game'); return gameOf(cur.chat) ? <GameBar /> : null; }

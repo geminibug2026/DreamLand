@@ -1,0 +1,1 @@
+export{p as quickDraw}from"./decorate-DKxtc20M.js";

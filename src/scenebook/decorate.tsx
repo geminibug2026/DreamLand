@@ -3,7 +3,7 @@ import { useLayoutEffect, useRef } from 'react';
 import { Icon } from '../kit';
 import { Btn, IBtn, make, mountNode, sweep, useBump } from './parts';
 import { frameLayout } from './frames';
-import { FrameArt } from './Studio';
+import { FrameArt } from './frameArt';
 import { compose, draw, quickDraw, regen } from './work';
 import { quickEdit, slotMenu, slotViewer } from './slot';
 import { showPlans } from './dialogs';

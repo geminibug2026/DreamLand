@@ -11,7 +11,8 @@ import { t } from '../i18n';
 import { hidePosts, takePosts } from '../feed/logic';
 import { POST_PROMPT, carryBlock, chatFeed } from '../feed/prompt';
 import { F, OWNER, account, autoTick, cfg, chatPost, dropChat, load, reconcile } from '../feed/store';
-import { ChatPanel } from '../feed/parts';
+import { lazyComp } from '../lib/lazy';
+const ChatPanel = lazyComp(() => import('../feed/parts').then(m => m.ChatPanel));   // 피드 패널은 처음 열 때 받는다
 
 type LiveChat = Chat & { scene?: { on?: boolean }; sceneLive?: boolean };
 /** 메신저처럼 주고받는 중인가 (대화 모드이고, 마주 보는 장면이 열려 있지 않다) */

@@ -1,7 +1,6 @@
 // 메시지 목록: 필요한 만큼만 그리고, 바뀐 메시지 하나만 다시 그린다
-import { GameCard } from '../game/ui';
 import { ThreadCard, ThreadMarks } from '../threads/ui';
-import { TurnCards } from '../game/More';
+import { lazyComp } from '../lib/lazy';
 import { memo, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { flushSync } from 'react-dom';
 import { Avatar, Btn, Icon, IconBtn } from '../kit';
@@ -25,6 +24,17 @@ import { t, getLang, fmtDate } from '../i18n';
 import { I } from '../lib/icons';
 import { emit } from '../lib/core';
 import { Reacts } from '../extras/reactions';
+
+// 게임 카드는 게임 기록이 있는 메시지에서만 그린다 — 그 코드는 그때 받는다 (게임을 하지 않는 대화에는 받지 않는다)
+const GameCard = lazyComp(() => import('../game/ui').then(m => m.GameCard));
+const TurnCards = lazyComp(() => import('../game/More').then(m => m.TurnCards));
+type TurnSw = { gturn?: { enc?: unknown; seen?: unknown[] }; grolls?: unknown[]; gdice?: unknown[] };
+/** 이 메시지에 게임 카드(만남 · 판정 · 굴림 · 놓친 사람)가 있는가 — game/More 의 TurnCards 가 그릴 것이 있을 때만 참 */
+const hasTurn = (m: Msg) => {
+  const sw = m.swipes[m.sw] as TurnSw | undefined; if (!sw) return false;
+  if (m.role === 'user') return !!(m as { gt?: { miss?: unknown[] } }).gt?.miss?.length;
+  return !!(sw.gturn?.enc || sw.gturn?.seen?.length || sw.grolls?.length || sw.gdice?.length);
+};
 
 if (!I.pin) I.pin = 'M12 17v5M8 3h8l-1 6 3 3v2H6v-2l3-3z';
 
@@ -163,7 +173,7 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
         {editing || streaming ? null : <span className="msg-tools mt-top">{acts}</span>}</header>
       {m.images?.length ? <div className="msg-images">{m.images.map((u, i) => <img key={i} src={u} alt={t('chat.msg.attachAlt')} onClick={() => bigImage(u)} />)}</div> : null}
       {s.reasoning && S.settings.format?.reasoning?.show !== false ? <details className="reason" open={!streaming && !!S.settings.format?.reasoning?.autoExpand}><summary><Icon name="sparkle" size={14} />{t('chat.msg.reasoning')}</summary><div>{s.reasoning}</div></details> : null}
-      {streaming ? null : <TurnCards m={m} />}
+      {streaming || !hasTurn(m) ? null : <TurnCards m={m} />}
       {body}
       {m.memo ? <p className="msg-memo" title={t('chat.msgMenu.memoHint')}><Icon name="note" size={13} />{m.memo}</p> : null}
       {streaming ? null : <ThreadMarks m={m} />}

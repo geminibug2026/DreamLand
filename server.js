@@ -723,7 +723,8 @@ const server = http.createServer(async (req, res) => {
     // 메시지 속 HTML 화면을 그리는 빈 틀. 자료는 하나도 없고, 앱이 sandbox(다른 출처) iframe 으로 열어 내용을 postMessage 로 넣는다
     if (url.pathname === '/frame') {
       const buf = await fsp.readFile(path.join(ROOT, 'vendor', 'frame.html'));
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': buf.length, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
+      // 판 번호(?v=)가 붙은 주소는 내용이 바뀌지 않는다: 오래 들고 있게 해 상태창마다 다시 받지 않게 한다
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': buf.length, 'Cache-Control': url.searchParams.get('v') ? 'public, max-age=31536000, immutable' : 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
         'Content-Security-Policy': "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'; frame-ancestors 'self'" });
       return res.end(buf);
     }

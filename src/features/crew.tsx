@@ -12,10 +12,12 @@ import type { CrewChat, CrewSwipe } from '../crew/types';
 import { OWNER, after, cfg, defs, dropChat, latestOf, nameOf, pieces, prepare, st } from '../crew/logic';
 import { PROP_KINDS } from '../crew/builtin';
 import { renderProps } from '../crew/props';
-import { CrewStudio } from '../crew/ui';
-import { CrewPanel } from '../crew/Panel';
+import { lazyComp } from '../lib/lazy';
+// 작업실 · 패널 · 고치기 창은 처음 열 때 받는다
+const CrewStudio = lazyComp(() => import('../crew/ui').then(m => m.CrewStudio));
+const CrewPanel = lazyComp(() => import('../crew/Panel').then(m => m.CrewPanel));
 import { SeatsHost } from '../crew/Seats';
-import { openFix } from '../crew/Review';
+const openFix = (m: Parameters<typeof import('../crew/Review').openFix>[0]) => void import('../crew/Review').then(r => r.openFix(m));
 import '../crew/Art';
 
 /** 방금 받은 답장 (message:received 가 알려 주고, generate:end 에서 답장 뒤의 일을 시작한다) */

@@ -773,7 +773,8 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
   let varsNote = false;
   const schedule = () => {
     if (raf || paintTm) return;
-    const wait = paintMs > 40 ? paintAt + Math.min(300, paintMs * 2) - performance.now() : 0;
+    // 한 번 그리는 데 오래 걸리는 기기(느린 폰 · 긴 답 · 정규식 많음)는 그린 시간만큼 쉬었다 그린다: 화면의 절반은 늘 비워 두어 입력 · 스크롤이 밀리지 않게
+    const wait = paintMs > 14 ? paintAt + Math.min(300, paintMs * 2) - performance.now() : 0;
     if (wait > 8) paintTm = window.setTimeout(() => { paintTm = 0; if (!raf) raf = requestAnimationFrame(paint); }, wait);
     else raf = requestAnimationFrame(paint);
   };

@@ -14,7 +14,9 @@ for (const name of ['replaceChildren', 'append', 'prepend'] as const) {
   proto[name] = function (this: Element, ...kids: unknown[]) { return orig.apply(this, (kids.flat(Infinity) as unknown[]).filter(k => k != null && k !== false) as Kid[]); };
 }
 
-export const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+/** 새 id: 앞은 시각이라 만든 차례대로 정렬된다. 같은 1ms 안에 여럿을 만들어도 차례가 섞이지 않게 두 자리 순번을 붙인다 (저장소는 id 순으로 돌려준다) */
+let uidT = 0, uidN = 0;
+export const uid = () => { const t = Date.now(); uidN = t === uidT ? uidN + 1 : 0; uidT = t; return t.toString(36) + (uidN < 1296 ? uidN.toString(36).padStart(2, '0') : 'zz') + Math.random().toString(36).slice(2, 7).padEnd(5, '0'); };
 export const now = () => Date.now();
 export const clamp = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v));
 const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };

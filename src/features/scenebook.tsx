@@ -2,7 +2,11 @@
 // 엔진은 옛 illust.js. 화면은 src/scenebook/ 이 맡는다 (옛 js/f-scenebook.js 를 대신한다)
 import { make, mountNode } from '../scenebook/parts';
 import { Frames } from '../scenebook/frames';
-import { Panel, Studio, openStudio } from '../scenebook/Studio';
+import { lazyComp } from '../lib/lazy';
+// 삽화 작업실 · 패널은 처음 열 때 받는다 (메시지 속 삽화를 그리는 일은 위의 decorate 가 한다)
+const Studio = lazyComp(() => import('../scenebook/Studio').then(m => m.Studio));
+const Panel = lazyComp(() => import('../scenebook/Studio').then(m => m.Panel));
+const openStudio = (tab?: string) => void import('../scenebook/Studio').then(m => m.openStudio(tab));
 import { schedule } from '../scenebook/decorate';
 import { compose, flow } from '../scenebook/work';
 import { manualDialog } from '../scenebook/slot';

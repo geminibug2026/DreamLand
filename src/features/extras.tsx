@@ -18,9 +18,13 @@ import { BUZZ_PROMPT, buzz, canBuzz, hideBuzz, stopBuzz, takeBuzz } from '../ext
 import { BgShelf, bgAuto, bgPrompt, hideBg, openBgShelf, syncBg, takeBg } from '../extras/bgshelf';
 import { applyCharCss } from '../extras/charcss';
 import { Trash, openTrash, undoToast } from '../extras/trash';
-import { openInsights } from '../extras/insights';
-import { openExport } from '../extras/exporter';
-import { ExtrasPanel, ExtrasStudio, askCharCss } from '../extras/ui';
+import { lazyComp } from '../lib/lazy';
+// 패널 · 꾸미기 화면 · 발자취 · 내보내기 창은 처음 열 때 받는다
+const ExtrasPanel = lazyComp(() => import('../extras/ui').then(m => m.ExtrasPanel));
+const ExtrasStudio = lazyComp(() => import('../extras/ui').then(m => m.ExtrasStudio));
+const askCharCss = (c?: Chat | null) => { if (c) void import('../extras/ui').then(m => m.askCharCss(c)); };
+const openInsights = (c: Chat) => import('../extras/insights').then(m => m.openInsights(c));
+const openExport = (c: Chat) => import('../extras/exporter').then(m => m.openExport(c));
 
 const OWNER = 'extras';
 if (!I.footprint) I.footprint = 'M8 4c1.7 0 3 2 3 4.5S9.7 13 8 13s-3-2-3-4.5S6.3 4 8 4zM6.5 16h3v2a1.5 1.5 0 0 1-3 0zM16 9c1.7 0 3 2 3 4.5S17.7 18 16 18s-3-2-3-4.5S14.3 9 16 9zM14.5 6h3V5a1.5 1.5 0 0 0-3 0z';

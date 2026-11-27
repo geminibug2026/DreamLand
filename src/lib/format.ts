@@ -127,22 +127,40 @@ function framePlaceholder(code: string) {
   const id = hashOf(code); frameSrc.set(id, code); watchFrames();
   return `<div class="dl-frame" data-frame="${id}"></div>`;
 }
+// 화면 틀이 까는 라이브러리(jQuery · lodash · 도우미 …)의 글: 앱이 한 번만 받아 들고 있다가 틀마다 건넨다.
+// 틀은 출처가 없는(sandbox) 문서라 브라우저 캐시를 함께 쓰지 못한다 — 직접 받게 하면 상태창마다 같은 파일 대여섯 개를 새로 받는다
+const libMemo = new Map<string, Promise<string | null>>();
+const vendorUrl = (f: string) => new URL((/\/frame(\?|$)/.test(Server.frameUrl) ? 'vendor/' : '') + f, new URL(Server.frameUrl, location.href)).href;
+async function libTexts(need: unknown): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  const list = (Array.isArray(need) ? need : []).map(String).filter(f => /^[\w.-]+(\/[\w.-]+)*\.(js|css)$/.test(f) && !f.includes('..')).slice(0, 20);
+  await Promise.all(list.map(async f => {
+    // CSS 는 안에 다른 파일 주소(url(…))가 없을 때만 건넨다 (글꼴 · 그림을 가리키는 상대 주소는 틀 안에서 어긋난다)
+    let p = libMemo.get(f); if (!p) { p = fetch(vendorUrl(f)).then(r => r.ok ? r.text() : null).then(t => t != null && f.endsWith('.css') && /url\(/i.test(t) ? null : t).catch(() => null); libMemo.set(f, p); }
+    const t = await p; if (t != null) out[f] = t;   // 못 받은 것 · 건네지 않는 것은 틀이 직접 받는다
+  }));
+  return out;
+}
+/** 시작 자료를 객체 그대로 두지 못하는 브라우저인가 (화면이 알려 오면 켠다) */
+let inlineInit = false;
 let watching = false;
 /** 화면(iframe)과 앱 사이 연결을 켠다 (메시지 밖에서 만든 화면도 쓴다) */
 export function bridgeFrames() { watchFrames(); }
 function watchFrames() {
   if (watching || typeof document === 'undefined') return; watching = true;
   window.addEventListener('message', e => {
-    const d = e.data as { dlFrame?: unknown; dlFrameReady?: unknown; h?: number; dlCall?: number; fn?: string; args?: unknown[]; dlListen?: unknown; dlInvoked?: unknown; dlReady?: unknown } | null;
-    if (!d || (d.dlFrame == null && d.dlFrameReady == null && d.dlCall == null && d.dlListen == null && d.dlInvoked == null && d.dlReady == null)) return;
+    const d = e.data as { dlFrame?: unknown; dlFrameReady?: unknown; h?: number; dlCall?: number; fn?: string; args?: unknown[]; dlListen?: unknown; dlInvoked?: unknown; dlReady?: unknown; dlNeed?: unknown; dlInlineInit?: unknown } | null;
+    if (!d || (d.dlFrame == null && d.dlFrameReady == null && d.dlCall == null && d.dlListen == null && d.dlInvoked == null && d.dlReady == null && d.dlNeed == null && d.dlInlineInit == null)) return;
     for (const f of document.querySelectorAll<HTMLIFrameElement>('iframe.dl-frame-el')) {
       const w = f.contentWindow; if (!w || w !== e.source) continue;
       if (d.dlListen != null || d.dlInvoked != null || d.dlReady != null) { frameHooks.msg?.(f, d as Record<string, unknown>); return; }
+      if (d.dlNeed != null) { void libTexts(d.dlNeed).then(dlLibs => w.postMessage({ dlLibs }, '*')); return; }
+      if (d.dlInlineInit != null) { inlineInit = true; f.src = f.src; return; }   // 이 브라우저는 시작 자료를 글로 적어야 한다: 알려 온 화면을 다시 띄운다 (글로 적은 화면은 다시 알리지 않는다)
       if (d.dlFrameReady != null) {
         frameHooks.msg?.(f, { dlReset: 1 });   // 새 문서가 떴다: 앞 문서가 듣던 이벤트는 잊는다
         const raw = frameSrc.get(f.dataset.frame || ''); if (raw == null) return;
         const src = frameHooks.src ? frameHooks.src(raw) : raw;
-        void Promise.resolve(frameHooks.init?.(f)).catch(() => ({})).then(init => w.postMessage({ dlHtml: src, init: init || {} }, '*'));
+        void Promise.resolve(frameHooks.init?.(f)).catch(() => ({})).then(init => w.postMessage({ dlHtml: src, init: { ...(init as object || {}), libs: 1, ...(inlineInit ? { inline: 1 } : {}) } }, '*'));
       } else if (d.dlCall != null) {
         const id = d.dlCall;
         void Promise.resolve().then(() => { if (!frameHooks.call) throw new Error('not available'); return frameHooks.call(f, String(d.fn), Array.isArray(d.args) ? d.args : []); })

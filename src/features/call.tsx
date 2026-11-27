@@ -6,7 +6,8 @@ import { X } from '../lib/hooks';
 import { on } from '../lib/core';
 import { cur } from '../chat/store';
 import { mountPhone } from '../call/Phone';
-import { CallStudio } from '../call/Studio';
+import { lazyComp } from '../lib/lazy';
+const CallStudio = lazyComp(() => import('../call/Studio').then(m => m.CallStudio));   // 통화 설정 화면은 처음 열 때 받는다
 import { tt } from '../call/strings';
 import * as C from '../call/logic';
 

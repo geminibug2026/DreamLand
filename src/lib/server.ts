@@ -79,7 +79,7 @@ export const Server = {
   /** 서버 주소인지 (core.ts 의 fetch 감싸개가 건너뛸 것) */
   isApi: (input: string) => input.startsWith(API),
   /** 메시지 속 HTML 화면을 그리는 빈 틀 (sandbox iframe 의 src) */
-  frameUrl: WEB ? 'vendor/frame.html' : '/frame',
+  frameUrl: (WEB ? 'vendor/frame.html' : '/frame') + '?v=' + __FRAME_V__,   // 판 번호가 붙으면 서버가 오래 들고 있게 한다 (틀이 바뀌면 번호도 바뀐다)
   /** 서버 없이 도는 웹 버전인지 */
   web: WEB,
   /** 아이폰 앱 안인지 */

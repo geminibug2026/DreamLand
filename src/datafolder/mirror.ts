@@ -36,7 +36,7 @@ export interface MirrorState {
 interface QEntry { k: string; store: string; id: unknown; del: boolean; t: number }
 interface BaseEntry { k: string; h: string | null; gen: string }
 interface Meta { store: string; id: unknown; hash: string; at: number }
-interface WorkerReply { gone?: boolean; same?: boolean; error?: string; hash?: string; result?: { ok: boolean; hash?: string; error?: string } }
+interface WorkerReply { gone?: boolean; same?: boolean; error?: string; hash?: string; result?: { ok: boolean; hash?: string; error?: string }; hashes?: [unknown, string][] }
 interface Op { op: 'put' | 'del'; store: string; id: unknown; value?: Json; base?: string | null; keep?: boolean }
 /** 보낼 값의 JSON 길이 (pack 이 이미 만든 글자에서) — 묶음 크기를 재려고 한 번 더 JSON 으로 바꾸지 않게 */
 const sizes = new WeakMap<Op, number>();
@@ -259,6 +259,13 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
   const HEAVY = new Set(['assets', 'msgs', 'chars', 'chats', 'lore', 'mem', 'personas']), FULL_EVERY = 3 * 864e5;   // 페르소나도 초상이 들어 있어 무겁다
   const LIGHT_READ = new Set(['assets']);   // 전부 읽을 때도 값을 들고 있지 않는 저장소 (그림 · 영상 — 하나가 수 MB, 수천 개일 수 있다)
   let wantFull = false;
+  // 켤 때 맞추기의 해시는 일꾼이 낸다: 초상이 든 캐릭터 수백 개 · 메시지 묶음 · 그림을 화면에서 바꾸면 그동안 화면이 몇 초씩 멈춘다 (사흘마다의 전부 읽기 · 첫 맞추기)
+  // 값은 들고 오지 않는다 — 올릴 것은 일꾼이 다시 읽어 올리고, 견줄 것만 그때 읽는다. 페르소나는 처음 만든 기본값을 가려내야 해서 화면에서 읽는다
+  const HASH_IN_WORKER = new Set(['chars', 'msgs', 'lore', 'mem', 'assets']);
+  const hashVia = async (store: string, ids?: unknown[]): Promise<[unknown, string][] | null> => {
+    if (!HASH_IN_WORKER.has(store) || !pusher()) return null;
+    const r = await viaWorker({ op: 'hash', store, ...(ids ? { ids } : {}) }); return r.error || !r.hashes ? null : r.hashes;
+  };
   function reconcile(full = false): Promise<void> { if (full) wantFull = true; return syncing ||= locked(reconcileOnce).finally(() => { syncing = null; }); }
   async function reconcileOnce() {
     if (!st.enabled || !(await ping())) return;
@@ -284,15 +291,22 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
         if (quick && HEAVY.has(s)) {
           let ids: unknown[] | null = null; try { ids = await raw.keys!(s); } catch { ids = null; }
           if (!ids) continue; known.add(s);
+          const need: unknown[] = [];
           for (const id of ids) {
             if (skip(s, id)) continue; const k = keyOf(s, id), b = base.get(k);
             if (b != null && !inQueue.has(k)) { local.set(k, { store: s, id, hash: b }); continue; }
+            need.push(id);
+          }
+          const hs = need.length ? await hashVia(s, need) : null;
+          if (hs) { for (const [id, hash] of hs) local.set(keyOf(s, id), { store: s, id, hash }); await sleep(0); continue; }
+          for (const id of need) {
             const v = await raw.get(s, id); if (v === undefined) continue;
             // 그림은 해시만 남긴다 (서버가 꺼져 있는 동안 그린 그림이 수백 장 쌓여 있어도 한꺼번에 메모리에 들지 않게 — 올릴 때 다시 읽는다)
-            const p = await pack(s, v); local.set(k, LIGHT_READ.has(s) ? { store: s, id, hash: p.hash } : { store: s, id, v, hash: p.hash, json: p.json });
+            const p = await pack(s, v); local.set(keyOf(s, id), LIGHT_READ.has(s) ? { store: s, id, hash: p.hash } : { store: s, id, v, hash: p.hash, json: p.json });
           }
           await sleep(0); continue;
         }
+        { const hs = await hashVia(s); if (hs) { known.add(s); for (const [id, hash] of hs) if (!skip(s, id)) local.set(keyOf(s, id), { store: s, id, hash }); await sleep(0); continue; } }
         // 그림 저장소는 전부 읽을 때도 한 장씩 읽어 해시만 남긴다 — 통째로 읽으면 그림이 많을 때 수백 MB 가 한꺼번에 메모리에 올라 폰에서 창이 죽는다.
         // 값은 들고 있지 않는다: 올리거나 견줄 때만 그 한 장을 다시 읽는다 (아래 later · decide)
         if (LIGHT_READ.has(s) && raw.keys) {

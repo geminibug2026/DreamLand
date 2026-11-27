@@ -1,15 +1,23 @@
-// 자료 폴더 거울의 무거운 보내기(긴 대화방의 메시지 묶음)를 화면 밖에서: 브라우저 저장소에서 직접 읽어 JSON · 해시를 만들고 서버로 보낸다.
+// 자료 폴더 거울의 무거운 보내기(긴 대화방의 메시지 묶음)와 켤 때의 해시 내기를 화면 밖에서: 브라우저 저장소에서 직접 읽어 JSON · 해시를 만들고 서버로 보낸다.
 // 화면(메인 스레드)은 수 MB 를 읽고 · 바꾸고 · 보내는 동안 멈추지 않는다
 import { pack } from './codec';
 
-interface Job { n: number; store: string; id: unknown; base?: string | null; dev: string; url: string; headers: Record<string, string> }
+interface Job { n: number; op?: 'hash'; store: string; id: unknown; ids?: unknown[]; base?: string | null; dev: string; url: string; headers: Record<string, string> }
 let dbp: Promise<IDBDatabase> | null = null;
 const db = () => dbp ||= new Promise((res, rej) => { const r = indexedDB.open('dreamland'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
 const get = async (store: string, id: unknown) => { const d = await db(); return new Promise<unknown>((res, rej) => { const q = d.transaction(store, 'readonly').objectStore(store).get(id as IDBValidKey); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); };
 
+const keys = async (store: string) => { const d = await db(); return new Promise<IDBValidKey[]>((res, rej) => { const q = d.transaction(store, 'readonly').objectStore(store).getAllKeys(); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); };
+
 self.onmessage = async (e: MessageEvent<Job>) => {
   const j = e.data;
   try {
+    // 해시만 내기 (켤 때 맞추기): 캐릭터 초상 · 메시지 묶음 · 그림을 화면 밖에서 읽고 바꿔 해시만 돌려준다 (값은 들고 가지 않는다)
+    if (j.op === 'hash') {
+      const ids = j.ids ?? await keys(j.store), out: [unknown, string][] = [];
+      for (const id of ids) { const v = await get(j.store, id); if (v === undefined) continue; out.push([id, (await pack(j.store, v)).hash]); }
+      return postMessage({ n: j.n, hashes: out });
+    }
     const v = await get(j.store, j.id);
     if (v === undefined) return postMessage({ n: j.n, gone: true });
     const p = await pack(j.store, v);

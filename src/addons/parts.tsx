@@ -43,9 +43,17 @@ export function openModal(o: { title?: string; wide?: boolean; spec?: string; ac
 }
 
 /** 기능의 스타일 파일을 한 번만 건다 (옛 모듈이 하던 일) */
-export function useCss(file: string) {
-  if (document.querySelector(`link[rel="stylesheet"][href$="css/${file}"]`)) return;
-  const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = `css/${file}`; document.head.append(l);
+export function useCss(file: string) { void loadCss(file); }
+const cssWait = new Map<string, Promise<void>>();
+/** CSS 파일을 붙이고, 다 받을 때까지 기다린다 (처음 여는 창이 모양 없이 잠깐 보이지 않게). 못 받아도 넘어간다 */
+export function loadCss(file: string): Promise<void> {
+  const hit = cssWait.get(file); if (hit) return hit;
+  let l = document.querySelector<HTMLLinkElement>(`link[rel="stylesheet"][href$="css/${file}"]`);
+  const p = l && l.sheet ? Promise.resolve() : new Promise<void>(res => {
+    if (!l) { l = document.createElement('link'); l.rel = 'stylesheet'; l.href = `css/${file}`; document.head.append(l); }
+    l.addEventListener('load', () => res(), { once: true }); l.addEventListener('error', () => res(), { once: true }); setTimeout(res, 3000);
+  });
+  cssWait.set(file, p); return p;
 }
 export const errMsg = (e: unknown) => e instanceof Error ? e.message : String(e);
 export const isAbort = (e: unknown) => e instanceof Error && e.name === 'AbortError';

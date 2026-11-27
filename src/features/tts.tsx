@@ -8,7 +8,8 @@ import { cur } from '../chat/store';
 import '../tts/providers';
 import '../tts/engine';
 import { cfg } from '../tts/config';
-import { TtsStudio } from '../tts/ui';
+import { lazyComp } from '../lib/lazy';
+const TtsStudio = lazyComp(() => import('../tts/ui').then(m => m.TtsStudio));   // 읽어 주기 설정 화면은 처음 열 때 받는다
 import { mountDock, readMessage } from '../tts/Dock';
 
 function setup() {

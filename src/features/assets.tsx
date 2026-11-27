@@ -2,7 +2,8 @@
 import { useCss } from '../addons/parts';
 import { reactNode } from '../addons/parts';
 import { A, cfg, chatSrcs, ownersOf, refreshChat, registerPrompt, uploadFromUrl } from '../assets/logic';
-import { AssetsStudio } from '../assets/Studio';
+import { lazyComp } from '../lib/lazy';
+const AssetsStudio = lazyComp(() => import('../assets/Studio').then(m => m.AssetsStudio));   // 에셋 작업실은 처음 열 때 받는다
 import { openGallery, watchChatImages } from '../assets/windows';
 import { Sprites } from '../expressions/store';
 import { toast } from '../ui';
