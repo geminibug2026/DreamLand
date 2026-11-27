@@ -691,6 +691,8 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
   const mx = (t?: string) => macro(tpl(t, ctx), ctx);   // 프리셋 · 카드 글: 템플릿(<% %>) 다음에 매크로
   // 통화 중(src/call 이 기록 끝에 'Phone call started' 를 넣는다)에는 전화 걸기 안내를 주지 않는다
   const inCall = msgs.some(m => m.role === 'system' && msgText(m) === 'Phone call started');
+  // 장면을 연 동안(같은 곳에서 만남)은 문자 줄 표시 약속을 싣지 않는다: 장면 안내(소설처럼 지문으로)와 부딪힌다. 통화 중이면 통화가 먼저
+  const inScene = !inCall && !!(chat as { scene?: { on?: boolean } }).scene?.on;
   const isGroup = chars.length > 1, clockMode = Clock.mode(chat), today = Clock.now(chat).toDateString();
   let source = lensed(msgs.filter(m => !m.hidden), { chat, char, chars, type });
   if (type === 'regen' || type === 'swipe') source = source.slice(0, -1);
@@ -708,7 +710,7 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
   });
   const lore = scanLore(loreBooksFor(chat, chars, persona), history, ctx, { state: (chat.loreState ||= {}) as LoreState, count: msgs.length, commit, type, char, persona, names: source.map(m => m.role === 'system' ? '' : m.role === 'user' ? ctx.user as string : (m.name || char.name)) });
   const card = (c: Char) => [`<character name="${c.name}">`, macro(c.description, { ...ctx, char: c.name }), c.personality && `Personality: ${macro(c.personality, { ...ctx, char: c.name })}`, c.scenario && `Situation: ${macro(c.scenario, { ...ctx, char: c.name })}`, c.mesExample && `How they talk:\n${macro(c.mesExample, { ...ctx, char: c.name }).replace(/<START>/gi, '').trim()}`, '</character>'].filter(Boolean).join('\n');
-  const before: PromptMsg[] = [{ role: 'system', src: '대화 모드 지시문', content: `<instructions>\n${mx(M.talkPrompt || TALK_DEFAULT)}${inCall ? '' : '\n\n' + mx(TALK_LINES)}${isGroup ? `\nThis is a group chat. You write only ${char.name}'s messages; ${chars.filter(c => c.id !== char.id).map(c => c.name).join(', ')} write their own, so never speak for them.` : ''}\n</instructions>` },
+  const before: PromptMsg[] = [{ role: 'system', src: '대화 모드 지시문', content: `<instructions>\n${mx(M.talkPrompt || TALK_DEFAULT)}${inCall || inScene ? '' : '\n\n' + mx(TALK_LINES)}${isGroup ? `\nThis is a group chat. You write only ${char.name}'s messages; ${chars.filter(c => c.id !== char.id).map(c => c.name).join(', ')} write their own, so never speak for them.` : ''}\n</instructions>` },
     { role: 'system', src: '캐릭터 카드', content: [card(char), ...chars.filter(c => c.id !== char.id).map(card)].join('\n\n') }];
   if (persona?.description) before.push({ role: 'system', src: '페르소나', content: `<user name="${ctx.user}">\n${mx(persona.description)}\n</user>` });
   if (lore.length) before.push({ role: 'system', src: '로어북', content: `<lore>\n${lore.map(e => e.text).join('\n')}\n</lore>` });
@@ -729,7 +731,7 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
     Clock.line(chat),
     type === 'continue' && 'Continue your last message from exactly where it stopped. Do not restart it or repeat what is already written.',
     type === 'impersonate' && `Write ${ctx.user}'s next text message, in the voice and length their earlier messages show. Output only that message, as plain lines.`,
-    type !== 'impersonate' && !inCall && TALK_LINES_CHECK,   // 통화 중에는 말만 한다 (따옴표 · 별표 없이 — 통화 지시문을 따른다)
+    type !== 'impersonate' && !inCall && !inScene && TALK_LINES_CHECK,   // 통화 중에는 말만 한다 (따옴표 · 별표 없이 — 통화 지시문을 따른다) · 장면 중에는 소설처럼 쓴다 (장면 안내를 따른다)
   ].filter(Boolean).join('\n');
   const tail: PromptMsg = { role: 'user', src: '지금 상황 · 명령 안내', content: `<context>\n${situation}\n</context>${M.commands === false || type === 'impersonate' ? '' : '\n\n' + mx(TALK_COMMANDS.replace('{{clock_command}}', Clock.command(chat) ? '\n' + Clock.command(chat) : '').replace('{{call_command}}', !inCall && (S.settings as { call?: { aiCall?: boolean } }).call?.aiCall !== false ? TALK_CALL_COMMAND : '').replace('{{photo_command}}', inCall ? '' : talkPhotos.line ? talkPhotos.line(chat) : TALK_SELFIE_LINE))}` };
   const fixed = [...before, ...late, tail].reduce((n, m) => n + tokens(m.content) + 4, 0);
