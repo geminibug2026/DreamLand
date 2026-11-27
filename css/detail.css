@@ -429,7 +429,10 @@ button.top-room:hover { text-decoration: underline dotted; text-underline-offset
 @media (max-width: 820px) {
   .chat-top { position: relative; }
   .chat-top .av-stack { display: flex; margin-left: 2px; } .chat-top .av-stack .avatar:nth-child(n+2) { display: none; } .chat-top .av-stack .avatar { width: 34px; height: 34px; border-radius: 50%; }
-  .top-title .top-room { display: inline; } .top-title .top-room::before { content: none; } .top-meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .72em; }
+  .top-title .top-room { display: inline; } .top-title .top-room::before { content: none; }
+  /* 대화 모드 둘째 줄: 상태 · 이야기 시각이 먼저 다 보이게. 방 이름은 빼고(⋯ 메뉴 · 제목 안내에 있음) 며칠째는 상자 없이 글자로 */
+  .top-title .top-sub .top-room { display: none; } .top-sub { gap: 6px; } .top-sub .top-pres { flex: 0 1 auto; }
+  .top-sub .top-days, .top-sub .top-days.mark { flex: none; padding: 0; border: 0; font-size: 1em; } .top-sub .top-days::before { content: "·"; margin-right: 6px; color: var(--faint); } .top-meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .72em; }
   .chat-top .gauge { display: block; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; min-width: 0; padding: 0; background: none; pointer-events: none; } .chat-top .gauge span { display: none; } .chat-top .gauge i { background: var(--accent); }
 }
 
