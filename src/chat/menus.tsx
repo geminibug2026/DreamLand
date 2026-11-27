@@ -3,7 +3,7 @@ import { editSchedule } from '../schedule/Editor';
 import { useReducer, useState } from 'react';
 import { charPicker, confirmBox, menu, openModal, promptBox, toast, type MenuItem, type ModalHandle } from '../ui';
 import { cur, runs, ui } from './store';
-import { charsOf, drawMain, drawSide, jumpTo, modeOf, presenceOf, renameRoom, titleOf } from './actions';
+import { charsOf, drawMain, drawSide, jumpTo, modeOf, presenceOf, renameRoom, talkProseOf, titleOf } from './actions';
 import { inspector } from './Inspector';
 import { liveSettings } from './LiveSettings';
 import type { Cast, ClockCfg, Room } from './types';
@@ -44,6 +44,10 @@ export function chatMenu(anchor: Element, c: Room, top: TopHooks | null = null) 
       { label: t('chat.menu.inspect'), ic: 'code', onclick: inspector },
       '-'] as MenuItem[] : []),
     talk ? { label: t('chat.menu.clock'), ic: 'moon', hint: clockHint(c), onclick: () => { clockDialog(c, () => { if (c.id === cur.chat?.id) drawMain(); }); } } : null,
+    // 말풍선 구분 (이 대화방만): 표시대로 · 예전처럼 추측. 바꾸면 바로 다시 그린다
+    talk ? { label: t('chat.menu.talkProse'), ic: 'chat', hint: t(talkProseOf(c) === 'guess' ? 'chat.menu.talkProseGuess' : 'chat.menu.talkProseMarks'), onclick: () => menu(anchor, (['guess', 'marks'] as const).map(k => ({
+      label: t(k === 'guess' ? 'chat.menu.talkProseGuess' : 'chat.menu.talkProseMarks'), ic: talkProseOf(c) === k ? 'check' : 'chat', hint: t(k === 'guess' ? 'chat.menu.talkProseGuessHint' : 'chat.menu.talkProseMarksHint'),
+      onclick: async () => { c.talkProse = k; await S.save('chats', c, true); if (c.id === cur.chat?.id) drawMain(); } }))) } : null,
     { label: t('chat.menu.talkSettings'), ic: 'sliders', hint: t('chat.menu.talkSettingsHint'), onclick: () => { liveSettings(modeOf(c) === 'talk' ? 'auto' : 'tracker', c); } },
     { label: c.pinned ? t('chat.menu.unpin') : t('chat.menu.pin'), ic: 'star', onclick: async () => { c.pinned = !c.pinned; await S.save('chats', c, true); drawSide(); } },
     parent ? { label: t('chat.menu.toParent'), ic: 'branch', onclick: () => go('chat', parent.id) } : null,

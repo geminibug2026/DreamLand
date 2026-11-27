@@ -71,6 +71,7 @@ export interface Diff { from: string; d?: number | null; at: number }
 /** 작가 노트. freq: 내 메시지 몇 번마다 넣나 (1 = 매번 · 0 = 넣지 않음) · pos: 넣는 자리 (chat = 대화 안 depth 자리 · before = 프롬프트 맨 앞 · after = 캐릭터 정의 뒤, 대화 기록 앞) */
 export interface Note { text: string; depth: number; role: string; freq?: number; pos?: 'chat' | 'before' | 'after' }
 export interface Chat {
+  /** 대화 모드 말풍선 구분 (이 대화방만): 없으면 신규 버전(표시대로), guess = 이전 버전(소설 같은 줄도 지문으로 추측) */ talkProse?: 'marks' | 'guess';
   id: string; name: string; charIds: string[]; personaId: string; personaAuto?: boolean; note: Note; summary: string; summaryAt: number; vars: Record<string, string>; loreIds: string[];
   tracker: Record<string, string>; bg: string; mode: 'rp' | 'talk'; diary: DiaryEntry[]; diaryAt: number; dreams?: Dream[]; keepsakes?: Keepsake[]; letters?: Letter[]; promises?: PromiseRec[]; groupOrder: string; count: number; preview: string; createdAt: number; updatedAt: number;
   /** 그룹 자동 진행: 답이 끝나면 delay 초 뒤 다음 사람이 이어 말한다 (연속 max 번까지) */
@@ -183,7 +184,7 @@ export interface Conn {
 export interface Modes {
   auto?: boolean; autoConn?: string; autoDaily?: number; autoStreak?: number; autoMinutes?: number; autoBackoff?: number; autoHidden?: boolean; autoTokens?: number;
   quietFrom?: string; quietTo?: string; later?: boolean; laterMax?: number; away?: boolean; awayHours?: number; readReact?: boolean;
-  stagger?: boolean; talkTokens?: number; /** 대화 모드 지문 구분: 표시대로만(marks, 기본 — *…* · (…) 만 지문) · 소설 같은 줄도 지문으로 추측(guess) */ talkProse?: 'marks' | 'guess'; scenes?: boolean; sceneStart?: boolean; userActivity?: string; sched?: boolean; schedPrompt?: string;
+  stagger?: boolean; talkTokens?: number; scenes?: boolean; sceneStart?: boolean; userActivity?: string; sched?: boolean; schedPrompt?: string;
   [k: string]: unknown;
 }
 type Open = Record<string, unknown>;

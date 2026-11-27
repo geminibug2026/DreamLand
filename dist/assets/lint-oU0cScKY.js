@@ -1,1 +1,0 @@
-export{r as similar}from"./lint-wiSX2VgZ.js";

@@ -1,1 +1,0 @@
-export{m as quickDraw}from"./decorate-BeBEWd5j.js";

@@ -30,6 +30,8 @@ import { pickReply, streamReply } from '../reach/route';
 export const charsOf = (chat: Room): Cast[] => chat.charIds.map(id => S.get('chars', id)).filter((c): c is Cast => !!c);
 export const titleOf = (chat: Room) => charsOf(chat).map(c => c.name).join(', ') || t('chat.deletedChar');
 export const modeOf = (chat?: Room | null): 'rp' | 'talk' => chat?.mode === 'talk' ? 'talk' : 'rp';
+/** 대화 모드 말풍선 구분 (대화방마다): 신규 버전 = 표시대로(기본) · 이전 버전 = 소설 같은 줄도 지문으로 추측 */
+export const talkProseOf = (chat?: Room | null): 'marks' | 'guess' => chat?.talkProse === 'guess' ? 'guess' : 'marks';
 export const groupKey = (c: Room) => [...c.charIds].sort().join('+') || '-';
 let roomIdx: Map<string, number> | null = null, roomIdxKey = '';
 const roomNo = (c: Room) => {
@@ -267,7 +269,7 @@ export function bodyHtml(m: Msg, keep = false, at: RoomView = cur) {
   const style = m.role === 'system' ? 'plain' : modeOf(at.chat) === 'talk' && !m.scene ? 'chat' : S.settings.rpBubbles ? 'bubbles' : 'novel';
   const owners = assetOwners(at.chat);
   // 에셋 그림은 짧은 blob: 주소 · 틀 · 크기까지 글에 넣은 뒤 꾸미므로, 기억해 둔 결과(renderKept)도 설정 · 보관함이 바뀌면 새로 꾸며진다. 받는 중에는 덜 쓴 {{img:: 를 가린다
-  return (keep ? renderKept : render)(Assets.inline(Assets.expand(shownText(m, at), owners, `${m.id}:${m.sw}`, { partial: !keep }), owners), { style, prose: m.role !== 'user' && S.settings.modes?.talkProse === 'guess' });
+  return (keep ? renderKept : render)(Assets.inline(Assets.expand(shownText(m, at), owners, `${m.id}:${m.sw}`, { partial: !keep }), owners), { style, prose: m.role !== 'user' && talkProseOf(at.chat) === 'guess' });
 }
 /** 받는 중인 본문을 새 글로 맞춘다: 앞에서부터 그대로인 조각(다 쓴 문단)은 두고, 달라진 데부터만 바꾼다.
  *  결과는 innerHTML = html 과 같다. 매 화면 본문 전체를 새로 만들지 않아 스타일 계산 · 배치가 늘어난 끝부분만큼만 든다 (긴 답일수록 차이가 크다) */

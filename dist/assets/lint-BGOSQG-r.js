@@ -1,0 +1,1 @@
+export{r as similar}from"./lint-Bex06nb1.js";
