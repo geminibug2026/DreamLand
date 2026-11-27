@@ -124,15 +124,17 @@
 .call-dots i:nth-child(2) { animation-delay: .15s; } .call-dots i:nth-child(3) { animation-delay: .3s; }
 @keyframes call-dot { 0%, 60%, 100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
 /* 말풍선 아래 작은 도구 줄: ‹ 1/2 › · 다른 답 · 다시 듣기 · 고치기 — 한 덩어리로 붙인다 */
-/* 줄 아래 도구: 테두리 없는 얇은 아이콘 한 줄 */
-.call-acts { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; margin-top: 2px; color: var(--faint, var(--dim)); font-size: .74rem; font-variant-numeric: tabular-nums; }
-.call-acts button { display: inline-grid; place-items: center; width: 30px; height: 30px; padding: 0; background: none; border: 0; border-radius: 50%; color: var(--faint, var(--dim)); cursor: pointer; transition: color .15s, background-color .15s; }
-.call-acts button:hover:not(:disabled), .call-acts button:focus-visible { color: var(--text); background: var(--surface2, transparent); }
+/* 줄 아래 도구: 말풍선 너비 한 줄 — 왼쪽 묶음(다른 답 · 번역 …)과 오른쪽 끝 넘기기. 아이콘은 같은 크기 · 같은 간격, 테두리 · 바탕 없이 */
+.call-acts { align-self: stretch; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 30px; padding: 0 2px; color: var(--dim); font-size: .76rem; font-variant-numeric: tabular-nums; }
+.call-line.me .call-acts { flex-direction: row-reverse; }
+.call-acts-l, .call-acts-r { display: flex; align-items: center; gap: 4px; }
+.call-acts button { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; background: none; border: 0; border-radius: 50%; color: var(--dim); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: color .15s; }
+.call-acts button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (hover: hover) { .call-acts button:hover:not(:disabled) { color: var(--text); } }
 .call-acts button.on { color: var(--accent-ink); }
 .call-acts button.busy { animation: call-tr-busy 1s ease-in-out infinite; } @keyframes call-tr-busy { 50% { opacity: .35; } } @media (prefers-reduced-motion: reduce) { .call-acts button.busy { animation: none; opacity: .5; } }
-.call-acts button:disabled { opacity: .35; cursor: default; }
+.call-acts button:disabled { opacity: .3; cursor: default; }
 .call-alt-n { min-width: 2.4em; text-align: center; color: var(--dim); }
-.call-acts .call-regen { margin-right: 10px; }
 .call-tr { margin: 4px 0 0; padding: 6px 2px 0; border-top: 1px dashed var(--line); font-size: .86em; line-height: 1.5; color: var(--dim); }
 .call-edit { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .call-edit textarea { width: 100%; resize: vertical; font-size: .95em; border-radius: 14px; }

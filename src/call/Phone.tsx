@@ -65,6 +65,8 @@ function LineRow({ s, l, i, picked, pick }: { s: C.Session; l: C.Line; i: number
   const save = () => { if (edit != null && edit.trim()) C.editLine(i, edit); setEdit(null); };
   const jump = (at: number, reading: boolean) => { if (!reading || C.streaming(l)) return false; C.replay(i, at); return true; };
   const alts = last && !!l.alts && l.alts.length > 1 ? l.alts : null;
+  // 다른 답이 생기면 ⟳ 대신 ‹ 몇/몇 › 만: 마지막 답에서 › 를 누르면 새 답을 받는다 (대화의 넘기기와 같게)
+  const at = alts ? Math.min(alts.length - 1, Math.max(0, l.alt ?? alts.length - 1)) : 0, atEnd = !!alts && at === alts.length - 1;
   return <div className={`call-line ${l.who === 'u' ? 'me' : 'them'}${picked ? ' picked' : ''}${edit != null ? ' editing' : ''}`}>
     {group && who ? <small className="call-who">{who.name}</small> : null}
     {edit != null
@@ -72,13 +74,15 @@ function LineRow({ s, l, i, picked, pick }: { s: C.Session; l: C.Line; i: number
         <div><button type="button" className="btn sm" onClick={() => setEdit(null)}>{tt('call.do.cancel')}</button><button type="button" className="btn sm primary" onClick={save}>{tt('call.do.save')}</button></div></div>
       : <p onClick={() => { if (!waiting) pick(picked ? -1 : i); }}>{waiting ? <span className="call-dots"><i /><i /><i /></span> : l.who === 'c' ? <ReadAlong text={l.text} k={C.lineKey(l)} onJump={jump} /> : l.text}{l.cut ? <em>—</em> : null}</p>}
     {edit == null && trOn && tr ? <p className="call-tr" lang="">{tr}</p> : null}
-    {/* 줄 아래 도구: 얇은 아이콘만 한 줄 — 다른 답(맨 왼쪽, 넘기기와 떨어뜨려 잘못 누르지 않게) · ‹ 몇/몇 › · 번역 · 다시 듣기 · 고치기 */}
+    {/* 줄 아래 도구: 말풍선 너비 한 줄 — 왼쪽은 다른 답(처음 한 번만) · 번역(골랐을 때만 다시 듣기 · 고치기), 오른쪽 끝은 ‹ 몇/몇 › */}
     {edit == null && !waiting && (picked || (last && idle)) && s.phase === 'connected' ? <div className="call-acts" role="toolbar">
-      {last ? <button type="button" className="call-regen" title={tt('call.do.anotherHint')} aria-label={tt('call.do.another')} disabled={!idle} onClick={() => void C.another()}><Icon name="refresh" size={15} /></button> : null}
-      {alts ? <><button type="button" title={tt('call.do.prevAlt')} aria-label={tt('call.do.prevAlt')} disabled={!idle} onClick={() => C.swipe(-1)}><Icon name="left" size={15} /></button><span className="call-alt-n">{`${(l.alt ?? 0) + 1}/${alts.length}`}</span><button type="button" title={tt('call.do.nextAlt')} aria-label={tt('call.do.nextAlt')} disabled={!idle} onClick={() => C.swipe(1)}><Icon name="right" size={15} /></button></> : null}
-      {l.who === 'c' && l.text ? <button type="button" className={trOn && tr ? 'on' : trBusy ? 'busy' : undefined} title={t('call.do.translate')} aria-label={t('call.do.translate')} aria-pressed={trOn && !!tr} disabled={trBusy} onClick={() => void translate()}><Icon name="lang" size={15} /></button> : null}
-      {picked && l.who === 'c' && s.speaker ? <button type="button" title={tt('call.do.replay')} aria-label={tt('call.do.replay')} onClick={() => C.replay(i)}><Icon name="volume" size={15} /></button> : null}
-      <button type="button" title={tt('call.do.edit')} aria-label={tt('call.do.edit')} disabled={!idle && last} onClick={() => setEdit(l.text)}><Icon name="edit" size={15} /></button>
+      <span className="call-acts-l">
+        {last && !alts ? <button type="button" title={tt('call.do.anotherHint')} aria-label={tt('call.do.another')} disabled={!idle} onClick={() => void C.another()}><Icon name="refresh" size={16} /></button> : null}
+        {l.who === 'c' && l.text ? <button type="button" className={trOn && tr ? 'on' : trBusy ? 'busy' : undefined} title={t('call.do.translate')} aria-label={t('call.do.translate')} aria-pressed={trOn && !!tr} disabled={trBusy} onClick={() => void translate()}><Icon name="lang" size={16} /></button> : null}
+        {picked && l.who === 'c' && s.speaker ? <button type="button" title={tt('call.do.replay')} aria-label={tt('call.do.replay')} onClick={() => C.replay(i)}><Icon name="volume" size={16} /></button> : null}
+        {picked ? <button type="button" title={tt('call.do.edit')} aria-label={tt('call.do.edit')} disabled={!idle && last} onClick={() => setEdit(l.text)}><Icon name="edit" size={16} /></button> : null}
+      </span>
+      {alts ? <span className="call-acts-r"><button type="button" title={tt('call.do.prevAlt')} aria-label={tt('call.do.prevAlt')} disabled={!idle || at === 0} onClick={() => C.swipe(-1)}><Icon name="left" size={16} /></button><span className="call-alt-n">{`${at + 1}/${alts.length}`}</span><button type="button" title={atEnd ? tt('call.do.anotherHint') : tt('call.do.nextAlt')} aria-label={atEnd ? tt('call.do.another') : tt('call.do.nextAlt')} disabled={!idle} onClick={() => { if (atEnd) void C.another(); else C.swipe(1); }}><Icon name="right" size={16} /></button></span> : null}
     </div> : null}
   </div>;
 }
