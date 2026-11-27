@@ -43,7 +43,7 @@ export type Role = 'user' | 'assistant' | 'system';
 export interface Msg {
   id: string; role: Role; charId: string; name: string; swipes: Swipe[]; sw: number; hidden: boolean; ts: number;
   images?: string[]; scene?: boolean; curtain?: Curtain; dice?: DiceRoll; diceBy?: string; greeting?: boolean; viaCommand?: boolean;
-  reactions?: { emoji: string; by?: string }[]; why?: string; st?: number;
+  reactions?: { emoji: string; by?: string; /** 캐릭터가 단 반응: 단 답(메시지 id)과 그 답의 버전 */ from?: string; sw?: number }[]; why?: string; st?: number;
   memHidden?: boolean; memSide?: boolean; /** 장기기억: 이야기 밖 질문(OOC)에 대한 답으로 본 메시지 */ memOoc?: boolean;
   /** 고정: 기록이 길어 잘리거나 요약되어 숨겨질 때도 프롬프트에 남긴다 */ pin?: boolean;
   /** 나만 보는 메모 (모델에 보내지 않는다) */ memo?: string;

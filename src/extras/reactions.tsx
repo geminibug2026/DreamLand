@@ -11,7 +11,7 @@ import { cfg, saveCfg } from './cfg';
 import { Stickers } from './stickers';
 import { openStickerPicker } from './StickerPicker';
 
-export interface Reaction { emoji: string; by?: string; me?: boolean; ts?: number; stk?: string }
+export interface Reaction { emoji: string; by?: string; me?: boolean; ts?: number; stk?: string; /** 캐릭터가 단 반응: 단 답과 그 버전 */ from?: string; sw?: number }
 // 처음 보이는 것: 글자 기호만 (그림 문자는 사용자가 직접 적어 넣는다)
 const STARTERS = ['♥', '✦', '☾', '!', '?', 'ㅋㅋ'];
 const list = (m: Msg) => (m.reactions ||= []) as Reaction[];
@@ -28,8 +28,18 @@ export async function toggleReaction(m: Msg, emoji: string, stk = '') {
 }
 
 /** 메시지 아래의 반응 줄 (Messages.tsx 가 그린다). 내가 단 것은 눌러서 뗀다 */
+/** 보이는 반응: 내가 단 것은 다, 캐릭터가 단 것은 그 답이 지금 보이는 버전일 때만 (지운 답의 반응은 숨김).
+ *  예전 기록(답 표시 없음)은 같은 캐릭터의 같은 반응을 하나로 — 넘길 때마다 쌓였던 것 */
+function shown(rs: Reaction[]): Reaction[] {
+  const msgs = chatApi.current().msgs as Msg[], seen = new Set<string>();
+  return rs.filter(r => {
+    if (r.me) return true;
+    if (r.from) { const a = msgs.find(x => x.id === r.from); return !!a && (r.sw == null || a.sw === r.sw); }
+    const k = (r.by || '') + '\u0000' + r.emoji; if (seen.has(k)) return false; seen.add(k); return true;
+  });
+}
 export function Reacts({ m }: { m: Msg }) {
-  const rs = (m.reactions || []) as Reaction[]; if (!rs.length) return null;
+  const rs = shown((m.reactions || []) as Reaction[]); if (!rs.length) return null;
   return <div className="reacts xt-reacts">{rs.map((r, i) => {
     const s = r.stk ? Stickers.byId(r.stk) : null, body = s ? <img src={s.data} alt={s.name} /> : (r.emoji || (r.stk ? '·' : ''));
     return r.me ? <button key={i} type="button" className="xt-react mine" title={t('extras.react.remove')} onClick={() => void toggleReaction(m, r.emoji, r.stk)}>{body}</button> : <span key={i} title={r.by || ''}>{body}</span>;

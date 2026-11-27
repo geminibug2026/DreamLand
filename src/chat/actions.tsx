@@ -336,7 +336,10 @@ export async function swipe(m: Msg, dir: number) {
   const n = m.sw + dir;
   if (n < 0) return;
   if (n >= m.swipes.length) { if (cur.msgs[cur.msgs.length - 1] === m) void generate('regen'); return; }
-  m.sw = n; rewindState(); await save(m); redraw(m); emit('message:swiped', { chat: cur.chat, msg: m, msgs: cur.msgs });
+  m.sw = n; rewindState(); await save(m); redraw(m);
+  // 이 답이 내 메시지에 단 반응은 답의 버전마다 다르다: 바로 앞 내 메시지도 다시 그린다
+  for (let i = cur.msgs.indexOf(m) - 1; i >= 0; i--) { const u = cur.msgs[i]; if (u.role !== 'user') continue; if (u.reactions?.some(r => r.from === m.id)) redraw(u); break; }
+  emit('message:swiped', { chat: cur.chat, msg: m, msgs: cur.msgs });
 }
 const copy = <T,>(o: T): T => { try { return structuredClone(o); } catch { return JSON.parse(JSON.stringify(o)) as T; } };
 /** 메시지 목록의 사본. 긴 대화는 조금씩 나눠 베껴 그동안 화면이 멈추지 않게 한다 */
@@ -527,7 +530,8 @@ export const photoHook: { take: ((chat: Room, msgs: Msg[], target: Msg, cmd: eng
 const noScene = (chat: Room, m: Msg) => { try { return !!photoHook.noScene?.(chat, m); } catch { return false; } };
 async function runTalkCommands(chat: Room, msgs: Msg[], target: Msg, cmds: engine.TalkCmd[]) {
     for (const c of cmds) {
-    if (c.name === 'react' && c.args.emoji) { const u = [...msgs].reverse().find(m => m.role === 'user'); if (u) { (u.reactions ||= []).push({ emoji: c.args.emoji, by: target.name }); if (cur.chat === chat) redraw(u); } }
+    // 캐릭터가 단 반응은 어느 답의 몇 번째 버전에서 달았는지 함께 적는다: 답을 옆으로 넘기거나 다시 받으면 그 버전의 반응만 보인다 (넘길 때마다 쌓이지 않게)
+    if (c.name === 'react' && c.args.emoji) { const u = [...msgs].reverse().find(m => m.role === 'user'); if (u) { const rs = (u.reactions ||= []), e = String(c.args.emoji); if (!rs.some(r => r.from === target.id && r.sw === target.sw && r.emoji === e)) rs.push({ emoji: e, by: target.name, from: target.id, sw: target.sw }); if (cur.chat === chat) redraw(u); } }
     else if (c.name === 'status') { const st = STATUS[c.args.state || c.args.status] ? (c.args.state || c.args.status) : 'online'; const dur = String(c.args.duration || '').match(/([\d.]+)\s*(m|h)/i); Live.setPresence(chat, S.get('chars', target.charId), { status: st, activity: c.args.activity || '', durMs: dur ? +dur[1] * (dur[2].toLowerCase() === 'h' ? 3600000 : 60000) : 0 }); }
     else if (c.name === 'call') emit('talk:call', { chat, reason: c.args.reason || '', charId: target.charId, lines: msgText(target).split('\n').filter(l => l.trim()).length });   // 전화는 src/call 이 받는다 (말풍선이 다 나온 뒤에 울린다)
     else if (c.name === 'time') { if (chat.clock?.ai) await Clock.move(chat, { set: c.args.set, advance: c.args.advance }); }
@@ -751,7 +755,11 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
   let target: Msg | null = null, sw: Swipe | null = null, base = '';
   const stick = shown() && nearBottom();
   if (type === 'normal') { target = newMsg('assistant', '', { charId: speaker.id, name: speaker.name, ...(inScene ? { scene: true } : {}) }); msgs.push(target); if (shown()) appendMsg(target); }
-  else if (type === 'regen') { target = last; target.swipes.push({ text: '', ts: now() }); target.sw = target.swipes.length - 1; if (shown()) redraw(target); }
+  else if (type === 'regen') {
+    target = last; target.swipes.push({ text: '', ts: now() }); target.sw = target.swipes.length - 1; if (shown()) redraw(target);
+    // 새 버전에는 아직 반응이 없다: 앞 버전이 내 메시지에 단 반응을 걷는다 (다시 그려 숨김)
+    if (shown()) { const t0 = target; for (let i = msgs.indexOf(t0) - 1; i >= 0; i--) { const u = msgs[i]; if (u.role !== 'user') continue; if (u.reactions?.some(r => r.from === t0.id)) redraw(u); break; } }
+  }
   else if (type === 'continue') { target = last; base = target.swipes[target.sw].text; }
   if (target) { sw = target.swipes[target.sw]; delete sw.tr; sw.showTr = false; }
   const tail = built.messages[built.messages.length - 1];
