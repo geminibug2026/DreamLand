@@ -56,7 +56,7 @@ export const TOPICS: Topic[] = [
   T('tracker', 'features', 'settings', '상태 트래커 hud tracker 시간 장소 기분 状态 追踪'),
   T('translate', 'features', 'studio', '번역 translate 자동 번역 翻译'),
   T('illust', 'features', 'studio', '삽화 그림 이미지 생성 novelai illustration image 插图 生成 scenebook'),
-  T('voice', 'features', 'studio', '읽어 주기 tts 음성 전화 call phone voice 表情 expressions 표정 스프라이트 朗读 语音 通话'),
+  T('voice', 'features', 'studio', '읽어 주기 tts 음성 전화 call phone voice 목소리 연기 해설 효과음 바탕 소리 발음 사전 음성 메시지 voicemail sound effect ambience pronunciation 表情 expressions 표정 스프라이트 朗读 语音 通话 声音演绎 音效 留言'),
   T('diary', 'features', 'diary', '일기장 꿈 편지 약속 달력 기념품 diary dream promise calendar 日记 约定'),
   T('helpers', 'features', 'studio', '보조 연결 helper 싼 모델 작업별 연결 辅助 连接 cost 비용'),
   T('qr', 'features', 'qr', '퀵 리플라이 빠른 답장 버튼 quick reply button 快速回复'),

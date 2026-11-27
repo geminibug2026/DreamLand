@@ -670,7 +670,15 @@ export const talkPhotos: { line: ((chat: Chat) => string) | null; history: ((m: 
 /** 캐릭터가 직접 전화를 거는 명령 (1:1 대화 모드 · 설정 › 전화에서 끌 수 있다) */
 export const TALK_CALL_COMMAND = `\n[call: reason="why you are calling"] — phone {{user}} right now instead of texting. Only when {{char}} really would call at this moment: {{user}} asked you to call or to pick up, something urgent or emotional that texting cannot carry, or {{char}} simply needs to hear their voice. Not for routine replies. Write your messages first, then put this on the last line.`;
 const hhmm = (t: number) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
-export interface BuildInput { chat: Chat; char: Char; chars: Char[]; persona?: Persona | null; preset: Preset; msgs: Msg[]; type?: string; commit?: boolean; proactive?: boolean }
+export interface BuildInput {
+  chat: Chat; char: Char; chars: Char[]; persona?: Persona | null; preset: Preset; msgs: Msg[]; type?: string; commit?: boolean; proactive?: boolean;
+  /** 대화 프롬프트를 빌려 쓰는 보조 호출 (변수 갱신 등) — 이야기 글의 꼴을 정하는 조각은 빠진다 */ aux?: boolean;
+  /** 통화 프롬프트 (src/call 이 넘긴다): call = 통화 중의 한 차례 · voicemail = 받지 않은 상대에게 남기는 음성 메시지. 둘 다 말로만 — 줄 표시 약속 · 명령 안내 · 장면 안내가 빠진다 */ call?: 'call' | 'voicemail';
+}
+/** 통화 기록의 시작 표시 (src/call 이 통화 중의 기록 끝에 넣는다 — 통화 지시문이 이 줄을 가리킨다) */
+export const CALL_MARK = 'Phone call started';
+/** 이 기록이 통화의 것인가 (call 을 넘기지 않은 예전 호출 · 다른 곳을 위해 표시로도 알아본다) */
+export const inCallMsgs = (msgs: Msg[]) => msgs.some(m => m.role === 'system' && msgText(m) === CALL_MARK);
 type Inj = PromptMsg & { depth: Num; order: Num };
 /** 이번 턴에 작가 노트를 넣을 차례인가 — freq 1(기본)은 매번, N 은 내 메시지 N 번마다, 0 은 넣지 않음 */
 function noteDue(chat: Chat, msgs: Msg[]): boolean {
@@ -685,12 +693,12 @@ export type HistoryLens = (source: Msg[], o: { chat: Chat; char: Char; chars: Ch
 let historyLens: HistoryLens | null = null;
 export const setHistoryLens = (fn: HistoryLens | null) => { historyLens = fn; };
 const lensed = (source: Msg[], o: Parameters<HistoryLens>[1]): Msg[] => { if (!historyLens) return source; try { return historyLens(source, o) || source; } catch (e) { console.warn('[기록 가공]', e); return source; } };
-function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'normal', commit = false, proactive = false }: BuildInput): Built {
+function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'normal', commit = false, proactive = false, aux = false, call }: BuildInput): Built {
   const P: Params = preset.params || {}, M = S.settings.modes || {};
   const ctx = makeCtx({ chat, char, chars, persona, msgs }); ctx.type = type;
   const mx = (t?: string) => macro(tpl(t, ctx), ctx);   // 프리셋 · 카드 글: 템플릿(<% %>) 다음에 매크로
-  // 통화 중(src/call 이 기록 끝에 'Phone call started' 를 넣는다)에는 전화 걸기 안내를 주지 않는다
-  const inCall = msgs.some(m => m.role === 'system' && msgText(m) === 'Phone call started');
+  // 통화 중 · 음성 메시지를 남기는 중(src/call 이 기록 끝에 시작 표시를 넣는다)에는 줄 표시 약속 · 전화 걸기 안내를 주지 않는다
+  const inCall = !!call || inCallMsgs(msgs), callKind = call || (inCall ? 'call' : undefined);
   const isGroup = chars.length > 1, clockMode = Clock.mode(chat), today = Clock.now(chat).toDateString();
   let source = lensed(msgs.filter(m => !m.hidden), { chat, char, chars, type });
   if (type === 'regen' || type === 'swipe') source = source.slice(0, -1);
@@ -716,7 +724,7 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
   const late: PromptMsg[] = [];
   for (const p of X.prompt) {
     if (p.owner === 'mode' || p.owner === 'illust') continue;
-    let parts: PromptPart[] = []; try { parts = p.fn({ chat, char, chars, persona, history, msgs, type, commit, ctx, call: inCall }) || []; } catch (e) { console.warn('[프롬프트 조각]', p.owner, e); }
+    let parts: PromptPart[] = []; try { parts = p.fn({ chat, char, chars, persona, history, msgs, type, commit, ctx, call: inCall, callKind, aux }) || []; } catch (e) { console.warn('[프롬프트 조각]', p.owner, e); }
     for (const part of parts) if (part?.content) (part.where === 'top' ? before : part.where === 'before' ? before : late).push({ role: 'system', content: mx(part.content), src: part.src || p.owner });   // 기능이 덧붙이는 조각도 {{user}} · {{char}} 같은 매크로를 푼다
   }
   if (chat.note?.text && noteDue(chat, msgs)) late.push({ role: 'system', content: mx(chat.note.text), src: '작가 노트' });
@@ -731,7 +739,8 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
     type === 'impersonate' && `Write ${ctx.user}'s next text message, in the voice and length their earlier messages show. Output only that message, as plain lines.`,
     type !== 'impersonate' && !inCall && TALK_LINES_CHECK,   // 통화 중에는 말만 한다 (따옴표 · 별표 없이 — 통화 지시문을 따른다)
   ].filter(Boolean).join('\n');
-  const tail: PromptMsg = { role: 'user', src: '지금 상황 · 명령 안내', content: `<context>\n${situation}\n</context>${M.commands === false || type === 'impersonate' ? '' : '\n\n' + mx(TALK_COMMANDS.replace('{{clock_command}}', Clock.command(chat) ? '\n' + Clock.command(chat) : '').replace('{{call_command}}', !inCall && (S.settings as { call?: { aiCall?: boolean } }).call?.aiCall !== false ? TALK_CALL_COMMAND : '').replace('{{photo_command}}', inCall ? '' : talkPhotos.line ? talkPhotos.line(chat) : TALK_SELFIE_LINE))}` };
+  // 명령 안내: 통화 · 음성 메시지에는 싣지 않는다 — 통화 글은 명령을 실행하지 않고 지우기만 하므로(src/call 의 strip) 안내해 봐야 쓸모가 없고 말에 꼬리표가 섞인다
+  const tail: PromptMsg = { role: 'user', src: inCall ? '지금 상황' : '지금 상황 · 명령 안내', content: `<context>\n${situation}\n</context>${M.commands === false || type === 'impersonate' || inCall ? '' : '\n\n' + mx(TALK_COMMANDS.replace('{{clock_command}}', Clock.command(chat) ? '\n' + Clock.command(chat) : '').replace('{{call_command}}', !inCall && (S.settings as { call?: { aiCall?: boolean } }).call?.aiCall !== false ? TALK_CALL_COMMAND : '').replace('{{photo_command}}', inCall ? '' : talkPhotos.line ? talkPhotos.line(chat) : TALK_SELFIE_LINE))}` };
   const fixed = [...before, ...late, tail].reduce((n, m) => n + tokens(m.content) + 4, 0);
   const budget = Math.max(500, (P.contextSize || 128000) - (M.talkTokens || 400) - fixed - (S.settings.format?.tokenPadding || 0));
   let used = 0, start = history.length;
@@ -778,8 +787,9 @@ export function postFormat(textIn: string): string {
   return text;
 }
 
-export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = 'normal', commit = false, proactive = false }: BuildInput): Built {
-  if (chat.mode === 'talk') { if (commit) gen = { type }; return buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type, commit, proactive }); }
+export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = 'normal', commit = false, proactive = false, aux = false, call }: BuildInput): Built {
+  if (chat.mode === 'talk') { if (commit) gen = { type }; return buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type, commit, proactive, aux, call }); }
+  const inCall = !!call || inCallMsgs(msgs), callKind = call || (inCall ? 'call' : undefined);   // RP 방에서 건 전화 · 음성 메시지도 통화다 (기능 조각이 통화 중인지 알게)
   const P: Params = preset.params || {}, F = AF();
   const ctx = makeCtx({ chat, char, chars, persona, msgs }); ctx.type = type;
   const isGroup = chars.length > 1;
@@ -828,7 +838,7 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
     inject.push({ role: 'system', content: '[Current state]\n' + Object.entries(tr).map(([k, v]) => `${k}: ${v}`).join('\n'), depth: 1, order: 50, src: '트래커' });
   }
   for (const p of X.prompt) {
-    let parts: PromptPart[] = []; try { parts = p.fn({ chat, char, chars, persona, history, msgs, type, commit, ctx }) || []; } catch (e) { console.warn('[프롬프트 조각]', p.owner, e); }
+    let parts: PromptPart[] = []; try { parts = p.fn({ chat, char, chars, persona, history, msgs, type, commit, ctx, call: inCall, callKind, aux }) || []; } catch (e) { console.warn('[프롬프트 조각]', p.owner, e); }
     for (const part of parts) { if (!part?.content) continue; const item = { role: part.role || 'system', content: mx(part.content), src: part.src || p.owner }; if (part.where === 'top') extTop.push(item); else if (part.where === 'before') extBefore.push({ ...item, own: p.owner }); else if (part.where === 'end') tail.push(item); else inject.push({ ...item, depth: part.depth ?? 1, order: part.order ?? 100 }); }
   }
 

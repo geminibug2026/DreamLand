@@ -2,9 +2,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { toast } from '../ui';
 import * as A from './audio';
-import { SOUND_KINDS, customSound, setCustomSound, type SoundKind } from './audio';
+import { AMBIENTS, SOUND_KINDS, customSound, setCustomSound, type SoundKind } from './audio';
 import { Check, Field, Select, useRedraw } from '../addons/parts';
-import { S, chatConns } from '../lib/core';
+import { S, chatConns, emit } from '../lib/core';
 import { go } from '../lib/router';
 import { t, useLang } from '../i18n';
 import { cfg, saveCfg, PROMPT_DEFAULTS, PROMPT_KEYS, type CallCfg } from './cfg';
@@ -55,7 +55,7 @@ function SoundFiles() {
 export function CallStudio() {
   useLang();
   const redraw = useRedraw(), c = cfg();
-  const set = <K extends keyof CallCfg>(k: K, v: CallCfg[K]) => { c[k] = v; saveCfg(); redraw(); };
+  const set = <K extends keyof CallCfg>(k: K, v: CallCfg[K]) => { c[k] = v; saveCfg(); redraw(); if (k === 'auto') emit('call:cfg'); };
   const num = (k: 'daily' | 'gapHours' | 'chance' | 'ringSec' | 'tokens' | 'rawMax' | 'rawTotal', min = 0) => <Num value={c[k]} min={min} onCommit={v => set(k, v)} />;
   const logs = S.chats.flatMap(ch => ((ch as { callLog?: Log[] }).callLog || []).map(l => ({ ...l, chat: ch }))).sort((a, b) => b.at - a.at).slice(0, 40);
   return <div className="call-studio form">
@@ -84,7 +84,7 @@ export function CallStudio() {
       <Check label={tt('call.set.rec')} on={c.rec} onChange={v => set('rec', v)} />
       <Check label={tt('call.set.recAudio')} on={c.recAudio} onChange={v => set('recAudio', v)} />
       <Check label={tt('call.set.tones')} on={c.tones} onChange={v => set('tones', v)} />
-      <Field label={tt('call.set.ambient')}><Select value={c.ambient} opts={(['off', 'auto', 'cafe', 'rain', 'street'] as const).map(k => [k, tt('call.amb.' + k)] as const)} onChange={v => set('ambient', v as CallCfg['ambient'])} /></Field>
+      <Field label={tt('call.set.ambient')} hint={c.ambient === 'auto' ? t('call.amb.autoHint') : undefined}><Select value={c.ambient} opts={[['off', tt('call.amb.off')], ['auto', t('call.amb.pick')], ...AMBIENTS.map(k => [k, t('tts.bed.' + k)] as const)]} onChange={v => set('ambient', v as CallCfg['ambient'])} /></Field>
       {c.ambient !== 'off' ? <Check label={t('call.set.duck')} on={c.duck !== false} onChange={v => set('duck', v)} hint={t('call.set.duckHint')} /> : null}
       <Check label={t('call.more.lineFx')} on={!!c.lineFx} onChange={v => set('lineFx', v)} hint={t('call.more.lineFxHint')} />
       <Field label={t('call.more.size')}><Select value={c.textSize || 'm'} opts={(['s', 'm', 'l'] as const).map(k => [k, t('call.more.size.' + k)] as const)} onChange={v => set('textSize', v as CallCfg['textSize'])} /></Field>
