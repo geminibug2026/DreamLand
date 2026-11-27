@@ -72,10 +72,10 @@ function LineRow({ s, l, i, picked, pick }: { s: C.Session; l: C.Line; i: number
         <div><button type="button" className="btn sm" onClick={() => setEdit(null)}>{tt('call.do.cancel')}</button><button type="button" className="btn sm primary" onClick={save}>{tt('call.do.save')}</button></div></div>
       : <p onClick={() => { if (!waiting) pick(picked ? -1 : i); }}>{waiting ? <span className="call-dots"><i /><i /><i /></span> : l.who === 'c' ? <ReadAlong text={l.text} k={C.lineKey(l)} onJump={jump} /> : l.text}{l.cut ? <em>—</em> : null}</p>}
     {edit == null && trOn && tr ? <p className="call-tr" lang="">{tr}</p> : null}
-    {/* 줄 아래 도구: 얇은 아이콘만 한 줄 — ‹ 몇/몇 › · 다른 답 · 번역 · 다시 듣기 · 고치기 */}
+    {/* 줄 아래 도구: 얇은 아이콘만 한 줄 — 다른 답(맨 왼쪽, 넘기기와 떨어뜨려 잘못 누르지 않게) · ‹ 몇/몇 › · 번역 · 다시 듣기 · 고치기 */}
     {edit == null && !waiting && (picked || (last && idle)) && s.phase === 'connected' ? <div className="call-acts" role="toolbar">
+      {last ? <button type="button" className="call-regen" title={tt('call.do.anotherHint')} aria-label={tt('call.do.another')} disabled={!idle} onClick={() => void C.another()}><Icon name="refresh" size={15} /></button> : null}
       {alts ? <><button type="button" title={tt('call.do.prevAlt')} aria-label={tt('call.do.prevAlt')} disabled={!idle} onClick={() => C.swipe(-1)}><Icon name="left" size={15} /></button><span className="call-alt-n">{`${(l.alt ?? 0) + 1}/${alts.length}`}</span><button type="button" title={tt('call.do.nextAlt')} aria-label={tt('call.do.nextAlt')} disabled={!idle} onClick={() => C.swipe(1)}><Icon name="right" size={15} /></button></> : null}
-      {last ? <button type="button" title={tt('call.do.anotherHint')} aria-label={tt('call.do.another')} disabled={!idle} onClick={() => void C.another()}><Icon name="refresh" size={15} /></button> : null}
       {l.who === 'c' && l.text ? <button type="button" className={trOn && tr ? 'on' : trBusy ? 'busy' : undefined} title={t('call.do.translate')} aria-label={t('call.do.translate')} aria-pressed={trOn && !!tr} disabled={trBusy} onClick={() => void translate()}><Icon name="lang" size={15} /></button> : null}
       {picked && l.who === 'c' && s.speaker ? <button type="button" title={tt('call.do.replay')} aria-label={tt('call.do.replay')} onClick={() => C.replay(i)}><Icon name="volume" size={15} /></button> : null}
       <button type="button" title={tt('call.do.edit')} aria-label={tt('call.do.edit')} disabled={!idle && last} onClick={() => setEdit(l.text)}><Icon name="edit" size={15} /></button>

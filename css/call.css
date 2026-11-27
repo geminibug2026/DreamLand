@@ -132,6 +132,7 @@
 .call-acts button.busy { animation: call-tr-busy 1s ease-in-out infinite; } @keyframes call-tr-busy { 50% { opacity: .35; } } @media (prefers-reduced-motion: reduce) { .call-acts button.busy { animation: none; opacity: .5; } }
 .call-acts button:disabled { opacity: .35; cursor: default; }
 .call-alt-n { min-width: 2.4em; text-align: center; color: var(--dim); }
+.call-acts .call-regen { margin-right: 10px; }
 .call-tr { margin: 4px 0 0; padding: 6px 2px 0; border-top: 1px dashed var(--line); font-size: .86em; line-height: 1.5; color: var(--dim); }
 .call-edit { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .call-edit textarea { width: 100%; resize: vertical; font-size: .95em; border-radius: 14px; }
