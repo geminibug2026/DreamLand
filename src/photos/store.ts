@@ -50,10 +50,10 @@ export function takeCommand(chat: Chat, _msgs: Msg[], target: Msg, c: TalkCmd): 
   const sw = target.swipes[target.sw]; if (!sw) return false;
   const list = ((sw.photos as SentPhoto[] | undefined) ||= []);
   if (list.length >= 4) return true;   // 한 답장에 넷까지 (넘치는 것은 버린다)
-  const a = c.args, kind = c.name === 'selfie' ? 'selfie' : kindOf(a.kind), alt = (a.alt || a.caption || '').trim(), outfit = (a.outfit || '').trim();
+  const a = c.args, kind = c.name === 'selfie' ? 'selfie' : kindOf(a.kind), alt = (a.alt || a.caption || '').trim(), outfit = (a.outfit || '').trim(), also = kind === 'shot' ? '' : (a.with || '').trim();
   const shows = (a.shows || a.context || a.prompt || '').trim() || alt || (kind === 'shot' ? 'scenery' : 'smile');
   const lines = msgText(target).split('\n').filter(l => l.trim()).length;
-  const p: SentPhoto = { id: uid(), kind, shows: shows.slice(0, 600), ...(alt ? { alt: alt.slice(0, 200) } : {}), ...(outfit ? { outfit: outfit.slice(0, 200) } : {}), at: Math.min(lines, c.at ?? lines), ...(c.after ? { after: c.after.slice(0, 200) } : {}), by: target.charId, ts: now() };
+  const p: SentPhoto = { id: uid(), kind, shows: shows.slice(0, 600), ...(alt ? { alt: alt.slice(0, 200) } : {}), ...(outfit ? { outfit: outfit.slice(0, 200) } : {}), ...(also ? { with: also.slice(0, 120) } : {}), at: Math.min(lines, c.at ?? lines), ...(c.after ? { after: c.after.slice(0, 200) } : {}), by: target.charId, ts: now() };
   list.push(p);
   if (Illust.cfg().automatic === 'generate') drawSent(chat, target, p, true);   // 바로 그리기: 지금 그린다. 초안만 · 끄기: 사진 카드로 두고 누를 때 그린다
   changed(); return true;

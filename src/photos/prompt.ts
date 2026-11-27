@@ -13,7 +13,9 @@ export const PHOTO_PROMPT = `<photos>
 - kind: selfie (front camera at arm's length, {{char}} in frame), mirror ({{char}} photographing their reflection, phone visible) or shot (back camera on what {{char}} wants to show; {{char}} out of frame, at most a hand).
 - shows: what is in the frame, in short English tags or phrases: expression and pose for a selfie or mirror, the thing itself for a shot, then place, time and light. A shot with nobody in it begins with "no humans". No names.
 - alt: the same in a few words, in the language of the chat.
+- with (optional, selfie or mirror only): who else is in the photo with {{char}}, by name (e.g. "{{user}}"), only when they really are together right now. Leave it out for a solo photo.
 - outfit (optional): English tags, only when {{char}} is dressed differently from usual.
+A selfie is what an arm's-length front camera sees: faces and shoulders fill the frame and everyone in it looks into the lens. In shows for a selfie or mirror, write expressions, clothes and the background, not what people do to each other.
 Send one only when a person really would: {{user}} asks for a picture or a selfie; {{char}} wants to show something ("look at this"), where they are, what they are eating or just bought; a mirror selfie before going out. Not to illustrate a mood, and not when {{char}} would only talk about it. Most replies have none; at most one per reply unless {{user}} asks for more.
 The command line is not a message: the app replaces it with the photo. Do not also narrate taking or sending it in *asterisks*.
 </photos>`;
@@ -23,7 +25,7 @@ export const hideCommands = (text: string) => /\[(?:photo|selfie)/i.test(text) ?
 /** 따옴표 안에 넣을 값 (큰따옴표는 작은따옴표로, 줄바꿈은 빈칸으로) */
 const q = (s: unknown) => String(s ?? '').replace(/["“”]/g, "'").replace(/\s+/g, ' ').trim();
 /** 기록에 다시 싣는 보낸 사진: 모델이 썼던 명령 그대로 (다음 답이 방금 보낸 사진을 안다) */
-export const historyLine = (p: SentPhoto) => `[photo: kind="${p.kind}", shows="${q(p.shows)}"${p.alt ? `, alt="${q(p.alt)}"` : ''}${p.outfit ? `, outfit="${q(p.outfit)}"` : ''}]`;
+export const historyLine = (p: SentPhoto) => `[photo: kind="${p.kind}"${p.with ? `, with="${q(p.with)}"` : ''}, shows="${q(p.shows)}"${p.alt ? `, alt="${q(p.alt)}"` : ''}${p.outfit ? `, outfit="${q(p.outfit)}"` : ''}]`;
 /** 기록 글의 at 번째 줄 뒤마다 그 사진 줄을 넣는다 */
 export function withPhotoLines(text: string, photos: SentPhoto[]): string {
   if (!photos.length) return text;
@@ -38,22 +40,37 @@ export const kindOf = (v: unknown): PhotoKind => { const k = String(v ?? '').toL
 
 // ── 그림 프롬프트 ──
 /** 사진 한 장 → 삽화 엔진에 넘길 장면 (장면 삽화와 같은 길로 그린다: 저장된 생김새 · 그림체 프리셋 · 대기열) */
-export interface PhotoScene { title: string; camera: string; prompt: string; negative: string; size: string; characters: { name: string; action: string; outfit?: string }[] }
-export function photoScene(chat: IChat | null | undefined, p: { kind: PhotoKind; shows: string; outfit?: string; by?: string }, c: IllustCfg = Illust.cfg()): PhotoScene {
-  const prose = c.backend === 'openai' || c.backend === 'gemini', v5 = c.backend === 'nai' && MODELS[c.model]?.family === 5;
+export interface PhotoScene { title: string; camera: string; prompt: string; negative: string; size: string; characters: { name: string; action: string; outfit?: string; x?: number; y?: number }[] }
+export function photoScene(chat: IChat | null | undefined, p: { kind: PhotoKind; shows: string; outfit?: string; by?: string; with?: string }, c: IllustCfg = Illust.cfg()): PhotoScene {
+  const prose = c.backend === 'openai' || c.backend === 'gemini', fam = c.backend === 'nai' ? MODELS[c.model]?.family || 0 : 0, v5 = fam === 5;
   const who = p.by ? S.get('chars', p.by) as { name?: string } | undefined : undefined, name = who?.name || '';
-  // 인원수 태그는 저장된 생김새의 girl · boy · other 에서 (글을 보고 짐작하지 않는다)
-  const lib = chat ? Illust.library(chat) : [], person = lib.find(x => (p.by && x.id === p.by) || (!!name && x.name === name)), [sex] = leadingKind(person?.appearance || '');
-  const count = sex ? `1${sex}, solo` : 'solo', shows = q(p.shows), outfit = q(p.outfit), me = name ? [{ name, action: '', ...(outfit ? { outfit } : {}) }] : [];
-  const scene = (camera: string, prompt: string[], action = '') => ({ title: '', camera, prompt: prompt.filter(Boolean).join(', '), negative: '', size: 'portrait', characters: action ? me.map(x => ({ ...x, action })) : [] });
+  const lib = chat ? Illust.library(chat) : [], person = lib.find(x => (p.by && x.id === p.by) || (!!name && x.name === name));
+  // 함께 찍힌 사람: 모델이 with 에 쓴 이름을 저장된 인물(나 · 대화 속 캐릭터)과 맞춘다. {{user}} · 나 · me 는 내 페르소나
+  const others = p.kind === 'shot' ? [] : String(p.with || '').split(/[,，、&]|\band\b|와 |과 /i).map(x => x.trim()).filter(Boolean)
+    .map(n => /^(\{\{user\}\}|user|me|나|저)$/i.test(n) ? lib.find(x => x.player) : lib.find(x => x.name === n || (!!x.name && n.includes(x.name))))
+    .filter((x, i, arr): x is NonNullable<typeof x> => !!x && x !== person && arr.indexOf(x) === i);
+  const inFrame = p.kind === 'shot' ? [] : [person, ...others].filter((x): x is NonNullable<typeof x> => !!x);
+  // 인원수 태그는 저장된 생김새의 girl · boy · other 에서 (글을 보고 짐작하지 않는다). 둘 이상이면 solo 를 빼고 2boys · 1boy, 1girl 처럼
+  const tally: Record<string, number> = {}; for (const x of inFrame) { const [k] = leadingKind(x.appearance || ''); if (k) tally[k] = (tally[k] || 0) + 1; }
+  const n = inFrame.length || 1, count = Object.keys(tally).length ? Object.entries(tally).map(([k, v]) => `${v}${k}${v > 1 ? 's' : ''}`).join(', ') + (n === 1 ? ', solo' : '') : n === 1 ? 'solo' : '';
+  const shows = q(p.shows), outfit = q(p.outfit);
+  // 화면 자리: 혼자면 가운데, 여럿이면 찍는 사람부터 왼쪽에서 오른쪽으로 나란히 (같은 자리에 겹쳐 그리지 않게)
+  const spot = (i: number) => ({ x: n === 1 ? 0.5 : Math.round((0.3 + 0.4 * i / (n - 1)) * 100) / 100, y: 0.45 });
+  const cast = (action: string, rest = 'looking at viewer') => (name ? [{ name, action, ...(outfit ? { outfit } : {}), ...spot(0) }] : []).concat(others.filter(x => x.name).map((x, i) => ({ name: x.name as string, action: rest, ...spot(i + (name ? 1 : 0)) })));
+  const scene = (camera: string, prompt: string[], people: PhotoScene['characters'] = [], negative = '') => ({ title: '', camera, prompt: prompt.filter(Boolean).join(', '), negative, size: 'portrait', characters: people });
+  // 사진 틀(셀카 · 거울)은 무엇이 찍혔는지(shows)보다 앞에 두고 살짝 무게를 준다 — 장면 묘사에 밀려 보통 그림처럼 나오지 않게
+  const lead = (tags: string) => fam >= 4 ? `1.25::${tags}::` : fam === 3 ? `{${tags}}` : c.backend === 'a1111' ? tags.split(', ').map(x => `(${x}:1.2)`).join(', ') : tags;
+  const away = 'looking at another, looking away, from side, from behind';   // 셀카에서 서로 보거나 옆 · 뒤 모습이 되지 않게
   if (prose) {
-    if (p.kind === 'selfie') return scene("casual smartphone selfie, front camera held at arm's length slightly above eye level, upper body, looking into the lens", [shows, 'natural snapshot lighting'], "holding the phone out at arm's length, looking into the lens");
-    if (p.kind === 'mirror') return scene('mirror selfie, the person photographs their reflection in a mirror with a smartphone, the phone clearly visible in the reflection, full body', [shows, 'natural snapshot lighting'], 'holding the smartphone up toward the mirror');
+    const also = others.length ? ` together with ${others.map(x => x.name).join(' and ')}, everyone squeezed into the frame` : '';
+    if (p.kind === 'selfie') return scene(`casual smartphone selfie${also}, front camera held at arm's length slightly above eye level, faces and shoulders fill the frame, everyone looking into the lens`, [shows, 'natural snapshot lighting'], cast("holding the phone out at arm's length, looking into the lens", 'looking into the lens'));
+    if (p.kind === 'mirror') return scene(`mirror selfie${also}, the person photographs their reflection in a mirror with a smartphone, the phone clearly visible in the reflection, full body`, [shows, 'natural snapshot lighting'], cast('holding the smartphone up toward the mirror', 'standing beside them in the reflection'));
     return scene('casual smartphone photo, first-person view of what the photographer is showing, the photographer out of frame except perhaps a hand', [shows, 'natural snapshot lighting']);
   }
   // 태그를 읽는 모델 (NovelAI · Stable Diffusion). V5 는 짧은 문장 하나를 더 읽는다
-  if (p.kind === 'selfie') return scene('from above, upper body', [count, 'selfie', shows, 'casual snapshot', v5 ? "A casual phone selfie taken at arm's length from slightly above." : ''], 'holding phone, outstretched arm, looking at viewer');
-  if (p.kind === 'mirror') return scene('straight-on, full body', [count, 'mirror selfie, mirror, reflection, holding phone, smartphone', shows, 'casual snapshot', v5 ? 'A mirror selfie: the phone is visible in the reflection.' : ''], 'holding smartphone, looking at viewer');
+  if (p.kind === 'selfie') return scene('upper body', [count, lead('selfie, holding phone, reaching towards viewer'), 'foreshortening', others.length ? 'faces close together' : '', shows, 'casual snapshot',
+    v5 ? `A casual phone selfie taken at arm's length${others.length ? ', everyone squeezed into the frame' : ''}; ${n > 1 ? 'everyone looks' : 'looking'} straight into the front camera.` : ''], cast('holding phone, outstretched arm, looking at viewer'), away);
+  if (p.kind === 'mirror') return scene('straight-on, full body', [count, lead('mirror selfie, reflection, holding phone'), 'mirror, smartphone', shows, 'casual snapshot', v5 ? 'A mirror selfie: the phone is visible in the reflection.' : ''], cast('holding smartphone, looking at phone screen', 'standing close, looking at mirror'), 'looking at another');
   return scene('', [shows, 'casual snapshot', v5 ? 'A casual phone photo of what the photographer wants to show; the photographer stays out of frame.' : '']);
 }
 

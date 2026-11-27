@@ -11,6 +11,7 @@ export interface SentPhoto {
   id: string; kind: PhotoKind;
   /** 그림 엔진에 보낼 영어 설명 (프레임에 든 것 · 장소 · 빛) */ shows: string;
   /** 대화 언어로 쓴 짧은 설명 (그리기 전 카드 · 대체 글) */ alt?: string;
+  /** 셀카 · 거울 셀카에 함께 찍힌 사람 (모델이 쓴 이름 그대로, 쉼표로) */ with?: string;
   /** 평소와 다른 옷 (영어 태그) */ outfit?: string;
   /** 그 앞에 있는 글 줄 수 (0 = 맨 앞) · 바로 앞 줄 — 보낸 자리 */ at: number; after?: string;
   /** 찍은 사람 (캐릭터 id) */ by?: string;
@@ -18,7 +19,7 @@ export interface SentPhoto {
   ts: number;
 }
 /** 앨범에만 있는 사진: 앨범 채우기가 대화를 보고 쓴 설명 (대화에 보낸 적은 없다) — chat.photoAlbum */
-export interface AlbumPhoto { id: string; kind: PhotoKind; shows: string; alt?: string; outfit?: string; by?: string; /** 그린 그림 (에셋 id) */ image?: string; ts: number }
+export interface AlbumPhoto { id: string; kind: PhotoKind; shows: string; alt?: string; outfit?: string; with?: string; by?: string; /** 그린 그림 (에셋 id) */ image?: string; ts: number }
 
 export type PhotoSource = 'sent' | 'album' | 'feed';
 /** text: 글로만 있다 · queued: 그릴 차례를 기다린다 · drawing: 그리는 중 · done: 그림이 있다 · failed: 그리다 실패했다 */
