@@ -325,12 +325,13 @@ const fill = (t: string, map: Record<string, unknown>) => Object.entries(map).re
 interface Piece { where: 'end' | 'depth'; depth?: number; order?: number; src: string; content: string }
 /** 장면 중에 내가 아무것도 적지 않고 보냈을 때: 방금 쓴 대목을 다시 쓰지 말고 그다음 순간으로 잇게 한다 */
 export const SCENE_GO_ON = `{{user}} sent nothing this turn — they are simply waiting to see what happens next. Pick up at the exact moment the last reply ended and move forward from there. Do not re-enter, re-arrive or re-describe anything already written above, and do not repeat lines that were already said; the next thing happens now. {{user}} stays where they are and does not speak unless the scene truly cannot go on without them.`;
-interface PromptInfo { chat: LiveChat; char?: LiveChar; chars?: LiveChar[]; ctx?: { char?: string; user?: string }; type?: string; msgs?: { role: string; hidden?: boolean }[] }
+interface PromptInfo { chat: LiveChat; char?: LiveChar; chars?: LiveChar[]; ctx?: { char?: string; user?: string }; type?: string; msgs?: { role: string; hidden?: boolean }[]; call?: boolean }
 /** 옛 X.prompt 에 거는 함수 (밖에서 시험할 수 있게 이름을 붙여 둔다) */
-const promptFn = ({ chat, char, chars = [], ctx, type, msgs = [] }: PromptInfo): Piece[] => {
+const promptFn = ({ chat, char, chars = [], ctx, type, msgs = [], call = false }: PromptInfo): Piece[] => {
   const M = SS().settings.modes || {}, T = SS().settings.tracker || {}, out: Piece[] = [];
   const mx = (t: string) => String(t).replace(/\{\{char\}\}/g, ctx?.char || 'the character').replace(/\{\{user\}\}/g, ctx?.user || 'the user');
-  const talk = chat.mode === 'talk', scene = chat.scene?.on && (talk || chat.sceneLive);   // 장면 안내는 대화 모드에서 연 장면에만 (RP 로 바꿔 보는 동안에는 싣지 않는다)
+  // 장면 안내는 대화 모드에서 연 장면에만 (RP 로 바꿔 보는 동안에는 싣지 않는다). 통화 중에는 장면을 열어 두었어도 싣지 않는다 — 통화는 말만 하는 자리다
+  const talk = chat.mode === 'talk', scene = chat.scene?.on && (talk || chat.sceneLive) && !call;
   if (type === 'impersonate') return out;
   if (scene) {
     out.push({ where: 'end', src: '장면 안내', content: mx(get('modes.sceneRules', SCENE_RULES)).replace('{{title}}', chat.scene!.title || 'untitled').replace('{{place}}', chat.scene!.place ? ` at ${chat.scene!.place}` : '') });
@@ -351,7 +352,7 @@ const promptFn = ({ chat, char, chars = [], ctx, type, msgs = [] }: PromptInfo):
     if (u.status !== 'online' || act) lines.push(fill(mx(get('modes.pUserStatus', USER_STATUS)), { status: USER_ST_EN[u.status] + (act && u.status !== 'hidden' ? ` — ${act}` : '') }));
     if (lines.length) out.push({ where: 'end', src: '오늘 일정 · 상태', content: lines.join('\n') });
     const cmds = [M.scenes !== false && get('modes.sceneOffer', SCENE_OFFER), M.later !== false && get('modes.laterOffer', LATER_OFFER)].filter(Boolean);
-    if (cmds.length) out.push({ where: 'end', src: '장면 · 약속 명령', content: mx(`<more_commands>\nThese work like the other commands: on their own line, removed before {{user}} sees the message.\n${cmds.join('\n')}\n</more_commands>`) });
+    if (cmds.length && !call) out.push({ where: 'end', src: '장면 · 약속 명령', content: mx(`<more_commands>\nThese work like the other commands: on their own line, removed before {{user}} sees the message.\n${cmds.join('\n')}\n</more_commands>`) });
   }
   // 이 생성에만 붙는 사정
   const p = Live.pending;

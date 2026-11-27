@@ -712,7 +712,7 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
   const late: PromptMsg[] = [];
   for (const p of X.prompt) {
     if (p.owner === 'mode' || p.owner === 'illust') continue;
-    let parts: PromptPart[] = []; try { parts = p.fn({ chat, char, chars, persona, history, msgs, type, commit, ctx }) || []; } catch (e) { console.warn('[프롬프트 조각]', p.owner, e); }
+    let parts: PromptPart[] = []; try { parts = p.fn({ chat, char, chars, persona, history, msgs, type, commit, ctx, call: inCall }) || []; } catch (e) { console.warn('[프롬프트 조각]', p.owner, e); }
     for (const part of parts) if (part?.content) (part.where === 'top' ? before : part.where === 'before' ? before : late).push({ role: 'system', content: mx(part.content), src: part.src || p.owner });   // 기능이 덧붙이는 조각도 {{user}} · {{char}} 같은 매크로를 푼다
   }
   if (chat.note?.text && noteDue(chat, msgs)) late.push({ role: 'system', content: mx(chat.note.text), src: '작가 노트' });
