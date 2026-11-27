@@ -52,6 +52,7 @@ export const Top = memo(function Top() {
     <Status /><Gauge />
     {u ? <button type="button" className={`me-btn top-wide is-${u.status}`} title={u.auto ? t('chat.top.meAuto', { status: u.label }) : t('chat.top.me', { status: u.label })} onClick={e => menu(e.currentTarget, meItems())}><i /><span>{t('chat.top.meShort')}</span></button> : null}
     <div className="mode-switch top-wide" title={t('chat.top.modeSwitch')}>{([['rp', 'RP'], ['talk', t('chat.side.talk')]] as const).map(([k, l]) => <button key={k} className={modeOf(c) === k && !gaming ? 'on' : undefined} onClick={() => void setMode(k)}>{l}</button>)}<button className={gaming ? 'on' : undefined} onClick={() => { if (cur.busy) return toast(t('chat.top.busyMode')); emit('game:enter', c); }}>{t('game.mode')}</button></div>
+    {talk ? <button type="button" className="ibtn top-phone" title={t('phone.open')} aria-label={t('phone.open')} onPointerDown={() => emit('phone:warm')} onClick={() => emit('phone:open', c)}><Icon name="device" /></button> : null}
     {talk ? <IconBtn ic="phone" title={t('call.btn')} cls="top-call" onClick={() => emit('call:dial', c)} /> : null}
     <IconBtn ic="book" title={t('chat.top.diary')} cls="top-wide" onClick={() => emit('diary:open', c)} />
     <IconBtn ic="search" title={t('chat.top.find')} cls="top-wide" onClick={findInChat} />

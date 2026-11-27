@@ -1,0 +1,1 @@
+import{n as e}from"./ui-BH4-C6X4.js";var t={name:`atlas`,Component:e};export{t as page};

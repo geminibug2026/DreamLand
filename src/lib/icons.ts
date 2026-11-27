@@ -20,6 +20,7 @@ export const I: Record<string, string> = {
   image: 'M4 4h16v16H4zM4 16l5-5 4 4 3-3 4 4M9 9h.01', clip: 'M20 11.5l-8.2 8.2a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8', note: 'M5 3h10l4 4v14H5zM14 3v5h5M8 13h8M8 17h5', heart: 'M12 20s-7-4.5-9-9a5 5 0 0 1 9-3 5 5 0 0 1 9 3c-2 4.5-9 9-9 9z',
   // 읽어 주기 · 전화: 멈춤 · 앞뒤 문장 · 글자 크기 · 소리 결
   pause: 'M8 5v14M16 5v14', skipBack: 'M6 5v14M19 5l-9 7 9 7z', skipFwd: 'M18 5v14M5 5l9 7-9 7z', textSize: 'M3 19l5-13 5 13M5 14h6M14 19l3.5-8 3.5 8M15.3 16h4.4', wave: 'M3 12h2M7 8v8M11 5v14M15 9v6M19 11v2',
+  device: 'M8 2.5h8a2 2 0 0 1 2 2v15a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2zM10.5 5h3M11 18.5h2',
 };
 export const icon = (name: string, size = 18) => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 24 24'); s.setAttribute('width', String(size)); s.setAttribute('height', String(size)); s.classList.add('ic'); s.innerHTML = `<path d="${I[name] || I.sparkle}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`; return s; };
 export const btn = (label?: string | null, { ic, cls = '', onclick, title, type }: { ic?: string; cls?: string; onclick?: (e: MouseEvent) => unknown; title?: string; type?: string } = {}) => h<HTMLButtonElement>(`button.btn${cls ? '.' + cls.split(' ').join('.') : ''}`, { onclick, title: title || (label ? null : ''), type: type || 'button' }, ic && icon(ic), label && h('span', label));

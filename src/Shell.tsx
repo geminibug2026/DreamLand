@@ -11,7 +11,8 @@ import { t, useLang } from './i18n';
 
 function MoreGrid({ close }: { close: () => void }) {
   return <>{navItems().filter(n => !n[3]).map(([page, label, ic]) =>
-    <button key={page} onClick={() => { close(); go(page); }}><Icon name={ic} size={24} />{label}</button>)}</>;
+    <button key={page} onClick={() => { close(); go(page); }}><Icon name={ic} size={24} />{label}</button>)}
+    <button onPointerDown={() => emit('phone:warm')} onClick={() => { close(); emit('phone:open'); }}><Icon name="device" size={24} />{t('phone.open')}</button></>;
 }
 function moreSheet() {
   const m = openModal({ title: t('common.more'), body: <div className="more-grid"><MoreGrid close={() => m.close()} /></div> });
@@ -30,6 +31,7 @@ export function Rail() {
     <div className="rail-foot">
       <button title={t('shell.palette')} onClick={openPalette}><Icon name="search" size={19} /></button>
       <button title={t('guide.entry.rail')} aria-label={t('guide.entry.rail')} data-gd="open" onClick={() => emit('guide:toggle')}><Icon name="guide" size={19} /></button>
+      <button title={t('phone.open')} aria-label={t('phone.open')} onPointerDown={() => emit('phone:warm')} onClick={() => emit('phone:open')}><Icon name="device" size={19} /></button>
       <button title={t('nav.themes')} onClick={() => go('themes')}><Icon name="heart" size={19} /></button>
       <button title={t('shell.moreMenu')} onClick={e => menu(e.currentTarget, rest.map(([p, label, ic]) => ({ label, ic, onclick: () => go(p) })))}><Icon name="menu" size={19} /></button>
     </div>

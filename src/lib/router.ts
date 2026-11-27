@@ -24,7 +24,10 @@ export function go(page: string, arg?: unknown, fromHistory?: boolean) {
 }
 export const refresh = () => go(route.page, route.arg);
 
+/** 뒤로 가기를 먼저 받아 보는 겹 (화면 위에 뜬 휴대폰 등). true 를 돌려주면 그 겹이 처리한 것 — 창을 닫거나 화면을 다시 그리지 않는다 */
+export const backFirst = new Set<() => boolean>();
 addEventListener('popstate', e => {
+  for (const f of backFirst) if (f()) return;
   const st = e.state as { dl?: number; page: string; arg?: unknown } | null; if (st?.dl !== 1) return;
   // 창의 닫기(X) 단추: src/ui/Modal.tsx 의 .modal-x (언어와 상관없이). title="닫기" 는 옛 창을 위한 예비
   for (const m of document.querySelectorAll('.modal-wrap')) { const x = m.querySelector<HTMLElement>('.modal-head .modal-x, button[title="닫기"]'); if (x) x.click(); else m.remove(); }
