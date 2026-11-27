@@ -1,5 +1,6 @@
 // 삽화 한 자리에서 여는 것들: 크게 보기 · 생성 기록 · 버전 비교 · AI 검수 · 더 보기 메뉴 · 장면 수정
 import { useState } from 'react';
+import { sceneLabel } from './tagrules';
 import type { MenuItem } from '../ui';
 import { Btn, Fld, Sel, Seg, openModal } from './parts';
 import { CAMERA_TAGS, orientations, hasCameraTag, sizeFor, toggleCameraTag } from './framing';
@@ -81,7 +82,8 @@ export function slotMenu(m: Msg, sw: Swipe, it: Slot): MenuItem[] {
 export function slotViewer(m: Msg, sw: Swipe, it: Slot) {
   const S0 = Illust.slot(it);
   const item = (src: string): ViewItem => { const v: Partial<Version> = it.versions[it.sel] || {};
-    return { title: withPreset(it.title || t('scenebook.illust'), v.preset), src, original: () => Illust.dataOf(it.id), sub: [S0.versions.length > 1 ? t('scenebook.view.version', { n: it.sel + 1, total: S0.versions.length }) : '', configLine(v.config), v.seed != null ? `Seed ${v.seed}` : ''].filter(Boolean).join(' · '),
+    return { title: withPreset(sceneLabel(it), v.preset),   // 제목은 직접 붙였을 때만 (자리표시 「삽화」 · 「장면 1」은 안 보인다)
+      src, original: () => Illust.dataOf(it.id), sub: [S0.versions.length > 1 ? t('scenebook.view.version', { n: it.sel + 1, total: S0.versions.length }) : '', configLine(v.config), v.seed != null ? `Seed ${v.seed}` : ''].filter(Boolean).join(' · '),
       actions: [{ label: t('scenebook.slot.edit'), ic: 'edit', run: () => quickEdit(m, it) }, { label: t('scenebook.regen'), ic: 'refresh', run: () => regen(m, it, -1) }],
       more: slotMenu(m, sw, it).filter((a): a is Item => !!a && a !== '-' && a.label !== t('scenebook.slot.saveImage')) }; };   // 삭제는 더 보기 안에 둔다
   // 넘기면 같은 자리를 다시 그린 그림(버전)으로 바뀌고, 대화의 그림도 그 버전이 된다
@@ -92,7 +94,7 @@ export function slotViewer(m: Msg, sw: Swipe, it: Slot) {
   } });
 }
 /** 큰 그림 제목: 삽화 이름 · 그릴 때 쓴 프리셋 */
-export const withPreset = (title: string, preset?: string) => preset ? `${title} · ${preset}` : title;
+export const withPreset = (title: string, preset?: string) => [title, preset].filter(Boolean).join(' · ');
 
 /** 장면 수정 창의 안쪽. hold.read 로 지금 적힌 내용을, hold.size 로 고른 화면 비율을 창 아래 단추가 읽는다 */
 function QuickEdit({ m, chat, start, hold, check, used }: { m: Msg; chat: Chat; start: Scene; hold: { read: () => Scene; size: string; preset: string }; check: () => void; used?: string }) {

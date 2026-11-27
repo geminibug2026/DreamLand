@@ -23,7 +23,7 @@ type Hub = ReturnType<typeof hub>;
 function Title({ h }: { h: Hub }) { const [, re] = useState(0); useEffect(() => h.sub(() => re(n => n + 1)), [h]); return <>{h.get()}</>; }
 
 export function viewer(first: ViewItem, nav?: ViewNav | null) {
-  const h = hub(first.title || t('scenebook.illust'));
+  const h = hub(first.title || '');   // 제목이 없으면 비워 둔다
   return openModal({ title: <Title h={h} />, wide: true, cls: 'sb-viewer' }, box => <Viewer box={box} first={first} nav={nav && nav.count > 1 ? nav : null} h={h} />);
 }
 
@@ -63,7 +63,7 @@ function Viewer({ box, first, nav, h }: { box: Box; first: ViewItem; nav: ViewNa
         const n = ((at + d * k) % nav.count + nav.count) % nav.count, next = await nav.load(n);
         if (my !== seq.current) return;
         if (!next) continue;
-        z.current = { s: 1, x: 0, y: 0, swipe: 0 }; setAt(n); setItem(next); h.set(next.title || t('scenebook.illust')); return;
+        z.current = { s: 1, x: 0, y: 0, swipe: 0 }; setAt(n); setItem(next); h.set(next.title || ''); return;
       }
       toast(t('scenebook.view.none'));
     } catch (e) { toast(errText(e), 'err'); } finally { busy.current = false; }
@@ -145,7 +145,7 @@ function Viewer({ box, first, nav, h }: { box: Box; first: ViewItem; nav: ViewNa
   const dbl = (e: RMouseEvent<HTMLDivElement>) => { if (g.current.type && g.current.type !== 'mouse') return; const [px, py] = local(e.clientX, e.clientY); if (z.current.s > 1.001) reset(); else zoomTo(2.5, px, py); };
 
   const run = (a: ViewAction) => async () => { box.close(); try { await (a.run || a.onclick)?.(); } catch (e) { toast(errText(e), 'err'); } };
-  const title = item.title || t('scenebook.illust');
+  const title = item.title || t('scenebook.illust');   // 그림 설명(alt)에만 쓴다 — 화면 제목은 비어 있을 수 있다
   return <>
     <div className={'sb-viewer-frame' + (zoomed ? ' zoomed' : '')}>
       <div className="sb-viewer-stage" ref={stage} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel} onDoubleClick={dbl}>
