@@ -24,6 +24,7 @@ import * as IL from '../lib/illust';
 import * as C from '../lib/core';
 import { dataToBlob } from '../lib/blobUrl';
 import { blankScene, clone, configLine, cur, errText, guard, lastReply, pickKeys, when } from './util';
+import { PhotosView, TalkTiles } from '../photos/ui';
 import { Illust } from './illust';
 import { locale, t, tn } from '../i18n';
 
@@ -85,6 +86,7 @@ function Workflow({ redraw, toWriter }: { redraw: () => void; toWriter: () => vo
       {call ? <div className="sb-wf-line"><span>{t('scenebook.studio.wf.helperLine', { conn: helperName(), tokens: Illust.analysisTokens(c).toLocaleString() })}</span><button type="button" className="btn" onClick={toWriter}>{t('scenebook.studio.wf.helperEdit')}</button></div>
         : p && now < REPLY_ADVICE ? <div className="sb-wf-line sb-wf-advice"><span>{t('scenebook.studio.wf.replyAdvice', { n, preset: p.name, now: now ? now.toLocaleString() : '-' })}</span><button type="button" className="btn" onClick={setReply}>{t('scenebook.studio.wf.replySet', { n })}</button></div> : null}
     </div> : null}
+    <TalkTiles onChange={redraw} />
     <p className="hint">{help}</p><p className="hint sb-wf-status" role="status">{statusText()}</p>
   </section>;
 }
@@ -429,7 +431,9 @@ function GalleryPage({ reopen, all }: { reopen: () => void; all: Card[] }) {
   const open = guard(async (c: Card) => { const a = await read(c); if (!a) { toast(t('scenebook.studio.gal.gone')); reopen(); return; } const list = [...pics]; viewer(item(a), { count: list.length, index: Math.max(0, list.findIndex(x => x.id === c.id)), load: async i => { const x = await read(list[i]); return x ? item(x) : null; } }); });
   const q = query.trim().toLowerCase(), mine = (a: Card) => !!chat && a.owner === 'chat:' + chat.id, off = scope === 'failed', folders = scope === 'chats', inChat = scope.startsWith('in:') ? scope.slice(3) : '';
   const jobs = off ? [...I.queue()].reverse().filter(j => jobOff()[j.state] && (!q || [j.label, j.scene?.prompt, ...(j.scene?.characters || []).map(x => x.name)].join(' ').toLowerCase().includes(q))) : [];
-  const hidScope = scope === 'hidden', pics = off ? [] : all.filter(a => hidden.has(a.id) === hidScope && (scope !== 'chat' || mine(a)) && (scope !== 'loose' || (mine(a) && !used.has(a.id))) && (!inChat || chatOf(a) === inChat) && (!q || `${a.find || ''} ${chatName(a).toLowerCase()}`.includes(q)));
+  // 사진: 이 대화(또는 게시판)에 보낸 사진 · 앨범 — 그리지 않은 것도 글로 보인다 (src/photos)
+  const photoScope = scope === 'photos' ? (chat?.id || '') : scope === 'feedphotos' ? 'feed' : '';
+  const hidScope = scope === 'hidden', pics = off || photoScope ? [] : all.filter(a => hidden.has(a.id) === hidScope && (scope !== 'chat' || mine(a)) && (scope !== 'loose' || (mine(a) && !used.has(a.id))) && (!inChat || chatOf(a) === inChat) && (!q || `${a.find || ''} ${chatName(a).toLowerCase()}`.includes(q)));
   // 대화별 묶음: 가장 최근에 그린 대화부터, 표지는 그 대화의 가장 새 그림
   const groups = folders ? [...pics.reduce((m, a) => { const k = chatOf(a), g = m.get(k) || { id: k, n: 0, size: 0, top: a }; g.n++; g.size += a.size || 0; if (a.ts > g.top.ts) g.top = a; return m.set(k, g); }, new Map<string, { id: string; n: number; size: number; top: Card }>()).values()].sort((x, y) => y.top.ts - x.top.ts) : [];
   const total = off ? jobs.length : folders ? groups.length : pics.length, bytes = pics.reduce((n, a) => n + (a.size || 0), 0);
@@ -479,12 +483,13 @@ function GalleryPage({ reopen, all }: { reopen: () => void; all: Card[] }) {
   else for (const a of pics.slice(0, limit)) { const k = dayKey(a.ts); if (k !== lastDay) { lastDay = k; body.push(<h4 key={'d' + k} className="sb-gal-day"><span>{dayLabel(a.ts)}</span><small>{t('scenebook.studio.gal.picsN', { n: dayCount.get(k) || 0 })}</small></h4>); } body.push(tile(a)); }
   return <div className="sb-gallery-page">
     <div className="sb-gallery-bar"><input className="inp" type="search" placeholder={t('scenebook.studio.gal.searchPh')} aria-label={t('scenebook.studio.gal.search')} value={query} onChange={e => { setQuery(e.target.value); setLimit(PAGE); }} />
-      <Sel opts={[['all', t('scenebook.studio.gal.all')], ['chats', t('scenebook.studio.gal.byChat')], ...(chat ? [['chat', t('scenebook.studio.gal.thisChat')], ['loose', t('scenebook.studio.gal.loose')]] as [string, string][] : []), ['failed', t('scenebook.studio.gal.unfinished')], ...(hidden.size || hidScope ? [['hidden', t('scenebook.studio.gal.hiddenScope', { n: all.filter(a => hidden.has(a.id)).length })] as [string, string]] : [])]} value={inChat ? 'chats' : scope} onChange={val => { stopPick(); setScope(val); }} />
+      <Sel opts={[['all', t('scenebook.studio.gal.all')], ['chats', t('scenebook.studio.gal.byChat')], ...(chat ? [['chat', t('scenebook.studio.gal.thisChat')], ['loose', t('scenebook.studio.gal.loose')], ['photos', t('photos.scope')]] as [string, string][] : []), ['feedphotos', t('photos.scopeFeed')], ['failed', t('scenebook.studio.gal.unfinished')], ...(hidden.size || hidScope ? [['hidden', t('scenebook.studio.gal.hiddenScope', { n: all.filter(a => hidden.has(a.id)).length })] as [string, string]] : [])]} value={inChat ? 'chats' : scope} onChange={val => { stopPick(); setScope(val); }} />
       <IBtn ic="more" title={t('scenebook.more')} onClick={e => menu(e.currentTarget, [
-        !off && !folders && pics.length ? { label: t('scenebook.studio.gal.pick'), ic: 'check', onclick: () => setPicking(true) } : null,
+        !off && !folders && !photoScope && pics.length ? { label: t('scenebook.studio.gal.pick'), ic: 'check', onclick: () => setPicking(true) } : null,
         { label: t('scenebook.studio.gal.storage'), ic: 'folder', onclick: storage },
         { label: t('scenebook.studio.refresh'), ic: 'refresh', onclick: reopen }, { label: t('scenebook.studio.gal.exportChat'), ic: 'import', onclick: exportChat }])} /></div>
     {inChat ? <div className="sb-gal-crumb"><button type="button" className="btn ghost" onClick={() => { stopPick(); setScope('chats'); }}><Icon name="left" size={15} />{t('scenebook.studio.gal.byChat')}</button><b>{scopeLabel}</b></div> : null}
+    {photoScope ? <PhotosView key={photoScope} chatId={photoScope === 'feed' ? undefined : photoScope} feed={photoScope === 'feed'} query={q} /> : <>
     {picking ? <div className="sb-gal-pickbar" role="status">
       <b>{t('scenebook.studio.gal.picked', { n: sel.size })}{sel.size ? <small>{` · ${sizeText(selBytes)}`}</small> : null}</b>
       <button type="button" className="btn ghost" onClick={() => setSel(allPicked ? new Set() : new Set(pics.map(a => a.id)))}>{allPicked ? t('scenebook.studio.gal.pickNone') : t('scenebook.studio.gal.pickAll', { n: pics.length })}</button>
@@ -494,7 +499,7 @@ function GalleryPage({ reopen, all }: { reopen: () => void; all: Card[] }) {
     <div className={'sb-gallery' + (folders ? ' sb-gal-chats' : '')}>
       {body}
       {!total ? <Empty>{off ? (q ? t('scenebook.studio.gal.noJobMatch') : t('scenebook.studio.gal.noJobs')) : q ? t('scenebook.studio.gal.noMatch') : hidScope ? t('scenebook.studio.gal.noHidden') : t('scenebook.studio.gal.empty')}</Empty> : null}
-      {limit < total ? <div ref={more} className="sb-gal-more"><button type="button" className="btn ghost" onClick={() => setLimit(l => l + PAGE)}>{t('scenebook.studio.gal.loadMore', { n: total - limit })}</button></div> : null}</div>
+      {limit < total ? <div ref={more} className="sb-gal-more"><button type="button" className="btn ghost" onClick={() => setLimit(l => l + PAGE)}>{t('scenebook.studio.gal.loadMore', { n: total - limit })}</button></div> : null}</div></>}
   </div>;
 }
 

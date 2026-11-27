@@ -2,7 +2,9 @@
 // 자료는 kv 한 줄이라 백업 · 자료 폴더에 저절로 들어간다. 글이 500개를 넘으면 오래된 것부터 덜어 낸다.
 import { DB, S, debounce, emit, shrinkImage, uid } from '../lib/core';
 import { quickCall } from '../lib/engine';
-import { Illust, type IChat } from '../lib/illust';
+import type { IChat } from '../lib/illust';
+import { canDraw as canDrawPhoto, failed, queueLoose, tracked } from '../photos/queue';
+import { feedPhoto, photoScene } from '../photos/prompt';
 import { go } from '../lib/router';
 import { startChat } from '../chat/start';
 import { chatApi } from '../chat/actions';
@@ -131,20 +133,20 @@ export function follow(id: string) { flip((F.follows[ME] ||= []), id); save(); }
 export function markSeen() { if (unseen(F)) { F.seenAt = Date.now(); save(); } }
 export async function wipe() { await dropImgs([...imgs.keys()]); const keep = F.accounts; F = { ...emptyState(), accounts: keep }; save(); }
 
-// ── 그림 그리기 ── (삽화 엔진을 빌린다. 그림 한 장 = 삽화 요청 1번)
+// ── 그림 그리기 ── (사진처럼: 삽화 대기열에 넣는다. 그림 한 장 = 삽화 요청 1번)
 /** 삽화가 연결되어 있나: NovelAI 키 · 로컬 SD · 이미지 연결 가운데 지금 고른 것이 채워져 있어야 한다 */
-export function canDraw(): boolean {
-  try { const c = Illust.cfg(); return c.backend === 'nai' ? !!c.naiKey : c.backend === 'a1111' ? !!c.a1111 : !!(c.connId && S.get('conns', c.connId)); } catch { return false; }
-}
-export async function draw(noteId: string) {
+export const canDraw = canDrawPhoto;
+export async function draw(noteId: string, quiet = false) {
   const n = F.notes.find(x => x.id === noteId); if (!n?.imagePrompt || n.image || run.drawing.has(noteId)) return;
-  run.drawing.add(noteId); changed();
+  const key = 'f|' + noteId; run.drawing.add(noteId); failed.delete(key); changed();
   try {
     // 삽화 엔진은 대화 하나를 받는다 — 글쓴이만 있는 빈 방을 건네 그 캐릭터의 생김새 설정이 쓰이게 한다. 그린 뒤 보관 주인을 게시판으로 옮긴다
-    const rec = await Illust.render({ id: OWNER, charIds: n.by === ME ? [] : [n.by] } as IChat, { title: 'board note', prompt: n.imagePrompt, characters: [] }, { ...Illust.genConfig(), width: 1024, height: 1024 });
+    // 그림 설명은 휴대폰 사진으로 그린다: "selfie: …" 처럼 종류가 앞에 있으면 그 종류로, 없으면 보여 주는 사진(찍은 사람 없이)으로 — 예전처럼 글쓴이 없이 그 장면만
+    const room = { id: OWNER, charIds: n.by === ME ? [] : [n.by] } as IChat, p = feedPhoto(n.imagePrompt);
+    const rec = await queueLoose(room, photoScene(room, { ...p, ...(n.by === ME ? {} : { by: n.by }) }) as unknown as Record<string, unknown>, j => { if (j) { tracked.set(key, j); changed(); } });
     await DB.put('assets', { ...rec, owner: OWNER, kind: 'feed' }); imgs.set(rec.id, rec.data); n.image = rec.id; save();
-  } catch (e) { toast(t('feed.err.draw', { err: (e as Error).message || String(e) }), 'err'); }
-  finally { run.drawing.delete(noteId); changed(); }
+  } catch (e) { const err = (e as Error).message || String(e); failed.set(key, err); if (!quiet) toast(t('feed.err.draw', { err }), 'err'); }
+  finally { tracked.delete(key); run.drawing.delete(noteId); changed(); }
 }
 
 // ── 대화에서 온 글 ── ([post: …]) 스와이프마다 따로 기억해, 넘기면 거두고 돌아오면 되살린다

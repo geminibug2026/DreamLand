@@ -79,6 +79,10 @@ function Extras({ m, sw, pending, failed, drafts, hidden, note }: { m: Msg; sw: 
   </>;
 }
 
+/** 다른 묶음이 답변마다 덧붙이는 꾸밈 (src/photos: 메신저로 보낸 사진). 삽화 꾸미기와 같은 때 돈다 */
+export const decorators: ((art: HTMLElement, m: Msg, sw: Swipe) => void)[] = [];
+/** 다른 묶음이 제 자리에서 진행을 보여 주는 작업 (보낸 사진): 답변 아래에 「그리는 중」 · 실패 칸을 따로 두지 않는다 */
+export const ownJobs = new WeakSet<object>();
 let timer = 0;
 // 문단 뒤에 둔 삽화: 대화 화면(React)이 그린 칸은 제자리에 두고 감춘 채, 우리가 만든 칸을 문단 뒤에 놓는다
 // (React 가 관리하는 요소를 옮기면, 그림을 지우거나 바꿀 때 React 가 그 요소를 못 찾아 대화 화면이 깨진다)
@@ -111,6 +115,7 @@ function decorate() {
     }
     for (const fig of art.querySelectorAll<HTMLElement>('figure.illust[data-sb]')) fig.classList.toggle('sb-busy', jobs.some(j => j.slot === fig.dataset.sb && j.sw === sw && (j.state === 'waiting' || j.state === 'running')));
     extras(main, m, sw, jobs);
+    for (const f of decorators) { try { f(art, m, sw); } catch (e) { console.warn('[삽화 꾸밈]', e); } }
   }
 }
 /** 삽화를 둘 문단 요소 (못 찾으면 null — 답변 아래 그대로) */
@@ -127,6 +132,7 @@ function spot(art: HTMLElement, sw: Swipe, it: Slot, c: { placement?: string }):
 function decorateFigure(fig: HTMLElement, art: HTMLElement, m: Msg, sw: Swipe, it: Slot, c: { compact?: boolean; displayWidth?: number; placement?: string }) {
   Illust.slot(it); fig.dataset.sb = it.slotId;
   if (it.hidden) { fig.classList.add('sb-off'); return; }
+  if (it.photo) { fig.classList.add('sb-off'); return; }   // 메신저로 보낸 사진: 액자 없이 보낸 자리에 사진 기능(decorators)이 그린다
   const at = spot(art, sw, it, c), host = at ? make('figure', 'illust sb-inline') : fig;
   if (at) { host.dataset.sb = it.slotId; fig.classList.add('sb-moved'); moved.set(fig, host); origin.set(host, fig); at.after(host); }
   else { fig.classList.remove('sb-moved'); if (fig.querySelector(':scope > .sb-holder')) return; }   // 문단을 못 찾게 되면 제자리 칸이 다시 보인다 (이미 꾸며 두었으면 그대로)
@@ -137,7 +143,7 @@ function decorateFigure(fig: HTMLElement, art: HTMLElement, m: Msg, sw: Swipe, i
   mountNode(holder, <Figure fig={host} m={m} sw={sw} it={it} />);
 }
 function extras(main: HTMLElement, m: Msg, sw: Swipe, jobs: Job[]) {
-  const mine = jobs.filter(j => j.msg === m && j.sw === sw), pending = mine.filter(j => !j.slot && (j.state === 'waiting' || j.state === 'running')), failed = mine.filter(j => (j.state === 'failed' || j.state === 'uncertain') && !j.seen);
+  const mine = jobs.filter(j => j.msg === m && j.sw === sw && !ownJobs.has(j)), pending = mine.filter(j => !j.slot && (j.state === 'waiting' || j.state === 'running')), failed = mine.filter(j => (j.state === 'failed' || j.state === 'uncertain') && !j.seen);
   const drafts = sw.illustDraft || [], hidden = (sw.illust || []).filter(it => it.hidden).length, plan = sw.illustPlan, note = !!plan && (plan.status === 'missing' || plan.status === 'failed') && !plan.seen && !drafts.length && !sw.illust?.length;
   const sig = JSON.stringify([pending.map(j => j.id + j.state), failed.map(j => j.id), drafts.length, drafts.map(d => shownTitle(d.title)), hidden, !!note]);
   const old = main.querySelector<HTMLElement>(':scope > .sb-extras');

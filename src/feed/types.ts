@@ -36,8 +36,9 @@ export interface FeedCfg {
   /** 대화 모드에서 캐릭터가 [post:] 로 글을 올릴 수 있게 */ chatPost: boolean;
   /** 옛 글 회상 개수 · 허락한 대화에서 가져올 줄 수 · 기억 줄 수 */ recall: number; mentionLines: number; memLines: number;
   /** 덧붙일 지침 (비우면 없음) · 글 언어 (비우면 화면 언어) */ guide: string; lang: string;
+  /** 사진 곁들인 글: 글에 붙일 휴대폰 사진의 설명을 종류(셀카 · 거울 셀카 · 사진)와 함께, 드물지 않게 쓰게 한다 (기본 꺼짐 — 지침이 그대로) */ photoPosts: boolean;
 }
-export const FEED_DEFAULTS: FeedCfg = { n: 4, maxTokens: 2400, limit: 280, auto: 0, autoImage: false, carry: true, carryHours: 48, carryMax: 5, carryTokens: 320, chatPost: true, recall: 3, mentionLines: 6, memLines: 3, guide: '', lang: '' };
+export const FEED_DEFAULTS: FeedCfg = { n: 4, maxTokens: 2400, limit: 280, auto: 0, autoImage: false, carry: true, carryHours: 48, carryMax: 5, carryTokens: 320, chatPost: true, recall: 3, mentionLines: 6, memLines: 3, guide: '', lang: '', photoPosts: false };
 /** 대화별 스위치 (chat.feed) */
 export interface ChatFeed { /** 게시판에서 이 대화를 언급해도 됨 (기본 꺼짐) */ mention?: boolean; /** 게시판 활동을 이 대화에 싣기 (정하지 않으면 대화 모드에서만) */ carry?: boolean }
 

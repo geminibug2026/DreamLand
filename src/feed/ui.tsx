@@ -10,6 +10,7 @@ import { ME, type Note, type Notice } from './types';
 import { threadOf, unseen, visible } from './logic';
 import { F, account, cfg, follow, makeProfiles, markSeen, members, myAccount, post, refresh, run, save, setMembers, undo, wipe } from './store';
 import { Acts, Face, Ic, Media, PollView, Row, agoLabel, back, faceOf, noteMenu, picsOf, show, view } from './parts';
+import { FeedPhotosBar } from '../photos/ui';
 
 // ── 글쓰기 ── 내 얼굴 + 자리글, 아래 줄에 그림 · 투표와 글자 수 고리, 오른쪽에 알약 단추
 function Ring({ used, limit }: { used: number; limit: number }) {
@@ -71,6 +72,7 @@ function Home() {
       <div className="fd-inline-write"><Write /></div>
       <button type="button" className={'fd-band' + (run.busy ? ' busy' : '')} disabled={run.busy} onClick={() => void doRefresh()}>{run.busy ? t('feed.refresh.busy') : t('feed.band.new')}<small>{t('feed.cost.one')}</small>{run.busy ? <i className="fd-progress" aria-hidden="true" /> : null}</button>
       {F.last && !run.busy ? <UndoLine /> : null}
+      <FeedPhotosBar />
       {shown.length ? shown.map(n => <Row key={n.id} n={n} fresh={run.fresh.has(n.id)} />) : <Empty title={view.tab === 'following' ? t('feed.empty.followingTitle') : t('feed.empty.allTitle')} line={view.tab === 'following' ? t('feed.empty.following') : t('feed.empty.all')} />}
       {list.length > shown.length ? <button type="button" className="fd-band" onClick={() => { view.shown += 30; bump(x => x + 1); }}>{t('feed.more', { n: list.length - shown.length })}</button> : null}
     </>}
@@ -222,6 +224,7 @@ function openSettings() {
       { k: 'limit', label: t('feed.set.limit'), type: 'num', min: 40, max: 2000, step: 10, half: true },
       { k: 'guide', label: t('feed.set.guide'), type: 'area', rows: 3, ph: t('feed.set.guidePh') },
       { k: 'autoImage', label: t('feed.set.autoImage'), type: 'check', hint: t('feed.set.autoImageHint') },
+      { k: 'photoPosts', label: t('feed.set.photoPosts'), type: 'check', hint: t('feed.set.photoPostsHint') },
       { section: t('feed.set.secCarry') },
       { k: 'carry', label: t('feed.set.carry'), type: 'check', hint: t('feed.set.carryHint') },
       { k: 'carryHours', label: t('feed.set.carryHours'), type: 'num', min: 1, max: 336, third: true },

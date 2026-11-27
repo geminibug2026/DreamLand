@@ -65,7 +65,7 @@ export function illustDialog(m: Msg, preset = '') {
 function Illusts({ m, s }: { m: Msg; s: Swipe }) {
   if (!s.illust?.length) return null;
   const big = (it: IllustItem) => openModal({ title: '', wide: true, body: <div className="col"><img className="full-img" src={Illust.url(it.id) || Illust.data(it.id)} />{sceneLabel(it) && <b>{sceneLabel(it)}</b>}<p className="hint">{[it.camera, it.prompt, ...(it.characters || []).map(x => typeof x === 'string' ? x : `${x.name || ''}: ${[x.outfit, x.action].filter(Boolean).join(', ')}`)].filter(Boolean).join(' · ')}</p></div> });
-  return <div className="illusts">{s.illust.map(it => <figure className="illust" key={it.slotId || it.id}>
+  return <div className="illusts">{s.illust.map(it => <figure className="illust" key={it.slotId || it.id} data-photo={it.photo ? '' : undefined}>
     <IllustPic id={it.id} alt={t('chat.illust.alt')} onClick={() => big(it)} />
     <figcaption>
       <IconBtn ic="refresh" title={t('chat.illust.redraw')} cls="tiny" onClick={() => drawScene(m, { title: it.title, camera: it.camera, prompt: it.prompt, negative: it.negative, characters: it.characters })} />

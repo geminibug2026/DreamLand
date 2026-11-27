@@ -522,14 +522,21 @@ export const presenceOf = (chat: Room, ch: Cast | undefined = charsOf(chat)[0]) 
 const awakeChars = (chat: Room) => { const cs = charsOf(chat), aw = cs.filter(c => !(chat.muted || []).includes(c.id)); return aw.length ? aw : cs; };
 const nameCalled = (text: string, name: string) => { const t = String(text || '').toLowerCase(), n = String(name || '').trim().toLowerCase(), first = n.split(/\s+/)[0]; return !!n && (t.includes(n) || (first.length >= 2 && t.includes(first))); };
 const weighted = <T,>(list: T[], w: (c: T) => number) => { const total = list.reduce((n, c) => n + w(c), 0); let r = Math.random() * total; for (const c of list) { r -= w(c); if (r <= 0) return c; } return list[0]; };
-async function runTalkCommands(chat: Room, msgs: Msg[], target: Msg, cmds: { name: string; args: Record<string, string> }[]) {
+/** 대화 모드 사진 (src/photos 가 건다): take = [photo:] · [selfie:] 명령을 받는다 (받았으면 true) · noScene = 이 답변에는 장면 삽화를 따로 그리지 않는다 (사진 주고받기) */
+export const photoHook: { take: ((chat: Room, msgs: Msg[], target: Msg, cmd: engine.TalkCmd) => boolean) | null; noScene: ((chat: Room, m: Msg) => boolean) | null } = { take: null, noScene: null };
+const noScene = (chat: Room, m: Msg) => { try { return !!photoHook.noScene?.(chat, m); } catch { return false; } };
+async function runTalkCommands(chat: Room, msgs: Msg[], target: Msg, cmds: engine.TalkCmd[]) {
     for (const c of cmds) {
     if (c.name === 'react' && c.args.emoji) { const u = [...msgs].reverse().find(m => m.role === 'user'); if (u) { (u.reactions ||= []).push({ emoji: c.args.emoji, by: target.name }); if (cur.chat === chat) redraw(u); } }
     else if (c.name === 'status') { const st = STATUS[c.args.state || c.args.status] ? (c.args.state || c.args.status) : 'online'; const dur = String(c.args.duration || '').match(/([\d.]+)\s*(m|h)/i); Live.setPresence(chat, S.get('chars', target.charId), { status: st, activity: c.args.activity || '', durMs: dur ? +dur[1] * (dur[2].toLowerCase() === 'h' ? 3600000 : 60000) : 0 }); }
     else if (c.name === 'call') emit('talk:call', { chat, reason: c.args.reason || '', charId: target.charId, lines: msgText(target).split('\n').filter(l => l.trim()).length });   // 전화는 src/call 이 받는다 (말풍선이 다 나온 뒤에 울린다)
     else if (c.name === 'time') { if (chat.clock?.ai) await Clock.move(chat, { set: c.args.set, advance: c.args.advance }); }
     else if (c.name === 'memory' && c.args.summary && S.settings.memory.enabled) await Memory.add(chat.id, { summary: c.args.summary, kind: 'fact', importance: 0.7, entities: [target.name] }).catch(() => { });
-    else if (c.name === 'selfie') { const ch = S.get('chars', target.charId); drawScene(target, { title: '셀카', camera: 'selfie, upper body, looking at viewer', prompt: c.args.context || 'casual selfie', characters: [{ name: ch?.name || target.name, action: 'taking a selfie, ' + (c.args.context || 'smiling') }] }); }
+    else if (c.name === 'selfie' || c.name === 'photo') {   // 사진 기능이 받으면 메신저로 보낸 사진이 되고, 아니면 예전처럼 셀카 장면을 그린다 (자리표시 제목은 붙이지 않는다)
+      let took = false; try { took = !!photoHook.take?.(chat, msgs, target, c); } catch (e) { console.warn('[사진]', e); }
+      const what = c.args.context || c.args.shows || '', ch = S.get('chars', target.charId);
+      if (!took) drawScene(target, { camera: 'selfie, upper body, looking at viewer', prompt: what || 'casual selfie', characters: [{ name: ch?.name || target.name, action: 'taking a selfie, ' + (what || 'smiling') }] }, { chat, msgs });
+    }
   }
 }
 /** 말풍선을 한 줄씩 차례로 보여 준다 (저장은 이미 끝난 상태) */
@@ -817,7 +824,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
       const lv = Live.extract(plan.text); plan.text = lv.text;
       const talked = built.talk ? E.parseTalk(plan.text) : null;
       const final = E.postFormat(E.applyRegex(talked ? talked.text : plan.text, { who: 'ai', target: 'store', charId: target.charId, ctx: built.ctx }));
-      if (final && plan.scenes.length && S.settings.illust.auto) for (const sc of plan.scenes) drawScene(target, sc, { chat, msgs });
+      if (final && plan.scenes.length && S.settings.illust.auto && !noScene(chat, target)) for (const sc of plan.scenes) drawScene(target, sc, { chat, msgs });
       if (!final && !sw.reasoning) {
         if (type === 'normal') { const i = msgs.indexOf(target); if (i >= 0) msgs.splice(i, 1); }
         else if (type === 'regen') { target.swipes.pop(); target.sw = Math.max(0, target.swipes.length - 1); if (cur.chat === chat) rewindState(); else Live.rewind(chat, msgs); }
@@ -859,7 +866,7 @@ async function afterReply(chat: Room, msgs: Msg[]) {
   const st = S.settings, shown = () => cur.chat === chat;
   if (shown()) armAuto();
   const tail = msgs[msgs.length - 1];
-  if (st.illust.auto && tail?.role === 'assistant' && !tail.swipes[tail.sw].illust?.length && (st.illust.mode === 'call') && msgs.filter(m => m.role === 'assistant').length % Math.max(1, st.illust.every || 1) === 0) Illust.analyze(chat, msgs, tail, undefined, { manual: false }).then(sc => sc.slice(0, st.illust.maxScenes || 1).forEach(x => drawScene(tail, x, { chat, msgs }))).catch(e => toast(t('chat.illust.planFail', { err: errMsg(e) }), 'err'));
+  if (st.illust.auto && tail?.role === 'assistant' && !tail.swipes[tail.sw].illust?.length && (st.illust.mode === 'call') && !noScene(chat, tail) && msgs.filter(m => m.role === 'assistant').length % Math.max(1, st.illust.every || 1) === 0) Illust.analyze(chat, msgs, tail, undefined, { manual: false }).then(sc => sc.slice(0, st.illust.maxScenes || 1).forEach(x => drawScene(tail, x, { chat, msgs }))).catch(e => toast(t('chat.illust.planFail', { err: errMsg(e) }), 'err'));
   // 기억 정리는 뒤에서 한다 — 번역 · 상태 갱신 · 선택지가 기록(과 요약 · 검사)이 끝나기를 기다리지 않는다. 실패하면 장부에 남아 나중에 다시 한다
   if (st.memory.enabled && st.memory.auto && tail?.role === 'assistant') { const note = t('chat.status.memorizing'); if (shown()) setStatus(note); void Auditor.recordSoon(chat, msgs, tail).then(() => { if (cur.drawer && cur.chat === chat) drawDrawer(); }, e => toast(t('chat.memory.fail', { err: errMsg(e) }), 'err')).finally(() => { if (cur.status === note) setStatus(''); }); }
   if (st.translate.auto && tail?.role === 'assistant' && !tail.swipes[tail.sw].tr) await translate(tail, { chat, msgs });

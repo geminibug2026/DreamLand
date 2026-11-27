@@ -8,6 +8,7 @@ import { getLang } from '../i18n';
 import type { Char, Chat } from '../lib/types';
 import { ME, type ChatFeed, type FeedCfg, type FeedState, type Note } from './types';
 import { ago, carryItems, pairsFrom, quotaFor, sampleRecall, threadOf, visible, waiting, type Rnd, type Who } from './logic';
+import { FEED_IMAGE_RULE, FEED_PHOTO_RULE } from '../photos/prompt';
 
 // ── 지침 ──
 export const BOARD_PROMPT = `You keep a small fictional bulletin board alive. It is a quiet place where a handful of characters pin short notes for each other, the way people leave slips of paper on a corkboard at night. The characters have lives outside any conversation, and this board is where glimpses of those lives show up.
@@ -56,6 +57,8 @@ Output ONE JSON object and nothing else: {"profiles":[{"name":"<exactly as given
 /** 대화 모드에서 캐릭터에게 알려 주는 [post:] 사용법 */
 export const POST_PROMPT = `{{char}} has an account on the Night Board, a small bulletin board where {{char}} and people they know pin short notes; {{user}} reads it. If, and only if, {{char}} would feel like pinning something right now, add one separate line: [post: the note text]. The note is written for the board, not addressed to {{user}}, in {{char}}'s board voice, at most 200 characters. Most replies have no such line; use it rarely.`;
 
+/** 게시판 지침: 「사진 곁들인 글」을 켜면 그림 줄만 휴대폰 사진 줄로 바꾼다 (꺼져 있으면 그대로) */
+export const boardPrompt = (c: FeedCfg) => c.photoPosts ? BOARD_PROMPT.replace(FEED_IMAGE_RULE, FEED_PHOTO_RULE) : BOARD_PROMPT;
 const LANGS: Record<string, string> = { ko: 'Korean', en: 'English', 'zh-CN': 'Simplified Chinese', ja: 'Japanese' };
 const langLine = (c: FeedCfg) => `Write every note and reply in ${LANGS[c.lang] || c.lang || LANGS[getLang()] || 'the language the members use'} unless a member would clearly write in another language.`;
 
@@ -145,7 +148,7 @@ export async function buildBoard(st: FeedState, cfg: FeedCfg, { now = Date.now()
     const q = mem.filter(m => quota[m.char.id]).map(m => `${m.char.name} ×${quota[m.char.id]}`);
     parts.push(sec('Quota for this batch', [`New notes: ${q.join(', ') || 'none'}. Nobody else pins a new note. Replies, marks, echoes and votes may come from any member.`, `It is now ${new Date(now).toLocaleString('en-GB', { weekday: 'long', hour: '2-digit', minute: '2-digit' })}.`, langLine(cfg), ...(cfg.guide.trim() ? [cfg.guide.trim()] : [])]));
   }
-  return { system: only ? ANSWER_PROMPT : BOARD_PROMPT, user: parts.filter(Boolean).join('\n\n'), refs, who: whoList(st), me: [me.handle, me.name, ME, 'reader', 'the reader', 'user'], quota };
+  return { system: only ? ANSWER_PROMPT : boardPrompt(cfg), user: parts.filter(Boolean).join('\n\n'), refs, who: whoList(st), me: [me.handle, me.name, ME, 'reader', 'the reader', 'user'], quota };
 }
 
 /** 새 계정들의 손잡이 · 소개 · 말투를 한 번에 짓게 할 글 */

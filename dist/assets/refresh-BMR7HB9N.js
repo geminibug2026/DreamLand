@@ -1,1 +1,0 @@
-import{b as e}from"./core-DYTENMzp.js";import{a as t,r as n}from"./router-BEjkeRxr.js";var r=e=>e instanceof Error?e.message:String(e),i=()=>{t.page===`home`?e(`chars`,null):n()};export{i as n,r as t};

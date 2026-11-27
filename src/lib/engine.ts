@@ -660,10 +660,13 @@ export const TALK_LINES_CHECK = 'Before sending, check each line: a plain typed 
 export const TALK_COMMANDS = `<commands>
 Optional. Add one on its own line only when it really applies; most replies need none. They are removed before {{user}} sees your message, so never mention or explain them.
 [react: emoji="😂"] — put one emoji on {{user}}'s last message, with or without a written reply.
-[status: state="online|idle|dnd|offline", activity="what you are doing"] — your availability just changed (falling asleep, class starting, back home).
-[selfie: context="what the photo shows"] — send a photo of yourself, only when asked or when {{char}} clearly would.
+[status: state="online|idle|dnd|offline", activity="what you are doing"] — your availability just changed (falling asleep, class starting, back home).{{photo_command}}
 [memory: summary="one full sentence, with names instead of I or you"] — a lasting fact about {{user}} or a promise between you that is worth keeping. Not for small talk.{{clock_command}}{{call_command}}
 </commands>`;
+/** 명령 안내의 사진 한 줄 (예전과 같은 셀카 명령). 사진 기능(src/photos)이 talkPhotos.line 으로 바꿔 낀다 — 통화 중에는 싣지 않는다 */
+export const TALK_SELFIE_LINE = `\n[selfie: context="what the photo shows"] — send a photo of yourself, only when asked or when {{char}} clearly would.`;
+/** 대화 모드 사진 (src/photos 가 채운다): line = 명령 안내의 사진 줄 · history = 기록에 다시 싣는 보낸 사진 (통화 중에는 부르지 않는다) */
+export const talkPhotos: { line: ((chat: Chat) => string) | null; history: ((m: Msg, text: string, chat: Chat) => string) | null } = { line: null, history: null };
 /** 캐릭터가 직접 전화를 거는 명령 (1:1 대화 모드 · 설정 › 전화에서 끌 수 있다) */
 export const TALK_CALL_COMMAND = `\n[call: reason="why you are calling"] — phone {{user}} right now instead of texting. Only when {{char}} really would call at this moment: {{user}} asked you to call or to pick up, something urgent or emotional that texting cannot carry, or {{char}} simply needs to hear their voice. Not for routine replies. Write your messages first, then put this on the last line.`;
 const hhmm = (t: number) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
@@ -699,6 +702,7 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
     const stamp = clockMode === 'none' ? '' : new Date(t).toDateString() === today ? `[${hhmm(t)}] ` : `[${new Date(t).getMonth() + 1}/${new Date(t).getDate()} ${hhmm(t)}] `;
     let text = applyRegex(msgText(m), { who: m.role === 'user' ? 'user' : 'ai', target: 'prompt', depth, charId: m.charId, ctx });
     if (m.role === 'system') return { role: 'system', content: `[${text}]`, src: 'history' };
+    if (m.role === 'assistant' && !inCall && talkPhotos.history) { try { text = talkPhotos.history(m, text, chat); } catch (e) { console.warn('[사진 기록]', e); } }   // 보낸 사진을 제자리에 다시 적는다 (통화 중에는 싣지 않는다)
     if (m.role === 'assistant' && isGroup) text = text.split('\n').filter(l => l.trim()).map(l => `${m.name || char.name}: ${l}`).join('\n');
     return { role: m.role, content: `${stamp}${text}`, src: 'history', images: m.images?.length ? m.images : undefined };
   });
@@ -727,7 +731,7 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
     type === 'impersonate' && `Write ${ctx.user}'s next text message, in the voice and length their earlier messages show. Output only that message, as plain lines.`,
     type !== 'impersonate' && !inCall && TALK_LINES_CHECK,   // 통화 중에는 말만 한다 (따옴표 · 별표 없이 — 통화 지시문을 따른다)
   ].filter(Boolean).join('\n');
-  const tail: PromptMsg = { role: 'user', src: '지금 상황 · 명령 안내', content: `<context>\n${situation}\n</context>${M.commands === false || type === 'impersonate' ? '' : '\n\n' + mx(TALK_COMMANDS.replace('{{clock_command}}', Clock.command(chat) ? '\n' + Clock.command(chat) : '').replace('{{call_command}}', !inCall && (S.settings as { call?: { aiCall?: boolean } }).call?.aiCall !== false ? TALK_CALL_COMMAND : ''))}` };
+  const tail: PromptMsg = { role: 'user', src: '지금 상황 · 명령 안내', content: `<context>\n${situation}\n</context>${M.commands === false || type === 'impersonate' ? '' : '\n\n' + mx(TALK_COMMANDS.replace('{{clock_command}}', Clock.command(chat) ? '\n' + Clock.command(chat) : '').replace('{{call_command}}', !inCall && (S.settings as { call?: { aiCall?: boolean } }).call?.aiCall !== false ? TALK_CALL_COMMAND : '').replace('{{photo_command}}', inCall ? '' : talkPhotos.line ? talkPhotos.line(chat) : TALK_SELFIE_LINE))}` };
   const fixed = [...before, ...late, tail].reduce((n, m) => n + tokens(m.content) + 4, 0);
   const budget = Math.max(500, (P.contextSize || 128000) - (M.talkTokens || 400) - fixed - (S.settings.format?.tokenPadding || 0));
   let used = 0, start = history.length;
@@ -736,16 +740,26 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
   return { messages: out, total: out.reduce((n, m) => n + tokens(m.content) + 4, 0), lore, dropped: start, ctx, talk: true };
 }
 
-export interface TalkCmd { name: string; args: Record<string, string> }
-/** 대화 모드 답변 정리: 새어 나온 시각·이름을 지우고 명령을 떼어 낸다 */
+/** at · after: 그 명령 앞에 있는 글 줄 수와 바로 앞 줄 (사진을 보낸 자리) */
+export interface TalkCmd { name: string; args: Record<string, string>; at?: number; after?: string }
+const TALK_CMD = 'react|status|schedule_update|selfie|photo|memory|time|call';
+const OWN_CMD = new RegExp(`^[ \\t]*\\[(${TALK_CMD})\\s*:?\\s*([^\\]\\n]*)\\][ \\t]*$`, 'i'), ANY_CMD = new RegExp(`\\[(${TALK_CMD})\\s*:?([^\\]\\n]*)\\]`, 'gi');
+/** 대화 모드 답변 정리: 새어 나온 시각·이름을 지우고 명령을 떼어 낸다. 제 줄의 명령은 실행하고, 글 사이에 낀 명령은 지우기만 한다 (사진만은 그 줄 뒤에 보낸 것으로 받는다) */
 export function parseTalk(text: string, _names: string[] = []): { text: string; cmds: TalkCmd[] } {
-  const cmds: TalkCmd[] = [];
-  let out = text.replace(/^[ \t]*\[(react|status|schedule_update|selfie|memory|time|call)\s*:?\s*([^\]\n]*)\][ \t]*$/gim, (_m, name: string, args: string) => {
-    const o: Record<string, string> = {}; args.replace(/(\w+)\s*=\s*"([^"]*)"/g, (_, k: string, v: string) => { o[k] = v; return ''; });
-    cmds.push({ name: name.toLowerCase() === 'schedule_update' ? 'status' : name.toLowerCase(), args: o }); return '';
-  }).replace(/\[(react|status|schedule_update|selfie|memory|time|call)\s*:?[^\]\n]*\]/gi, '');
-  out = out.split('\n').map(l => l.replace(/^\s*\[\d{1,2}(?:\/\d{1,2})?\s*\d{0,2}:?\d{0,2}\]\s*/, '')).filter(l => l.trim()).join('\n');
-  return { text: out.trim(), cmds };
+  const cmds: TalkCmd[] = [], kept: string[] = [];
+  const take = (name: string, args: string) => {
+    const o: Record<string, string> = {}; args.replace(/(\w+)\s*=\s*["“]([^"“”]*)["”]/g, (_, k: string, v: string) => { o[k] = v; return ''; });
+    const n = name.toLowerCase(), c: TalkCmd = { name: n === 'schedule_update' ? 'status' : n, args: o }; cmds.push(c); return c;
+  };
+  const place = (c: TalkCmd) => { c.at = kept.length; c.after = kept[kept.length - 1] || ''; };
+  for (const raw of text.split('\n')) {
+    const own = raw.match(OWN_CMD); if (own) { place(take(own[1], own[2])); continue; }
+    const inline: TalkCmd[] = [];
+    const line = raw.replace(ANY_CMD, (_m, name: string, args: string) => { if (/^(photo|selfie)$/i.test(name)) inline.push(take(name, args)); return ''; }).replace(/^\s*\[\d{1,2}(?:\/\d{1,2})?\s*\d{0,2}:?\d{0,2}\]\s*/, '');
+    if (line.trim()) kept.push(line);
+    for (const c of inline) place(c);
+  }
+  return { text: kept.join('\n').trim(), cmds };
 }
 
 /** 마지막으로 조립한 생성 요청의 정보 (답변을 다듬을 때 쓴다) */

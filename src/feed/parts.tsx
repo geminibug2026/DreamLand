@@ -12,6 +12,8 @@ import { fmtDate, t } from '../i18n';
 import { ME, type ChatFeed, type Note, type Poll } from './types';
 import { visible } from './logic';
 import { F, account, answerNow, canDraw, cfg, draw, echo, hide, imgOf, like, remove, run, talkAbout, vote } from './store';
+import { feedPhoto } from '../photos/prompt';
+import { FeedPhotoCard } from '../photos/ui';
 import { chatFeed } from './prompt';
 
 // 24 격자 한 줄 선 아이콘. fdboard 는 옆 내비에도 쓰인다
@@ -72,11 +74,11 @@ const zoom = (src: string, alt: string) => openModal({ title: '', wide: true }, 
 /** 그림: 한 장은 그대로, 여러 장은 격자 (둘은 반반, 셋은 왼쪽 크게, 넷은 2×2) */
 export function Media({ n }: { n: Note }) {
   const pics = picsOf(n);
-  if (pics.length) return <div className={'fd-media n' + Math.min(4, pics.length)}>{pics.slice(0, 4).map((src, i) => <button type="button" key={i} aria-label={t('feed.picture')} onClick={e => { e.stopPropagation(); zoom(src, n.imagePrompt || ''); }}><img src={src} alt={n.imagePrompt || ''} loading="lazy" /></button>)}</div>;
-  // 그림 설명만 있고 삽화가 연결되지 않았으면 아무것도 보이지 않는다
-  if (!n.imagePrompt || !canDraw()) return null;
-  const busy = run.drawing.has(n.id);
-  return <button type="button" className="fd-chip" disabled={busy} title={n.imagePrompt} onClick={e => { e.stopPropagation(); void draw(n.id); }}><Ic name="fdbrush" size={16} />{busy ? t('feed.draw.busy') : t('feed.draw.go')}<small>{t('feed.cost.image')}</small></button>;
+  const alt = n.imagePrompt ? feedPhoto(n.imagePrompt).alt : '';   // 사진 종류 · 그림 엔진용 태그를 뺀 설명
+  if (pics.length) return <div className={'fd-media n' + Math.min(4, pics.length)}>{pics.slice(0, 4).map((src, i) => <button type="button" key={i} aria-label={t('feed.picture')} onClick={e => { e.stopPropagation(); zoom(src, alt); }}><img src={src} alt={alt} loading="lazy" /></button>)}</div>;
+  // 그림 설명만 있으면: 글로만 있는 사진 카드 (누르면 그린다 — 사진처럼 대기열로)
+  if (!n.imagePrompt) return null;
+  return <FeedPhotoCard id={n.id} kind={feedPhoto(n.imagePrompt).kind} alt={alt} />;
 }
 
 // ── 투표 ── 고르기 전에는 알약 단추, 고른 뒤에는 퍼센트가 차는 둥근 막대
