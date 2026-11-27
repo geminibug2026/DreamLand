@@ -7096,6 +7096,7 @@
   "scenebook.studio.preset.delete": "Delete preset",
   "scenebook.studio.preset.deleteAsk": "Delete preset “{name}”?",
   "scenebook.studio.preset.hint": "Save the current generation settings (model · size · style · references …) under a name and switch between them.",
+  "scenebook.studio.backupTitle": "History & transfer",
   "scenebook.studio.export": "Export",
   "scenebook.studio.import": "Import",
   "scenebook.studio.scope.character": "Current character",

@@ -1,1 +1,0 @@
-export{r as openFix}from"./Review-Bg_QqHkk.js";

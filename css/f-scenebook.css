@@ -114,6 +114,12 @@
 .sb-quickpreset .field { margin: 0; }
 .sb-badge { display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 999px; background: var(--accent); color: var(--on-accent); font-size: .72em; font-style: normal; font-weight: 600; vertical-align: 1px; }
 .sb-preset.on b { color: var(--accent-ink); }
+/* 프리셋 칸 아래: 설정 기록 · 내보내기 · 가져오기를 한 줄 세 칸으로 (아이콘 위 · 이름 아래) */
+.sb-backup { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); min-width: 0; }
+/* 버튼 세 개짜리 줄은 같은 크기 칸 셋으로 (아이콘 위 · 이름 아래) — 삽화 머리의 장면 편집 · 이미지 읽기 · 지시 기록도 */
+.sb-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.sb-tiles > .btn { flex-direction: column; justify-content: center; gap: 5px; width: 100%; min-width: 0; min-height: 60px; padding: 8px 4px; font-size: .86em; }
+.sb-tiles > .btn span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sb-ed-preset { display: flex; align-items: baseline; gap: 8px; margin: 0; } .sb-ed-preset .field-label { margin: 0; }
 .sb-alen { display: flex; flex-wrap: wrap; gap: 0 12px; align-items: flex-end; } .sb-alen > * { flex: 1 1 220px; min-width: 0; }
 .sb-remove-how p { margin: 0 0 6px; line-height: 1.55; }
@@ -173,7 +179,7 @@
 .sb-seg button { flex: 1 1 0; min-width: 0; min-height: 32px; padding: 0 12px; font-size: .86em; color: var(--dim); white-space: nowrap; border-left: 1px solid var(--ink-line); } .sb-seg button:first-child { border-left: 0; }
 .sb-seg button:hover { color: var(--text); } .sb-seg button.on { background: var(--text); color: var(--bg); font-weight: 700; }
 .sb-shape { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; } .sb-shape .sb-seg { flex: 0 1 340px; }
-.sb-quick { gap: 12px; } .sb-quick > .hint { margin: 0; }
+.sb-quick { margin-top: 4px; } .sb-quick > .hint { margin: 0; }
 .sb-quick-assist { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--ink-line); background: var(--surface2); } .sb-quick-assist .hint { margin: 0; flex: 1 1 160px; min-width: 0; } .sb-quick-assist .inp { background: var(--surface); }
 .sb-chips { display: flex; flex-wrap: wrap; gap: 6px; } .sb-chips .chip { font-size: .84em; } .sb-chips .chip[data-tag="close-up"] { margin-left: 10px; }
 .sb-quick-people { gap: 12px; } .sb-quick-people:empty { display: none; }

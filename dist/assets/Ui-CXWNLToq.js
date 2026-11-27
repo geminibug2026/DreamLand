@@ -1,0 +1,1 @@
+export{r as askLegacyCleanup}from"./Ui-IW4-K2QD.js";

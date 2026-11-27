@@ -8,7 +8,7 @@ import { FrameArt } from './frameArt';
 import { LOOKS } from './framing';
 import { prepareReference } from './refimg';
 import { shelf, type Card } from './shelf';
-import { UC_PRESETS, mergeTags } from './tagrules';
+import { UC_PRESETS, mergeTags, sceneLabel } from './tagrules';
 import { INKS } from './ornaments';
 import { fixModel } from './Composer';
 import { guide, imageImport, promptEditor, showPlans, exportChat } from './dialogs';
@@ -161,7 +161,8 @@ function GenPage({ reopen }: { reopen: () => void }) {
       {presets.length ? <div className="col">{presets.map(p => <div className={'sb-preset' + (p.name === active ? ' on' : '')} key={p.name}><b>{p.name}{p.name === active ? <em className="sb-badge">{t('scenebook.preset.active')}</em> : null}</b><small>{configLine(p.config)}</small><Btn label={p.name === active ? t('scenebook.preset.active') : t('scenebook.studio.apply')} cls="ghost" disabled={p.name === active} onClick={() => applyPreset(p)} />
         <IBtn ic="trash" title={t('scenebook.studio.preset.delete')} cls="tiny" onClick={async () => { if (!(await confirmBox(t('scenebook.studio.preset.deleteAsk', { name: p.name }), t('scenebook.delete'), true))) return; Illust.saveCfg({ presets: Illust.cfg().presets.filter(x => x.name !== p.name) }); reopen(); }} /></div>)}</div>
         : <small className="hint">{t('scenebook.studio.preset.hint')}</small>}
-      <div className="row wrap"><Btn label={t('scenebook.studio.history')} cls="ghost" onClick={history} /><Btn label={t('scenebook.studio.export')} ic="import" cls="ghost" onClick={exportAll} /><Btn label={t('scenebook.studio.import')} ic="upload" cls="ghost" onClick={importAll} /></div></Group>
+      <div className="sb-backup"><span className="field-label">{t('scenebook.studio.backupTitle')}</span>
+        <div className="sb-backup-btns sb-tiles"><Btn label={t('scenebook.studio.history')} ic="refresh" onClick={history} /><Btn label={t('scenebook.studio.export')} ic="import" onClick={exportAll} /><Btn label={t('scenebook.studio.import')} ic="upload" onClick={importAll} /></div></div></Group>
   </div>;
 }
 
@@ -377,7 +378,7 @@ function GalleryPage({ reopen, all }: { reopen: () => void; all: Card[] }) {
     { label: t('scenebook.record'), ic: 'note', cls: 'ghost', onclick: () => { inspect({ scene: j.scene, config: j.config, ts: j.ts }); return false; } },
     (j.state === 'failed' || j.state === 'uncertain') && cur().msgs?.includes(j.msg) && { label: t('scenebook.retry'), cls: 'primary', onclick: () => { try { j.seen = true; draw(j.msg, [j.scene], j.config, j.slot, true); reopen(); } catch (e) { toast(errText(e), 'err'); return false; } } }] },
     () => <><p>{j.error || t('scenebook.studio.gal.notFinal')}</p><small className="hint">{[configLine(j.config), when(j.ts)].filter(Boolean).join(' · ')}</small></>);
-  const item = (a: Asset): ViewItem => ({ title: withPreset(a.title || t('scenebook.illust'), a.preset), src: a.data, sub: [chatName(a), when(a.ts), configLine(a.config), a.seed != null ? `Seed ${a.seed}` : ''].filter(Boolean).join(' · '),
+  const item = (a: Asset): ViewItem => ({ title: withPreset(sceneLabel(a) || chatName(a), a.preset), src: a.data, sub: [chatName(a), when(a.ts), configLine(a.config), a.seed != null ? `Seed ${a.seed}` : ''].filter(Boolean).join(' · '),
     actions: [
       { label: t('scenebook.studio.gal.insert'), ic: 'plus', run: async () => { const m = target(), here = 'chat:' + (cur().chat as Chat).id; let rec = a; if (a.owner !== here) { rec = { ...a, id: C.uid(), owner: here, ts: C.now() }; await C.DB.put('assets', rec); } I.insert(m.swipes[m.sw], rec); await chatApi.save(); chatApi.redraw(); toast(t('scenebook.studio.gal.inserted'), 'ok'); } },
       { label: t('scenebook.openAsScene'), ic: 'sliders', run: () => compose(target(), { initial: [a.scene || { ...blankScene(), title: a.title || '', prompt: a.prompt || '' }], config: a.config ? { ...a.config, seed: -1 } : null }) },
@@ -432,7 +433,7 @@ function GalleryPage({ reopen, all }: { reopen: () => void; all: Card[] }) {
   const tile = (a: Card) => { const picked = sel.has(a.id);
     return <button key={a.id} type="button" className={'sb-shot' + (picked ? ' picked' : '')} title={a.title || t('scenebook.illust')} aria-label={t('scenebook.studio.gal.view', { title: a.title || t('scenebook.illust') })} {...(picking ? { 'aria-pressed': picked } : {})} onClick={() => (picking ? flip(a.id) : void open(a))}>
       <Thumb id={a.id} />{picking ? <i className="sb-shot-pick" aria-hidden="true">{picked ? <Icon name="check" size={13} /> : null}</i> : null}{a.review ? <em className="sb-shot-mark" title={t('scenebook.studio.gal.hasReview')}>{t('scenebook.studio.gal.reviewMark')}</em> : null}
-      <span>{a.title || t('scenebook.illust')}</span><small>{oneChat ? new Date(a.ts).toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' }) : chatName(a)}</small></button>; };   // 날짜는 머리줄에 있다
+      {sceneLabel(a) ? <span>{sceneLabel(a)}</span> : null}<small>{oneChat ? new Date(a.ts).toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' }) : chatName(a)}</small></button>; };   // 제목은 사람이 직접 붙였을 때만 (「삽화」 · 「장면 1」 같은 자리표시는 안 보인다)   // 날짜는 머리줄에 있다
   const body: ReactNode[] = []; let lastDay = '';
   if (off) for (const j of jobs.slice(0, limit)) body.push(<button key={j.id} type="button" className="sb-shot" title={j.label || t('scenebook.illust')} aria-label={t('scenebook.studio.gal.checkJob', { title: j.label || t('scenebook.illust') })} onClick={() => openJob(j)}><i className={`sb-shot-off ${j.state}`}>{jobOff()[j.state]}</i><span>{j.label || t('scenebook.illust')}</span><small>{j.error || configLine(j.config)}</small></button>);
   else if (folders) for (const g of groups.slice(0, limit)) body.push(<button key={g.id} type="button" className="sb-shot sb-folder" title={chatName({ owner: 'chat:' + g.id })} onClick={() => setScope('in:' + g.id)}><Thumb id={g.top.id} /><em className="sb-folder-n">{t('scenebook.studio.gal.picsN', { n: g.n })}</em><span>{chatName({ owner: 'chat:' + g.id })}</span><small>{[new Date(g.top.ts).toLocaleDateString(locale(), { ...(new Date(g.top.ts).getFullYear() !== thisYear ? { year: '2-digit' } : {}), month: 'numeric', day: 'numeric' }), g.size ? sizeText(g.size) : ''].filter(Boolean).join(' · ')}</small></button>);
@@ -521,7 +522,7 @@ export function Studio() {
   if (shown) page = shown.err ? <p className="err" key={k}>{shown.err}</p> : shown.id === 'gen' ? <GenPage key={k} reopen={reopen} /> : shown.id === 'cast' ? <CastPage key={k} reopen={reopen} /> : shown.id === 'refs' ? <RefsPage key={k} reopen={reopen} refs={shown.refs || []} /> : shown.id === 'gallery' ? <GalleryPage key={k} reopen={reopen} all={shown.all || []} /> : <QueuePage key={k} reopen={reopen} />;
   return <>
     <div className="sb-head" ref={head}><ConnBar key={hv} /><Workflow redraw={() => setHv(v => v + 1)} />
-      <div className="row wrap sb-quick"><Btn label={t('scenebook.compose')} ic="edit" onClick={guard(() => compose())} /><Btn label={t('scenebook.readImage')} ic="image" onClick={() => imageImport(() => { setHv(v => v + 1); void open('gen'); })} /><Btn label={t('scenebook.plans')} ic="note" cls="ghost" onClick={showPlans} /></div></div>
+      <div className="sb-quick sb-tiles"><Btn label={t('scenebook.compose')} ic="edit" onClick={guard(() => compose())} /><Btn label={t('scenebook.readImage')} ic="image" onClick={() => imageImport(() => { setHv(v => v + 1); void open('gen'); })} /><Btn label={t('scenebook.plans')} ic="note" onClick={showPlans} /></div></div>
     <div className="tabs sb-tabs" role="tablist" aria-label={t('scenebook.studio.tabsLabel')}>{tabs().map(([k, l, ic]) => <button key={k} type="button" className={'tab' + (k === tab ? ' on' : '')} role="tab" onClick={() => void open(k)}><Icon name={ic} size={15} />{l}{k === 'queue' && busy ? <em className="badge on">{String(busy)}</em> : null}</button>)}</div>
     {note ? <p className="hint sb-indexing" role="status">{note}</p> : null}
     <div className="sb-page">{page}</div>

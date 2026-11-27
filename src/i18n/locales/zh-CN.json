@@ -7027,6 +7027,7 @@
   "scenebook.studio.preset.delete": "删除预设",
   "scenebook.studio.preset.deleteAsk": "要删除预设“{name}”吗？",
   "scenebook.studio.preset.hint": "可以为当前生成设置（模型 · 尺寸 · 画风 · 参考 …）命名保存并切换使用。",
+  "scenebook.studio.backupTitle": "历史 · 迁移",
   "scenebook.studio.export": "导出",
   "scenebook.studio.import": "导入",
   "scenebook.studio.scope.character": "当前角色",

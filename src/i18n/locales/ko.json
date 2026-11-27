@@ -7027,6 +7027,7 @@
   "scenebook.studio.preset.delete": "프리셋 삭제",
   "scenebook.studio.preset.deleteAsk": "“{name}” 프리셋을 지울까요?",
   "scenebook.studio.preset.hint": "지금 생성 설정(모델 · 크기 · 화풍 · 참조 …)을 이름 붙여 저장해 두고 바꿔 쓸 수 있어요.",
+  "scenebook.studio.backupTitle": "설정 기록 · 옮기기",
   "scenebook.studio.export": "내보내기",
   "scenebook.studio.import": "가져오기",
   "scenebook.studio.scope.character": "현재 캐릭터",
