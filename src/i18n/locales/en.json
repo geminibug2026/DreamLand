@@ -4553,6 +4553,8 @@
   "scenebook.fig.next": "Next image",
   "scenebook.more": "More",
   "scenebook.job.running": "Drawing",
+  "scenebook.fig.planning": "Choosing the scene",
+  "scenebook.fig.planningHint": "Drawing starts once other upkeep finishes",
   "scenebook.fig.waitingTurn": "Waiting in queue",
   "scenebook.retry": "Retry",
   "scenebook.fig.draftsReady.one": "{count} scene ready",

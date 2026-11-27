@@ -65,9 +65,11 @@ export function Figure({ fig, m, sw, it }: { fig: HTMLElement; m: Msg; sw: Swipe
 /** 삽화 한 장이 차지하는 너비 — 그리는 중인 자리도 같은 너비로 잡아, 다 그려졌을 때 화면이 밀리지 않게 한다 */
 const figWidth = (c: { compact?: boolean; displayWidth?: number }) => c.compact ? Math.min(360, c.displayWidth || 400) : (c.displayWidth || 400);
 /** 답변 아래 덧붙이는 것: 그리는 중 · 실패 · 준비된 초안 · 숨긴 삽화 · 지시 없음 */
-function Extras({ m, sw, pending, failed, drafts, hidden, note }: { m: Msg; sw: Swipe; pending: Job[]; failed: Job[]; drafts: Scene[]; hidden: number; note: PlanRecord | null }) {
+function Extras({ m, sw, pending, failed, drafts, hidden, note, planning }: { m: Msg; sw: Swipe; pending: Job[]; failed: Job[]; drafts: Scene[]; hidden: number; note: PlanRecord | null; planning: boolean }) {
   const cfg = Illust.cfg();
   return <>
+    {/* 장면을 고르는 중: 그릴 차례에 들어가기 전부터 같은 모양의 자리를 둔다 (다른 보조 작업이 먼저 돌아도 삽화가 오고 있음을 알게) */}
+    {planning && !pending.length ? <div className="sb-pendings"><div className="sb-pending planning" style={{ aspectRatio: `${cfg.width || 832} / ${cfg.height || 1216}`, maxWidth: `min(100%, ${figWidth(cfg)}px)` }}><Icon name="image" size={22} /><b>{t('scenebook.fig.planning')}</b><span>{t('scenebook.fig.planningHint')}</span></div></div> : null}
     {pending.length ? <div className="sb-pendings">{pending.map(j => <div key={j.id} className={`sb-pending ${j.state}`} style={{ aspectRatio: `${j.config.width} / ${j.config.height}`, maxWidth: `min(100%, ${figWidth(cfg)}px)` }}><Icon name="image" size={22} /><b>{j.state === 'running' ? t('scenebook.job.running') : t('scenebook.fig.waitingTurn')}</b>{j.label ? <span>{j.label}</span> : null}</div>)}</div> : null}
     {failed.map(j => <div key={j.id} className="sb-note bad"><Icon name="x" size={15} /><span>{[j.label, j.error].filter(Boolean).join(' · ')}</span><div className="sb-note-acts"><Btn label={t('scenebook.retry')} cls="ghost" onClick={guard(() => { j.seen = true; draw(m, [j.scene], j.config, j.slot, true); })} /><IBtn ic="x" title={t('common.close')} cls="tiny" onClick={() => { j.seen = true; schedule(); }} /></div></div>)}
     {/* 단추는 한 묶음으로: 좁은 화면에서는 글 아래 한 줄에 함께 (하나만 따로 떨어지지 않게) */}
@@ -143,14 +145,14 @@ function decorateFigure(fig: HTMLElement, art: HTMLElement, m: Msg, sw: Swipe, i
   mountNode(holder, <Figure fig={host} m={m} sw={sw} it={it} />);
 }
 function extras(main: HTMLElement, m: Msg, sw: Swipe, jobs: Job[]) {
-  const mine = jobs.filter(j => j.msg === m && j.sw === sw && !ownJobs.has(j)), pending = mine.filter(j => !j.slot && (j.state === 'waiting' || j.state === 'running')), failed = mine.filter(j => (j.state === 'failed' || j.state === 'uncertain') && !j.seen);
+  const mine = jobs.filter(j => j.msg === m && j.sw === sw && !ownJobs.has(j)), planning = Illust.planning(sw), pending = mine.filter(j => !j.slot && (j.state === 'waiting' || j.state === 'running')), failed = mine.filter(j => (j.state === 'failed' || j.state === 'uncertain') && !j.seen);
   const drafts = sw.illustDraft || [], hidden = (sw.illust || []).filter(it => it.hidden).length, plan = sw.illustPlan, note = !!plan && (plan.status === 'missing' || plan.status === 'failed') && !plan.seen && !drafts.length && !sw.illust?.length;
-  const sig = JSON.stringify([pending.map(j => j.id + j.state), failed.map(j => j.id), drafts.length, drafts.map(d => shownTitle(d.title)), hidden, !!note]);
+  const sig = JSON.stringify([planning, pending.map(j => j.id + j.state), failed.map(j => j.id), drafts.length, drafts.map(d => shownTitle(d.title)), hidden, !!note]);
   const old = main.querySelector<HTMLElement>(':scope > .sb-extras');
   if (old?.dataset.sig === sig) return;
   old?.remove();
-  if (!pending.length && !failed.length && !drafts.length && !hidden && !note) return;
+  if (!planning && !pending.length && !failed.length && !drafts.length && !hidden && !note) return;
   const node = make('div', 'sb-extras'); node.dataset.sig = sig;
-  mountNode(node, <Extras m={m} sw={sw} pending={pending} failed={failed} drafts={[...drafts]} hidden={hidden} note={note ? plan : null} />);
+  mountNode(node, <Extras m={m} sw={sw} pending={pending} failed={failed} drafts={[...drafts]} hidden={hidden} note={note ? plan : null} planning={planning} />);
   (main.querySelector(':scope > .msg-tools') || main.lastChild)?.before(node);
 }

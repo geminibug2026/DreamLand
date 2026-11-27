@@ -4504,6 +4504,8 @@
   "scenebook.fig.next": "다음 그림",
   "scenebook.more": "더 보기",
   "scenebook.job.running": "그리는 중",
+  "scenebook.fig.planning": "그릴 장면을 고르는 중",
+  "scenebook.fig.planningHint": "다른 정리가 먼저 끝나면 이어서 그려요",
   "scenebook.fig.waitingTurn": "차례를 기다리는 중",
   "scenebook.retry": "다시 요청",
   "scenebook.fig.draftsReady.other": "장면 {count}개 준비됨",

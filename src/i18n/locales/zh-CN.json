@@ -4504,6 +4504,8 @@
   "scenebook.fig.next": "下一张",
   "scenebook.more": "更多",
   "scenebook.job.running": "绘制中",
+  "scenebook.fig.planning": "正在挑选场景",
+  "scenebook.fig.planningHint": "其他整理完成后接着画",
   "scenebook.fig.waitingTurn": "排队中",
   "scenebook.retry": "重新请求",
   "scenebook.fig.draftsReady.other": "{count} 个场景已就绪",

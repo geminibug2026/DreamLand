@@ -53,6 +53,7 @@ export interface IllustApi {
   validate<T extends GenConfig>(c: T): T;
   genConfig(over?: Partial<GenConfig> | null): GenConfig;
   enqueue(chat: Chat, msg: Msg, scene: Scene, onDone: (err?: Error | null) => unknown, opts?: EnqueueOpts): void;
+  planning(sw: object): boolean; planStart(sw: object): void; planEnd(sw: object): void;
   queue(): Job[]; queuePaused(): boolean; queueRunning(): boolean; usage(): number; cooldown(): number;
   toggleQueue(): void; cancelWaiting(pred?: (j: Job) => boolean | undefined): number;
   slot(it: Slot): Slot & { versions: Version[]; sel: number }; select(it: Slot, n: number): Slot; insert(sw: Swipe, rec: Asset): Slot; remove(id: string): Promise<void>;

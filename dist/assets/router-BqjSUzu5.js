@@ -1,1 +1,0 @@
-export{t as go,n as pageNames}from"./router-GNA0XEVl.js";

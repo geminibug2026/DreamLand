@@ -161,6 +161,7 @@ const cache = new Map<string, string>();   // 삽화 id → dataURL
 const loaded = new Set<string>();   // 삽화를 이미 읽어 둔 대화
 onX('chat:deleted', (id: string) => loaded.delete(id)); onX('data:imported', () => loaded.clear());
 const Q: { items: Job[]; paused: boolean; running: boolean } = { items: [], paused: false, running: false };
+const planningNow = new WeakSet<object>();
 let resumeTimer: ReturnType<typeof setTimeout> | undefined;
 let sessionRequests = 0, cooldownUntil = 0, askedAt = 0, startedAt = 0, lastPlan: (Plan & { asked: boolean; ts: number }) | null = null;
 onX('generate:start', () => { startedAt = now(); });
@@ -655,6 +656,10 @@ export const Illust = {
   },
 
   // ── 대기열 ──
+  /** 장면을 고르는 중(답변 후 보조 모델이 장면을 쓰는 동안 · 다른 보조 작업이 끝나기를 기다리는 동안 포함)인 답변 버전. 채팅방에 그림 자리를 미리 띄운다 */
+  planning: (sw: object) => planningNow.has(sw),
+  planStart(sw: object) { planningNow.add(sw); this.changed(); },
+  planEnd(sw: object) { if (planningNow.delete(sw)) this.changed(); },
   queue: () => Q.items, queuePaused: () => Q.paused, queueRunning: () => Q.running, usage: () => sessionRequests,
   cooldown: () => Math.max(0, cooldownUntil - now()),
   changed() { emitX('illust:queue', Q.items.filter(x => x.state === 'waiting' || x.state === 'running').length); emitX('illust:jobs', Q); },

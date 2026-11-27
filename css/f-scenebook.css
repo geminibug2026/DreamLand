@@ -92,6 +92,7 @@
   background: radial-gradient(color-mix(in srgb, var(--text) 20%, transparent) 1.2px, transparent 1.7px) 0 0 / 10px 10px, var(--surface); }
 .sb-pending::before { content: ""; position: absolute; inset: -4px; background: var(--handles); pointer-events: none; }
 .sb-pending.running { border-style: solid; animation: sb-dots 1.6s linear infinite; } .sb-pending.running .ic { color: var(--accent-ink); }
+.sb-pending.planning .ic { color: var(--accent-ink); opacity: .7; } @media (prefers-reduced-motion: no-preference) { .sb-pending.planning .ic { animation: sb-breathe 1.8s ease-in-out infinite; } } @keyframes sb-breathe { 50% { opacity: .3; } }
 .sb-pending b { font-size: .86em; color: var(--text); background: var(--surface); padding: 1px 8px; } .sb-pending span { font-size: .8em; background: var(--surface); padding: 0 6px; overflow-wrap: anywhere; }
 .sb-note { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; padding: 6px 6px 6px 12px; border: 1px solid var(--ink-line); background: var(--surface); font-size: .88em; }
 .sb-note > .ic { flex: none; color: var(--accent-ink); } .sb-note > span { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; color: var(--dim); } .sb-note > span b { color: var(--text); }
