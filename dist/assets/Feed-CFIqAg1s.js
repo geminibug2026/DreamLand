@@ -1,0 +1,1 @@
+import{t as e}from"./ui-CCP-1AxO.js";var t={name:`feed`,Component:e};export{t as page};

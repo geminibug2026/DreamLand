@@ -1,0 +1,1 @@
+export{n as openInsights}from"./insights-CXfdD_J9.js";

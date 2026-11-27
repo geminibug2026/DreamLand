@@ -1,1 +1,0 @@
-export{m as quickDraw}from"./decorate-BULbayCy.js";

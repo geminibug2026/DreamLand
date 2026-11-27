@@ -316,7 +316,7 @@ button.chip:hover { color: var(--text); background: var(--surface2); }
 .msg.sys { justify-content: center; } .sys-line { display: flex; align-items: center; gap: 6px; max-width: 90%; padding: 6px 16px; border-radius: 999px; background: var(--surface2); color: var(--dim); text-align: center; }
 .sys-line .msg-body { font-size: .9em; line-height: 1.5; color: var(--dim); } .sys-line .msg-body p { margin: 0; } .sys-line .msg-tools { margin: 0; flex-wrap: nowrap; }
 .edit-box { width: 100%; display: flex; flex-direction: column; gap: 8px; } .edit-area { min-height: 90px; font-size: var(--fs); line-height: 1.7; }
-.typing { display: inline-flex; gap: 6px; padding: 14px 16px; border-radius: 1.3em 1.3em 1.3em .35em; background: var(--say-bg); border: 1px solid var(--line); }
+.typing { display: flex; width: fit-content; margin: 3px 0; gap: 6px; padding: 14px 16px; border-radius: 1.3em 1.3em 1.3em .35em; background: var(--say-bg); border: 1px solid var(--line); }
 .typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: dot 1.2s ease-in-out infinite; } .typing i:nth-child(2) { animation-delay: .18s; } .typing i:nth-child(3) { animation-delay: .36s; }
 @keyframes dot { 0%, 100% { opacity: .3; } 50% { opacity: 1; transform: translateY(-3px); } }
 .composer { max-width: var(--chat-w); width: 100%; margin: 0 auto; padding: 6px 24px 18px; display: flex; flex-direction: column; gap: 8px; }

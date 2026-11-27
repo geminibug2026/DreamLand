@@ -1,6 +1,7 @@
 /* ── 곁들임(xt-) ── 딱지 · 내 반응 · 배경 서가 · 지운 메시지 · 내보내기 · 발자국. 색은 테마 변수, 선은 fine.css 의 네 단계만 쓴다 */
 
 /* ── 메시지 속 딱지 ── 말풍선 없이 쪽지 한 장으로 놓인다 */
+.msg-body .stk-line { margin: 4px 0; } .msg-body .stk-line img.xt-stk { margin: 0; }
 .msg-body img.xt-stk { display: block; width: 124px; height: 124px; max-width: 44vw; object-fit: contain; margin: 4px 0; border-radius: 3px; cursor: default; }
 .msg.user .msg-body img.xt-stk { margin-left: auto; }
 .msg-body p:has(> img.xt-stk:only-child), .msg-body .say:has(> img.xt-stk:only-child) { background: none; border: 0; box-shadow: none; padding: 0; }

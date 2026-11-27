@@ -217,6 +217,9 @@ function watchFrames() {
   setTimeout(hydrate, 0);
 }
 
+/** 딱지 그림(extras/stickers 가 글에 넣는 모양). 지워진 딱지는 이름만 남은 조각 */
+const STK_ANY = /(<img class="xt-stk[^>]*>|<span class="xt-stk-gone">[^<]*<\/span>)/;
+const STK_ONLY = new RegExp(`^\\s*(?:${STK_ANY.source}\\s*)+$`);
 export interface RenderOpts { bubbles?: boolean; style?: string; prose?: boolean }
 export function render(text: unknown, { bubbles = true, style, prose = true }: RenderOpts = {}): string {
   style ||= bubbles ? 'bubbles' : 'plain'; chatProse = prose;
@@ -237,6 +240,9 @@ export function render(text: unknown, { bubbles = true, style, prose = true }: R
       html += `<pre><code${lang ? ` data-lang="${esc(lang)}"` : ''}>${esc(code)}</code></pre>`; continue;
     }
     if (!line.trim()) { i++; continue; }
+    // 딱지(스티커)는 늘 제 줄 하나: 앞뒤 글은 따로 떼어 제 모양(말풍선 · 문단)으로. 줄 머리의 <img> 를 HTML 블록으로 보면 뒤의 글이 빈 줄까지 통째로 날글이 된다
+    if (STK_ONLY.test(line)) { html += `<div class="stk-line">${line.trim()}</div>`; i++; continue; }
+    if (STK_ANY.test(line)) { lines.splice(i, 1, ...line.split(STK_ANY).map(s => s.trim()).filter(Boolean)); continue; }
     if (HTML_BLOCK.test(line)) { // HTML 블록은 빈 줄까지 그대로
       const buf: string[] = [];
       while (i < lines.length && lines[i].trim()) buf.push(lines[i++]);
