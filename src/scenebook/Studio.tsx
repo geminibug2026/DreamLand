@@ -66,7 +66,8 @@ function Workflow({ redraw, toWriter }: { redraw: () => void; toWriter: () => vo
   const c = Illust.cfg(), on = c.automatic !== 'off', call = c.mode === 'call', n = REPLY_ADVICE.toLocaleString();
   const help = !on ? t('scenebook.studio.wf.offHelp') : `${c.automatic === 'review' ? t('scenebook.studio.wf.draftOnly') : t('scenebook.studio.wf.drawAttach')} · ${c.every > 1 ? tn('scenebook.studio.wf.everyN', c.every) : t('scenebook.studio.wf.everyReply')}`;
   const p = on && !call ? replyPreset() : null, now = Number(p?.params?.maxTokens) || 0;
-  const helperName = () => { const id = (C.S.settings as { helpers?: Record<string, string> }).helpers?.illust, x = id ? C.chatConns().find(k => k.id === id) : null; return x ? x.name : t('scenebook.studio.chatConn'); };
+  // 실제로 쓰일 연결: 기능 › 보조 연결의 「삽화」 → 없으면 「그 밖의 보조」 → 없으면 대화 연결. 일마다 따로 정한 모델도 함께
+  const helperName = () => { const x = C.S.helperConn('illust', cur().chat as never); return x ? `${x.name}${x.model ? ' · ' + x.model : ''}` : t('scenebook.studio.chatConn'); };
   const setReply = guard(async () => {
     const pr = replyPreset(), ctx = Number(pr.params.contextSize) || 128000;
     if (ctx < REPLY_ADVICE + CHAT_ROOM) throw new Error(t('scenebook.studio.wf.replyNoRoom', { preset: pr.name, ctx: ctx.toLocaleString(), n }));
