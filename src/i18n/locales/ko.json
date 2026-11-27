@@ -7543,6 +7543,7 @@
   "call.do.save": "저장",
   "call.do.another": "다른 답",
   "call.do.anotherHint": "다른 답: 이 대사를 새로 받습니다. 앞서 받은 답은 ‹ › 로 다시 볼 수 있어요",
+  "call.do.translate": "번역",
   "call.do.prevAlt": "이전 답",
   "call.do.nextAlt": "다음 답",
   "call.do.replay": "다시 듣기",

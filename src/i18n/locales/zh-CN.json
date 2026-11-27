@@ -7543,6 +7543,7 @@
   "call.do.save": "保存",
   "call.do.another": "换个回答",
   "call.do.anotherHint": "换个回答：重新生成这句话。之前的回答可以用 ‹ › 翻看",
+  "call.do.translate": "翻译",
   "call.do.prevAlt": "上一个回答",
   "call.do.nextAlt": "下一个回答",
   "call.do.replay": "再听一遍",

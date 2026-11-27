@@ -1,0 +1,1 @@
+export{t as go,n as pageNames}from"./router-CUZ21Mqf.js";

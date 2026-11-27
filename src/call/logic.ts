@@ -16,7 +16,7 @@ import * as A from './audio';
 export type Dir = 'in' | 'out';
 export type Result = 'answered' | 'declined' | 'missed' | 'unanswered';
 /** 통화의 한 마디. by: 말한 캐릭터(단체 통화) · alts/alt: "다른 답"으로 받아 둔 답들과 지금 고른 것 · note: 들어옴/나감 같은 알림 줄 */
-export interface Line { who: 'u' | 'c'; text: string; cut?: boolean; at: number; by?: string; alts?: string[]; alt?: number; note?: boolean }
+export interface Line { who: 'u' | 'c'; text: string; cut?: boolean; at: number; by?: string; alts?: string[]; alt?: number; note?: boolean; /** 번역 (누를 때만 받는다. 고르는 답이 바뀌면 지운다) */ tr?: string; trOf?: string }
 /** 대화 기록에 남는 통화 카드 (Msg.call) */
 export interface CallRec { /** 함께 통화한 캐릭터들 (단체 통화 · 엿들은 통화) */ with?: string[]; /** 캐릭터끼리 한 통화를 엿들은 것 */ overheard?: boolean; dir: Dir; result: Result; dur: number; rec: boolean; cut?: boolean; endedBy?: 'user' | 'char'; lines?: Line[]; voicemail?: string; audio?: string; missedN?: number; calls: number }
 /** 다음 대화에서 캐릭터가 알아차릴 일 (Chat.callPending) */
