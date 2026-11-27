@@ -9537,6 +9537,8 @@
   "guide.err.label": "NOTICE",
   "guide.err.noconn": "쓸 연결이 없어요. API 연결을 하나 만들면 바로 물어볼 수 있어요. 도움말은 연결 없이도 읽을 수 있습니다.",
   "guide.err.empty": "답이 비어 있었어요. 다시 물어봐 주세요.",
+  "guide.note.thinkCut": "생각이 길어져 답을 쓰기 전에 길이 한도에 닿았어요. 생각을 줄여 다시 쓰는 중…",
+  "guide.err.thinkCut": "이번에도 생각하다가 길이 한도에 닿아 답을 쓰지 못했어요. 일을 둘로 나눠 부탁해 주시거나, 연결 · 프리셋의 추론 강도를 낮춰 보세요.",
   "guide.talk.close": "목록 닫기",
   "guide.talk.pick": "골라 지우기",
   "guide.talk.picked": "{n}개 고름",

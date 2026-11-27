@@ -126,6 +126,13 @@ Every write becomes a change card. Nothing is saved until the user presses Apply
 const APPLY_AUTO = `APPLYING
 Auto-apply is ON: each write is saved the moment you propose it and its result says APPLIED (the user can still undo it from its card). Report those as done. Still waiting for the user's click: deletions, extension installs, and run_command scripts that generate replies, send messages or delete. If a result says NOT SAVED, fix the cause and propose again. Changes land at once, so read before you write and be exact.`;
 
+/** 등불지기 한 번의 답에 주는 출력 길이: 모델이 허락하는 만큼 다 쓴다 — 지금 어느 모델의 한도보다도 크게 잡아, 처음 거절될 때 엔진이 그 모델의 한도를 읽어 맞추고 기억한다 (생각 여유는 엔진이 더한다) */
+export const GUIDE_MAX_TOKENS = 300000;
+/** 출력 한도에 닿아 끝났다는 표시 (공급자마다 이름이 다르다) */
+const CUT = /max_?tokens|length|max_output|MAX_TOKENS/i;
+/** 생각만 하다 한도에 닿았을 때 다시 보내며 붙이는 말 */
+const THINK_CUT = '<app_note>Your previous attempt spent the whole output budget thinking and wrote nothing, so the user saw an empty reply. Think only briefly now and start writing the answer and the tool calls right away. If the work is large (an extension with many files, many cards), do it in parts: send the first part now with a one-line note of what comes next, and continue in the next message.</app_note>';
+
 /** "이어서 하기"를 누르면 모델에 보내는 말 */
 export const CONTINUE_ASK = 'Continue the task from where you stopped. Look at your plan and the last results, do the remaining steps, and finish with the usual short report.';
 
@@ -246,9 +253,11 @@ async function run(tk: Talk): Promise<void> {
   const conn = S.helperConn('guide', null);
   if (!conn) { tk.items.push({ k: 'err', text: 'noconn', at: now() }); refreshStatus(); poke(); await persist(tk).catch(() => { }); poke(); return; }
   G.busy = true; G.status = 'working'; G.stream = ''; G.calls = 0; G.wait = null; poke();
-  ac = new AbortController(); const signal = ac.signal;
+  ac = new AbortController(); const signal = ac.signal; let thinkCut = false;
   setToolCtx({ items: () => tk.items, plan: () => tk.plan, setPlan: (p?: Plan) => { tk.plan = p; poke(); } });
-  const base = S.preset().params, P: Params = { ...base, prefill: '', stop: [], maxTokens: Math.max(3000, Number(base.maxTokens) || 0), temperature: base.temperature == null ? null : Math.min(Number(base.temperature), 0.5) };
+  // 등불지기는 확장 · 화면처럼 긴 결과를 한 번에 쓴다: 대화 프리셋의 답 길이가 아니라 넉넉한 자기 길이를 쓴다 (모델 한도를 넘으면 엔진이 한도에 맞춰 다시 보낸다)
+  const base = S.preset().params, presetMax = Math.max(3000, Number(base.maxTokens) || 0);
+  const P: Params = { ...base, prefill: '', stop: [], maxTokens: Math.max(GUIDE_MAX_TOKENS, presetMax), temperature: base.temperature == null ? null : Math.min(Number(base.temperature), 0.5) };
   const see = canSee(conn.provider), noImg = !!tk.noImages || !see;
   if (!see && hasImages(tk.items)) { const lu = tk.items.map(i => i.k).lastIndexOf('user'), lastU = tk.items[lu]; if (lastU?.k === 'user' && lastU.files?.some(a => a.image)) tk.items.push({ k: 'note', text: 'noimgconn', at: now() }); }
   const msgs = buildMessages(tk.items, tk.plan, { noImages: noImg }), sentImg = msgs.some(m => m.images?.length);
@@ -261,11 +270,26 @@ async function run(tk: Talk): Promise<void> {
       isWrite: name => !!toolDef(name)?.write,
       ask: async (m, onText) => {
         G.calls++; poke();
-        return withRetry(async () => {
+        const once = (Pq: Params, list: PromptList) => withRetry(async () => {
           let all = ''; G.stream = '';
-          const r = await deps.stream(conn, P, m as PromptList, { signal, label: 'guide', onText: d => { if (G.wait) G.wait = null; all += d; onText(all); } });
-          G.wait = null; return r.text || all;
+          const r = await deps.stream(conn, Pq, list, { signal, label: 'guide', onText: d => { if (G.wait) G.wait = null; all += d; onText(all); } });
+          G.wait = null; return { text: r.text || all, finish: String(r.finish || '') };
         }, { tries: own ? deps.retry.tries : 0, base: deps.retry.base, signal, onWait: (n, of) => { G.wait = { n, of }; G.stream = ''; poke(); } });
+        let r: { text: string; finish: string };
+        try { r = await once(P, m as PromptList); }
+        catch (e) {
+          // 늘린 길이를 받지 못하는 연결(한도를 알려 주지 않는 중계 등): 예전처럼 프리셋 길이로 한 번 더
+          const st = (e as { status?: number }).status;
+          if (signal.aborted || st !== 400 || (P.maxTokens || 0) <= presetMax) throw e;
+          P.maxTokens = presetMax; r = await once(P, m as PromptList);
+        }
+        // 생각하다 출력 한도에 닿아 한 글자도 못 썼다: 생각을 줄이라고 하고 한 번 더 (그래도 비면 까닭을 알린다)
+        if (!r.text.trim() && CUT.test(r.finish) && !signal.aborted) {
+          tk.items.push({ k: 'note', text: 'thinkcut', at: now() }); poke();
+          r = await once({ ...P, lowThink: true }, [...(m as PromptList), { role: 'user', content: THINK_CUT }]);
+          if (!r.text.trim() && CUT.test(r.finish)) thinkCut = true;
+        }
+        return r.text;
       },
       onStream: shown => { G.stream = shown; poke(); },
       onSay: (shown, raw, echo) => { G.stream = ''; tk.items.push(echo ? { k: 'ai', text: shown, raw: '', echo: true, at: now() } : { k: 'ai', text: shown, raw, at: now() }); poke(); },
@@ -273,7 +297,7 @@ async function run(tk: Talk): Promise<void> {
       onTick: steps => { tick(tk, steps); poke(); },
       onTool: (call, ok, out) => { tk.items.push({ k: 'tool', name: call.tool, args: call.args, ok, out, at: now() }); if (pendingCard) { tk.items.push({ k: 'change', change: pendingCard, at: now() }); pendingCard = null; } poke(); },
     });   // 횟수 제한 없음 — 사용자가 멈춤을 누르거나, 같은 호출을 헛되이 되풀이하면 멈춘다
-    if (res.stopped === 'empty') tk.items.push({ k: 'err', text: 'empty', at: now() });
+    if (res.stopped === 'empty') tk.items.push({ k: 'err', text: thinkCut ? 'thinkcut' : 'empty', at: now() });
     // 한도에 닿았다: 조용히 멈추지 않고 "이어서 할까요?"를 묻는다
     if (res.stopped === 'limit') tk.items.push({ k: 'err', text: 'limit', at: now() });
     if (res.stopped === 'loop') tk.items.push({ k: 'err', text: 'loop', at: now() });

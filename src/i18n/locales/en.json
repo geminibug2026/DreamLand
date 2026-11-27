@@ -9617,6 +9617,8 @@
   "guide.err.label": "NOTICE",
   "guide.err.noconn": "There is no connection to use. Add an API connection and you can ask right away. The help pages work without one.",
   "guide.err.empty": "The reply came back empty. Please ask again.",
+  "guide.note.thinkCut": "It hit the length limit while still thinking, before writing anything. Retrying with less thinking…",
+  "guide.err.thinkCut": "It hit the length limit while thinking again and wrote nothing. Try asking for the work in two parts, or lower the reasoning effort in the connection or preset.",
   "guide.talk.close": "Close list",
   "guide.talk.pick": "Select to delete",
   "guide.talk.picked": "{n} selected",

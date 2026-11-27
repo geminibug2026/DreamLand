@@ -9537,6 +9537,8 @@
   "guide.err.label": "NOTICE",
   "guide.err.noconn": "还没有可用的连接。添加一个 API 连接后就能提问。帮助页面无需连接也能阅读。",
   "guide.err.empty": "回复是空的，请再问一次。",
+  "guide.note.thinkCut": "思考过长，还没写出回答就达到了长度上限。正在减少思考重新生成…",
+  "guide.err.thinkCut": "这次也在思考时达到了长度上限，没能写出回答。请把任务分成两部分来问，或降低连接 · 预设的推理强度。",
   "guide.talk.close": "关闭列表",
   "guide.talk.pick": "选择删除",
   "guide.talk.picked": "已选 {n} 个",

@@ -1325,7 +1325,18 @@ export async function streamChat(conn: Conn | null | undefined, P: Params, messa
     if (conn && isHelper(opts.label)) await yieldToMain(conn.id, opts.signal);   // 보조 호출: 같은 연결로 본 답변이 나가는 중이거나 막 429 가 났으면 잠깐 비켜 선다
     if (conn?.rpm) await Rpm.gate(conn.id, +conn.rpm, opts.signal);   // 분당 요청 수 제한: 넘치면 자리가 날 때까지 기다린다
     const endMain = conn && !isHelper(opts.label) ? mainStart(conn.id) : null;
-    let r: StreamResult; try { r = await streamChatRaw(conn, P, messages, ac ? { ...opts, signal: ac.signal } : opts); } finally { endMain?.(); }
+    // 이 모델이 받는 최대 출력 길이를 알고 있으면 그 안으로 맞춘다. 모르고 넘쳤으면 오류에서 한도를 읽어 한 번 다시 보내고 기억한다
+    const capKey = `${conn?.provider || ''}|${conn?.model || ''}`, cap = outCap.get(capKey);
+    let Pc = cap && (P.maxTokens || 0) > cap ? { ...P, maxTokens: cap } : P;
+    let r: StreamResult; try {
+      try { r = await streamChatRaw(conn, Pc, messages, ac ? { ...opts, signal: ac.signal } : opts); }
+      catch (e) {
+        const fit = fitMaxTokens(e, Pc.maxTokens || 0); if (!fit) throw e;
+        outCap.set(capKey, fit); saveOutCap(); Pc = { ...Pc, maxTokens: fit };
+        termSend('done', `↺ ${who} · max ${P.maxTokens} → ${fit} (model limit)`, () => ({}));
+        r = await streamChatRaw(conn, Pc, messages, ac ? { ...opts, signal: ac.signal } : opts);
+      }
+    } finally { endMain?.(); }
     after(() => termSend('done', `✓ ${who} · ${((Date.now() - t0) / 1000).toFixed(1)}s · ${r.text.length} chars out · finish=${r.finish || '-'}`, () => ({
       done: { id, ms: Date.now() - t0, chars: r.text.length, tok: tokens(r.text), finish: r.finish || '', usage: usageOf(r.usage), thinkTok: tokens(r.think),
         think: full && !gotJson ? r.think.slice(0, 50000) : '', out: full ? (gotJson ? '' : r.text.slice(0, 50000)) : oneLine(r.text, 300) },
@@ -1337,6 +1348,22 @@ export async function streamChat(conn: Conn | null | undefined, P: Params, messa
       () => abort ? { done: { id, ms: Date.now() - t0, stopped: true } } : { err: { id, ms: Date.now() - t0, msg: String((e as Error)?.message || e).slice(0, 2000) } }));
     throw e;
   } finally { unlink(); if (ac) taps.delete(ac.signal); }
+}
+// ── 모델마다의 최대 출력 길이: 넘치게 보냈다가 거절되면 오류 글에서 한도를 읽어 둔다 (연결 · 모델마다, 이 브라우저에) ──
+const outCap = new Map<string, number>(Object.entries((() => { try { return JSON.parse(localStorage.getItem('dl-outcap') || '{}') as Record<string, number>; } catch { return {}; } })()));
+const saveOutCap = () => { try { localStorage.setItem('dl-outcap', JSON.stringify(Object.fromEntries(outCap))); } catch { /* 저장소를 못 쓰는 창 */ } };
+/** "출력 길이가 너무 길다"는 거절이면 받을 수 있는 maxTokens 를 돌려준다 (아니면 0).
+ *  보낸 값(생각 여유를 더한 것일 수 있다)과 허용 값이 함께 적혀 있으면 그 차이만큼 줄인다 — Claude · OpenAI · Gemini 의 글꼴을 읽는다 */
+export function fitMaxTokens(e: unknown, maxTokens: number): number {
+  const st = (e as { status?: number }).status, msg = String((e as Error)?.message || e || '');
+  if (st === 429 || st === 401 || st === 403 || !maxTokens) return 0;
+  if (!/max[_ ]?(output[_ ]?|completion[_ ]?)?tokens|maxOutputTokens|output tokens|completion tokens/i.test(msg) || !/too large|maximum|at most|supported range|exceed|limit|>\s*\d|less than or equal/i.test(msg)) return 0;
+  const nums = [...msg.matchAll(/\d[\d,]*/g)].map(m => Number(m[0].replace(/,/g, ''))).filter(n => n >= 256 && n < 10_000_000);
+  if (!nums.length) return maxTokens > 8192 ? Math.floor(maxTokens / 2) : 0;   // 한도가 적혀 있지 않다: 반으로 줄여 본다
+  const sent = Math.max(...nums), under = nums.filter(n => n < sent);
+  if (!under.length) return 0;
+  const allowed = Math.max(...under) - (/exclusive/i.test(msg) ? 1 : 0), fit = Math.max(512, maxTokens - (sent - allowed));
+  return fit < maxTokens ? fit : 0;
 }
 /** 호출마다의 요청 · 응답 받이 (streamChat 이 만든 signal → call() 이 찾는다) */
 const taps = new WeakMap<AbortSignal, { req: (method: string, url: string, body: unknown) => void; res: (status: number, data: unknown) => void }>();

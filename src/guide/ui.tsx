@@ -243,12 +243,12 @@ function ItemView({ it, idx, last }: { it: Item; idx: number; last?: boolean }) 
     <pre>{it.out || t('guide.tool.sum.none')}</pre>
   </details>; }
   if (it.k === 'change') return <ChangeCard ch={it.change} />;
-  if (it.k === 'note') return <p className="gd-note" role="status">{it.text === 'noimgconn' ? t('guide.note.noImgConn') : it.text}</p>;
+  if (it.k === 'note') return <p className="gd-note" role="status">{it.text === 'noimgconn' ? t('guide.note.noImgConn') : it.text === 'thinkcut' ? t('guide.note.thinkCut') : it.text}</p>;
   if (it.text === 'limit' || it.text === 'loop') return <div className="gd-e gd-limit" role="status"><p>{t(it.text === 'loop' ? 'guide.err.loop' : 'guide.err.limit')}</p>{last && !G.busy ? <button type="button" className="btn primary" onClick={() => void resume(t('guide.cont.say'))}><Icon name="play" size={15} />{t('guide.cont.btn')}</button> : null}</div>;
   const again = last && !G.busy ? <button type="button" className="btn primary gd-retry" onClick={() => void retry()}><Icon name="refresh" size={15} />{t('guide.act.retry')}</button> : null;
   if (it.text === 'noimg') return <div className="gd-e" role="alert"><span className="fx-lbl">{t('guide.err.label')}</span><p>{t('guide.err.noImage')}</p>{it.detail ? <small className="dim gd-edetail">{it.detail}</small> : null}{last && !G.busy ? <div className="gd-ebtns"><button type="button" className="btn primary gd-retry" onClick={() => void retry({ noImages: true })}><Icon name="refresh" size={15} />{t('guide.act.retryNoImg')}</button><button type="button" className="btn" onClick={() => void retry()}>{t('guide.act.retry')}</button></div> : null}</div>;
   const rate = /\b429\b|resource[ _-]?exhausted|rate[ _-]?limit|too many requests/i.test(it.text);
-  return <div className="gd-e" role="alert"><span className="fx-lbl">{t('guide.err.label')}</span><p>{it.text === 'noconn' ? t('guide.err.noconn') : it.text === 'empty' ? t('guide.err.empty') : it.text}</p>{rate ? <small className="dim">{t('guide.err.rateHint')}</small> : null}
+  return <div className="gd-e" role="alert"><span className="fx-lbl">{t('guide.err.label')}</span><p>{it.text === 'noconn' ? t('guide.err.noconn') : it.text === 'empty' ? t('guide.err.empty') : it.text === 'thinkcut' ? t('guide.err.thinkCut') : it.text}</p>{rate ? <small className="dim">{t('guide.err.rateHint')}</small> : null}
     {it.text === 'noconn' || again ? <div className="gd-ebtns">{again}{it.text === 'noconn' ? <button type="button" className="btn" onClick={() => { closeGuide(); go('conns'); }}>{t('nav.conns')}</button> : null}</div> : null}</div>;
 }
 
