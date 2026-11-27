@@ -219,7 +219,8 @@ const strip = (raw: string, name: string) => {
   t = t.replace(/\[(react|status|schedule_update|selfie|memory|time|later|scene|scene_end|call)\b[^\]]*\]?/gi, '').replace(/\[hangup\]?/gi, '');
   t = t.replace(new RegExp('^\\s*' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*:\\s*'), '').replace(/\[$|\[[a-z_]*$/i, '').replace(/<\/?[a-z]*$/i, '');
   // 따옴표로 감싼 말은 벗긴다
-  t = t.replace(/^"([\s\S]*)"$/, '$1');
+  // 줄마다 통째로 감싼 따옴표를 먼저 벗기고, 남은 것이 글 전체를 감싼 한 쌍일 때만 그것도 (첫 따옴표와 끝 따옴표만 벗기면 「왜."」 · 「"사람…」처럼 짝이 어긋난다)
+  t = t.replace(/^([ \t]*)["“]([^"“”\n]*)["”][ \t]*$/gm, '$1$2').replace(/^["“]([^"“”]*)["”]$/, '$1');
   return t;
 };
 

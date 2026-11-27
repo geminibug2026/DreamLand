@@ -644,7 +644,7 @@ export const TALK_DEFAULT = `You are {{char}}, texting {{user}} in a private mes
 - Do not end the chat for {{user}} — no sending them off to bed or to eat, no goodbyes — unless {{char}} has a real reason to go. Do not suddenly turn up where {{user}} is either; you meet only when the two of you have arranged it.
 - The [HH:MM] marks on messages are only for your sense of time. Never write timestamps or your own name at the start of a message.`;
 /**
- * 줄마다 무엇인지 표시하는 약속. 화면은 이 표시만 보고 말풍선 · 소리 내어 한 말 · 속마음 · 지문을 가른다 (코드로 추측하지 않는다).
+ * 줄마다 무엇인지 표시하는 약속 (통화 중에는 빼고 통화 지시문을 따른다: 말만, 따옴표 · 별표 없이). 화면은 이 표시만 보고 말풍선 · 소리 내어 한 말 · 속마음 · 지문을 가른다 (코드로 추측하지 않는다).
  * 직접 쓴 대화 지시문을 써도 늘 붙는다
  */
 export const TALK_LINES = `<format>
@@ -704,7 +704,7 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
   });
   const lore = scanLore(loreBooksFor(chat, chars, persona), history, ctx, { state: (chat.loreState ||= {}) as LoreState, count: msgs.length, commit, type, char, persona, names: source.map(m => m.role === 'system' ? '' : m.role === 'user' ? ctx.user as string : (m.name || char.name)) });
   const card = (c: Char) => [`<character name="${c.name}">`, macro(c.description, { ...ctx, char: c.name }), c.personality && `Personality: ${macro(c.personality, { ...ctx, char: c.name })}`, c.scenario && `Situation: ${macro(c.scenario, { ...ctx, char: c.name })}`, c.mesExample && `How they talk:\n${macro(c.mesExample, { ...ctx, char: c.name }).replace(/<START>/gi, '').trim()}`, '</character>'].filter(Boolean).join('\n');
-  const before: PromptMsg[] = [{ role: 'system', src: '대화 모드 지시문', content: `<instructions>\n${mx(M.talkPrompt || TALK_DEFAULT)}\n\n${mx(TALK_LINES)}${isGroup ? `\nThis is a group chat. You write only ${char.name}'s messages; ${chars.filter(c => c.id !== char.id).map(c => c.name).join(', ')} write their own, so never speak for them.` : ''}\n</instructions>` },
+  const before: PromptMsg[] = [{ role: 'system', src: '대화 모드 지시문', content: `<instructions>\n${mx(M.talkPrompt || TALK_DEFAULT)}${inCall ? '' : '\n\n' + mx(TALK_LINES)}${isGroup ? `\nThis is a group chat. You write only ${char.name}'s messages; ${chars.filter(c => c.id !== char.id).map(c => c.name).join(', ')} write their own, so never speak for them.` : ''}\n</instructions>` },
     { role: 'system', src: '캐릭터 카드', content: [card(char), ...chars.filter(c => c.id !== char.id).map(card)].join('\n\n') }];
   if (persona?.description) before.push({ role: 'system', src: '페르소나', content: `<user name="${ctx.user}">\n${mx(persona.description)}\n</user>` });
   if (lore.length) before.push({ role: 'system', src: '로어북', content: `<lore>\n${lore.map(e => e.text).join('\n')}\n</lore>` });
@@ -725,7 +725,7 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
     Clock.line(chat),
     type === 'continue' && 'Continue your last message from exactly where it stopped. Do not restart it or repeat what is already written.',
     type === 'impersonate' && `Write ${ctx.user}'s next text message, in the voice and length their earlier messages show. Output only that message, as plain lines.`,
-    type !== 'impersonate' && TALK_LINES_CHECK,
+    type !== 'impersonate' && !inCall && TALK_LINES_CHECK,   // 통화 중에는 말만 한다 (따옴표 · 별표 없이 — 통화 지시문을 따른다)
   ].filter(Boolean).join('\n');
   const tail: PromptMsg = { role: 'user', src: '지금 상황 · 명령 안내', content: `<context>\n${situation}\n</context>${M.commands === false || type === 'impersonate' ? '' : '\n\n' + mx(TALK_COMMANDS.replace('{{clock_command}}', Clock.command(chat) ? '\n' + Clock.command(chat) : '').replace('{{call_command}}', !inCall && (S.settings as { call?: { aiCall?: boolean } }).call?.aiCall !== false ? TALK_CALL_COMMAND : ''))}` };
   const fixed = [...before, ...late, tail].reduce((n, m) => n + tokens(m.content) + 4, 0);
