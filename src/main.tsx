@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { DB, emit, on } from './lib/core';
 import { registerPage, route } from './lib/router';
+import { X } from './lib/hooks';
 import { start } from './lib/boot';
 import { installMirror, type MirrorDb } from './datafolder/mirror';
 import { setMirror } from './datafolder/instance';
@@ -72,7 +73,8 @@ await start({
       });
     }
     // 켠 뒤 한가할 때 화면 코드를 미리 받아 둔다 (처음 열 때 기다리지 않게) — 하나씩, 화면이 바쁘지 않을 때만
-    const rest = Object.values(lazyPages), idle = (f: () => void) => { const w = window as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }; if (w.requestIdleCallback) w.requestIdleCallback(f, { timeout: 4000 }); else setTimeout(f, 200); };
+    // 화면 코드 뒤에는 기능 화면 탭들의 코드도 (처음 여는 탭이 빈 채로 기다리지 않게)
+    const rest: (() => Promise<unknown>)[] = [...Object.values(lazyPages), ...X.studio.filter(x => x.preload).map(x => () => x.preload!())], idle = (f: () => void) => { const w = window as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }; if (w.requestIdleCallback) w.requestIdleCallback(f, { timeout: 4000 }); else setTimeout(f, 200); };
     const warm = () => { const next = rest.shift(); if (next) idle(() => { next().catch(() => { }).finally(warm); }); };
     setTimeout(warm, 4000);
   },

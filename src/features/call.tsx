@@ -29,7 +29,7 @@ function setup() {
   on<{ msg: Msg; chat: Chat }>('message:received', d => { if (d?.chat && d.msg?.role === 'assistant') C.clearPending(d.chat); });
   setInterval(C.tick, 60000);
   X.studio = X.studio.filter(s => s.owner !== 'call');
-  X.studio.push({ owner: 'call', get title() { return tt('call.studio.title'); }, render: () => reactNode('call-studio', 'div.call-studio-root', <CallStudio />) });
+  X.studio.push({ owner: 'call', get title() { return tt('call.studio.title'); }, preload: () => CallStudio.preload(), render: () => reactNode('call-studio', 'div.call-studio-root', <CallStudio />) });
 }
 
 export const feature: FeatureDef = { name: 'call', setup };

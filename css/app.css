@@ -164,6 +164,8 @@ button.chip:hover { color: var(--text); background: var(--surface2); }
 
 /* 페이지 공통 */
 .pagebox { max-width: 900px; margin: 0 auto; padding: 28px 30px 90px; display: flex; flex-direction: column; gap: 18px; }
+/* 기능 화면: 미리 그리는 탭은 보이지 않게 실제 폭으로 잠깐 둔다 (그 뒤 숨김) */
+.st-page { position: relative; } .st-warm { position: absolute; inset: 0; overflow: hidden; padding-inline: inherit; visibility: hidden; pointer-events: none; contain: layout style paint; }
 .pagebox > h1, .lib-head h1 { font-size: 1.25em; display: flex; align-items: center; gap: 9px; } .pagebox > h1 .ic, .lib-head h1 .ic { color: var(--accent-ink); }
 
 /* 홈 */

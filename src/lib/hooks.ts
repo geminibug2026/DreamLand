@@ -32,7 +32,7 @@ export interface PromptPiece { where: 'top' | 'before' | 'depth' | 'end'; role?:
 /** 프롬프트 조각을 만들 때 받는 것 (engine.buildPrompt 가 넘긴다) */
 export interface PromptInfo { chat: Chat; char: Char; chars: Char[]; persona: Persona; history: { role: string; content: string }[]; msgs: Msg[]; type: string; commit?: boolean; ctx: Ctx }
 export interface PromptHook extends Owned { fn(info: PromptInfo): PromptPiece[] | null | undefined | void }
-export interface StudioTab extends Owned { title: string; render(): Node; [k: string]: unknown }
+export interface StudioTab extends Owned { title: string; render(): Node; /** 탭 코드를 한가할 때 미리 받아 둔다 (처음 열 때 빈 화면 없이) */ preload?(): Promise<unknown>; [k: string]: unknown }
 export interface BeforeHook extends Owned { fn(o: { chat: Chat; msgs: Msg[]; type: string; signal?: AbortSignal; chars?: Char[]; persona?: Persona; /** 이번에 말할 캐릭터 */ speaker?: Char }): Promise<unknown> }
 
 /** 답변을 받은 뒤 저장하기 전에 기다려 주는 일 (변수 갱신 등). 답변 글을 고쳐도 된다 */

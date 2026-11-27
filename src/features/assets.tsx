@@ -22,7 +22,7 @@ function setup() {
   As.useSprites({ list: id => Sprites.list(id) });
   on<Chat>('chat:open', chat => { if (cfg().sprites && chat?.charIds?.some(id => !Sprites.has(id))) void Sprites.load(chat.charIds).then(refreshChat).catch(() => { }); });
   X.studio = X.studio.filter(t => t.owner !== 'assets');
-  X.studio.push({ owner: 'assets', title: '에셋', render: () => reactNode('assets-studio', 'div.ast', <AssetsStudio />) });
+  X.studio.push({ owner: 'assets', title: '에셋', preload: () => AssetsStudio.preload(), render: () => reactNode('assets-studio', 'div.ast', <AssetsStudio />) });
 
   // ════════ 입력창 + 메뉴 · 명령어 ════════
   const gallery = async () => {

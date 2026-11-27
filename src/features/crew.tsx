@@ -62,7 +62,7 @@ function setup() {
   X.panels = X.panels.filter(p => p.owner !== OWNER);
   X.panels.push({ owner: OWNER, id: 'crew', icon: 'crew', get title() { const n = (chatApi.current().chat as CrewChat | null)?.crew?.pending?.length; return t('crew.title') + (n ? ` · ${n}` : ''); }, render: (chat, msgs) => reactNode('crew-panel', 'div.col', <CrewPanel chat={chat as CrewChat} msgs={msgs || []} />) });
   X.studio = X.studio.filter(s => s.owner !== OWNER);
-  X.studio.push({ owner: OWNER, get title() { return t('crew.title'); }, render: () => reactNode('crew-studio', 'div.cr-studio', <CrewStudio />) });
+  X.studio.push({ owner: OWNER, get title() { return t('crew.title'); }, preload: () => CrewStudio.preload(), render: () => reactNode('crew-studio', 'div.cr-studio', <CrewStudio />) });
   // {{crew::조수 id}} — 그 조수의 가장 최근 결과
   X.macros.set('crew', { owner: OWNER, fn: (args: unknown) => { const { chat, msgs } = chatApi.current(), id = String(Array.isArray(args) ? args[0] ?? '' : args ?? '').trim(), d = defs().find(x => x.id === id || x.name === id); return chat && d ? latestOf(chat as CrewChat, d, msgs) : ''; } });
 

@@ -57,7 +57,7 @@ async function setup() {
   X.panels = X.panels.filter(p => p.owner !== OWNER);
   X.panels.push({ owner: OWNER, id: 'extras', get title() { return t('extras.panel.title'); }, icon: 'sticker', render: chat => reactNode('xt-panel', 'div.col', <ExtrasPanel chat={chat} />) });
   X.studio = X.studio.filter(s => s.owner !== OWNER);
-  X.studio.push({ owner: OWNER, get title() { return t('extras.studio.title'); }, render: () => reactNode('xt-studio', 'div.xt', <ExtrasStudio />) });
+  X.studio.push({ owner: OWNER, get title() { return t('extras.studio.title'); }, preload: () => ExtrasStudio.preload(), render: () => reactNode('xt-studio', 'div.xt', <ExtrasStudio />) });
   const mine = (c: Chat) => [
     { label: t('extras.ins.open'), ic: 'footprint', hint: t('extras.ins.openHint'), onclick: () => void openInsights(c) },
     { label: t('extras.trash.open'), ic: 'trash', onclick: () => void openTrash(c) },

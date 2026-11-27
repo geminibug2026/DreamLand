@@ -29,7 +29,7 @@ function setup() {
 
   // ════════ 등록 ════════ (옛 모듈이 남긴 것이 있으면 걷어 내고 한 번만)
   x.studio = x.studio.filter(t => t.owner !== OWNER); x.actions = x.actions.filter(a => a.owner !== OWNER); x.composer = x.composer.filter(a => a.owner !== OWNER); x.panels = x.panels.filter(p => p.owner !== OWNER);
-  x.studio.push({ owner: OWNER, get title() { return t('scenebook.illust'); }, render: () => mountNode(make('div', 'card sb-studio'), <Studio />) });
+  x.studio.push({ owner: OWNER, get title() { return t('scenebook.illust'); }, preload: () => Studio.preload(), render: () => mountNode(make('div', 'card sb-studio'), <Studio />) });
   x.actions.push(
     // 수동 생성: 저장된 장면 · AI 가 장면 쓰기 · 직접 쓰기 + 화면 비율을 한 창에서 고른다 (예전의 "자동으로 그리기" · "장면 분석"을 모았다)
     { owner: OWNER, id: 'sb-manual', get label() { return t('scenebook.manualDlg.title'); }, icon: 'image', run: guard((m: Msg) => manualDialog(m)) },

@@ -161,7 +161,7 @@ function setup() {
   X.panels.push({ owner: 'expr', id: 'expr', get title() { return t('expressions.panel.title'); }, icon: 'user', render: (chat, msgs) => reactNode('expr-panel', 'div.exs-panel', <ExprPanel chat={chat} msgs={msgs} />) });
 
   X.studio = X.studio.filter(t => t.owner !== 'expr');
-  X.studio.push({ owner: 'expr', title: '표정', render: () => reactNode('expr-studio', 'div.exs', <ExprStudio />) });
+  X.studio.push({ owner: 'expr', title: '표정', preload: () => ExprStudio.preload(), render: () => reactNode('expr-studio', 'div.exs', <ExprStudio />) });
 
   watchStage();
 }

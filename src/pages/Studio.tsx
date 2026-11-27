@@ -1,11 +1,11 @@
 // 기능: 번역 · 삽화 · 에셋 · 보조 연결 설정 + 기능 모듈이 꽂은 탭
-import { useMemo, useState, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Btn } from '../kit';
 import type { FormDefs, Opt } from '../studio/parts';
 import * as libIllust from '../lib/illust';
 import * as libHooks from '../lib/hooks';
 import * as libAssets from '../lib/assets';
-import { S, chatConns } from '../lib/core';
+import { S, chatConns, on } from '../lib/core';
 import { Host, LForm, PageHead, textModal } from '../studio/parts';
 import { t } from '../i18n';
 import { JobsTable } from '../reach/jobs';
@@ -29,8 +29,30 @@ function ExtTab({ render }: { render: () => Node }) {
   return <Host node={node} />;
 }
 
+/**
+ * 탭 하나의 자리. 한 번 그린 탭은 이 화면을 떠날 때까지 남겨 두고 숨겼다 보였다만 한다 (다시 열 때 처음부터 다시 그리지 않게).
+ * warm: 미리 그리는 중 — 보이지 않게 실제 폭으로 한두 프레임 둔다 (그릴 때 크기를 재는 부품이 0 을 재지 않게), 그 뒤 숨김
+ */
+type Mode = 'shown' | 'kept' | 'warm';
+const Pane = memo(function Pane({ mode, make }: { mode: Mode; make: () => ReactNode }) {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const body = useMemo(make, []);
+  return mode === 'shown' ? <div style={{ display: 'contents' }}>{body}</div> : <div className={mode === 'warm' ? 'st-warm' : undefined} hidden={mode === 'kept'} inert aria-hidden="true">{body}</div>;
+}, (a, b) => a.mode === b.mode);
+
+const idle = (f: () => void) => { const w = window as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }; if (w.requestIdleCallback) w.requestIdleCallback(f, { timeout: 3000 }); else setTimeout(f, 200); };
+
 function Studio() {
-  const [, setTab] = useState(tab), [epoch, setEpoch] = useState(0);
+  const [, bump] = useState(0), re = () => bump(x => x + 1);
+  // 탭마다: 몇 번째로 새로 그렸나(n) · 미리 그리는 중인가 · 마지막으로 보인 뒤의 설정 판(ver)
+  const panes = useRef(new Map<string, { n: number; warm: boolean; ver: number }>()).current, ver = useRef(0), order = useRef<string[]>([]);
+  /** 탭을 연다. again: 같은 탭을 다시 누름(새로 그리기). 숨어 있는 동안 설정이 바뀐 탭도 새로 그린다 (다른 탭에서 같은 설정을 고쳤을 수 있다) */
+  const show = (n: string, again = false) => {
+    const p = panes.get(n);
+    if (!p) panes.set(n, { n: 0, warm: false, ver: ver.current });
+    else { if (again || p.ver !== ver.current) { p.n++; p.ver = ver.current; } p.warm = false; }
+    tab = n; re();
+  };
   const st = S.settings as unknown as StudioSettings, sv = () => S.set({});
   const { NAI_MODELS, PLAN_PROMPT, TRANSLATE_PROMPT } = libIllust, { ASSET_PROMPT } = libAssets;
   const conns: Opt[] = [['', t('studio.connDefault')], ...chatConns().map(c => [c.id, `${c.name}${c.model ? ' · ' + c.model : ''}`] as const)];
@@ -64,7 +86,7 @@ function Studio() {
       { k: 'helpers.illust', label: t('studio.il.conn'), type: 'select', opts: conns },
       { k: 'illust.planPrompt', label: t('studio.il.planPrompt'), type: 'area', rows: 5, ph: PLAN_PROMPT.slice(0, 500) + ' …', hint: t('studio.il.planPromptHint') }],
       <div className="row" key="a"><Btn label={t('studio.il.showDefault')} cls="ghost" ic="note" onClick={() => textModal(t('studio.il.defaultTitle'), 'regex-out', PLAN_PROMPT)} /></div>,
-      <div className="row" key="b"><Btn label={t('studio.il.refresh')} cls="ghost" ic="refresh" onClick={() => setEpoch(n => n + 1)} /></div>,
+      <div className="row" key="b"><Btn label={t('studio.il.refresh')} cls="ghost" ic="refresh" onClick={() => show(tab, true)} /></div>,
       <p className="hint" key="h">{t('studio.il.hint')}</p>),
     '에셋': () => card([{ section: t('studio.as.section') },
       { k: 'assets.inject', label: t('studio.as.inject'), type: 'check' }, { k: 'assets.max', label: t('studio.as.max'), type: 'num', min: 1, max: 6, half: true },
@@ -80,9 +102,35 @@ function Studio() {
   const rank = (t: string) => { const i = TAB_ORDER.indexOf(t); return i < 0 ? TAB_ORDER.length : i; };
   const names = Object.keys(views).map((t, i) => [t, i] as const).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(x => x[0]);
   if (!views[tab]) tab = names[0];
+  order.current = names;
+  if (!panes.has(tab)) panes.set(tab, { n: 0, warm: false, ver: ver.current });
 
-  return <section className="pagebox"><PageHead eyebrow="features" title={t('studio.title')} />
-    <div className="tabs">{names.map(n => <button key={n} data-tab={n} className={'tab' + (n === tab ? ' on' : '')} onClick={() => { tab = n; setTab(n); setEpoch(e => e + 1); }}>{tabLabel(n)}</button>)}</div>
-    <span style={{ display: 'contents' }} key={tab + ':' + epoch}>{views[tab]()}</span>
+  useEffect(() => {
+    let alive = true, touched = 0;
+    const mark = () => { touched = performance.now(); };
+    addEventListener('pointerdown', mark, true); addEventListener('keydown', mark, true);
+    // 보이는 탭에서 고친 설정은 그 탭에는 이미 반영돼 있다. 숨은 탭만 다음에 열 때 새로 그린다
+    const off = on('settings', () => { ver.current++; const a = panes.get(tab); if (a && !a.warm) a.ver = ver.current; });
+    // 1) 탭 코드를 먼저 받아 둔다 (네트워크 · 해석만). 2) 한가할 때 한 탭씩 미리 그려 둔다 — 누르고 있거나 막 누른 때는 비켜 간다
+    for (const x of libHooks.X.studio) void x.preload?.();
+    const next = () => idle(() => {
+      if (!alive) return;
+      if (performance.now() - touched < 700) { setTimeout(next, 700); return; }
+      const n = order.current.find(x => !panes.has(x)); if (!n) return;
+      const ext = libHooks.X.studio.find(x => x.title === n);
+      void Promise.resolve(ext?.preload?.()).then(() => {
+        if (!alive || panes.has(n)) { next(); return; }
+        panes.set(n, { n: 0, warm: true, ver: ver.current }); re();
+        requestAnimationFrame(() => requestAnimationFrame(() => { const p = panes.get(n); if (alive && p?.warm) { p.warm = false; re(); } next(); }));
+      });
+    });
+    const start = setTimeout(next, 500);   // 보이는 탭이 먼저 다 뜨게
+    return () => { alive = false; clearTimeout(start); off(); removeEventListener('pointerdown', mark, true); removeEventListener('keydown', mark, true); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return <section className="pagebox st-page"><PageHead eyebrow="features" title={t('studio.title')} />
+    <div className="tabs">{names.map(n => <button key={n} data-tab={n} className={'tab' + (n === tab ? ' on' : '')} onClick={() => { if (n !== tab) show(n); }}>{tabLabel(n)}</button>)}</div>
+    {names.filter(n => panes.has(n)).map(n => { const p = panes.get(n)!; return <Pane key={n + ':' + p.n} mode={n === tab ? 'shown' : p.warm ? 'warm' : 'kept'} make={views[n]} />; })}
   </section>;
 }

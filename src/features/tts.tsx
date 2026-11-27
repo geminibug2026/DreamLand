@@ -16,7 +16,7 @@ function setup() {
   useCss('tts.css');
   mountDock();
   X.studio = X.studio.filter(s => s.owner !== 'tts');
-  X.studio.push({ owner: 'tts', title: '읽어 주기', render: () => reactNode('tts-studio', 'div.tts', <TtsStudio />) });
+  X.studio.push({ owner: 'tts', title: '읽어 주기', preload: () => TtsStudio.preload(), render: () => reactNode('tts-studio', 'div.tts', <TtsStudio />) });
   // 새 답변 자동 읽기 (보고 있는 방의 답변만)
   on<{ msg: Msg; chat: Chat }>('message:received', ({ msg, chat }) => {
     const c = cfg(); if (!c.on || !c.autoRead || !msg || msg.role !== 'assistant' || cur.chat?.id !== chat?.id || document.hidden) return;
