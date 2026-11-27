@@ -1,6 +1,7 @@
 // 통화 화면: 휴대폰은 화면 전체, PC 는 가운데 휴대폰 한 대(검은 몸체 · 옆 버튼 · 카메라 구멍 · 홈 막대).
 // 위에서부터: 상대(둥근 얼굴 · 이름 · 통화 시간) · 지금 하는 말 한 장(읽는 자리를 짚음) · 주고받은 말(모두 같은 말풍선) · 말하기 · 단추.
 // 가로로 눕힌 휴대폰은 두 단(왼쪽 상대 · 지금의 말 · 단추, 오른쪽 주고받은 말 · 말하기) — CSS 만으로 나눈다
+// 받지 않은 전화는 끝난 화면 그대로 「메시지 남기기」(안내 → 삐 → 남길 말 → 남김)를 고를 수 있다. 통화 중 배경 소리는 상태 줄 끝에 이름만 작게
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import { S } from '../lib/core';
@@ -24,6 +25,7 @@ Object.assign(I, {
   micOff: 'M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3M3 3l18 18',
   rec: 'M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z',
   keypad: 'M6 5h.01M12 5h.01M18 5h.01M6 10h.01M12 10h.01M18 10h.01M6 15h.01M12 15h.01M18 15h.01M12 20h.01',
+  voicemail: 'M6.5 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM17.5 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM6.5 15.5h11',
 });
 
 const useSession = () => { useSyncExternalStore(C.subscribe, C.version); return C.session(); };
@@ -161,24 +163,29 @@ function Phone() {
   const r = useReadingState(), callReading = !!r?.key.startsWith('call:') && !r.paused;
   // 새 줄이 오면 맨 아래로. 목소리가 읽는 동안은 읽는 자리를 따라가므로(ReadAlong) 건드리지 않는다
   useEffect(() => { const b = box.current; if (b && picked < 0 && !callReading && +(b.dataset.holdUntil || 0) < Date.now()) b.scrollTop = b.scrollHeight; }, [count, tail, picked, callReading]);
-  useEffect(() => { if (s?.phase === 'connected') { if (matchMedia('(hover: hover)').matches) inp.current?.focus(); } else { setPicked(-1); setAdding(false); setMore(false); } }, [s?.phase]);
+  useEffect(() => { if (s?.phase === 'connected' || s?.vm === 'rec') { if (matchMedia('(hover: hover)').matches) inp.current?.focus(); } else { setPicked(-1); setAdding(false); setMore(false); } }, [s?.phase, s?.vm]);
   const stopMic = useRef<(() => void) | null>(null), [hearing, setHearing] = useState(false);   // (훅은 아래의 이른 반환보다 앞에 둔다)
   if (!s) return p ? <PickerScreen p={p} t={now} /> : null;
   const ch = s.char, ringing = s.phase === 'ringing', dialing = s.phase === 'dialing', live = s.phase === 'connected', ended = s.phase === 'ended';
+  // 음성 메시지 남기기 (받지 않은 전화가 끝난 화면에서): greet 안내 · rec 남길 말 · sent 남김
+  const vm = ended && s.vm ? s.vm : null, canLeave = ended && s.result === 'unanswered' && !s.vm;
   const party = s.chars, group = party.length > 1, canAdd = live && s.chat.charIds.length > 1 && s.chars.length < C.MAX_PARTY, addable = canAdd ? C.membersOf(s.chat).filter(c => !s.chars.includes(c)) : [];
-  const state = ringing ? tt('call.state.ringing') : dialing ? tt('call.state.dialing') : ended ? (s.result === 'answered' ? tt('call.state.ended') : tt('call.result.' + (s.result || 'missed'))) : s.hold ? tt('call.state.hold') : C.fmtDur(now - s.startedAt);
+  const state = vm ? (vm === 'greet' ? t('call.vm.connecting') : vm === 'rec' ? `${t('call.vm.recording')} ${C.fmtDur(now - s.startedAt)}` : t('call.vm.sent'))
+    : ringing ? tt('call.state.ringing') : dialing ? tt('call.state.dialing') : ended ? (s.result === 'answered' ? tt('call.state.ended') : tt('call.result.' + (s.result || 'missed'))) : s.hold ? tt('call.state.hold') : C.fmtDur(now - s.startedAt);
   const speakingId = s.talking ? lastSaid(s)?.by : (readingLine(s, r?.key)?.by || '');
-  const send = () => { const v = text.trim(); setText(''); setPicked(-1); void C.userSays(v); };
+  // 보내기: 통화 중이면 내 말, 음성 메시지를 녹음 중이면 남길 말
+  const say = (v: string) => { setText(''); setPicked(-1); if (vm === 'rec') void C.sendMessage(v); else void C.userSays(v); };
+  const send = () => say(text.trim());
   // 말로 하기: 누르면 듣고, 말을 마치면 그대로 보낸다 (전화처럼)
   const mic = () => {
     if (hearing) return void stopMic.current?.();
     setHearing(true);
-    stopMic.current = listen({ onText: (f, i) => setText(f + i), onEnd: said => { setHearing(false); stopMic.current = null; if (said) { setText(''); setPicked(-1); void C.userSays(said); } } });
+    stopMic.current = listen({ onText: (f, i) => setText(f + i), onEnd: said => { setHearing(false); stopMic.current = null; if (said) say(said); } });
   };
   const ghost = async () => { if (ghosting) return; setGhosting(true); try { const g = await C.ghost(text.trim()); if (g) { setText(g); inp.current?.focus(); } } finally { setGhosting(false); } };
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'];
   const title = group ? party.map(c => c.name).join(' · ') : ch.name;
-  const hasLines = live || (ended && s.lines.length > 0);
+  const hasLines = live || (ended && !vm && s.lines.length > 0);
   const size = cfg().textSize || 'm';
   return <div className={`call-veil phase-${s.phase}${group ? ' is-group' : ''}${hasLines ? ' has-lines' : ''} size-${size}`} role="dialog" aria-label={title}>
     {/* 기기: PC 에서는 휴대폰 몸체(둥근 검은 테 · 옆 버튼 · 카메라 구멍 · 홈 막대), 휴대폰에서는 화면 전체 */}
@@ -193,9 +200,12 @@ function Phone() {
           : <div className={`call-portrait${s.talking || speakingId ? ' talking' : ''}`}><span className="call-face">{ch.avatar ? <Face src={ch.avatar} /> : <Emblem o={ch} />}</span>{ringing || dialing ? <><i className="call-frame f1" aria-hidden /><i className="call-frame f2" aria-hidden /></> : null}</div>}
         <div className="call-id">
           <b className="call-name">{group ? tt('call.group.title', { count: party.length }) : ch.name}</b>
-          <span className="call-state">{live ? <i className={`call-live${s.rec ? ' rec' : ''}${s.hold ? ' hold' : ''}`} title={s.rec ? tt('call.do.record') : undefined} /> : null}{state}{live && (s.talking || callReading) ? <i className="call-wave"><b /><b /><b /><b /></i> : null}</span>
+          <span className="call-state">{live || vm === 'rec' ? <i className={`call-live${s.rec || vm ? ' rec' : ''}${s.hold ? ' hold' : ''}`} title={s.rec ? tt('call.do.record') : undefined} /> : null}{state}
+            {live && s.amb ? <span className="call-amb" title={tt('call.set.ambient')}>{t('tts.bed.' + s.amb)}</span> : null}
+            {live && (s.talking || callReading) ? <i className="call-wave"><b /><b /><b /><b /></i> : null}</span>
+          {vm ? <small className="call-hint">{vm === 'greet' ? t('call.vm.greetHint') : vm === 'rec' ? t('call.vm.hint') : t('call.vm.sentHint', { name: ch.name })}</small> : null}
           {s.absent.length ? <small className="call-used">{tt('call.group.absent', { names: s.absent.map(c => c.name).join(', ') })}</small> : null}
-          {s.calls ? <small className="call-used">{tt('call.used', { count: s.calls })}</small> : null}
+          {s.calls && !vm ? <small className="call-used">{tt('call.used', { count: s.calls })}</small> : null}
         </div>
       </div>
       {live ? <Caption s={s} /> : null}
@@ -208,6 +218,11 @@ function Phone() {
         {sttSupported() && S.settings.ux?.mic === true ? <button type="button" className={`ibtn call-mic${hearing ? ' on' : ''}`} title={hearing ? tt('call.do.micStop') : tt('call.do.mic')} aria-label={tt('call.do.mic')} aria-pressed={hearing} disabled={s.muted || s.hold} onClick={mic}><Icon name="mic" /></button> : null}
         <input ref={inp} className="inp" value={text} disabled={s.muted || s.hold} enterKeyHint="send" placeholder={s.muted ? tt('call.input.muted') : hearing ? tt('call.input.hearing') : ghosting ? tt('call.input.ghosting') : tt('call.input.ph')} onChange={e => setText(e.target.value)} />
         <button type="submit" className={`ibtn call-send${text.trim() ? ' has-text' : ''}`} title={text.trim() ? tt('call.do.send') : tt('call.do.nudge')} aria-label={text.trim() ? tt('call.do.send') : tt('call.do.nudge')} disabled={s.muted || s.hold}><Icon name={text.trim() ? 'send' : 'right'} /></button>
+      </form> : vm === 'rec' ? <form className="call-say" onSubmit={e => { e.preventDefault(); send(); }}>
+        {/* 음성 메시지: 대필 없이 (말로 하기) · 입력칸 · 보내기만 */}
+        {sttSupported() && S.settings.ux?.mic === true ? <button type="button" className={`ibtn call-mic${hearing ? ' on' : ''}`} title={hearing ? tt('call.do.micStop') : tt('call.do.mic')} aria-label={tt('call.do.mic')} aria-pressed={hearing} onClick={mic}><Icon name="mic" /></button> : null}
+        <input ref={inp} className="inp" value={text} enterKeyHint="send" placeholder={hearing ? tt('call.input.hearing') : t('call.vm.ph')} onChange={e => setText(e.target.value)} />
+        <button type="submit" className={`ibtn call-send${text.trim() ? ' has-text' : ''}`} title={tt('call.do.send')} aria-label={tt('call.do.send')} disabled={!text.trim()}><Icon name="send" /></button>
       </form> : null}
       <div className="call-dock">
         {live && more ? <MoreSheet s={s} adding={adding} setAdding={setAdding} close={() => setMore(false)} /> : null}
@@ -223,8 +238,10 @@ function Phone() {
             <Key ic="phoneOff" label={tt('call.do.decline')} cls="hang" onClick={C.decline} />
             <Key ic="edit" label={tt('call.do.textInstead')} onClick={C.textInstead} />
             <Key ic="phone" label={tt('call.do.accept')} cls="pick" onClick={C.accept} />
-          </> : ended ? <>
+          </> : vm ? <Key ic="x" label={vm === 'rec' ? tt('call.do.cancel') : tt('call.do.close')} onClick={C.close} />
+            : ended ? <>
             <Key ic="x" label={tt('call.do.close')} onClick={C.close} />
+            {canLeave ? <Key ic="voicemail" label={t('call.vm.leave')} onClick={() => void C.leaveMessage()} /> : null}
             {s.result !== 'declined' ? <Key ic="phone" label={tt('call.card.callback')} cls="pick" onClick={() => { const chat = s.chat, who = [...s.chars, ...s.absent]; C.close(); C.dial(chat, who); }} /> : null}
           </> : <Key ic="phoneOff" label={tt('call.do.hangup')} cls="hang" onClick={C.hangup} />}
         </div>

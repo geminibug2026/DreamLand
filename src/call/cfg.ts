@@ -1,6 +1,7 @@
 // 전화 설정 (S.settings.call) 과 기본 프롬프트. 프롬프트는 모두 설정 화면에서 고칠 수 있다
 import { S } from '../lib/core';
 import type { Chat } from '../lib/types';
+import type { BedId } from '../tts/marks';
 
 export const P_STYLE = `<phone_call>
 You are {{char}}, on a live voice phone call with {{user}} right now. Everything after the line "[Phone call started]" was spoken aloud on this call; earlier messages are your texting history and shared past.
@@ -27,16 +28,17 @@ export const P_MISSED = `A while ago you phoned {{user}} and they did not pick u
 export const P_HUNGUP = `Your last phone call with {{user}} ended when they hung up. If you two had already said goodbye, it was a normal ending — do not make anything of it. If it ended abruptly, without a goodbye, you noticed; react to that once, in character.`;
 export const P_CUT = `Your last phone call with {{user}} was cut off while you were still talking — you were in the middle of saying: "{{last}}". You know you did not get to finish. React to that, and you may finish the thought.`;
 export const P_NOANSWER = `{{user}} called you while you were {{activity}}, and you could not pick up. You know about the missed call now. Mention it naturally, the way {{char}} would.`;
+export const P_LEFT = `{{user}} called you while you were {{activity}} and you could not pick up, so they left you a voice message (it is in the call record above). You have just listened to it. Answer it the way {{char}} would.`;
 export const P_CHARBYE = `You just finished a phone call with {{user}} — you were the one who said goodbye and hung up. Send a short follow-up text naturally, the way {{char}} would after ending a call (a quick message about what you discussed, or something you forgot to say, or just a casual sign-off). Keep it brief.`;
 
-export const PROMPT_KEYS = ['style', 'incoming', 'pickup', 'voicemail', 'summary', 'record', 'declined', 'missed', 'hungUp', 'cut', 'noAnswer', 'charBye'] as const;
+export const PROMPT_KEYS = ['style', 'incoming', 'pickup', 'voicemail', 'summary', 'record', 'declined', 'missed', 'hungUp', 'cut', 'noAnswer', 'left', 'charBye'] as const;
 export type PromptKey = typeof PROMPT_KEYS[number];
-export const PROMPT_DEFAULTS: Record<PromptKey, string> = { style: P_STYLE, incoming: P_INCOMING, pickup: P_PICKUP, voicemail: P_VOICEMAIL, summary: P_SUMMARY, record: P_RECORD, declined: P_DECLINED, missed: P_MISSED, hungUp: P_HUNGUP, cut: P_CUT, noAnswer: P_NOANSWER, charBye: P_CHARBYE };
+export const PROMPT_DEFAULTS: Record<PromptKey, string> = { style: P_STYLE, incoming: P_INCOMING, pickup: P_PICKUP, voicemail: P_VOICEMAIL, summary: P_SUMMARY, record: P_RECORD, declined: P_DECLINED, missed: P_MISSED, hungUp: P_HUNGUP, cut: P_CUT, noAnswer: P_NOANSWER, left: P_LEFT, charBye: P_CHARBYE };
 
 export interface CallCfg {
   /** 대화 모드에서 캐릭터가 대화 흐름에 맞춰 직접 전화를 건다 ([call] 명령) */ aiCall: boolean;
   auto: boolean; daily: number; gapHours: number; chance: number; night: boolean; ringSec: number; voicemail: boolean; afterText: boolean; conn: string;
-  tokens: number; inPrompt: 'raw' | 'summary' | 'none'; rawMax: number; rawTotal: number; rec: boolean; recAudio: boolean; tones: boolean; ambient: 'off' | 'auto' | 'cafe' | 'rain' | 'street';
+  tokens: number; inPrompt: 'raw' | 'summary' | 'none'; rawMax: number; rawTotal: number; rec: boolean; recAudio: boolean; tones: boolean; ambient: 'off' | 'auto' | BedId;
   prompts: Partial<Record<PromptKey, string>>;
   /** 목소리를 전화기 너머처럼 (음성 연결의 목소리만) */ lineFx: boolean;
   /** 캐릭터가 말하는 동안 배경 소리를 줄이기 */ duck: boolean;

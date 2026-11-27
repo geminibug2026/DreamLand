@@ -401,7 +401,7 @@ function extraPrompt(chat: Chat, msgs: Msg[], i: number, task: string, E: Return
   if (E.prompt === 'preset' || E.prompt === 'other') {
     // 지금(또는 고른) 프리셋의 꼴 그대로: 최근 메시지 몇 개 + "<must> 따르기" 사용자 말, 깊이 2 · 1 에 <past_observe> 표시, 맨 끝에 할 일
     const preset = (E.prompt === 'other' && S.get('presets', E.otherPreset)) || S.presetFor(chat);
-    const built = buildPrompt({ chat, char, chars, persona, preset, msgs: [...recent, newMsg('user', USER_INPUT)], type: 'normal', commit: false });
+    const built = buildPrompt({ chat, char, chars, persona, preset, msgs: [...recent, newMsg('user', USER_INPUT)], type: 'normal', commit: false, aux: true });
     const list = injectAtDepth(built.messages, [{ depth: 0, msg: { role: 'system', content: task } }, { depth: 2, msg: { role: 'system', content: '<past_observe>' } }, { depth: 1, msg: { role: 'system', content: '</past_observe>' } }]);
     for (const m of list) if (typeof m.content === 'string') m.content = strip(m.content);
     return list;

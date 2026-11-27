@@ -10,6 +10,7 @@ import { lazyComp } from '../lib/lazy';
 const CallStudio = lazyComp(() => import('../call/Studio').then(m => m.CallStudio));   // 통화 설정 화면은 처음 열 때 받는다
 import { tt } from '../call/strings';
 import * as C from '../call/logic';
+import { cfg as callCfg } from '../call/cfg';
 
 function setup() {
   useCss('call.css');
@@ -27,7 +28,10 @@ function setup() {
   on<{ chat: Chat; reason: string; lines: number; charId?: string }>('talk:call', d => C.aiRing(d.chat, d.reason, d.lines, d.charId));
   // 캐릭터가 답하면 "다음 대화에서 알아차릴 일"은 끝
   on<{ msg: Msg; chat: Chat }>('message:received', d => { if (d?.chat && d.msg?.role === 'assistant') C.clearPending(d.chat); });
-  setInterval(C.tick, 60000);
+  // 캐릭터가 먼저 거는 계획: 켜 두었을 때만 1분마다 본다 (꺼 두면 시계를 돌리지 않는다)
+  let timer = 0;
+  const arm = () => { const want = !!callCfg().auto; if (want && !timer) timer = window.setInterval(C.tick, 60000); else if (!want && timer) { clearInterval(timer); timer = 0; } };
+  arm(); on('settings', arm); on('call:cfg', arm);
   X.studio = X.studio.filter(s => s.owner !== 'call');
   X.studio.push({ owner: 'call', get title() { return tt('call.studio.title'); }, preload: () => CallStudio.preload(), render: () => reactNode('call-studio', 'div.call-studio-root', <CallStudio />) });
 }

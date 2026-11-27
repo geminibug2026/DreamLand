@@ -12,21 +12,26 @@ import { toast } from '../ui';
 import { callConn, cfg, prompt } from './cfg';
 import { tt } from './strings';
 import * as A from './audio';
+import { BED_IDS, bedId, howOf, stripVoiceMarks } from '../tts/marks';
+import { cfg as ttsCfg } from '../tts/config';
+import { duckRule } from '../tts/mix';
 
 export type Dir = 'in' | 'out';
 export type Result = 'answered' | 'declined' | 'missed' | 'unanswered';
 /** 통화의 한 마디. by: 말한 캐릭터(단체 통화) · alts/alt: "다른 답"으로 받아 둔 답들과 지금 고른 것 · note: 들어옴/나감 같은 알림 줄 */
 export interface Line { who: 'u' | 'c'; text: string; cut?: boolean; at: number; by?: string; alts?: string[]; alt?: number; note?: boolean; /** 번역 (누를 때만 받는다. 고르는 답이 바뀌면 지운다) */ tr?: string; trOf?: string }
 /** 대화 기록에 남는 통화 카드 (Msg.call) */
-export interface CallRec { /** 함께 통화한 캐릭터들 (단체 통화 · 엿들은 통화) */ with?: string[]; /** 캐릭터끼리 한 통화를 엿들은 것 */ overheard?: boolean; dir: Dir; result: Result; dur: number; rec: boolean; cut?: boolean; endedBy?: 'user' | 'char'; lines?: Line[]; voicemail?: string; audio?: string; missedN?: number; calls: number }
+export interface CallRec { /** 함께 통화한 캐릭터들 (단체 통화 · 엿들은 통화) */ with?: string[]; /** 캐릭터끼리 한 통화를 엿들은 것 */ overheard?: boolean; dir: Dir; result: Result; dur: number; rec: boolean; cut?: boolean; endedBy?: 'user' | 'char'; lines?: Line[]; voicemail?: string; /** 받지 않은 상대에게 내가 남긴 음성 메시지 */ left?: string; audio?: string; missedN?: number; calls: number; /** 통화의 배경 소리 */ amb?: string }
 /** 다음 대화에서 캐릭터가 알아차릴 일 (Chat.callPending) */
-export interface Pending { kind: 'declined' | 'missed' | 'hungUp' | 'cut' | 'noAnswer' | 'charBye'; at: number; last?: string; activity?: string }
+export interface Pending { kind: 'declined' | 'missed' | 'hungUp' | 'cut' | 'noAnswer' | 'charBye' | 'left'; at: number; last?: string; activity?: string; left?: string }
 type CallChat = Chat & { callPending?: Pending; callLog?: { at: number; dir: Dir; result: Result; dur: number; msgId: string; charId: string }[]; callAuto?: { day: string; count: number; lastAt: number }; callMissed?: number };
 
 export interface Session {
   chat: CallChat; msgs: Msg[]; char: Char; /** 통화에 들어와 있는 캐릭터들 (char 는 그 첫 사람) */ chars: Char[]; /** 걸었지만 받지 않은 사람들 */ absent: Char[]; dir: Dir; phase: 'ringing' | 'dialing' | 'connected' | 'ended';
   ringAt: number; startedAt: number; endedAt: number; lines: Line[]; status: string; activity: string; reason: string;
   rec: boolean; muted: boolean; speaker: boolean; hold: boolean; keypad: boolean; talking: boolean; calls: number; result?: Result;
+  /** 지금 깔린 배경 소리 ('' = 없음) */ amb: string;
+  /** 받지 않은 상대에게 음성 메시지를 남기는 중: greet = 안내 말 · beep 뒤 녹음 · sent = 남김 */ vm?: 'greet' | 'rec' | 'sent'; /** 그 통화 카드 메시지 */ msgId?: string;
 }
 
 // ── 화면이 구독하는 지금의 통화 ──
@@ -41,7 +46,7 @@ export const session = () => S0;
 export const touch = () => changed();
 
 let gen: { abort: AbortController; speech: SpeechStream | null; acc: string; line: Line } | null = null;
-let stopSound: (() => void) | null = null, stopAmb: A.AmbHandle | null = null, unduck: (() => void) | null = null, ambKind: A.Ambient | '' = '', ringTimer = 0, recorder: MediaRecorder | null = null, chunks: Blob[] = [];
+let stopSound: (() => void) | null = null, stopAmb: A.AmbHandle | null = null, ambKind: A.Ambient | '' = '', ringTimer = 0, recorder: MediaRecorder | null = null, chunks: Blob[] = [];
 const sound = (f: (() => () => void) | null) => { stopSound?.(); stopSound = f && cfg().tones ? f() : null; };
 
 const charOf = (chat: Chat) => S.get('chars', chat.charIds[0]);
@@ -49,11 +54,14 @@ const charOf = (chat: Chat) => S.get('chars', chat.charIds[0]);
 export const lineKey = (l: Line) => `call:${l.at}:${l.by || l.who}`;
 /** 통화 목소리에 줄 소리 효과 (설정: 전화기 너머 목소리처럼) */
 const voiceFx = (): 'phone' | undefined => cfg().lineFx ? 'phone' : undefined;
-/** 캐릭터가 말하는 동안 배경 소리를 줄인다 */
-function duckAmbience() {
-  unduck?.();
-  const f = () => { const r = TTS.reading(); stopAmb?.duck(!!r && !r.paused && cfg().duck !== false); };
-  unduck = TTS.watch(f); f();
+// 캐릭터가 말하는 동안 배경 소리를 줄이는 것은 읽어 주기가 한다 — 통화 중에는 통화 설정(말하는 동안 줄이기)을 따른다
+duckRule.ok = () => !S0 || S0.phase !== 'connected' || cfg().duck !== false;
+/** 배경 소리를 깐다 (같은 것이면 그대로) */
+function setAmb(s: Session, kind: A.Ambient | '') {
+  if (kind === ambKind && (stopAmb || !kind)) return;
+  stopAmb?.(); stopAmb = null; ambKind = kind; s.amb = kind;
+  if (kind && !s.hold) stopAmb = A.ambient(kind);
+  changed();
 }
 /** 한 통화에 함께할 수 있는 캐릭터 수 */
 export const MAX_PARTY = 4;
@@ -75,7 +83,8 @@ function begin(chat: Chat, dir: Dir, reason = '', who?: Char[]): Session | null 
   if (!callConn(chat)) { toast(tt('call.err.noConn'), 'err'); return null; }
   const p = Live.presence(chat, ch);
   S0 = { chat, msgs: cur.chat === chat ? cur.msgs : [], char: ch, chars, absent: [], dir, phase: dir === 'in' ? 'ringing' : 'dialing', ringAt: now(), startedAt: 0, endedAt: 0, lines: [], status: p.status, activity: p.activity,
-    reason, rec: cfg().rec, muted: false, speaker: TTS.enabled(), hold: false, keypad: false, talking: false, calls: 0 };
+    reason, rec: cfg().rec, muted: false, speaker: TTS.enabled(), hold: false, keypad: false, talking: false, calls: 0, amb: '' };
+  ambKind = '';
   return S0;
 }
 
@@ -139,8 +148,8 @@ async function connect() {
   const s = S0; if (!s) return;
   clearTimeout(ringTimer); sound(null); if (cfg().tones) A.connectTone();
   s.phase = 'connected'; s.startedAt = now(); (s.chat as CallChat).callMissed = 0; changed();
-  const amb = cfg().ambient, kind = amb === 'auto' ? A.ambientFor(s.activity) : amb === 'off' ? '' : amb;
-  ambKind = kind; if (kind) { stopAmb = A.ambient(kind); duckAmbience(); }
+  // 배경 소리: 정해 둔 것이면 바로. "캐릭터가 고르기"면 첫 말에 붙는 표시([ambience: …])를 보고 깐다 (글을 보고 짐작하지 않는다)
+  const amb = cfg().ambient; if (amb !== 'off' && amb !== 'auto') setAmb(s, amb);
   if (s.rec) startRec();
   await runRound(s, [...s.chars], 'open');   // 받은 사람마다 한마디씩
 }
@@ -185,7 +194,7 @@ async function runRound(s: Session, who: Char[], kind: 'open' | 'reply' | 'join'
 /** 캐릭터가 말하는 동안 내가 보낸 말이 있다 (말을 마치면 이어서 답한다) */
 let queued = false;
 
-const pendText = (p: Pending) => prompt(p.kind).replace(/\{\{last\}\}/g, p.last || '').replace(/\{\{activity\}\}/g, p.activity || 'busy');
+const pendText = (p: Pending) => prompt(p.kind).replace(/\{\{last\}\}/g, p.last || '').replace(/\{\{left\}\}/g, p.left || '').replace(/\{\{activity\}\}/g, p.activity || 'busy');
 let active: { chat: Chat; kind: 'open' | 'reply' | 'voicemail' | 'join'; ch: Char } | null = null;
 /** 지금 이 방의 통화 대사를 받고 있는가 — 통화 중에는 삽화 · 게임 지시를 싣지 않는다 (말로 하는 대사에 태그가 섞이지 않게) */
 export const inCall = (chat?: unknown) => !!active && (!chat || active.chat === chat);
@@ -206,17 +215,28 @@ export function promptPieces(chat: Chat): PromptPiece[] {
       if (mine.length >= 2 && heads.length) parts.push(`Your last turns on this call began with: ${heads.map(h => `"${h}"`).join(', ')}${dots ? ' (and ' + dots + ' of them opened on "...")' : ''}. Begin this turn with a different word${dots ? ' and without a leading "..."' : ''}, build the sentence differently, and bring in something that has not been said yet.`);
     }
     if (active.kind === 'join') parts.push(`You were just added to this call while it was already going on. Say hello in ${me.name}'s own way and catch up naturally.`);
+    // 통화를 여는 말에만: 지금 있는 곳의 배경 소리를 표시로 고르게 한다 (설정 › 배경 소리 › 캐릭터가 고르기)
+    if (active.kind === 'open' && cfg().ambient === 'auto' && !s.amb) parts.push(CALL_AMBIENCE);
+    // 목소리 연기를 켰고 소리로 듣는 중이면: 차례마다 목소리 색을 표시로 줄 수 있다 (말 자체의 규칙은 그대로)
+    if (active.kind !== 'voicemail' && s.speaker && TTS.enabled() && ttsCfg().act && +ttsCfg().acting > 0) parts.push(CALL_TONE);
     return [{ where: 'end', content: parts.join('\n\n'), src: 'call' }];
   }
   const p = c.callPending; if (!p) return [];
   return [{ where: 'end', content: pendText(p), src: 'call' }];
 }
 
+/** 통화 프롬프트 조각: 배경 소리 고르기 (통화를 여는 말에만) · 목소리 색 (목소리 연기를 켰을 때) */
+export const CALL_AMBIENCE = `Background sound for this call: begin your first turn with one mark naming the sound around you right now, chosen from ${BED_IDS.join(', ')} — for example [ambience: cafe] — or [ambience: none] if it is quiet where you are. The mark is removed before anything is shown or spoken.`;
+export const CALL_TONE = `Voice color: when the way you sound really matters, you may begin a turn with one mark of one to three plain English words, such as [tone: sleepy, soft]. It is removed before anything is shown or spoken and is not a stage direction; the spoken words themselves still follow every rule above.`;
+
 const strip = (raw: string, name: string) => {
   let t = E.splitThink(raw).text.replace(/<think(ing)?>[\s\S]*$/i, '');
+  t = stripVoiceMarks(t);   // 목소리 색 · 배경 소리 표시 (받는 중의 덜 쓴 것까지)
   // 삽화 계획 같은 숨은 주석은 말이 아니다 (받는 도중이라 아직 닫히지 않은 것도 지운다)
   t = t.replace(/<!--[\s\S]*?-->/g, '').replace(/<!--[\s\S]*$/, '').replace(/<!?-?-?$/, '');
-  t = t.replace(/\[(react|status|schedule_update|selfie|memory|time|later|scene|scene_end|call)\b[^\]]*\]?/gi, '').replace(/\[hangup\]?/gi, '');
+  t = t.replace(/\[(react|status|schedule_update|selfie|photo|memory|time|later|scene|scene_end|call)\b[^\]]*\]?/gi, '').replace(/\[hangup\]?/gi, '');
+  // 그 밖의 기계 꼬리표([sticker: …] · [promise: …] · [about: …] 처럼 소문자 이름과 쌍점)도 말이 아니다 — 다른 기능의 안내가 통화에 섞여 들어와도 화면 · 목소리에 남지 않게
+  t = t.replace(/\[[a-z][a-z_]{1,20}\s*:[^\]\n]{0,300}\]/g, '');
   t = t.replace(new RegExp('^\\s*' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*:\\s*'), '').replace(/\[$|\[[a-z_]*$/i, '').replace(/<\/?[a-z]*$/i, '');
   // 따옴표로 감싼 말은 벗긴다
   // 줄마다 통째로 감싼 따옴표를 먼저 벗기고, 남은 것이 글 전체를 감싼 한 쌍일 때만 그것도 (첫 따옴표와 끝 따옴표만 벗기면 「왜."」 · 「"사람…」처럼 짝이 어긋난다)
@@ -229,14 +249,15 @@ async function say(kind: 'open' | 'reply' | 'voicemail' | 'join', who?: Char): P
   const s = S0; if (!s) return '';
   const chat = s.chat, ch = who || s.char, conn = callConn(chat); if (!conn) return '';
   const preset = S.presetFor(chat), persona = S.persona(chat);
-  const mark = newMsg('system', 'Phone call started');
+  const mark = newMsg('system', E.CALL_MARK);   // 통화 지시문이 가리키는 줄: 이 뒤는 통화에서 소리 내어 한 말
   const history = kind === 'voicemail' ? [...s.msgs] : [...s.msgs, mark, ...s.lines.filter(l => l.text).map(l => l.note ? newMsg('system', l.text) : l.who === 'u' ? newMsg('user', l.text, { name: persona.name }) : newMsg('assistant', l.text, { charId: lineChar(s, l).id, name: lineChar(s, l).name }))];
   if (kind !== 'voicemail' && history[history.length - 1]?.role !== 'user') history.push(newMsg('user', kind === 'open' ? (s.dir === 'in' ? '(picks up the phone)' : '(calling…)') : '…', { name: persona.name }));
   const pres = ch === s.char ? { status: s.status, activity: s.activity } : Live.presence(chat, ch);
   const keep = chat.presence; chat.presence = { status: pres.status, activity: pres.activity };
   active = { chat, kind, ch };
   let built: E.Built;
-  try { built = E.buildPrompt({ chat, char: ch, chars: s.chars.length > 1 ? s.chars : [ch], persona, preset, msgs: history, type: 'normal', commit: false }); }
+  // 통화 프롬프트라고 알린다: 줄 표시 약속 · 명령 안내 · 장면 안내 · 사진 안내가 빠진다 (음성 메시지도 같다)
+  try { built = E.buildPrompt({ chat, char: ch, chars: s.chars.length > 1 ? s.chars : [ch], persona, preset, msgs: history, type: 'normal', commit: false, call: kind === 'voicemail' ? 'voicemail' : 'call' }); }
   catch (e) { console.error(e); toast(String(e), 'err'); return ''; }
   finally { active = null; if (keep === undefined) delete chat.presence; else chat.presence = keep; }
   const line: Line = { who: 'c', text: '', at: now(), by: ch.id };
@@ -245,12 +266,16 @@ async function say(kind: 'open' | 'reply' | 'voicemail' | 'join', who?: Char): P
   lastSpeech = speech;
   const g = gen = { abort: new AbortController(), speech, acc: '', line };
   s.talking = true; s.calls++; changed();
-  let sent = '', hung = false;
+  let sent = '', hung = false, toned = false;
   try {
     await E.streamChat(conn, { ...preset.params, maxTokens: Math.max(40, +cfg().tokens || 500), stop: [...(preset.params.stop || [])], names: { char: ch.name, user: persona.name } }, built.messages, {
       signal: g.abort.signal,
       onText: d => {
-        g.acc += d; const vis = strip(g.acc, ch.name);
+        g.acc += d;
+        // 맨 앞의 표시: 배경 소리 · 목소리 색 (보이는 글 · 읽는 글에서는 지운다). 목소리 색은 첫 문장을 넘기기 전에 정한다
+        if (kind === 'open' && cfg().ambient === 'auto' && !s.amb) { const m = /\[ambience\s*:\s*([^\]\n]*)\]/i.exec(g.acc); if (m) { const b = bedId(m[1]); if (b !== null) setAmb(s, b); } }
+        if (speech && !toned) { const m = /\[tone\s*:\s*([^\]\n]*)\]/i.exec(g.acc); if (m) { toned = true; speech.tone?.(howOf(m[1])); } else if (strip(g.acc, ch.name).trim().length > 24) toned = true; }
+        const vis = strip(g.acc, ch.name);
         line.text = vis.trim();
         if (/\[hangup\]/i.test(g.acc)) hung = true;
         // 앞부분이 달라졌으면(이름 머리말 · 생각 묶음이 뒤늦게 지워짐) 읽은 자리를 다시 맞춘다 — 안 그러면 그 뒤로 소리가 끊긴다
@@ -403,7 +428,7 @@ export function toggle(k: 'rec' | 'muted' | 'speaker' | 'hold' | 'keypad') {
   const s = S0; if (!s) return;
   s[k] = !s[k];
   if (k === 'speaker') { if (s.speaker && !TTS.enabled()) toast(tt('call.err.ttsOff')); if (!s.speaker) { gen?.speech?.stop(); if (gen) gen.speech = null; TTS.stopAll(); } }
-  if (k === 'hold') { if (s.hold) { gen?.speech?.stop(); if (gen) gen.speech = null; TTS.stopAll(); stopAmb?.(); stopAmb = null; sound(A.holdTone); } else { sound(null); if (ambKind) { stopAmb = A.ambient(ambKind); duckAmbience(); } } }
+  if (k === 'hold') { if (s.hold) { gen?.speech?.stop(); if (gen) gen.speech = null; TTS.stopAll(); stopAmb?.(); stopAmb = null; sound(A.holdTone); } else { sound(null); if (ambKind) stopAmb = A.ambient(ambKind); } }
   if (k === 'rec') { if (s.rec) startRec(); else stopRec(); }
   changed();
 }
@@ -426,14 +451,14 @@ export function hangup() {
   if (s.phase === 'dialing') { clearTimeout(ringTimer); return void finish('unanswered', 'user', true); }
   if (s.phase === 'connected') void finish('answered', 'user');
 }
-export const close = () => { if (S0?.phase === 'ended') { S0 = null; changed(); } };
+export const close = () => { if (S0?.phase === 'ended') { if (S0.vm === 'greet') TTS.stopAll(); S0 = null; changed(); } };
 
 // ════════ 끝 · 통화 카드 · 다음 대화 ════════
 async function finish(result: Result, by: 'user' | 'char' = 'user', gaveUp = false) {
   const s = S0; if (!s || s.phase === 'ended') return;
   clearTimeout(ringTimer);
   const wasTalking = !!gen; stopTalking(by === 'user');
-  sound(null); stopAmb?.(); stopAmb = null; unduck?.(); unduck = null; TTS.stopAll();
+  sound(null); stopAmb?.(); stopAmb = null; TTS.stopAll();
   if (cfg().tones && (result === 'answered' || result === 'unanswered')) A.endTone();
   s.phase = 'ended'; s.endedAt = now(); s.result = result; changed();
   const chat = s.chat, ch = s.char, u = userName(chat);
@@ -460,7 +485,8 @@ async function finish(result: Result, by: 'user' | 'char' = 'user', gaveUp = fal
   const res = { answered: 'talked', declined: `${u} declined`, missed: `${u} did not pick up`, unanswered: gaveUp ? `${u} hung up before ${names} answered` : `${names} did not pick up` }[result];
   const text = prompt('record').replace(/\{\{who\}\}/g, who).replace(/\{\{result\}\}/g, res).replace(/\{\{dur\}\}/g, dur ? ` · ${fmtDur(dur)}` : '').replace(/\{\{body\}\}/g, body).replace(/\{\{char\}\}/g, ch.name).replace(/\{\{user\}\}/g, u);
   const rec: CallRec = { ...(party.length > 1 ? { with: party.map(c => c.id) } : {}), dir: s.dir, result, dur, rec: s.rec, calls: s.calls, ...(by ? { endedBy: by } : {}), ...(cut ? { cut: true } : {}), ...(s.rec && s.lines.length ? { lines: s.lines.map(l => ({ ...l })) } : {}), ...(voicemail ? { voicemail } : {}), ...(audio ? { audio } : {}), ...(result === 'missed' && ((chat as CallChat).callMissed || 0) > 1 ? { missedN: (chat as CallChat).callMissed } : {}) };
-  const m = newMsg('system', text, { call: rec, charId: ch.id, name: ch.name });
+  if (s.amb) rec.amb = s.amb;
+  const m = newMsg('system', text, { call: rec, charId: ch.id, name: ch.name }); s.msgId = m.id;
   // 다음 대화에서 알아차릴 일
   const c = chat as CallChat;
   const pend: Pending | null = result === 'declined' ? { kind: 'declined', at: now() } : result === 'missed' ? { kind: 'missed', at: now() }
@@ -488,9 +514,41 @@ async function finish(result: Result, by: 'user' | 'char' = 'user', gaveUp = fal
   }
   await S.save('chats', chat, true);
   emit('call:end', { chat, msg: m });
-  if (result !== 'answered') setTimeout(() => { if (S0 === s) close(); }, 1600);
+  // 받지 않았으면 그대로 두어 음성 메시지를 남기거나 다시 걸 수 있게 한다. 그 밖의 끝(거절 · 부재중 · 걸다 끊음)은 잠깐 보이고 닫는다
+  if (result === 'unanswered' && !gaveUp) { /* 닫기 · 메시지 남기기 · 다시 걸기 */ }
+  else if (result !== 'answered') setTimeout(() => { if (S0 === s) close(); }, 1600);
   // 통화한 뒤에는 캐릭터가 바로 문자를 보낸다 (작별 뒤 한마디 · 끊김에 대한 반응)
   else if (pend && cfg().afterText && cur.chat === chat) setTimeout(() => { if (S0 === s) close(); if (cur.chat === chat && !cur.busy && c.callPending === pend) void chatApi.generate?.('normal'); }, 1800);
+}
+
+// ════════ 음성 메시지 남기기: 받지 않은 상대에게 (안내 말 → 삐 → 내가 말한다). 모델 호출 없음 — 상대는 다음 답에서 알아차린다 ════════
+const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
+export async function leaveMessage() {
+  const s = S0; if (!s || s.phase !== 'ended' || s.result !== 'unanswered' || s.vm) return;
+  s.vm = 'greet'; changed();
+  const greet = tt('call.vm.greeting', { name: s.char.name }), tc = ttsCfg();
+  if (TTS.enabled()) { try { await TTS.speak(greet, { charId: null, voice: tc.narrator?.provider ? tc.narrator : undefined, fx: 'phone', key: 'call:vm' }); } catch { await wait(900); } }
+  else await wait(1400);
+  if (S0 !== s || s.vm !== 'greet') return;
+  if (cfg().tones) A.vmBeep();
+  s.vm = 'rec'; s.startedAt = now(); changed();
+}
+/** 남길 말을 보낸다: 통화 카드에 적고, 다음 답에서 상대가 듣고 반응한다 (바로 답할 수 있는 상태면 잠시 뒤 문자가 온다) */
+export async function sendMessage(text: string) {
+  const s = S0, said = text.trim(); if (!s || s.vm !== 'rec' || !said) return;
+  s.vm = 'sent'; s.lines.push({ who: 'u', text: said, at: now() }); changed();
+  if (cfg().tones) A.endTone();
+  const chat = s.chat as CallChat, u = userName(chat), list = cur.chat === chat ? cur.msgs : await S.msgs(chat.id);
+  const m = list.find(x => x.id === s.msgId), rec = m?.call as CallRec | undefined;
+  if (m && rec) { rec.left = said; const sw = m.swipes[m.sw]; if (sw) sw.text += `\n${u} left a voice message: ${said}`; }
+  const pend: Pending = { kind: 'left', at: now(), left: said.slice(0, 600), activity: s.activity || s.status };
+  chat.callPending = pend;
+  await S.saveMsgs(chat, list); await S.save('chats', chat, true);
+  if (cur.chat === chat) chatApi.redraw?.();
+  setTimeout(() => { if (S0 === s) close(); }, 1400);
+  // 바로 볼 수 있는 상태(온라인 · 자리 비움)면 조금 뒤에 답이 온다 (끊은 뒤 문자와 같은 설정 · 호출 1회)
+  const st = Live.presence(chat, s.char).status;
+  if (cfg().afterText && (st === 'online' || st === 'idle')) setTimeout(() => { if (cur.chat === chat && !cur.busy && chat.callPending === pend && !S0) void chatApi.generate?.('normal'); }, st === 'online' ? 9000 : 25000);
 }
 
 /** 캐릭터가 대답하면 "알아차릴 일"은 끝난다 */

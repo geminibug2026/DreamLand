@@ -69,6 +69,10 @@
 .call-live.hold { background: var(--dim); box-shadow: none; animation: none; }
 @keyframes call-blink { 50% { opacity: .25; } }
 .call-used { color: var(--dim); font-size: .74em; }
+/* 통화 중 배경 소리 이름 (상태 줄 끝에 작게) · 음성 메시지 안내 한 줄 */
+.call-amb { color: var(--dim); font-size: .92em; white-space: nowrap; }
+.call-amb::before { content: '·'; margin-right: 7px; }
+.call-hint { max-width: 280px; color: var(--dim); font-size: .8em; line-height: 1.55; }
 /* 걸려 오는 중 · 거는 중 · (말없이) 끝남: 상대가 화면 가운데 크게 */
 .phase-ringing .call-head, .phase-dialing .call-head, .phase-ended:not(.has-lines) .call-head { grid-row: 2 / 5; justify-content: center; gap: 22px; padding-bottom: 28px; }
 .phase-ringing .call-head::before, .phase-dialing .call-head::before, .phase-ended:not(.has-lines) .call-head::before { -webkit-mask-image: radial-gradient(closest-side, #000, transparent); mask-image: radial-gradient(closest-side, #000, transparent); }
@@ -288,6 +292,7 @@
 .call-card-main b { font-size: .92em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }   /* 이름이 길어도 한 줄 */
 .call-card-main span { color: var(--dim); font-size: .8em; font-variant-numeric: tabular-nums; }
 .call-card-main q { display: block; margin-top: 4px; padding-left: 8px; border-left: 1px solid var(--text); font-size: .88em; quotes: none; }
+.call-card-main q.left { border-left-color: var(--accent); } .call-card-main q small { display: block; color: var(--dim); font-size: .82em; }   /* 내가 남긴 음성 메시지 */
 .call-card-do { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; padding-left: 40px; }   /* 버튼은 늘 아래 한 줄 (이름 길이와 상관없이) */
 .call-card-do .btn { padding: 3px 9px; min-height: 0; font-size: .76em; }
 .call-card.is-missed b, .call-card.is-declined b, .call-card.is-unanswered b { color: var(--dim); }
