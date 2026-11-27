@@ -11,7 +11,8 @@ import { toast } from '../ui';
 import { chatApi } from '../chat/actions';
 import * as IL from '../lib/illust';
 import * as C from '../lib/core';
-import { cur, errText, flat, guard, lastReply, shownTitle } from './util';
+import { cur, errText, guard, lastReply, shownTitle } from './util';
+import { placeAt } from './place';
 import { Illust } from './illust';
 import { t } from '../i18n';
 
@@ -125,9 +126,9 @@ export async function exportChat() {
   await Illust.load(chat.id);   // 화면에 그린 것만 읽혀 있을 수 있으니 이 방의 그림을 다 읽어 둔다
   const S = C.S, esc = C.esc, user = S.persona(chat)?.name || t('scenebook.exp.me'), name = chat.name || chat.charIds.map(id => S.get('chars', id)?.name).filter(Boolean).join(', ') || t('scenebook.exp.chat');
   const body = msgs.filter((m: Msg) => m.role !== 'system' && !m.hidden).map(m => { const sw: Swipe = m.swipes[m.sw] || {};
-    const inline = Illust.cfg().placement === 'inline', fig = (it: Slot) => `<figure><img src="${Illust.data(it.id)}" alt="${esc(it.title || t('scenebook.illust'))}">${shownTitle(it.title) ? `<figcaption>${esc(it.title)}</figcaption>` : ''}</figure>`;
+    const inline = Illust.cfg().placement === 'inline' || Illust.cfg().placement === 'auto', fig = (it: Slot) => `<figure><img src="${Illust.data(it.id)}" alt="${esc(it.title || t('scenebook.illust'))}">${shownTitle(it.title) ? `<figcaption>${esc(it.title)}</figcaption>` : ''}</figure>`;
     const items = (sw.illust || []).filter(it => !it.hidden && Illust.data(it.id)), body0 = Illust.strip(sw.text || '').trim(), paras = inline ? body0.split(/\n\s*\n/) : [body0], slots: Slot[][] = paras.map(() => []), tail: Slot[] = [];
-    for (const it of items) { const key = inline && it.anchor ? flat(it.anchor).slice(0, 40) : '', i = key ? paras.findIndex(p => flat(p).includes(key)) : -1; (i >= 0 ? slots[i] : tail).push(it); }   // 문단 뒤 삽화는 그 문단 뒤에
+    for (const it of items) { const i = inline ? placeAt(it, paras, Illust.blocks(sw.text).map(b => b.content)) : -1; (i >= 0 ? slots[i] : tail).push(it); }   // 문단 뒤 삽화는 그 문단 뒤에
     return `<article><h2>${esc(m.role === 'user' ? user : m.name || '')}</h2>${paras.map((p, i) => `<div class="text">${esc(p)}</div>${slots[i].map(fig).join('')}`).join('')}${tail.map(fig).join('')}</article>`; }).join('\n');
   C.download(`${name.replace(/[\\/:*?"<>|]/g, '_')}.html`, `<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(name)}</title><style>body{background:#fafaf8;color:#161616;font:16px/1.85 system-ui,sans-serif;margin:0}main{max-width:820px;padding:28px 22px;margin:auto}article{padding:22px 0;border-bottom:1px solid #1616162e}h1{font-size:24px}h2{font-size:14px;letter-spacing:.04em}.text{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 1.1em}figure{max-width:560px;margin:22px auto;border:1px solid #161616}img{display:block;width:100%;height:auto}figcaption{font-size:13px;padding:6px 10px;border-top:1px solid #1616162e}</style><main><h1>${esc(name)}</h1>${body}</main></html>`, 'text/html;charset=utf-8');
 }

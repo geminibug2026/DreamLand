@@ -82,7 +82,7 @@ export const make = (tag: string, cls = ''): HTMLElement => { const el = documen
 
 export interface Box { close(): void; el: HTMLElement }
 /** 공용 창을 열고 본문 요소(tag.cls) 안에 조각을 그린다. render 는 창 손잡이를 받는다 */
-export function openModal(o: { title: string; wide?: boolean; tag?: 'div' | 'p'; cls?: string; actions?: (ModalAction | false | null | undefined)[]; onClose?: () => void }, render: (box: Box) => ReactNode): Box {
+export function openModal(o: { title: ReactNode; wide?: boolean; tag?: 'div' | 'p'; cls?: string; actions?: (ModalAction | false | null | undefined)[]; onClose?: () => void }, render: (box: Box) => ReactNode): Box {
   let m: ModalHandle | null = null;
   const box: Box = { close: () => m?.close(), el: document.body }, Tag = o.tag || 'div';
   m = uiModal({ title: o.title, wide: o.wide, actions: (o.actions || []).filter((a): a is ModalAction => !!a), onClose: o.onClose, body: <Tag className={o.cls || undefined}>{render(box)}</Tag> });

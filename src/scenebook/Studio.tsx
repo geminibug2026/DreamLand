@@ -1,7 +1,7 @@
 // ════════ 스튜디오 ════════ 기능 › 삽화: 연결 · 자동 처리 + 생성 · 인물 · 참조 · 갤러리 · 작업 탭, 대화 옆 패널
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../kit';
-import { Form, type FieldDef, confirmBox, menu, toast } from '../ui';
+import { Form, type FieldDef, choiceBox, confirmBox, menu, toast } from '../ui';
 import { Area, Btn, Chk, Empty, Fld, Group, IBtn, Sel, Text, openModal, useBump } from './parts';
 import { Frames, frameChoices, frameLayout, validFrame } from './frames';
 import { FrameArt } from './frameArt';
@@ -12,7 +12,7 @@ import { UC_PRESETS, mergeTags } from './tagrules';
 import { INKS } from './ornaments';
 import { fixModel } from './Composer';
 import { guide, imageImport, promptEditor, showPlans, exportChat } from './dialogs';
-import { inspect, review, showReview, viewer } from './slot';
+import { inspect, review, showReview, viewer, withPreset, type ViewItem } from './slot';
 import { compose, draw, flow, generateDrafts, pendingDrafts } from './work';
 import type { Asset, Chat, GenConfig, HistoryEntry, IllustCfg, Job, LibPerson, Msg, RefUse, Visual } from './types';
 
@@ -27,7 +27,7 @@ import { locale, t, tn } from '../i18n';
 
 type TabId = 'gen' | 'cast' | 'refs' | 'gallery' | 'queue';
 let studioTab: TabId = 'gen', castScope: string | null = null;
-const GEN_EXTRA = ['naiKey', 'maxScenes', 'every', 'sessionLimit', 'contextMessages', 'analysisMode', 'placement', 'displayWidth', 'compact', 'autoSize', 'look', 'leanPrompt', 'frame', 'frameWide', 'frameInk'];
+const GEN_EXTRA = ['naiKey', 'maxScenes', 'every', 'sessionLimit', 'contextMessages', 'analysisMode', 'placement', 'displayWidth', 'compact', 'autoSize', 'look', 'leanPrompt', 'frame', 'frameWide', 'frameInk', 'analysisTokens'];
 const TIERS = ['Paper', 'Tablet', 'Scroll', 'Opus'];
 const tierName = (t?: number | null) => t != null ? (TIERS[t] || t) : null;
 const queueText = () => { const I = Illust, w = I.queue().filter(x => x.state === 'waiting').length; return I.queueRunning() && I.queue().some(x => x.state === 'running') ? t('scenebook.studio.q.drawing') + (w ? t('scenebook.studio.q.waitSuffix', { n: w }) : '') : I.queuePaused() ? t('scenebook.studio.q.paused') + (w ? t('scenebook.studio.q.waitSuffix', { n: w }) : '') : w ? t('scenebook.studio.q.wait', { n: w }) : ''; };
@@ -82,6 +82,7 @@ function GenPage({ reopen }: { reopen: () => void }) {
     try {
       Illust.validate(Illust.genConfig(d));
       for (const [k, a, b, n] of [['maxScenes', 1, 6, t('scenebook.studio.v.maxScenes')], ['every', 1, 20, t('scenebook.studio.v.every')], ['contextMessages', 0, 30, t('scenebook.studio.v.context')], ['displayWidth', 240, 1200, t('scenebook.studio.v.width')]] as [string, number, number, string][]) { const v = d[k]; if (!Number.isInteger(v) || (v as number) < a || (v as number) > b) throw new Error(t('scenebook.studio.v.intRange', { name: n, min: a, max: b })); }
+      { const v = Number(d.analysisTokens) || 0; if (v && (!Number.isInteger(v) || v < 1000 || v > 128000)) throw new Error(t('scenebook.studio.v.intRange', { name: t('scenebook.studio.alenTokens'), min: 1000, max: 128000 })); }
       return [box.saved ? t('scenebook.studio.saved') : t('scenebook.studio.autoSaveHint'), false];
     } catch (e) { return [t('scenebook.studio.needCheck', { error: errText(e) }), true]; }
   };
@@ -109,8 +110,13 @@ function GenPage({ reopen }: { reopen: () => void }) {
     Illust.saveCfg({ ...pickKeys(s, known), automatic: 'off' }, { reason: t('scenebook.studio.reason.beforeImport'), force: true }); reopen(); toast(t('scenebook.studio.import.done'), 'ok');
   });
   const savePreset = guard(() => { const name = presetName.current?.value.trim(); if (!name) throw new Error(t('scenebook.studio.preset.needName')); const list = Illust.cfg().presets || []; if (list.some(p => p.name === name)) throw new Error(t('scenebook.studio.preset.dup')); if (list.length >= 30) throw new Error(t('scenebook.studio.preset.max')); Illust.saveCfg({ presets: [...list, { name, config: pickKeys(Illust.cfg(), RENDER_KEYS) as GenConfig }] }); reopen(); });
-  const presets = c.presets || [];
+  const presets = c.presets || [], active = Illust.activePreset()?.name || '';
+  const applyPreset = (p: { name: string; config: object }) => { Illust.saveCfg(pickKeys(p.config, RENDER_KEYS), { reason: t('scenebook.studio.reason.beforePreset', { name: p.name }), force: true }); toast(t('scenebook.studio.preset.applied', { name: p.name }), 'ok'); reopen(); };
   return <div className="sb-gen">
+    {/* 그림체 프리셋 빠른 선택: 맨 위에서 바로 고른다. 지금 설정과 같은 프리셋에는 '적용 중' */}
+    <section className="sb-quickpreset"><Fld label={t('scenebook.studio.preset.quick')}>{presets.length
+      ? <Sel opts={[...(active ? [] : [['', t('scenebook.studio.preset.custom')] as [string, string]]), ...presets.map((p): [string, string] => [p.name, p.name + (p.name === active ? ` · ${t('scenebook.preset.active')}` : '')])]} value={active} onChange={name => { const p = presets.find(x => x.name === name); if (p) applyPreset(p); }} />
+      : <small className="hint">{t('scenebook.studio.preset.quickEmpty')}</small>}</Fld></section>
     <Group title={t('scenebook.studio.g.image')}>{f([
       { k: 'backend', label: t('scenebook.studio.backend'), type: 'select', opts: Object.entries(BACKENDS), half: true, live: true },
       nai && { k: 'model', label: t('scenebook.gen.model'), type: 'select', opts: Object.entries(MODELS).map(([id, m]): [string, string] => [id, m.label]), half: true, live: true },
@@ -127,6 +133,9 @@ function GenPage({ reopen }: { reopen: () => void }) {
       <div className="row"><Btn label={t('scenebook.studio.editShare')} ic="edit" cls="ghost" onClick={() => promptEditor(0, reopen)} /><small className="hint">{t('scenebook.studio.editShareHint')}</small></div></Group>
     <Group title={t('scenebook.manual')}><Form obj={S.settings} defs={[{ k: 'helpers.illust', label: t('scenebook.guide.topic.conn.title'), type: 'select', opts: [['', t('scenebook.studio.chatConn')], ...C.chatConns().map((x): [string, string] => [x.id, `${x.name}${x.model ? ' · ' + x.model : ''}`])], hint: t('scenebook.studio.analysisConnHint') }]} onChange={() => S.set({})} />
       {f([{ k: 'analysisMode', label: t('scenebook.guide.topic.analysis.title'), type: 'select', opts: [['quick', t('scenebook.studio.quick')], ['precise', t('scenebook.studio.precise')]], half: true }, { k: 'contextMessages', label: t('scenebook.guide.topic.context.title'), type: 'num', min: 0, max: 30, step: 1, half: true }])}
+      {/* 장면 쓰기 답 길이: 자동(장면 수에 맞춤) 또는 직접. 생각하는 AI 가 길이를 생각에 다 써서 빈 답이 오면 늘린다 */}
+      <div className="sb-alen"><Fld label={t('scenebook.studio.alen')} hint={t('scenebook.studio.alenHint')}><Sel opts={[['auto', t('scenebook.studio.alenAuto', { n: Illust.analysisTokens({ ...c, ...d, analysisTokens: 0 }).toLocaleString() })], ['manual', t('scenebook.studio.alenManual')]]} value={Number(d.analysisTokens) >= 1000 ? 'manual' : 'auto'} onChange={v => { d.analysisTokens = v === 'manual' ? 16000 : 0; save(); }} /></Fld>
+        {Number(d.analysisTokens) >= 1000 ? f([{ k: 'analysisTokens', label: t('scenebook.studio.alenTokens'), type: 'num', min: 1000, max: 128000, step: 1000, half: true }]) : null}</div>
       <div className="row"><Btn label={t('scenebook.studio.analyzeLast')} ic="sparkle" onClick={guard(() => compose(lastReply(), { manual: false }))} /><small className="hint">{t('scenebook.studio.analyzeLastHint')}</small></div></Group>
     <Group title={t('scenebook.studio.g.limits')}>{f([{ k: 'maxScenes', label: t('scenebook.studio.maxScenesPer'), type: 'num', min: 1, max: 6, step: 1, third: true }, { k: 'every', label: t('scenebook.studio.v.every'), type: 'num', min: 1, max: 20, step: 1, third: true }])}
       <small className="hint">{tn('scenebook.studio.usage', Illust.usage())}</small></Group>
@@ -137,7 +146,7 @@ function GenPage({ reopen }: { reopen: () => void }) {
       { k: 'useCoords', label: t('scenebook.studio.useCoords'), type: 'check' }, { k: 'useOrder', label: t('scenebook.useOrder'), type: 'check' },
       nai && v5 && { k: 'transparent', label: t('scenebook.gen.transparent'), type: 'check' },
       nai && { k: 'budgetGuard', label: t('scenebook.gen.budget'), type: 'check', hint: t('scenebook.studio.budgetHint') }])}</Group>
-    <Group title={t('scenebook.studio.g.display')}>{f([{ k: 'placement', label: t('scenebook.anchor'), type: 'select', opts: [['end', t('scenebook.para.end')], ['inline', t('scenebook.studio.inline')]], half: true }, { k: 'displayWidth', label: t('scenebook.studio.widthPx'), type: 'num', min: 240, max: 1200, step: 10, half: true }, { k: 'compact', label: t('scenebook.studio.compact'), type: 'check' }])}
+    <Group title={t('scenebook.studio.g.display')}>{f([{ k: 'placement', label: t('scenebook.anchor'), type: 'select', opts: [['end', t('scenebook.para.end')], ['inline', t('scenebook.studio.inline')], ['auto', t('scenebook.studio.placeAuto')]], half: true, hint: t('scenebook.studio.placeHint') }, { k: 'displayWidth', label: t('scenebook.studio.widthPx'), type: 'num', min: 240, max: 1200, step: 10, half: true }, { k: 'compact', label: t('scenebook.studio.compact'), type: 'check' }])}
       <span className="field-label">{t('scenebook.guide.topic.frame.title')}</span>
       {/* 삽화 액자: 고르는 칸마다 대화에서 쓰는 것과 같은 계산으로 액자를 그려 보여 준다 */}
       <div className="sb-frames" role="radiogroup" aria-label={t('scenebook.guide.topic.frame.title')}>{frameChoices().map(item => { const lay = frameLayout(4, 5, { frame: item.id, frameInk: d.frameInk });
@@ -149,7 +158,7 @@ function GenPage({ reopen }: { reopen: () => void }) {
       <small className="hint">{t('scenebook.studio.frame.hint')}</small></Group>
     <div className="sb-savebar"><span className={'sb-state' + (bad ? ' bad' : '')} role="status">{state}</span></div>
     <Group title={t('scenebook.guide.topic.presets.title')}><div className="row"><input className="inp" placeholder={t('scenebook.studio.preset.name')} ref={presetName} /><Btn label={t('scenebook.studio.preset.save')} ic="plus" onClick={savePreset} /></div>
-      {presets.length ? <div className="col">{presets.map(p => <div className="sb-preset" key={p.name}><b>{p.name}</b><small>{configLine(p.config)}</small><Btn label={t('scenebook.studio.apply')} cls="ghost" onClick={() => { Illust.saveCfg(pickKeys(p.config, RENDER_KEYS), { reason: t('scenebook.studio.reason.beforePreset', { name: p.name }), force: true }); toast(t('scenebook.studio.preset.applied', { name: p.name }), 'ok'); reopen(); }} />
+      {presets.length ? <div className="col">{presets.map(p => <div className={'sb-preset' + (p.name === active ? ' on' : '')} key={p.name}><b>{p.name}{p.name === active ? <em className="sb-badge">{t('scenebook.preset.active')}</em> : null}</b><small>{configLine(p.config)}</small><Btn label={p.name === active ? t('scenebook.preset.active') : t('scenebook.studio.apply')} cls="ghost" disabled={p.name === active} onClick={() => applyPreset(p)} />
         <IBtn ic="trash" title={t('scenebook.studio.preset.delete')} cls="tiny" onClick={async () => { if (!(await confirmBox(t('scenebook.studio.preset.deleteAsk', { name: p.name }), t('scenebook.delete'), true))) return; Illust.saveCfg({ presets: Illust.cfg().presets.filter(x => x.name !== p.name) }); reopen(); }} /></div>)}</div>
         : <small className="hint">{t('scenebook.studio.preset.hint')}</small>}
       <div className="row wrap"><Btn label={t('scenebook.studio.history')} cls="ghost" onClick={history} /><Btn label={t('scenebook.studio.export')} ic="import" cls="ghost" onClick={exportAll} /><Btn label={t('scenebook.studio.import')} ic="upload" cls="ghost" onClick={importAll} /></div></Group>
@@ -318,6 +327,10 @@ function RefsPage({ reopen, refs }: { reopen: () => void; refs: Card[] }) {
 
 // ════════ 갤러리 탭 ════════
 /** 그림을 완전히 지운다 (대화 속 버전에서도 뺀다) */
+/** 갤러리에서 지우기: 갤러리에서만 빼기(대화 · 그림은 그대로) 또는 완전히 삭제(그림 파일까지, 대화에서도 뺀다). 고른 것 · 취소면 null */
+const removeHow = (n: number, size: string) => choiceBox(n === 1 ? t('scenebook.studio.gal.removeOneAsk') : t('scenebook.studio.gal.removeManyAsk', { n, size }),
+  <div className="col sb-remove-how"><p><b>{t('scenebook.studio.gal.hideOnly')}</b> — {t('scenebook.studio.gal.hideOnlyNote')}</p><p><b>{t('scenebook.studio.gal.purge')}</b> — {t('scenebook.studio.gal.purgeNote')}</p></div>,
+  [{ key: 'hide', label: t('scenebook.studio.gal.hideOnly') }, { key: 'purge', label: t('scenebook.studio.gal.purge'), cls: 'danger' }]) as Promise<'hide' | 'purge' | null>;
 async function purgeAsset(rec: Asset) {
   const S = C.S, I = Illust;
   await I.remove(rec.id);
@@ -350,6 +363,11 @@ function GalleryPage({ reopen, all }: { reopen: () => void; all: Card[] }) {
   const S = C.S, I = Illust, chat = cur().chat;
   const [query, setQuery] = useState(''), [scope, setScope0] = useState('all'), [limit, setLimit] = useState(PAGE), [picking, setPicking] = useState(false), [sel, setSel] = useState<Set<string>>(() => new Set());
   const more = useRef<HTMLDivElement>(null);
+  // 갤러리에서만 뺀 그림: 대화 · 그림 파일은 그대로 두고 목록에만 안 보인다 (숨긴 그림 보기에서 다시 보이게 할 수 있다)
+  const hidden = new Set(Illust.cfg().galleryHide || []);
+  const hide = (ids: string[]) => Illust.saveCfg({ galleryHide: [...new Set([...(Illust.cfg().galleryHide || []), ...ids])].filter(id => known.has(id) || ids.includes(id)) });
+  const unhide = (ids: string[]) => Illust.saveCfg({ galleryHide: (Illust.cfg().galleryHide || []).filter(id => !ids.includes(id)) });
+  const known = new Set(all.map(a => a.id));
   const setScope = (v: string) => { setScope0(v); setLimit(PAGE); setSel(new Set()); };
   const chatOf = (a: { owner: string }) => String(a.owner).replace(/^chat:/, '');
   const chatName = (a: { owner: string }) => { const c = S.get('chats', chatOf(a)); return c ? (c.name || c.charIds.map(id => S.get('chars', id)?.name).filter(Boolean).join(', ') || t('scenebook.studio.gal.chat')) : t('scenebook.studio.gal.deletedChat'); };
@@ -359,17 +377,19 @@ function GalleryPage({ reopen, all }: { reopen: () => void; all: Card[] }) {
     { label: t('scenebook.record'), ic: 'note', cls: 'ghost', onclick: () => { inspect({ scene: j.scene, config: j.config, ts: j.ts }); return false; } },
     (j.state === 'failed' || j.state === 'uncertain') && cur().msgs?.includes(j.msg) && { label: t('scenebook.retry'), cls: 'primary', onclick: () => { try { j.seen = true; draw(j.msg, [j.scene], j.config, j.slot, true); reopen(); } catch (e) { toast(errText(e), 'err'); return false; } } }] },
     () => <><p>{j.error || t('scenebook.studio.gal.notFinal')}</p><small className="hint">{[configLine(j.config), when(j.ts)].filter(Boolean).join(' · ')}</small></>);
-  const show = (a: Asset) => viewer({ title: a.title || t('scenebook.illust'), src: a.data, sub: [chatName(a), when(a.ts), configLine(a.config), a.seed != null ? `Seed ${a.seed}` : ''].filter(Boolean).join(' · '),
+  const item = (a: Asset): ViewItem => ({ title: withPreset(a.title || t('scenebook.illust'), a.preset), src: a.data, sub: [chatName(a), when(a.ts), configLine(a.config), a.seed != null ? `Seed ${a.seed}` : ''].filter(Boolean).join(' · '),
     actions: [
       { label: t('scenebook.studio.gal.insert'), ic: 'plus', run: async () => { const m = target(), here = 'chat:' + (cur().chat as Chat).id; let rec = a; if (a.owner !== here) { rec = { ...a, id: C.uid(), owner: here, ts: C.now() }; await C.DB.put('assets', rec); } I.insert(m.swipes[m.sw], rec); await chatApi.save(); chatApi.redraw(); toast(t('scenebook.studio.gal.inserted'), 'ok'); } },
       { label: t('scenebook.openAsScene'), ic: 'sliders', run: () => compose(target(), { initial: [a.scene || { ...blankScene(), title: a.title || '', prompt: a.prompt || '' }], config: a.config ? { ...a.config, seed: -1 } : null }) },
-      { label: t('scenebook.delete'), ic: 'trash', run: async () => { if (!(await confirmBox(t('scenebook.studio.gal.deleteAsk'), t('scenebook.delete'), true))) return; await purgeAsset(a); toast(t('scenebook.studio.gal.deleted')); reopen(); } }],
+      hidden.has(a.id) ? { label: t('scenebook.studio.gal.unhide'), ic: 'eye', run: () => { unhide([a.id]); toast(t('scenebook.studio.gal.unhidden'), 'ok'); reopen(); } }
+        : { label: t('scenebook.delete'), ic: 'trash', run: async () => { const how = await removeHow(1, sizeText(Math.round(String(a.data).length * 0.75))); if (!how) return; if (how === 'hide') { hide([a.id]); toast(t('scenebook.studio.gal.hiddenOne')); } else { await purgeAsset(a); toast(t('scenebook.studio.gal.deleted')); } reopen(); } }],
     more: [{ label: t('scenebook.review.run'), ic: 'search', onclick: guard(() => review(a)) }, ...(a.review ? [{ label: t('scenebook.review.last'), ic: 'eye', onclick: () => showReview(a.review || {}) }] : []), { label: t('scenebook.record'), ic: 'note', onclick: () => inspect(a) }, ...(S.get('chats', chatOf(a)) ? [{ label: t('scenebook.studio.gal.goChat'), ic: 'chat', onclick: () => go('chat', chatOf(a)) }] : [])] });
-  // 목록은 가벼운 정보만 들고 있다: 그림을 열 때 그 한 장만 읽는다
-  const open = guard(async (c: Card) => { const a = await C.DB.get('assets', c.id) as unknown as Asset | undefined; if (!a?.data) { toast(t('scenebook.studio.gal.gone')); reopen(); return; } show(a); });
+  const read = async (c: Card) => { const a = await C.DB.get('assets', c.id) as unknown as Asset | undefined; return a?.data ? a : null; };
+  // 목록은 가벼운 정보만 들고 있다: 그림을 열 때 그 한 장만 읽는다. 큰 그림에서 넘기면 지금 보이는 목록(검색 · 범위 그대로)의 앞뒤 그림으로 간다
+  const open = guard(async (c: Card) => { const a = await read(c); if (!a) { toast(t('scenebook.studio.gal.gone')); reopen(); return; } const list = [...pics]; viewer(item(a), { count: list.length, index: Math.max(0, list.findIndex(x => x.id === c.id)), load: async i => { const x = await read(list[i]); return x ? item(x) : null; } }); });
   const q = query.trim().toLowerCase(), mine = (a: Card) => !!chat && a.owner === 'chat:' + chat.id, off = scope === 'failed', folders = scope === 'chats', inChat = scope.startsWith('in:') ? scope.slice(3) : '';
   const jobs = off ? [...I.queue()].reverse().filter(j => jobOff()[j.state] && (!q || [j.label, j.scene?.prompt, ...(j.scene?.characters || []).map(x => x.name)].join(' ').toLowerCase().includes(q))) : [];
-  const pics = off ? [] : all.filter(a => (scope !== 'chat' || mine(a)) && (scope !== 'loose' || (mine(a) && !used.has(a.id))) && (!inChat || chatOf(a) === inChat) && (!q || `${a.find || ''} ${chatName(a).toLowerCase()}`.includes(q)));
+  const hidScope = scope === 'hidden', pics = off ? [] : all.filter(a => hidden.has(a.id) === hidScope && (scope !== 'chat' || mine(a)) && (scope !== 'loose' || (mine(a) && !used.has(a.id))) && (!inChat || chatOf(a) === inChat) && (!q || `${a.find || ''} ${chatName(a).toLowerCase()}`.includes(q)));
   // 대화별 묶음: 가장 최근에 그린 대화부터, 표지는 그 대화의 가장 새 그림
   const groups = folders ? [...pics.reduce((m, a) => { const k = chatOf(a), g = m.get(k) || { id: k, n: 0, size: 0, top: a }; g.n++; g.size += a.size || 0; if (a.ts > g.top.ts) g.top = a; return m.set(k, g); }, new Map<string, { id: string; n: number; size: number; top: Card }>()).values()].sort((x, y) => y.top.ts - x.top.ts) : [];
   const total = off ? jobs.length : folders ? groups.length : pics.length, bytes = pics.reduce((n, a) => n + (a.size || 0), 0);
@@ -380,8 +400,11 @@ function GalleryPage({ reopen, all }: { reopen: () => void; all: Card[] }) {
   const stopPick = () => { setPicking(false); setSel(new Set()); };
   const delSel = guard(async () => {
     const cards = pics.filter(a => sel.has(a.id)); if (!cards.length) return;
-    if (!(await confirmBox(t('scenebook.studio.gal.removeNAsk', { n: cards.length, size: sizeText(selBytes) }), t('scenebook.delete'), true))) return;
-    await purgeMany(cards); toast(t('scenebook.studio.gal.removedN', { n: cards.length }), 'ok'); stopPick(); reopen();
+    if (hidScope) { unhide(cards.map(a => a.id)); toast(t('scenebook.studio.gal.unhiddenN', { n: cards.length }), 'ok'); stopPick(); reopen(); return; }
+    const how = await removeHow(cards.length, sizeText(selBytes)); if (!how) return;
+    if (how === 'hide') { hide(cards.map(a => a.id)); toast(t('scenebook.studio.gal.hiddenN', { n: cards.length }), 'ok'); }
+    else { await purgeMany(cards); toast(t('scenebook.studio.gal.removedN', { n: cards.length }), 'ok'); }
+    stopPick(); reopen();
   });
   // 저장 공간: 원본 · 지워도 되는 사본 · 이 기기에서 쓰는 공간
   const storage = guard(async () => {
@@ -400,7 +423,7 @@ function GalleryPage({ reopen, all }: { reopen: () => void; all: Card[] }) {
         <p className="hint">{t('scenebook.studio.gal.st.note')}</p>
       </>);
   });
-  const scopeLabel = off ? t('scenebook.studio.gal.scopeUnfinished') : inChat ? chatName({ owner: 'chat:' + inChat }) : scope === 'chat' ? t('scenebook.studio.gal.thisChat') : scope === 'loose' ? t('scenebook.studio.gal.scopeLoose') : t('scenebook.studio.gal.scopeAll');
+  const scopeLabel = off ? t('scenebook.studio.gal.scopeUnfinished') : inChat ? chatName({ owner: 'chat:' + inChat }) : scope === 'chat' ? t('scenebook.studio.gal.thisChat') : scope === 'loose' ? t('scenebook.studio.gal.scopeLoose') : hidScope ? t('scenebook.studio.gal.scopeHidden') : t('scenebook.studio.gal.scopeAll');
   const countLine = folders ? t('scenebook.studio.gal.chatsLine', { chats: groups.length, n: pics.length, size: sizeText(bytes) }) : tn('scenebook.studio.gal.count', total, { scope: scopeLabel }) + (!off && bytes ? ` · ${t('scenebook.studio.gal.sizeAbout', { size: sizeText(bytes) })}` : '');
   // 날짜 머리줄 (그날 그린 장 수와 함께) — 지금 대화 안에서는 대화 이름 대신 시각을 적는다
   const dayCount = new Map<string, number>(); if (!folders && !off) for (const a of pics) { const k = dayKey(a.ts); dayCount.set(k, (dayCount.get(k) || 0) + 1); }
@@ -416,7 +439,7 @@ function GalleryPage({ reopen, all }: { reopen: () => void; all: Card[] }) {
   else for (const a of pics.slice(0, limit)) { const k = dayKey(a.ts); if (k !== lastDay) { lastDay = k; body.push(<h4 key={'d' + k} className="sb-gal-day"><span>{dayLabel(a.ts)}</span><small>{t('scenebook.studio.gal.picsN', { n: dayCount.get(k) || 0 })}</small></h4>); } body.push(tile(a)); }
   return <div className="sb-gallery-page">
     <div className="sb-gallery-bar"><input className="inp" type="search" placeholder={t('scenebook.studio.gal.searchPh')} aria-label={t('scenebook.studio.gal.search')} value={query} onChange={e => { setQuery(e.target.value); setLimit(PAGE); }} />
-      <Sel opts={[['all', t('scenebook.studio.gal.all')], ['chats', t('scenebook.studio.gal.byChat')], ...(chat ? [['chat', t('scenebook.studio.gal.thisChat')], ['loose', t('scenebook.studio.gal.loose')]] as [string, string][] : []), ['failed', t('scenebook.studio.gal.unfinished')]]} value={inChat ? 'chats' : scope} onChange={val => { stopPick(); setScope(val); }} />
+      <Sel opts={[['all', t('scenebook.studio.gal.all')], ['chats', t('scenebook.studio.gal.byChat')], ...(chat ? [['chat', t('scenebook.studio.gal.thisChat')], ['loose', t('scenebook.studio.gal.loose')]] as [string, string][] : []), ['failed', t('scenebook.studio.gal.unfinished')], ...(hidden.size || hidScope ? [['hidden', t('scenebook.studio.gal.hiddenScope', { n: all.filter(a => hidden.has(a.id)).length })] as [string, string]] : [])]} value={inChat ? 'chats' : scope} onChange={val => { stopPick(); setScope(val); }} />
       <IBtn ic="more" title={t('scenebook.more')} onClick={e => menu(e.currentTarget, [
         !off && !folders && pics.length ? { label: t('scenebook.studio.gal.pick'), ic: 'check', onclick: () => setPicking(true) } : null,
         { label: t('scenebook.studio.gal.storage'), ic: 'folder', onclick: storage },
@@ -425,12 +448,12 @@ function GalleryPage({ reopen, all }: { reopen: () => void; all: Card[] }) {
     {picking ? <div className="sb-gal-pickbar" role="status">
       <b>{t('scenebook.studio.gal.picked', { n: sel.size })}{sel.size ? <small>{` · ${sizeText(selBytes)}`}</small> : null}</b>
       <button type="button" className="btn ghost" onClick={() => setSel(allPicked ? new Set() : new Set(pics.map(a => a.id)))}>{allPicked ? t('scenebook.studio.gal.pickNone') : t('scenebook.studio.gal.pickAll', { n: pics.length })}</button>
-      <button type="button" className="btn danger" disabled={!sel.size} onClick={delSel}><Icon name="trash" size={15} />{t('scenebook.studio.gal.removeN', { n: sel.size })}</button>
+      <button type="button" className={'btn ' + (hidScope ? 'primary' : 'danger')} disabled={!sel.size} onClick={delSel}><Icon name={hidScope ? 'eye' : 'trash'} size={15} />{t(hidScope ? 'scenebook.studio.gal.unhideN' : 'scenebook.studio.gal.removeN', { n: sel.size })}</button>
       <button type="button" className="ibtn" title={t('common.cancel')} aria-label={t('common.cancel')} onClick={stopPick}><Icon name="x" size={17} /></button>
     </div> : <p className="hint" role="status">{countLine}</p>}
     <div className={'sb-gallery' + (folders ? ' sb-gal-chats' : '')}>
       {body}
-      {!total ? <Empty>{off ? (q ? t('scenebook.studio.gal.noJobMatch') : t('scenebook.studio.gal.noJobs')) : q ? t('scenebook.studio.gal.noMatch') : t('scenebook.studio.gal.empty')}</Empty> : null}
+      {!total ? <Empty>{off ? (q ? t('scenebook.studio.gal.noJobMatch') : t('scenebook.studio.gal.noJobs')) : q ? t('scenebook.studio.gal.noMatch') : hidScope ? t('scenebook.studio.gal.noHidden') : t('scenebook.studio.gal.empty')}</Empty> : null}
       {limit < total ? <div ref={more} className="sb-gal-more"><button type="button" className="btn ghost" onClick={() => setLimit(l => l + PAGE)}>{t('scenebook.studio.gal.loadMore', { n: total - limit })}</button></div> : null}</div>
   </div>;
 }

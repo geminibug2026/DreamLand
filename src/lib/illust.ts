@@ -58,12 +58,13 @@ export interface IllustCfg {
   width: number; height: number; steps: number; scale: number; seed: number; sampler: string; scheduler: string; cfgRescale?: number; style?: string; negative?: string; quality?: boolean;
   budgetGuard?: boolean; transparent?: boolean; references?: Ref[]; useCoords?: boolean; useOrder?: boolean; sdSampler?: string; contextMessages?: number; planPrompt?: string; analysisPrompt?: string;
   leanPrompt?: boolean; placement?: string; analysisMode?: string; autoSize?: boolean; look?: string; history: { time: number; reason: string; settings: Bag }[]; characterVisuals: Record<string, VisualSet>;
-  world?: string; direction?: string; playerMode?: string; library?: LibPerson[]; [k: string]: unknown;
+  world?: string; direction?: string; playerMode?: string; library?: LibPerson[];
+  /** 갤러리에서만 뺀 그림 id */ galleryHide?: string[]; /** 장면 쓰기(분석) 답 길이: 0 = 자동 */ analysisTokens?: number; presets?: { name: string; config: Bag }[]; [k: string]: unknown;
 }
 export type GenCfg = Partial<IllustCfg> & Bag;
 export interface Composed { base: string; full: string; looks: { name: string; caption: string; negative: string; x: number; y: number }[]; negative: string; coords: boolean; order: boolean; scene: Compiled }
 export interface Plan { found: boolean; scenes: Bag[]; raw: string; error?: string; repairs?: string[]; warnings?: string[] }
-export interface Job { id: string; chat: IChat; msg: IMsg; sw: ISwipe; scene: Compiled; slot: string | null; config: GenCfg; automatic: boolean; label: string; state: string; onDone?: (e: Error | null, rec?: AssetRec) => unknown; ts: number; assetId?: string; error?: string }
+export interface Job { id: string; chat: IChat; msg: IMsg; sw: ISwipe; scene: Compiled; slot: string | null; config: GenCfg; automatic: boolean; label: string; state: string; onDone?: (e: Error | null, rec?: AssetRec) => unknown; ts: number; assetId?: string; error?: string; /** 그릴 때 적용 중이던 그림체 프리셋 */ preset?: string }
 type CodedError = Error & { code?: string; uncertain?: boolean };
 
 // ════════ 번역 ════════
@@ -141,10 +142,12 @@ export const BACKENDS: Record<string, string> = { nai: 'NovelAI', get openai() {
 /** core 의 기본값에 없는 삽화 설정 (처음 읽을 때 채워 넣는다) */
 export const ILLUST_EXTRA: Bag = { automatic: null, seed: -1, scheduler: 'karras', cfgRescale: 0, useCoords: true, useOrder: true, budgetGuard: true, transparent: false, sessionLimit: 12, analysisMode: 'quick',
   presets: [], references: [], library: [], characterVisuals: {}, history: [], placement: 'end', displayWidth: 400, compact: false, sdSampler: 'Euler a',
-  leanPrompt: false, autoSize: true, look: '', frame: 'soft', frameWide: '', frameInk: '' };
+  leanPrompt: false, autoSize: true, look: '', frame: 'soft', frameWide: '', frameInk: '', galleryHide: [], analysisTokens: 0 };
 /** 그림 한 장에 얼려 두는 생성 설정 (키 · 이야기 · 인물 서재는 넣지 않는다) */
 export const RENDER_KEYS = ['backend', 'model', 'width', 'height', 'steps', 'scale', 'seed', 'sampler', 'scheduler', 'cfgRescale', 'style', 'negative', 'quality', 'budgetGuard', 'transparent', 'references', 'useCoords', 'useOrder', 'imgModel', 'connId', 'a1111', 'sdSampler'];
 export const VISUAL_KEYS = ['world', 'direction', 'playerMode', 'library'];
+/** 그림체 프리셋이 '적용 중'인지 볼 때 맞춰 보는 칸 (크기 · 시드 · 참조 · 연결은 그림마다 달라도 같은 그림체) */
+export const STYLE_KEYS = ['backend', 'model', 'steps', 'scale', 'sampler', 'scheduler', 'cfgRescale', 'style', 'negative', 'quality', 'transparent', 'useCoords', 'useOrder', 'imgModel', 'sdSampler'];
 export const REF_OWNER = 'illust:refs';
 const PAUSE_CODES = new Set(['NO_KEY', 'NAI_401', 'NAI_402', 'NAI_403', 'NAI_429', 'COOLDOWN']);
 const naiError = (status: number) => [400, 401, 402, 403, 429].includes(status) ? t('illust.nai.' + status) : '';
@@ -182,6 +185,29 @@ function shapePlan(j0: unknown, repairs: string[] = []): { scenes: Bag[]; [k: st
     return s;
   });
   return J;
+}
+/** 문단 뒤(자동): AI 가 장면마다 둘 문단을 고른다. 번호는 세다 틀리기 쉬우니 그 문단의 짧은 인용도 함께 받는다 (인용이 먼저, 번호는 대신) */
+const AUTO_PLACE = {
+  text: (max: number) => `Placement: each image is shown right after the paragraph it depicts. Under every scene write "after: N" (N = the number of that paragraph in your reply, counting blank-line separated paragraphs from 1) and "quote: a short phrase copied exactly from that paragraph". When the reply contains several clearly different moments, give each its own scene in reading order, up to ${max}; a single moment needs a single scene.`,
+  json: (max: number) => `Placement: each image is shown right after the paragraph it depicts. Give every scene "after": the number of that paragraph in your reply (blank-line separated paragraphs counted from 1), and "evidence": a short phrase copied exactly from that paragraph. When the reply contains several clearly different moments, give each its own scene in reading order, up to ${max}; a single moment needs a single scene.`,
+  analysis: (max: number) => `Placement: each image is shown right after the TARGET block it depicts. Give every scene "after": that block's index, and "evidence": a short phrase copied exactly from that block. When TARGET contains several clearly different moments, give each its own scene in reading order, up to ${max}; a single moment needs a single scene. This replaces any earlier note that indices or quotes are unnecessary.`,
+};
+const sceneCount = (c: IllustCfg) => c.placement === 'auto' ? `Scene count: one per clearly different moment, at most ${c.maxScenes || 1}.` : `Scene count: normally 1, at most ${c.maxScenes || 1}.`;
+/** 문단 번호 (1~999, 아니면 0) — "3" · "3번" · 3.0 도 받는다 */
+const paraNo = (v: unknown) => { const n = typeof v === 'number' ? v : parseInt(String(v ?? '').replace(/^\D+/, ''), 10); return Number.isFinite(n) && n >= 1 && n < 1000 ? Math.round(n) : 0; };
+/** AI 답에서 장면 계획 찾기: 설명 문장 · 생각 블록 · 코드 펜스와 섞여 와도, 맨 앞의 다른 괄호가 아니라 "scenes" 가 든 덩어리를 찾는다. 계획 주석(<!--scenebook-->) 꼴로 답해도 읽는다 */
+export function scenesIn(out0: string): { scenes: Bag[]; [k: string]: unknown } | null {
+  const out = think(String(out0 ?? '')).text || String(out0 ?? ''), tries: unknown[] = [];
+  const add = (v: unknown) => { const p = v ? shapePlan(v) : null; if (p && p.scenes.some(usable)) tries.push(p); };
+  add(loose(out)); if (tries.length) return tries[0] as ReturnType<typeof shapePlan>;
+  try { add(JSON.parse(out)); } catch { /* 다음 방법 */ }
+  for (const m of out.matchAll(/```(?:json)?\s*\n([\s\S]*?)```/gi)) { add(loose(m[1])); if (tries.length) break; }
+  // "scenes" 앞의 여는 괄호부터 다시 읽는다 (앞에 예시 · 설명용 { } 가 있을 때)
+  for (let at = out.indexOf('"scenes"'); !tries.length && at >= 0; at = out.indexOf('"scenes"', at + 8)) { const open = out.lastIndexOf('{', at); if (open >= 0) add(loose(out.slice(open))); }
+  if (!tries.length && /\[\s*\{/.test(out)) { const i = out.search(/\[\s*\{/); try { add(JSON.parse(out.slice(i, out.lastIndexOf(']') + 1))); } catch { /* 아니면 그만 */ } }
+  if (!tries.length && PLAN_RE.test(out)) { PLAN_RE.lastIndex = 0; const r = Illust.readPlan(out); if (r.scenes.length) tries.push({ scenes: r.scenes }); }
+  PLAN_RE.lastIndex = 0;
+  return (tries[0] as ReturnType<typeof shapePlan>) || null;
 }
 const usable = (sc: Bag) => !!(str(sc.prompt) || str(sc.camera) || (sc.characters as unknown[] | undefined)?.length);
 const isAuto = (sc: unknown) => !!(sc as { _auto?: boolean } | null)?._auto;
@@ -326,7 +352,7 @@ export const Illust = {
   },
   /** 설정 저장. 바뀌기 전 값은 최대 10개까지 보관한다 (키는 보관하지 않는다) */
   saveCfg(patch: Bag, { reason = '변경 전', force = false }: { reason?: string; force?: boolean } = {}) {
-    const c = this.cfg(), snap = (v: IllustCfg) => { const { naiKey: _k, history: _h, ...rest } = v; void _k; void _h; return rest; };
+    const c = this.cfg(), snap = (v: IllustCfg) => { const { naiKey: _k, history: _h, galleryHide: _g, ...rest } = v; void _k; void _h; void _g; return rest; };   // 갤러리에서 뺀 목록은 설정 기록 · 되돌리기에 넣지 않는다
     const next = { ...c, ...clone(patch) } as IllustCfg;
     if (JSON.stringify(snap(c)) !== JSON.stringify(snap(next)) && (force || !c.history.length || now() - c.history[0].time > 60000)) next.history = [{ time: now(), reason, settings: clone(snap(c)) }, ...c.history].slice(0, 10);
     next.auto = next.automatic !== 'off';
@@ -411,7 +437,7 @@ export const Illust = {
     const c = this.cfg(); askedAt = now();
     const prompt = this.fill(c.planPrompt || (c.leanPrompt ? SB.LEAN_INJECTION_PROMPT : SB.DEFAULT_INJECTION_PROMPT), chat);
     // 간결한 지시문은 긴 출력 규칙을 덧붙이지 않고 지시문만 보낸다
-    if (c.leanPrompt) return `<image_generation>\n${prompt}\n${c.placement === 'inline' ? 'An optional "quote: exact short phrase from the reply" line under a scene places its image after that paragraph. ' : ''}End the final answer with the completed <!--scenebook ... --> comment.\n</image_generation>`;
+    if (c.leanPrompt) return `<image_generation>\n${prompt}\n${c.placement === 'auto' ? AUTO_PLACE.text(c.maxScenes || 1) + ' ' : c.placement === 'inline' ? 'An optional "quote: exact short phrase from the reply" line under a scene places its image after that paragraph. ' : ''}End the final answer with the completed <!--scenebook ... --> comment.\n</image_generation>`;
     const contract = `SceneBook is enabled for this reply. Required output: normal roleplay text + one complete illustration ${usesJsonPlan(c.planPrompt) ? 'JSON comment' : 'plan comment'} in the final answer. EVERY enabled reply includes at least one usable scene; an empty plan is not valid.`;
     return `<image_generation>\nCRITICAL OUTPUT RULE:\n${contract}\n\n${prompt}\n\n${this.outputRules(c)}\n</image_generation>`;
   },
@@ -419,16 +445,16 @@ export const Illust = {
   outputRules(c0?: IllustCfg) {
     const c = c0 === undefined ? this.cfg() : c0;
     if (!usesJsonPlan(c.planPrompt)) {
-      const placement = c.placement === 'inline' ? 'An optional "quote: exact short phrase from the reply" line under a scene may guide inline placement. Missing or ambiguous placement never prevents illustration; the image can go below the reply.' : 'Images appear below the reply in scene order. Paragraph numbers and quotes are unnecessary.';
-      return `${SB.TEXT_OUTPUT_RULES}\n\n${SB.ADULT_SCENE_RULES}\n\nScene count: normally 1, at most ${c.maxScenes || 1}. ${placement}\n${SB.TEXT_FORMAT_RULES}\nFinal output must end with a complete <!--scenebook ... --> comment. Write the comment delimiters literally, without backslashes, HTML escaping or a code fence. With this feature enabled, every reply must contain at least one usable scene. Do not finish with only the reply text or an empty plan.`;
+      const placement = c.placement === 'auto' ? AUTO_PLACE.text(c.maxScenes || 1) : c.placement === 'inline' ? 'An optional "quote: exact short phrase from the reply" line under a scene may guide inline placement. Missing or ambiguous placement never prevents illustration; the image can go below the reply.' : 'Images appear below the reply in scene order. Paragraph numbers and quotes are unnecessary.';
+      return `${SB.TEXT_OUTPUT_RULES}\n\n${SB.ADULT_SCENE_RULES}\n\n${sceneCount(c)} ${placement}\n${SB.TEXT_FORMAT_RULES}\nFinal output must end with a complete <!--scenebook ... --> comment. Write the comment delimiters literally, without backslashes, HTML escaping or a code fence. With this feature enabled, every reply must contain at least one usable scene. Do not finish with only the reply text or an empty plan.`;
     }
-    const placement = c.placement === 'inline' ? 'An optional short evidence quote may guide inline placement. Missing or ambiguous placement never prevents illustration; the image can go below the reply.' : 'Images appear below the reply in scenes-array order. Omit after and evidence: paragraph numbers and exact quotes are unnecessary, even if an earlier template requested them.';
-    return `${SB.ILLUSTRATION_OUTPUT_RULES}\n\n${SB.ADULT_SCENE_RULES}\n\nScene count: normally 1, at most ${c.maxScenes || 1}. ${placement}\n${SB.JSON_OUTPUT_RULES}\nFinal output must end with a complete <!--scenebook JSON --> comment. Write the comment delimiters literally, without backslashes, HTML escaping or a code fence. With this feature enabled, every reply must contain at least one usable scene. Do not finish with only the reply text or an empty scenes array.`;
+    const placement = c.placement === 'auto' ? AUTO_PLACE.json(c.maxScenes || 1) : c.placement === 'inline' ? 'An optional short evidence quote may guide inline placement. Missing or ambiguous placement never prevents illustration; the image can go below the reply.' : 'Images appear below the reply in scenes-array order. Omit after and evidence: paragraph numbers and exact quotes are unnecessary, even if an earlier template requested them.';
+    return `${SB.ILLUSTRATION_OUTPUT_RULES}\n\n${SB.ADULT_SCENE_RULES}\n\n${sceneCount(c)} ${placement}\n${SB.JSON_OUTPUT_RULES}\nFinal output must end with a complete <!--scenebook JSON --> comment. Write the comment delimiters literally, without backslashes, HTML escaping or a code fence. With this feature enabled, every reply must contain at least one usable scene. Do not finish with only the reply text or an empty scenes array.`;
   },
   /** 수동 분석 뒤에 덧붙이는 규칙 */
   analysisRules(c0?: IllustCfg) {
     const c = c0 === undefined ? this.cfg() : c0;
-    const place = c.placement === 'inline' ? 'An optional "evidence" field may quote one short exact phrase from the TARGET paragraph the image belongs after; a scene can be displayed below the reply when placement is unavailable.' : 'Images are displayed below the completed reply in scenes-array order. Paragraph indices and exact evidence quotes are not required; omit after and evidence for new scenes, regardless of earlier template examples. Focus on complete, visually coherent prompts.';
+    const place = c.placement === 'auto' ? AUTO_PLACE.analysis(c.maxScenes || 1) : c.placement === 'inline' ? 'An optional "evidence" field may quote one short exact phrase from the TARGET paragraph the image belongs after; a scene can be displayed below the reply when placement is unavailable.' : 'Images are displayed below the completed reply in scenes-array order. Paragraph indices and exact evidence quotes are not required; omit after and evidence for new scenes, regardless of earlier template examples. Focus on complete, visually coherent prompts.';
     return `${SB.ADULT_SCENE_RULES}\n\n${place}\n${SB.JSON_OUTPUT_RULES}`;
   },
   /** 계획 주석 읽기 (펜스 · 역슬래시 · HTML 이스케이프 · 여러 개 · 잘린 JSON 도 받아 준다) */
@@ -487,8 +513,9 @@ export const Illust = {
       for (const it of raw.changes.filter(x => ok(x) && blocks.some(b => b.index === x.at && norm(x.evidence) && norm(b.content).includes(norm(x.evidence)))).sort((a, b) => (a.at as number) - (b.at as number))) st.set(it.id as string, { ...st.get(it.id as string), outfit: it.outfit as string, profileId: it.profileId || st.get(it.id as string)?.profileId || '' });
     }
     const data = { world: v.world || '', library: fullLib, history, TARGET: blocks, existing: existing ? existing.map(withoutTitle) : null };   // 제목은 그림의 일부가 아니라 모델에 넘기지 않는다
-    const out = await ask(`${this.fill(c.analysisPrompt || SB.DEFAULT_ANALYSIS_PROMPT, chat, { data, direction: JSON.stringify(direction || v.direction || '') })}\n\n${this.analysisRules(c)}`, Math.min(8000, Math.max(2500, 1800 * (c.maxScenes || 1))));
-    const plan = shapePlan(loose(out) || (() => { try { return JSON.parse(out); } catch { return null; } })());
+    const out = await ask(`${this.fill(c.analysisPrompt || SB.DEFAULT_ANALYSIS_PROMPT, chat, { data, direction: JSON.stringify(direction || v.direction || '') })}\n\n${this.analysisRules(c)}`, this.analysisTokens(c));
+    if (!out.trim()) throw new Error(t('illust.err.analysisEmpty'));   // 생각하는 모델이 길이를 생각에 다 썼을 때가 많다
+    const plan = scenesIn(out);
     if (!plan) throw new Error(t('illust.err.analysis'));
     const scenes = plan.scenes.filter(usable).slice(0, existing ? existing.length : (c.maxScenes || 1));
     scenes.forEach((sc, i) => { if (!str(sc.title)) sc.title = str(existing?.[i]?.title); });   // 자리표시 제목("장면 1")은 만들지 않는다. 직접 적어 둔 제목만 이어받는다
@@ -502,7 +529,7 @@ export const Illust = {
     return scenes;
   },
   mergeRevision(prev: Compiled, next: Compiled, scope = 'all'): Compiled {
-    if (scope === 'all') { const r = { ...next, anchor: prev.anchor || next.anchor || '' }; if (!r.size && prev.size) r.size = prev.size; return r; }
+    if (scope === 'all') { const r = { ...next, anchor: prev.anchor || next.anchor || '', ...(prev.at || next.at ? { at: prev.at || next.at } : {}) }; if (!r.size && prev.size) r.size = prev.size; return r; }
     if (prev.finalPrompt && (scope === 'camera' || scope === 'background')) throw new Error(t('illust.err.finalPrompt'));
     const r = clone(prev);
     if (scope === 'camera') r.camera = next.camera;
@@ -531,7 +558,7 @@ export const Illust = {
     const lib = this.library(chat), pm = this.visual(chat).playerMode;
     const list = (Array.isArray(scene.characters) ? scene.characters as unknown[] : []).map(x => typeof x === 'string' ? { name: x } : x).filter((x): x is Bag => !!x && typeof x === 'object');
     const size = orientation(scene.size);   // 장면별 화면 비율: portrait · landscape · square (없으면 설정값)
-    return { title: str(scene.title).slice(0, 150), camera: str(scene.camera), prompt: str(scene.prompt), negative: str(scene.negative), finalPrompt: scene.finalPrompt === true, anchor: str(scene.anchor) || str(scene.evidence), characters: list.map(x => this.compileCharacter(x, lib, pm)).filter((x): x is CompiledChar => !!x), ...(size ? { size } : {}) };
+    return { title: str(scene.title).slice(0, 150), camera: str(scene.camera), prompt: str(scene.prompt), negative: str(scene.negative), finalPrompt: scene.finalPrompt === true, anchor: str(scene.anchor) || str(scene.evidence), ...(paraNo(scene.at ?? scene.after) ? { at: paraNo(scene.at ?? scene.after) } : {}), characters: list.map(x => this.compileCharacter(x, lib, pm)).filter((x): x is CompiledChar => !!x), ...(size ? { size } : {}) };
   },
   /** 그림체 프리셋의 태그를 메인 프롬프트 앞에 붙인다 (이미 붙어 있으면 그대로) */
   withLook<T extends { style?: string; negative?: string }>(config: T, id0?: string): T { const id = id0 === undefined ? this.cfg().look as string : id0; return LOOKS.some(x => x[0] === id) ? withLook(config, id) : config; },
@@ -546,6 +573,20 @@ export const Illust = {
     return { base, full: [base, ...looks.map(l => l.caption)].join(', '), looks, negative, coords: cfg.useCoords !== false && looks.length > 0, order: cfg.useOrder !== false, scene: s };
   },
   /** 지금 설정에서 그림 한 장에 필요한 값만 (over 로 덮어쓴다) */
+  /** 장면 쓰기(분석) 답 길이: 직접 정했으면 그 값(1,000~128,000), 아니면 장면 수에 맞춘 자동 값 */
+  analysisTokens(c0?: IllustCfg) { const c = c0 || this.cfg(), n = Number(c.analysisTokens) || 0; return n >= 1000 ? Math.min(128000, Math.round(n)) : Math.min(8000, Math.max(2500, 1800 * (c.maxScenes || 1))); },
+  /** 이 설정과 그림체가 같은 저장 프리셋 (없으면 null) */
+  presetOf(config?: Bag | null) {
+    if (!config) return null;
+    const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+    return (this.cfg().presets || []).find(p => STYLE_KEYS.every(k => p.config?.[k] === undefined || same(p.config[k], config[k]))) || null;
+  },
+  /** 지금 설정에 적용 중인 프리셋 */
+  activePreset() { return this.presetOf(this.cfg()); },
+  /** 그림 한 장의 설정에 프리셋의 그림체만 얹는다 (크기 · 시드는 그 그림 그대로). 그림체 꾸밈(look)도 다시 붙인다 */
+  withPreset<T extends Bag>(config: T, preset: { config: Bag }): T {
+    return this.withLook({ ...config, ...pick(preset.config, STYLE_KEYS.filter(k => preset.config[k] !== undefined)) } as T & { style?: string; negative?: string }) as T;
+  },
   genConfig(over?: Bag | null): GenCfg {
     const c: GenCfg = { ...pick(this.cfg(), RENDER_KEYS), ...pick(over || {}, RENDER_KEYS) };
     // 이 모델이 쓸 수 있는 참조만 그림 한 장의 설정에 싣는다 (못 쓰는 것은 참조 탭에서 까닭과 함께 보인다)
@@ -593,7 +634,7 @@ export const Illust = {
   select(it: Slot, n: number) {
     const S0 = this.slot(it); const v = S0.versions[(n + S0.versions.length) % S0.versions.length]; if (!v) return it;
     it.sel = S0.versions.indexOf(v); const s = (v.scene || {}) as Bag;
-    return Object.assign(it, { id: v.id, title: s.title || '', camera: s.camera || '', prompt: s.prompt || '', negative: s.negative || '', characters: s.characters || [], finalPrompt: !!s.finalPrompt, anchor: s.anchor || it.anchor || '' });
+    return Object.assign(it, { id: v.id, title: s.title || '', camera: s.camera || '', prompt: s.prompt || '', negative: s.negative || '', characters: s.characters || [], finalPrompt: !!s.finalPrompt, anchor: s.anchor || it.anchor || '', at: s.at || it.at || undefined });
   },
   /** 그리기 요청을 줄 세운다. opts: { slot: 같은 자리에 새 버전, config: 이번 작업의 생성 설정, manual: 자동 처리 규칙을 건너뜀, exact: 설정을 그대로 씀 (다시 그리기 — 그림체 · 장면별 화면 비율을 다시 적용하지 않는다) }. 던지지 않고 onDone(err) 로 알린다 */
   enqueue(chat: IChat, msg: IMsg, scene: Bag | null | undefined, onDone?: Job['onDone'], opts: { slot?: string; config?: Bag; manual?: boolean; exact?: boolean } = {}) {
@@ -611,7 +652,8 @@ export const Illust = {
       // 지시가 고른 화면 비율(세로 · 가로 · 정사각)과 그림체는 새로 그릴 때만 적용한다. 다시 그리기는 그 그림에 기록된 설정을 그대로 쓴다
       const base = this.genConfig(opts.config), shape = !opts.exact && c.autoSize !== false ? orientation(compiled.size) : '';
       const config = this.validate({ ...(opts.exact ? base : this.withLook(base, c.look)), ...(shape ? sizeFor(base as unknown as { width: number; height: number }, shape) : {}) });
-      Q.items.push({ id: uid(), chat, msg, sw, scene: compiled, slot: opts.slot || null, config, automatic: auto, label: sceneHint(compiled) || t('illust.label'), state: 'waiting', onDone, ts: now() });
+      const preset = this.presetOf(base)?.name;
+      Q.items.push({ id: uid(), chat, msg, sw, scene: compiled, slot: opts.slot || null, config, automatic: auto, label: sceneHint(compiled) || t('illust.label'), state: 'waiting', onDone, ts: now(), ...(preset ? { preset } : {}) });
     } catch (e) { if (auto) draft(); return later(e); }
     this.changed(); void this.pump();
   },
@@ -626,7 +668,7 @@ export const Illust = {
           if (!job.msg.swipes.includes(job.sw)) throw new Error(t('illust.q.swipeGone'));
           if (job.slot && !job.sw.illust?.some(it => it.slotId === job!.slot)) throw new Error(t('illust.q.slotGone'));
           sessionRequests++;
-          const rec = await this.render(job.chat, job.scene, job.config);
+          const rec = await this.render(job.chat, job.scene, job.config, job.preset);
           job.assetId = rec.id; this.attach(job, rec); job.state = 'done';
           try { await job.onDone?.(null, rec); } catch (e) { console.error(e); }
         } catch (e0) {
@@ -650,24 +692,24 @@ export const Illust = {
     const list = (job.sw.illust ||= []);
     let it: Slot | undefined = (job.slot && list.find(x => x.slotId === job.slot)) || undefined;
     if (!it) { it = { slotId: job.slot || uid(), versions: [] } as unknown as Slot; list.push(it); }
-    this.slot(it).versions.push({ id: rec.id, seed: rec.seed as number, ts: rec.ts as number, scene: rec.scene as unknown as IllustScene, config: rec.config as IllustGenConfig });
+    this.slot(it).versions.push({ id: rec.id, seed: rec.seed as number, ts: rec.ts as number, scene: rec.scene as unknown as IllustScene, config: rec.config as IllustGenConfig, ...(rec.preset ? { preset: String(rec.preset) } : {}) });
     it.hidden = false; this.select(it, it.versions!.length - 1);
     if (job.sw.illustPlan?.status === 'queued') job.sw.illustPlan.status = 'done';
     return it;
   },
   /** 갤러리의 그림을 답변 아래에 다시 넣는다 */
   insert(sw: ISwipe, rec: AssetRec) {
-    const it: Slot = { slotId: uid(), versions: [{ id: rec.id, seed: rec.seed ?? null, ts: rec.ts as number, scene: (rec.scene as unknown as IllustScene) || { title: rec.title || '', prompt: rec.prompt || '', camera: '', negative: '', characters: [] }, config: (rec.config as IllustGenConfig) || null }] } as unknown as Slot;
+    const it: Slot = { slotId: uid(), versions: [{ id: rec.id, seed: rec.seed ?? null, ts: rec.ts as number, scene: (rec.scene as unknown as IllustScene) || { title: rec.title || '', prompt: rec.prompt || '', camera: '', negative: '', characters: [] }, config: (rec.config as IllustGenConfig) || null, ...(rec.preset ? { preset: String(rec.preset) } : {}) }] } as unknown as Slot;
     (sw.illust ||= []).push(it); cache.set(rec.id, rec.data); return this.select(it, 0);
   },
   /** 장면 하나를 그려서 보관함에 넣는다 → 에셋 기록 */
-  async render(chat: IChat, scene: Bag, config?: GenCfg | null): Promise<AssetRec> {
+  async render(chat: IChat, scene: Bag, config?: GenCfg | null, preset?: string): Promise<AssetRec> {
     const cfg = this.validate(config ? { ...config } : this.genConfig()), p = this.compose(chat, scene, cfg);
     if (!p.base.trim()) throw new Error(t('illust.q.empty'));
     if (cfg.backend === 'nai' && p.looks.length > MODELS[cfg.model as string].characters) throw new Error(t('illust.err.castMax', { n: MODELS[cfg.model as string].characters }));
     const seed = (cfg.seed as number) >= 0 ? cfg.seed as number : Math.floor(Math.random() * 4294967296);
     const data = await this.backend(p, cfg, seed);
-    const rec: AssetRec = { id: uid(), owner: 'chat:' + chat.id, kind: 'illust', name: 'illust', data: await shrink(data, 1536, 'image/webp', 0.92) || data, prompt: p.scene.prompt, title: p.scene.title, scene: p.scene, config: { ...cfg, seed: undefined }, seed, ts: now() };
+    const rec: AssetRec = { id: uid(), owner: 'chat:' + chat.id, kind: 'illust', name: 'illust', data: await shrink(data, 1536, 'image/webp', 0.92) || data, prompt: p.scene.prompt, title: p.scene.title, scene: p.scene, config: { ...cfg, seed: undefined }, seed, ts: now(), ...(preset ? { preset } : {}) };
     await db().put('assets', rec); cache.set(rec.id, rec.data);
     return rec;
   },

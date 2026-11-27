@@ -1,12 +1,13 @@
 // 삽화 한 자리에서 여는 것들: 크게 보기 · 생성 기록 · 버전 비교 · AI 검수 · 더 보기 메뉴 · 장면 수정
 import { useState } from 'react';
 import type { MenuItem } from '../ui';
-import { Btn, Fld, IBtn, Sel, Seg, openModal, type Box } from './parts';
+import { Btn, Fld, Sel, Seg, openModal } from './parts';
 import { CAMERA_TAGS, orientations, hasCameraTag, sizeFor, toggleCameraTag } from './framing';
 import { analyzeInto, compose, draw, regen } from './work';
 import type { Chat, GenConfig, Msg, Review, Scene, Slot, Swipe, Version } from './types';
+import { viewer, type ViewItem } from './viewer';
 
-import { confirmBox, menu, toast } from '../ui';
+import { confirmBox, toast } from '../ui';
 import { chatApi } from '../chat/actions';
 import * as C from '../lib/core';
 import { blankScene, clone, configLine, cur, errText, guard, mustBeOpen, saveImage, when } from './util';
@@ -14,15 +15,20 @@ import { Illust } from './illust';
 import { t } from '../i18n';
 
 // ════════ 크게 보기 · 생성 기록 · 버전 비교 ════════
-export interface ViewAction { label: string; ic?: string; hint?: string; danger?: boolean; run?: () => unknown; onclick?: () => unknown }
-export function viewer({ title, src, sub = '', actions = [], more = [], original }: { title?: string; src: string; sub?: string; actions?: ViewAction[]; more?: ViewAction[]; original?: () => Promise<string> }) {
-  const run = (box: Box, a: ViewAction) => async () => { box.close(); try { await (a.run || a.onclick)?.(); } catch (e) { toast(errText(e), 'err'); } };
-  return openModal({ title: title || t('scenebook.illust'), wide: true, cls: 'sb-viewer' }, box => <>
-    <div className="sb-viewer-frame"><img src={src} alt={title || t('scenebook.illust')} /></div>{sub ? <p className="hint">{sub}</p> : null}
-    <div className="sb-viewer-foot">{actions.map((a, i) => <Btn key={i} label={a.label} ic={a.ic} cls="ghost" onClick={run(box, a)} />)}<Btn label={t('common.save')} ic="import" cls="ghost" onClick={guard(async () => saveImage((original && await original()) || src, title || 'illust'))} />
-      {more.length ? <IBtn ic="more" title={t('scenebook.more')} onClick={e => menu(e.currentTarget, more.map(a => ({ label: a.label, ic: a.ic, hint: a.hint, danger: a.danger, onclick: run(box, a) })))} /> : null}</div>
-  </>);
+export { viewer, type ViewAction, type ViewItem } from './viewer';
+/** 대화에 붙은 삽화 칸이 다시 그리게 (큰 그림에서 버전을 넘겼을 때) — 자리 id → 다시 그리기 */
+export const figRefresh = new Map<string, Set<() => void>>();
+const refreshFig = (slotId: string) => figRefresh.get(slotId)?.forEach(f => f());
+// 버전을 빠르게 넘길 때: 화면은 바로 바꾸고, 저장은 넘기기를 멈춘 뒤 한 번만 한다. 그 사이 다른 대화로 가도 원래 대화에 저장한다
+let saveTimer = 0, pendingSave: (() => void) | null = null;
+export function saveSoon() {
+  const { chat, msgs } = cur(); if (!chat) return;
+  clearTimeout(saveTimer);
+  pendingSave = () => { pendingSave = null; if (cur().chat === chat) void chatApi.save(); else if (msgs && C.S.get('chats', chat.id)) void C.S.saveMsgs(chat, msgs); };
+  saveTimer = window.setTimeout(() => pendingSave?.(), 700);
 }
+const flushSave = () => { clearTimeout(saveTimer); pendingSave?.(); };
+addEventListener('pagehide', flushSave); document.addEventListener('visibilitychange', () => { if (document.hidden) flushSave(); });
 export function inspect(v: { scene?: Scene; config?: GenConfig | null; seed?: number | null; review?: Review; ts?: number }) {
   const data = { scene: v.scene, config: v.config, seed: v.seed, review: v.review };
   openModal({ title: t('scenebook.record'), wide: true, cls: 'col', actions: [{ label: t('scenebook.slot.download'), ic: 'import', onclick: () => { C.download('scenebook-image-record.json', JSON.stringify(data, null, 2)); return false; } }, { label: t('common.close'), cls: 'primary' }] },
@@ -73,15 +79,25 @@ export function slotMenu(m: Msg, sw: Swipe, it: Slot): MenuItem[] {
   ];
 }
 export function slotViewer(m: Msg, sw: Swipe, it: Slot) {
-  const v: Partial<Version> = it.versions[it.sel] || {};
-  viewer({ title: it.title || t('scenebook.illust'), src: Illust.url(it.id) || Illust.data(it.id), original: () => Illust.dataOf(it.id), sub: [configLine(v.config), v.seed != null ? `Seed ${v.seed}` : ''].filter(Boolean).join(' · '),
-    actions: [{ label: t('scenebook.slot.edit'), ic: 'edit', run: () => quickEdit(m, it) }, { label: t('scenebook.regen'), ic: 'refresh', run: () => regen(m, it, -1) }],
-    more: slotMenu(m, sw, it).filter((a): a is Item => !!a && a !== '-' && a.label !== t('scenebook.slot.saveImage')) });   // 삭제는 더 보기 안에 둔다
+  const S0 = Illust.slot(it);
+  const item = (src: string): ViewItem => { const v: Partial<Version> = it.versions[it.sel] || {};
+    return { title: withPreset(it.title || t('scenebook.illust'), v.preset), src, original: () => Illust.dataOf(it.id), sub: [S0.versions.length > 1 ? t('scenebook.view.version', { n: it.sel + 1, total: S0.versions.length }) : '', configLine(v.config), v.seed != null ? `Seed ${v.seed}` : ''].filter(Boolean).join(' · '),
+      actions: [{ label: t('scenebook.slot.edit'), ic: 'edit', run: () => quickEdit(m, it) }, { label: t('scenebook.regen'), ic: 'refresh', run: () => regen(m, it, -1) }],
+      more: slotMenu(m, sw, it).filter((a): a is Item => !!a && a !== '-' && a.label !== t('scenebook.slot.saveImage')) }; };   // 삭제는 더 보기 안에 둔다
+  // 넘기면 같은 자리를 다시 그린 그림(버전)으로 바뀌고, 대화의 그림도 그 버전이 된다
+  viewer(item(Illust.url(it.id) || Illust.data(it.id)), { count: S0.versions.length, index: it.sel, load: async i => {
+    if (!sw.illust?.includes(it)) return null;
+    Illust.select(it, i); refreshFig(it.slotId); saveSoon();
+    return item(Illust.url(it.id) || Illust.data(it.id) || await Illust.dataOf(it.id));
+  } });
 }
+/** 큰 그림 제목: 삽화 이름 · 그릴 때 쓴 프리셋 */
+export const withPreset = (title: string, preset?: string) => preset ? `${title} · ${preset}` : title;
 
 /** 장면 수정 창의 안쪽. hold.read 로 지금 적힌 내용을, hold.size 로 고른 화면 비율을 창 아래 단추가 읽는다 */
-function QuickEdit({ m, chat, start, hold, check }: { m: Msg; chat: Chat; start: Scene; hold: { read: () => Scene; size: string }; check: () => void }) {
+function QuickEdit({ m, chat, start, hold, check, used }: { m: Msg; chat: Chat; start: Scene; hold: { read: () => Scene; size: string; preset: string }; check: () => void; used?: string }) {
   const [draft, setDraft] = useState(start), [ask, setAsk] = useState(''), [status, setStatus] = useState(''), [busy, setBusy] = useState(false);
+  const presets = Illust.cfg().presets || [], active = Illust.activePreset()?.name, [preset, setPreset] = useState('');
   const [camera, setCamera] = useState(start.camera ?? ''), [prompt, setPrompt] = useState(start.prompt ?? ''), [cast, setCast] = useState(() => (start.characters ?? []).map(c => c.prompt ?? ''));
   const read = (): Scene => ({ ...draft, camera: camera.trim(), prompt: prompt.trim(), finalPrompt: false, characters: (draft.characters ?? []).map((c, i) => ({ ...c, prompt: cast[i] })) });
   hold.read = read;
@@ -100,6 +116,7 @@ function QuickEdit({ m, chat, start, hold, check }: { m: Msg; chat: Chat; start:
     <div className="sb-chips" role="group" aria-label={t('scenebook.quick.cameraPick')}>{CAMERA_TAGS.map(([tag, label, group]) => { const on = hasCameraTag(camera, tag);
       return <button key={tag} type="button" className={'chip' + (on ? ' on' : '')} title={tag} data-tag={tag} data-group={group} aria-pressed={on} onClick={() => setCamera(toggleCameraTag(camera, tag))}>{t(label)}</button>; })}</div>
     <Fld label={t('scenebook.camera')}><input className="inp" placeholder={t('scenebook.quick.cameraPh')} spellCheck={false} autoComplete="off" value={camera} onChange={e => setCamera(e.target.value)} /></Fld>
+    {presets.length ? <Fld label={t('scenebook.quick.preset')} hint={t('scenebook.quick.presetHint')}><Sel opts={[['', used ? t('scenebook.quick.presetKeepNamed', { name: used }) : t('scenebook.quick.presetKeep')], ...presets.map((p): [string, string] => [p.name, p.name + (p.name === active ? ` · ${t('scenebook.preset.active')}` : '')])]} value={preset} onChange={v => { setPreset(v); hold.preset = v; }} /></Fld> : null}
     <div className="sb-shape"><span className="field-label">{t('scenebook.ratio')}</span><Seg label={t('scenebook.ratio')} choices={[['', t('scenebook.quick.keep')], ...orientations().slice(1)]} value="" onChange={val => { hold.size = val; }} /></div>
     <Fld label={t('scenebook.scene')}><textarea className="inp" rows={4} spellCheck={false} value={prompt} onChange={e => setPrompt(e.target.value)} /></Fld>
     <div className="col sb-quick-people">{(draft.characters ?? []).map((c, i) => <Fld key={i} label={c.name || t('scenebook.person.n', { n: i + 1 })}><textarea className="inp" rows={3} spellCheck={false} value={cast[i] ?? ''} onChange={e => setCast(cast.map((x, n) => n === i ? e.target.value : x))} /></Fld>)}</div>
@@ -108,12 +125,12 @@ function QuickEdit({ m, chat, start, hold, check }: { m: Msg; chat: Chat; start:
 /** 장면 수정: 그림을 가르는 몇 가지만 고쳐서 같은 자리에 다시 생성한다. 이전 그림은 버전으로 남는다 */
 export function quickEdit(m: Msg, it: Slot) {
   const { chat } = cur(), sw = m.swipes[m.sw], v = Illust.slot(it).versions[it.sel]; if (!v) throw new Error(t('scenebook.quick.noImage'));
-  const start: Scene = clone(v.scene || { characters: [] }), hold = { read: () => start, size: '' };
+  const start: Scene = clone(v.scene || { characters: [] }), hold = { read: () => start, size: '', preset: '' };
   const check = () => { mustBeOpen(m); if (!sw.illust?.includes(it)) throw new Error(t('scenebook.quick.changed')); };
   openModal({ title: t('scenebook.quick.title'), cls: 'col sb-quick', actions: [
     { label: t('scenebook.quick.detail'), ic: 'sliders', cls: 'ghost', onclick: () => { try { check(); const scene = hold.read(); compose(m, { initial: [scene], slot: it.slotId, config: { ...(v.config || {}), seed: v.seed ?? -1 } as GenConfig, preview: Illust.data(v.id) }).catch(e => toast(errText(e), 'err')); } catch (e) { toast(errText(e), 'err'); return false; } } },
-    { label: t('scenebook.regen'), ic: 'refresh', cls: 'primary', onclick: () => { try { check(); const base = v.config || Illust.genConfig(); draw(m, [hold.read()], { ...base, seed: -1, ...(hold.size ? sizeFor(base, hold.size) : {}) }, it.slotId, true); } catch (e) { toast(errText(e), 'err'); return false; } } }] },
-    () => <QuickEdit m={m} chat={chat as Chat} start={start} hold={hold} check={check} />);
+    { label: t('scenebook.regen'), ic: 'refresh', cls: 'primary', onclick: () => { try { check(); const base = v.config || Illust.genConfig(); const p = hold.preset ? (Illust.cfg().presets || []).find(x => x.name === hold.preset) : null, cfg = { ...base, seed: -1, ...(hold.size ? sizeFor(base, hold.size) : {}) } as GenConfig; draw(m, [hold.read()], p ? Illust.withPreset(cfg, p) : cfg, it.slotId, true); } catch (e) { toast(errText(e), 'err'); return false; } } }] },
+    () => <QuickEdit m={m} chat={chat as Chat} start={start} hold={hold} check={check} used={v.preset} />);
 }
 
 /** 수동 생성: 고른 답변의 그림을 지금 만든다 (자동 삽화가 꺼져 있어도). 저장된 장면 · AI 가 장면 쓰기 · 직접 쓰기 가운데 고르고 화면 비율을 정한다 */

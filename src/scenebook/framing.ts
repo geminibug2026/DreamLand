@@ -3,7 +3,7 @@
 export type Orientation=''|'portrait'|'landscape'|'square';
 export interface SizeBase{width:number;height:number;budgetGuard?:boolean}
 export interface PlanCharacter{name:string;x?:number;y?:number;action?:string;outfit?:string;appearance?:string;profileId?:string}
-export interface PlanScene{characters:PlanCharacter[];camera?:string;prompt?:string;negative?:string;evidence?:string;title?:string;size?:string}
+export interface PlanScene{characters:PlanCharacter[];camera?:string;prompt?:string;negative?:string;evidence?:string;title?:string;size?:string;after?:string|number}
 type Slot=Record<string,string|undefined>;
 import { t } from '../i18n';
 export function orientation(value:unknown):Orientation{
@@ -81,7 +81,7 @@ export const FRAMES:[string,string][]=[['soft','scenebook.frame.soft'],['none','
 // Line-based illustration plan: one "key: value" field per line, each scene
 // opened by a line reading "scene". It costs fewer reply tokens than JSON and
 // has no brackets or escapes for a model to get wrong.
-const SCENE_KEYS:Record<string,string>={camera:'camera',view:'camera',prompt:'prompt',negative:'negative',uc:'negative',quote:'evidence',evidence:'evidence',title:'title',size:'size',ratio:'size'};
+const SCENE_KEYS:Record<string,string>={camera:'camera',view:'camera',prompt:'prompt',negative:'negative',uc:'negative',quote:'evidence',evidence:'evidence',title:'title',size:'size',ratio:'size',after:'after',para:'after',paragraph:'after'};
 const CHARACTER_KEYS:Record<string,string>={action:'action',outfit:'outfit',appearance:'appearance',profile:'profileId',profileid:'profileId'};
 const header=/^[\s#\[\-=*]*scene\s*\d*[\s\]:\-=*]*$/i,field=/^\s*(?:[-*]\s*)?([A-Za-z]+)\s*[:=]\s*(.*)$/;
 const clean=(value:string)=>{const v=value.trim();return v.length>1&&v.startsWith('"')&&v.endsWith('"')?v.slice(1,-1).trim():v;};

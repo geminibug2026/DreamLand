@@ -13,6 +13,7 @@ import { chatApi } from '../chat/actions';
 import * as IL from '../lib/illust';
 import * as C from '../lib/core';
 import { blankScene, clone, configLine, cur, errText, flat, guard, mustBeOpen, pickKeys } from './util';
+import { placeAt } from './place';
 import { Illust } from './illust';
 import { t as tr } from '../i18n';
 
@@ -60,7 +61,7 @@ interface Tools { x: Ctx; s: Scene; snap(): void; touch(): void; redo(): void; n
 function ParaPicker({ t, pickAt }: { t: Tools; pickAt: (b: { index: number; content: string } | null) => void }) {
   const SIZE = 20, [q, setQ] = useState(''), [page0, setPage] = useState(0), list = useRef<HTMLDivElement>(null);
   const { blocks } = t.x, s = t.s;
-  const here = s.anchor ? blocks.find(b => flat(b.content).includes(flat(s.anchor).slice(0, 40)))?.index : 0;
+  const at = placeAt(s, blocks.map(b => b.content)), here = at >= 0 ? blocks[at].index : 0;
   const k = flat(q).toLowerCase(), hits = blocks.filter(b => !k || flat(b.content).toLowerCase().includes(k)), pages = Math.max(1, Math.ceil(hits.length / SIZE)), page = Math.max(0, Math.min(page0, pages - 1));
   useEffect(() => { if (list.current) list.current.scrollTop = 0; }, [q, page]);
   return <>
@@ -75,8 +76,8 @@ function ParaPicker({ t, pickAt }: { t: Tools; pickAt: (b: { index: number; cont
   </>;
 }
 function AnchorPicker({ t }: { t: Tools }) {
-  const bump = useBump(), s = t.s, b = s.anchor ? t.x.blocks.find(x => flat(x.content).includes(flat(s.anchor).slice(0, 40))) : undefined;
-  const choose = () => { const m: Box = openModal({ title: tr('scenebook.anchor'), wide: true, cls: 'col' }, () => <ParaPicker t={t} pickAt={p => { t.snap(); s.anchor = p ? p.content.slice(0, 200) : ''; bump(); m.close(); }} />); };
+  const bump = useBump(), s = t.s, at = placeAt(s, t.x.blocks.map(x => x.content)), b = at >= 0 ? t.x.blocks[at] : undefined;
+  const choose = () => { const m: Box = openModal({ title: tr('scenebook.anchor'), wide: true, cls: 'col' }, () => <ParaPicker t={t} pickAt={p => { t.snap(); s.anchor = p ? p.content.slice(0, 200) : ''; if (p) s.at = p.index; else delete s.at; bump(); m.close(); }} />); };
   return <section className="sb-anchor"><div className="row"><b>{b ? tr('scenebook.anchor.after', { n: b.index }) : tr('scenebook.anchor.end')}</b><Btn label={tr('scenebook.anchor.change')} cls="ghost" onClick={choose} /></div><blockquote className="sb-excerpt" hidden={!b}>{b ? b.content : ''}</blockquote></section>;
 }
 
@@ -150,6 +151,7 @@ function FinalTab({ t }: { t: Tools }) {
   const lock = (prompt: string, negative: string) => { Object.assign(s, { prompt, negative, camera: '', finalPrompt: true }); t.touch(); };
   return <div className="col sb-ed-pane">
     <p className="hint">{tr('scenebook.ed.finalHint')}</p>
+    <p className="sb-ed-preset"><span className="field-label">{tr('scenebook.ed.presetUsed')}</span><b>{Illust.presetOf(cfg)?.name || tr('scenebook.ed.presetNone')}</b></p>
     <Fld label={tr('scenebook.ed.finalPrompt')}><textarea className="inp" rows={7} spellCheck={false} value={pos} onChange={e => { setPos(e.target.value); lock(e.target.value, neg); }} /></Fld>
     <Fld label={tr('scenebook.ed.finalNeg')}><textarea className="inp" rows={4} spellCheck={false} value={neg} onChange={e => { setNeg(e.target.value); lock(pos, e.target.value); }} /></Fld>
     {p.looks.length ? <div className="col"><span className="field-label">{tr('scenebook.ed.looksCount', { n: p.looks.length })}</span>{p.looks.map((l, i) => { const pt = snapPoint(l.x, l.y, boardModel);
@@ -192,7 +194,7 @@ function Composer({ x }: { x: Ctx }) {
       <IBtn ic="left" title={tr('scenebook.ed.sceneUp')} hidden={st.drafts.length < 2} disabled={st.at === 0 || !st.drafts.length} onClick={() => move(-1)} /><IBtn ic="right" title={tr('scenebook.ed.sceneDown')} hidden={st.drafts.length < 2} disabled={st.at >= st.drafts.length - 1} onClick={() => move(1)} />
       <Btn label={tr('scenebook.ed.addScene')} ic="plus" cls="ghost" onClick={add} /><IBtn ic="trash" title={tr('scenebook.ed.deleteScene')} disabled={!s} onClick={() => void del()} />
     </div></div>
-    <div className="row sb-ed-status"><span className="sb-state">{busyNote || configLine(st.cfg)}</span><span className="sb-grow" /><Btn label={tr('scenebook.ed.genSettings')} ic="sliders" cls="ghost" onClick={() => genEditor(st.cfg, applyGen)} /></div>
+    <div className="row sb-ed-status"><span className="sb-state">{busyNote || [configLine(st.cfg), Illust.presetOf(st.cfg)?.name].filter(Boolean).join(' · ')}</span><span className="sb-grow" /><Btn label={tr('scenebook.ed.genSettings')} ic="sliders" cls="ghost" onClick={() => genEditor(st.cfg, applyGen)} /></div>
     <div className="tabs sb-tabs">{([['scene', tr('scenebook.scene')], ['cast', tr('scenebook.ed.tabCast')], ['final', tr('scenebook.prompt')]] as [Tab, string][]).map(([k, l]) => <button key={k} type="button" className={'tab' + (k === tab ? ' on' : '')} onClick={() => { st.tab = k; redo(); }}>{l}</button>)}</div>
     <div className="sb-ed-content" key={ver}>{!t ? <Empty>{tr('scenebook.ed.empty')}</Empty> : tab === 'scene' ? <SceneTab t={t} /> : tab === 'cast' ? <CastTab t={t} /> : <FinalTab t={t} />}</div>
     <div className="sb-ed-foot"><Btn label={tr('scenebook.undo')} ic="left" cls="ghost" disabled={!st.undo.length} onClick={undo} /><IBtn ic="more" title={tr('scenebook.ed.fileMenu')} onClick={e => fileMenu(e.currentTarget)} /><span className="sb-grow" /><Btn label={tr('scenebook.ed.saveDraft')} ic="check" onClick={guard(() => x.saveDraft(false))} /><Btn label={tr('scenebook.draw')} ic="image" cls="primary" disabled={!st.drafts.length} onClick={gen} /></div>
@@ -212,7 +214,7 @@ export function openComposer({ chat, msg, scenes, config, slot = null, preview =
   };
   const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape' && box.el === document.getElementById('modals')?.lastElementChild) { e.stopImmediatePropagation(); e.preventDefault(); askClose(); } };
   const box: Box = openModal({ title: slot ? tr('scenebook.ed.titleRedraw') : tr('scenebook.compose'), wide: true, cls: 'sb-ed', onClose: () => { document.removeEventListener('keydown', onEsc, true); if (st.dirty && !slot) saveDraft(true).catch(e => toast(errText(e), 'err')); } },
-    b => <Composer x={{ chat, msg, sw, slot, preview, inline: Illust.cfg().placement === 'inline', blocks: Illust.blocks(C.msgText(msg)), st, saveDraft, close: () => b.close() }} />);
+    b => <Composer x={{ chat, msg, sw, slot, preview, inline: Illust.cfg().placement !== 'end' && !!Illust.cfg().placement, blocks: Illust.blocks(C.msgText(msg)), st, saveDraft, close: () => b.close() }} />);
   document.addEventListener('keydown', onEsc, true);
   box.el.addEventListener('mousedown', e => { if (e.target === box.el) e.stopImmediatePropagation(); }, true);   // 바깥을 잘못 눌러도 편집하던 내용이 사라지지 않게
   box.el.querySelector('.modal-head .ibtn')?.addEventListener('click', e => { e.stopImmediatePropagation(); e.stopPropagation(); askClose(); }, true);   // 닫기 단추도 물어보고 닫는다

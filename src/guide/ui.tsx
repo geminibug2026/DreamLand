@@ -90,10 +90,12 @@ function FieldView({ f, ch }: { f: FieldChange; ch?: Change }) {
     {body}
   </div>;
 }
+/** 카드 실패 까닭을 사람 말로. 앱이 새 판으로 바뀐 뒤 옛 화면이 파일을 못 찾은 것이면 새로고침하라고 한다 */
+const errLine = (err: string) => err === 'gone' ? t('guide.card.gone') : err === 'locked' ? t('guide.card.locked') : /dynamically imported module|module script failed|Failed to fetch|Unable to preload|Loading chunk/i.test(err) ? t('guide.card.stale') : err;
 const STATE_KEY: Record<string, string> = { pending: 'guide.card.pending', applied: 'guide.card.applied', dropped: 'guide.card.dropped', undone: 'guide.card.undone', failed: 'guide.card.failed' };
 function ChangeCard({ ch }: { ch: Change }) {
   const [busy, setBusy] = useState(false);
-  const run = (fn: () => Promise<unknown>) => async () => { if (busy) return; setBusy(true); try { await fn(); } catch (e) { toast(t('guide.card.failToast', { err: e instanceof Error && e.message === 'gone' ? t('guide.card.gone') : e instanceof Error && e.message === 'locked' ? t('guide.card.locked') : String(e instanceof Error ? e.message : e) }), 'err'); } finally { setBusy(false); } };
+  const run = (fn: () => Promise<unknown>) => async () => { if (busy) return; setBusy(true); try { await fn(); } catch (e) { toast(t('guide.card.failToast', { err: errLine(e instanceof Error ? e.message : String(e)) }), 'err'); } finally { setBusy(false); } };
   const doUndo = run(async () => { if (ch.undoId && await touchedSince(ch.undoId) && !(await confirmBox(t('guide.card.undoTouched'), t('guide.card.undo')))) return; await undo(ch); toast(t('guide.card.undoneToast'), 'ok'); });
   const open = () => { const p = PAGE_OF[ch.kind], id = targetOf(ch); if (ch.kind === 'chats' || ch.kind === 'msgs' || ch.kind === 'mem') go('chat', id || undefined); else if (ch.kind === 'chars') go('home'); else if (ch.kind === 'settings') go('settings'); else if (ch.kind === 'qr') go('qr', id ? { set: id } : undefined); else go(p, id || undefined); };
   const colors = ch.kind === 'theme' ? ch.fields.filter(f => isHex(f.after)) : [];
@@ -108,10 +110,10 @@ function ChangeCard({ ch }: { ch: Change }) {
     {ch.op.type === 'ext' ? <ExtTree ch={ch} op={ch.op} /> : null}
     <div className="gd-fs fx-rows">{ch.fields.filter(f => !colors.includes(f)).map((f, i) => <FieldView key={i + ':' + ch.at} f={f} ch={ch} />)}</div>
     {ch.out && ch.kind === 'cmd' && ch.state === 'applied' ? <pre className="gd-out">{ch.out}</pre> : null}
-    {ch.err && ch.state === 'failed' ? <p className="gd-err">{ch.err === 'gone' ? t('guide.card.gone') : ch.err === 'locked' ? t('guide.card.locked') : ch.err}</p> : null}
+    {ch.err && ch.state === 'failed' ? <p className="gd-err">{errLine(ch.err)}</p> : null}
     {ch.op.type === 'ext' ? <ExtFoot ch={ch} op={ch.op} busy={busy} run={run} doUndo={doUndo} /> : <footer className="gd-cf">
       {ch.state === 'pending' || ch.state === 'failed' ? <><button type="button" className="btn ghost" disabled={busy} onClick={run(() => discard(ch))}>{t('guide.card.discard')}</button>
-        <button type="button" className="btn primary" disabled={busy} onClick={run(async () => { await apply(ch); toast(t('guide.card.appliedToast'), 'ok'); })}><Icon name="check" size={15} />{t('common.apply')}</button></> : null}
+        <button type="button" className="btn primary" disabled={busy} onClick={run(async () => { await apply(ch); toast(t('guide.card.appliedToast'), 'ok'); })}><Icon name="check" size={15} />{ch.state === 'failed' ? t('guide.card.retry') : t('common.apply')}</button></> : null}
       {ch.state === 'applied' && !ch.undoId ? <><small className="dim">{t('guide.card.noUndo')}</small>{ch.kind === 'cmd' ? null : <button type="button" className="btn" onClick={open}>{t('guide.card.open')}</button>}</> : null}
       {ch.state === 'applied' && ch.undoId ? <><small className="dim">{t('guide.card.undoHint')}</small><button type="button" className="btn ghost" disabled={busy} onClick={doUndo}>{t('guide.card.undo')}</button>{ch.op.type === 'delete' || ch.verb === 'delete' ? null : <button type="button" className="btn" onClick={open}>{t('guide.card.open')}</button>}</> : null}
     </footer>}
@@ -142,7 +144,7 @@ function ExtFoot({ ch, op, busy, run, doUndo }: { ch: Change; op: ExtOp; busy: b
     {ch.state === 'pending' || ch.state === 'failed' ? <>
       <button type="button" className="btn ghost" disabled={busy} onClick={run(() => discard(ch))}>{t('guide.card.discard')}</button>
       {op.target === 'dl' ? zip : null}
-      <button type="button" className="btn primary" disabled={busy} onClick={run(async () => { await apply(ch); if (op.target === 'st') toast(t('guide.ext.zipped'), 'ok'); })}><Icon name={op.target === 'st' ? 'import' : 'plug'} size={15} />{t(op.target === 'st' ? 'guide.ext.zip' : 'guide.ext.install')}</button>
+      <button type="button" className="btn primary" disabled={busy} onClick={run(async () => { await apply(ch); if (op.target === 'st') toast(t('guide.ext.zipped'), 'ok'); })}><Icon name={op.target === 'st' ? 'import' : 'plug'} size={15} />{t(op.target === 'st' ? 'guide.ext.zip' : ch.state === 'failed' ? 'guide.ext.retry' : 'guide.ext.install')}</button>
     </> : null}
     {ch.state === 'applied' && op.target === 'st' ? <><small className="dim">{t('guide.ext.got')}</small>{zip}</> : null}
     {ch.state === 'applied' && op.target === 'dl' ? <><button type="button" className="btn ghost" disabled={busy} onClick={doUndo}>{t('guide.card.undo')}</button>{zip}<button type="button" className="btn" onClick={() => { closeGuide(); go('exts'); }}>{t('guide.card.open')}</button></> : null}

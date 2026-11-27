@@ -1,1 +1,0 @@
-import{t as e}from"./ui-CgAx3yPo.js";var t={name:`feed`,Component:e};export{t as page};

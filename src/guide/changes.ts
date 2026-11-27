@@ -101,7 +101,8 @@ async function restoreVars(b: VarsBefore) {
 
 /** 변경 하나를 지금 자료에 적용한다. 적용 전 사본을 남기고 change 를 고쳐 적는다 */
 export async function applyChange(ch: Change): Promise<void> {
-  if (ch.state !== 'pending') return;
+  if (ch.state !== 'pending' && ch.state !== 'failed') return;   // 실패한 카드도 다시 적용할 수 있다 (새로고침 · 대상 다시 만들기 뒤 등)
+  delete ch.err;
   const op: Op = ch.op, id = uid();
   let kind: Kind, targetId: string, before: Obj | null = null, after: Obj;
   try {

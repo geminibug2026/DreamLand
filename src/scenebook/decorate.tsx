@@ -1,11 +1,12 @@
 // ════════ 메시지 아래 삽화 꾸미기 ════════ 대화 화면(옛 chat.js)이 그린 삽화 칸에 액자 · 버전 · 도구를 올리고, 답변 아래에 진행 · 초안 · 알림을 붙인다
-import { useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { Icon } from '../kit';
 import { Btn, IBtn, make, mountNode, sweep, useBump } from './parts';
 import { frameLayout } from './frames';
 import { FrameArt } from './frameArt';
+import { placeAt } from './place';
 import { compose, draw, quickDraw, regen } from './work';
-import { quickEdit, slotMenu, slotViewer } from './slot';
+import { figRefresh, quickEdit, saveSoon, slotMenu, slotViewer } from './slot';
 import { showPlans } from './dialogs';
 import type { Job, Msg, PlanRecord, Scene, Slot, Swipe } from './types';
 
@@ -23,10 +24,19 @@ export function Figure({ fig, m, sw, it }: { fig: HTMLElement; m: Msg; sw: Swipe
   // 액자: 그림 비율에 맞춰 그리므로 버전을 넘기면 다시 씌운다
   const lay = frameLayout(v?.config?.width || img.current?.naturalWidth || 832, v?.config?.height || img.current?.naturalHeight || 1216, c);
   useLayoutEffect(() => { fig.dataset.frame = lay.frame; });
-  const step = (d: number) => { Illust.select(it, it.sel + d); bump(); void chatApi.save(); };
+  // 큰 그림에서 버전을 넘기면 이 칸도 따라 바뀐다
+  useEffect(() => { const k = it.slotId, set = figRefresh.get(k) || new Set(); set.add(bump); figRefresh.set(k, set); return () => { set.delete(bump); if (!set.size) figRefresh.delete(k); }; }, [it.slotId, bump]);
+  // 터치 화면: 그림 위 도구는 숨겨 두고, 한 번 누르면 잠시 보이고 그동안 한 번 더 누르면 크게 본다 (마우스는 올리면 보인다)
+  const tapT = useRef(0);
+  const tap = () => {
+    if (matchMedia('(hover: none)').matches && !fig.classList.contains('sb-tools-on')) { fig.classList.add('sb-tools-on'); clearTimeout(tapT.current); tapT.current = window.setTimeout(() => fig.classList.remove('sb-tools-on'), 3500); return; }
+    clearTimeout(tapT.current); fig.classList.remove('sb-tools-on'); slotViewer(m, sw, it);
+  };
+  // ‹ 2/4 › 는 바로 바뀌고, 저장은 넘기기를 멈춘 뒤 한 번
+  const step = (d: number) => { Illust.select(it, it.sel + d); bump(); saveSoon(); };
   return <>
     <div className="sb-frame" style={lay.wrapStyle}>
-      <div className="sb-pic" style={lay.picStyle}><IllustPic imgRef={img} id={it.id} w={v?.config?.width || 832} h={v?.config?.height || 1216} alt={it.title || t('scenebook.illust')} onClick={e => { e.stopPropagation(); e.preventDefault(); slotViewer(m, sw, it); }} /></div>
+      <div className="sb-pic" style={lay.picStyle}><IllustPic imgRef={img} id={it.id} w={v?.config?.width || 832} h={v?.config?.height || 1216} alt={it.title || t('scenebook.illust')} onClick={e => { e.stopPropagation(); e.preventDefault(); tap(); }} /></div>
       <FrameArt lay={lay} />
       <div className="sb-fig-actions" aria-label={t('scenebook.fig.tools')}><IBtn ic="edit" title={t('scenebook.fig.editRegen')} cls="tiny" onClick={guard(() => quickEdit(m, it))} /><IBtn ic="refresh" title={t('scenebook.fig.newSeed')} cls="tiny" onClick={guard(() => regen(m, it, -1))} /></div>
     </div>
@@ -53,6 +63,9 @@ function Extras({ m, sw, pending, failed, drafts, hidden, note }: { m: Msg; sw: 
 }
 
 let timer = 0;
+// 문단 뒤에 둔 삽화: 대화 화면(React)이 그린 칸은 제자리에 두고 감춘 채, 우리가 만든 칸을 문단 뒤에 놓는다
+// (React 가 관리하는 요소를 옮기면, 그림을 지우거나 바꿀 때 React 가 그 요소를 못 찾아 대화 화면이 깨진다)
+const moved = new WeakMap<HTMLElement, HTMLElement>(), origin = new WeakMap<HTMLElement, HTMLElement>();
 // 답변을 받는 중이 아니면 다음 화면을 그리기 전에 꾸민다 (꾸미기 전 모습이 한 번 비쳤다가 바뀌며 흔들리지 않게)
 export function schedule() { if (timer) return; const run = () => { timer = 0; try { decorate(); } catch (e) { console.warn('[삽화]', e); } }; if (cur().busy) timer = window.setTimeout(run, 400); else { timer = -1; onFrame(run); } }
 function decorate() {
@@ -62,30 +75,44 @@ function decorate() {
   document.documentElement.style.setProperty('--sb-w', figWidth(c) + 'px');   // 꾸미기 전의 그림 칸도 같은 너비로 시작한다
   let byId: Map<string, (typeof msgs)[number]> | null = null;   // 메시지가 수천 개여도 칸마다 처음부터 찾지 않게 (꾸밀 칸이 있을 때만 만든다)
   for (const art of document.querySelectorAll<HTMLElement>('.msgs article.msg[data-id]')) {
+    // 원래 칸이 사라졌으면(그림을 지움) 문단 뒤의 우리 칸도 걷는다
+    for (const cl of art.querySelectorAll<HTMLElement>('figure.illust.sb-inline')) if (!origin.get(cl)?.isConnected) cl.remove();
     const m = (byId ||= new Map(msgs.map(x => [x.id, x]))).get(art.dataset.id || ''), sw = m?.swipes?.[m.sw], main = art.querySelector<HTMLElement>('.msg-main');
     if (!m || !sw || !main || m.role !== 'assistant') continue;
     for (const box of art.querySelectorAll<HTMLElement>('.illusts')) {
-      const figs = [...box.querySelectorAll<HTMLElement>('figure.illust')], fresh = !box.dataset.sb; box.dataset.sb = '1';
-      if (!fresh && figs.length !== sw.illust?.length) continue;   // 문단 뒤로 옮긴 그림이 있으면 순서를 알 수 없다
-      figs.forEach((fig, i) => { const it = sw.illust?.[i]; if (it && !fig.dataset.sb) decorateFigure(fig, art, m, sw, it, c); });   // 대화 화면이 그림 칸을 새로 그렸으면 그 칸만 다시 꾸민다
+      const figs = [...box.querySelectorAll<HTMLElement>('figure.illust')]; box.dataset.sb = '1';
+      if (figs.length !== sw.illust?.length) continue;   // 화면이 아직 바뀐 자료를 못 따라왔다
+      figs.forEach((fig, i) => {
+        const it = sw.illust?.[i]; if (!it) return;
+        const cl = moved.get(fig), lost = !!cl && !cl.isConnected;   // 본문을 다시 그려 문단 뒤의 칸이 지워졌으면 다시 놓는다
+        if (lost) moved.delete(fig);
+        if (!fig.dataset.sb || lost) decorateFigure(fig, art, m, sw, it, c);   // 대화 화면이 그림 칸을 새로 그렸으면 그 칸만 다시 꾸민다
+      });
     }
     for (const fig of art.querySelectorAll<HTMLElement>('figure.illust[data-sb]')) fig.classList.toggle('sb-busy', jobs.some(j => j.slot === fig.dataset.sb && j.sw === sw && (j.state === 'waiting' || j.state === 'running')));
     extras(main, m, sw, jobs);
   }
 }
+/** 삽화를 둘 문단 요소 (못 찾으면 null — 답변 아래 그대로) */
+function spot(art: HTMLElement, sw: Swipe, it: Slot, c: { placement?: string }): Element | null {
+  if ((c.placement !== 'inline' && c.placement !== 'auto') || !(it.anchor || it.at)) return null;
+  const body = art.querySelector('.msg-body'), paras = body ? [...body.children].filter(el => !el.matches('figure, details, pre, table, style, script') && flat(el.textContent)) : [];
+  const i = placeAt(it, paras.map(el => el.textContent || ''), Illust.blocks(sw.text).map(b => b.content));
+  if (i < 0) return null;
+  let tail = paras[i]; while (tail.nextElementSibling?.matches('figure.illust')) tail = tail.nextElementSibling;
+  return tail;
+}
 function decorateFigure(fig: HTMLElement, art: HTMLElement, m: Msg, sw: Swipe, it: Slot, c: { compact?: boolean; displayWidth?: number; placement?: string }) {
   Illust.slot(it); fig.dataset.sb = it.slotId;
   if (it.hidden) { fig.classList.add('sb-off'); return; }
+  const at = spot(art, sw, it, c), host = at ? make('figure', 'illust sb-inline') : fig;
+  if (at) { host.dataset.sb = it.slotId; fig.classList.add('sb-moved'); moved.set(fig, host); origin.set(host, fig); at.after(host); }
+  else { fig.classList.remove('sb-moved'); if (fig.querySelector(':scope > .sb-holder')) return; }   // 문단을 못 찾게 되면 제자리 칸이 다시 보인다 (이미 꾸며 두었으면 그대로)
   const w = figWidth(c);
-  fig.style.maxWidth = `min(100%, ${w}px)`; fig.classList.toggle('sb-compact', !!c.compact);
+  host.style.maxWidth = `min(100%, ${w}px)`; host.classList.toggle('sb-compact', !!c.compact);
   // 대화 화면이 넣어 둔 그림 · 단추는 지우지 않고 가려 두고(data-sbr), 그 옆에 우리 것을 올린다 — 대화 화면이 제 요소를 계속 관리할 수 있게
-  const holder = make('span'); holder.style.display = 'contents'; fig.dataset.sbr = '1'; fig.append(holder);
-  mountNode(holder, <Figure fig={fig} m={m} sw={sw} it={it} />);
-  if (c.placement === 'inline' && it.anchor) {   // 문단 뒤에 끼워 넣기 (못 찾으면 답변 아래 그대로)
-    const key = flat(it.anchor).slice(0, 40), body = art.querySelector('.msg-body');
-    const at = key && body && [...body.children].find(el => !el.matches('figure, details, pre, table') && flat(el.textContent).includes(key));
-    if (at) { let tail = at; while (tail.nextElementSibling?.matches('figure.illust')) tail = tail.nextElementSibling; tail.after(fig); fig.classList.add('sb-inline'); }
-  }
+  const holder = make('span', 'sb-holder'); holder.style.display = 'contents'; if (!at) fig.dataset.sbr = '1'; host.append(holder);
+  mountNode(holder, <Figure fig={host} m={m} sw={sw} it={it} />);
 }
 function extras(main: HTMLElement, m: Msg, sw: Swipe, jobs: Job[]) {
   const mine = jobs.filter(j => j.msg === m && j.sw === sw), pending = mine.filter(j => !j.slot && (j.state === 'waiting' || j.state === 'running')), failed = mine.filter(j => (j.state === 'failed' || j.state === 'uncertain') && !j.seen);

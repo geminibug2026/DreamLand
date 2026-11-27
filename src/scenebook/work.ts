@@ -28,7 +28,11 @@ export function draw(msg: Msg, scenes: Scene[], config?: GenConfig | null, slot:
   if (scenes.length && !quiet) toast(t('scenebook.work.queued'));
   schedule();
 }
-export function regen(msg: Msg, it: Slot, seed: number) { const v = Illust.slot(it).versions[it.sel]; draw(msg, [v.scene as Scene], { ...(v.config || {}), seed } as GenConfig, it.slotId, true); }
+/** 같은 자리에 다시 그리기. 그림체 프리셋을 적용 중이면 그 그림체로 (크기 · 시드는 이 그림 그대로), 아니면 이 그림에 기록된 설정 그대로 */
+export function regen(msg: Msg, it: Slot, seed: number) {
+  const v = Illust.slot(it).versions[it.sel], base = { ...(v.config || Illust.genConfig()), seed } as GenConfig, now = Illust.activePreset();
+  draw(msg, [v.scene as Scene], now && now.name !== v.preset ? Illust.withPreset(base, now) : base, it.slotId, true);
+}
 /** 초안만 있고 그림이 없는 답변들 */
 export const pendingDrafts = () => (cur().msgs || []).filter(m => { const sw = m.role === 'assistant' && m.swipes?.[m.sw]; return !!sw && (sw.illustDraft?.length ?? 0) > 0 && !sw.illust?.length; });
 /** 그 초안들을 한꺼번에 대기열에 넣는다 → { count: 넣은 장면 수, left: 한도 때문에 남긴 답변 수 } */

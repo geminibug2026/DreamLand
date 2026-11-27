@@ -12,15 +12,16 @@ export interface IllustCfg extends GenConfig {
   contextMessages: number; analysisMode: string; placement: string; displayWidth: number; compact: boolean;
   autoSize?: boolean; look?: string; leanPrompt?: boolean; frame: string; frameWide: string; frameInk: string;
   analysisPrompt?: string; planPrompt?: string; presets: Preset[]; history: HistoryEntry[]; characterVisuals: Record<string, Visual>;
+  /** 갤러리에서만 뺀 그림 id */ galleryHide?: string[]; /** 장면 쓰기(분석) 답 길이: 0 = 자동 */ analysisTokens?: number;
 }
 export interface Job {
   id: string; chat: Chat; msg: Msg; sw: Swipe; scene: Scene; slot: string | null; config: GenConfig; automatic: boolean;
-  label: string; state: 'waiting' | 'running' | 'done' | 'failed' | 'uncertain' | 'cancelled'; error?: string; seen?: boolean; ts: number;
+  label: string; state: 'waiting' | 'running' | 'done' | 'failed' | 'uncertain' | 'cancelled'; error?: string; seen?: boolean; ts: number; preset?: string;
 }
 /** 보관함(assets)의 그림 기록 */
 export interface Asset {
   id: string; owner: string; kind: string; name?: string; data: string; ts?: number; title?: string; prompt?: string;
-  scene?: Scene; config?: GenConfig | null; seed?: number | null; review?: Review; width?: number; height?: number;
+  scene?: Scene; config?: GenConfig | null; seed?: number | null; review?: Review; width?: number; height?: number; /** 그릴 때 쓴 그림체 프리셋 */ preset?: string;
 }
 export interface FrameRec { id: string; owner: string; kind: string; name: string; data: string; width: number; height: number; window: number[]; mask: string; ts?: number }
 export interface Conn { id: string; name: string; model?: string }
@@ -67,4 +68,7 @@ export interface IllustApi {
   resetVisual(chat: Chat | null | undefined, where: string): Promise<void>;
   account(): Promise<{ active: boolean; tier?: number | null; anlas: number | null }>;
   analysisRules(): string; outputRules(): string;
+  /** 이 설정과 그림체가 같은 저장 프리셋 · 지금 적용 중인 프리셋 · 그림 설정에 프리셋 그림체만 얹기 */
+  analysisTokens(c?: Partial<IllustCfg>): number;
+  presetOf(config?: Partial<GenConfig> | null): Preset | null; activePreset(): Preset | null; withPreset<T extends GenConfig>(config: T, preset: Preset): T;
 }

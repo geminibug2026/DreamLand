@@ -969,7 +969,8 @@ export function onKey(e: KeyboardEvent) {
   if (!onChat() || !cur.chat) return;
   if (e.key === 'Escape' && running() && !document.querySelector('.modal-wrap')) stopAll();
   // 비주얼 노벨 화면이 떠 있을 때는 방향키가 그 화면의 문단 넘기기다
-  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && document.activeElement === document.body && !document.documentElement.classList.contains('vn-on')) {
+  // 창이 떠 있으면(큰 그림 넘기기 등) 방향키는 그 창의 것이다 — 뒤에 있는 대화의 답을 넘기거나 새로 쓰지 않는다
+  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.defaultPrevented && document.activeElement === document.body && !document.documentElement.classList.contains('vn-on') && !document.querySelector('#modals .modal-wrap:not(.out)')) {
     const last = cur.msgs[cur.msgs.length - 1];
     if (last?.role === 'assistant') void swipe(last, e.key === 'ArrowLeft' ? -1 : 1);
   }
