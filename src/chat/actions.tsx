@@ -267,7 +267,7 @@ export function bodyHtml(m: Msg, keep = false, at: RoomView = cur) {
   const style = m.role === 'system' ? 'plain' : modeOf(at.chat) === 'talk' && !m.scene ? 'chat' : S.settings.rpBubbles ? 'bubbles' : 'novel';
   const owners = assetOwners(at.chat);
   // 에셋 그림은 짧은 blob: 주소 · 틀 · 크기까지 글에 넣은 뒤 꾸미므로, 기억해 둔 결과(renderKept)도 설정 · 보관함이 바뀌면 새로 꾸며진다. 받는 중에는 덜 쓴 {{img:: 를 가린다
-  return (keep ? renderKept : render)(Assets.inline(Assets.expand(shownText(m, at), owners, `${m.id}:${m.sw}`, { partial: !keep }), owners), { style, prose: m.role !== 'user' });
+  return (keep ? renderKept : render)(Assets.inline(Assets.expand(shownText(m, at), owners, `${m.id}:${m.sw}`, { partial: !keep }), owners), { style, prose: m.role !== 'user' && S.settings.modes?.talkProse === 'guess' });
 }
 /** 받는 중인 본문을 새 글로 맞춘다: 앞에서부터 그대로인 조각(다 쓴 문단)은 두고, 달라진 데부터만 바꾼다.
  *  결과는 innerHTML = html 과 같다. 매 화면 본문 전체를 새로 만들지 않아 스타일 계산 · 배치가 늘어난 끝부분만큼만 든다 (긴 답일수록 차이가 크다) */

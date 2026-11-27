@@ -638,16 +638,25 @@ export const TALK_DEFAULT = `You are {{char}}, texting {{user}} in a private mes
 - Write only {{char}}'s side. Never write {{user}}'s messages, actions or feelings, and never treat a question you asked as already answered.
 - Type the way {{char}} really would, in the language the chat is in: their words, their punctuation habits, emoji or none. Fragments and dropped punctuation are fine when they suit {{char}}.
 - One line is one message bubble. Send 1 to 4 and let the moment decide: a bare "ok" when that is all there is, a quick burst when {{char}} is excited or upset. Do not fall into the same count and rhythm every turn.
-- Each line is exactly one of these, never mixed on a line:
-  plain line — a text message you send. This is almost everything you write.
-  "in double quotes" — words said out loud, only while you two are together or on a call.
-  'in single quotes' — a private thought {{user}} cannot see. Rare.
-  *in asterisks* — one short line of action or setting, only when it matters.
-- No narration and no descriptive paragraphs. Feeling shows in word choice, pace and what is left unsaid, not in explaining it.
+- Feeling shows in word choice, pace and what is left unsaid, not in explaining it.
 - Answer what {{user}} just said, then add something of your own: a reaction, an opinion, a piece of your day, a question you actually want answered. Do not hand their words back to them, and do not open or close the way your recent messages did.
 - {{char}}'s tone toward {{user}} follows the relationship as the chat shows it. It warms or cools only when something in this conversation gives a reason. Being brief, distracted, teasing or slow to open up is fine if that is who {{char}} is.
 - Do not end the chat for {{user}} — no sending them off to bed or to eat, no goodbyes — unless {{char}} has a real reason to go. Do not suddenly turn up where {{user}} is either; you meet only when the two of you have arranged it.
 - The [HH:MM] marks on messages are only for your sense of time. Never write timestamps or your own name at the start of a message.`;
+/**
+ * 줄마다 무엇인지 표시하는 약속. 화면은 이 표시만 보고 말풍선 · 소리 내어 한 말 · 속마음 · 지문을 가른다 (코드로 추측하지 않는다).
+ * 직접 쓴 대화 지시문을 써도 늘 붙는다
+ */
+export const TALK_LINES = `<format>
+Every line you write is exactly one of four kinds, and the app draws each kind differently — so mark every line:
+- plain line: a text message {{char}} types and sends; one line is one bubble. Almost everything is this. A long message is still one plain line.
+- "double quotes": words spoken out loud, only while you two are physically together or on a call. A typed message never gets quotes.
+- 'single quotes': a private thought {{user}} cannot see. Rare.
+- *asterisks*: action or setting, one short line, only when it matters. Any sentence that describes what {{char}} does or what is around them — instead of being something {{char}} types — goes inside asterisks, never as a plain line.
+One kind per line: a message and an action never share a line; split them. No narration paragraphs and no third-person storytelling outside asterisks.
+</format>`;
+/** 답을 쓰기 바로 앞에 한 번 더 (가까이 있는 지시를 더 잘 따른다) */
+export const TALK_LINES_CHECK = 'Before sending, check each line: a plain typed message, "spoken words", \'a thought\' or *an action*. Anything that describes rather than texts goes inside *asterisks*.';
 export const TALK_COMMANDS = `<commands>
 Optional. Add one on its own line only when it really applies; most replies need none. They are removed before {{user}} sees your message, so never mention or explain them.
 [react: emoji="😂"] — put one emoji on {{user}}'s last message, with or without a written reply.
@@ -695,7 +704,7 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
   });
   const lore = scanLore(loreBooksFor(chat, chars, persona), history, ctx, { state: (chat.loreState ||= {}) as LoreState, count: msgs.length, commit, type, char, persona, names: source.map(m => m.role === 'system' ? '' : m.role === 'user' ? ctx.user as string : (m.name || char.name)) });
   const card = (c: Char) => [`<character name="${c.name}">`, macro(c.description, { ...ctx, char: c.name }), c.personality && `Personality: ${macro(c.personality, { ...ctx, char: c.name })}`, c.scenario && `Situation: ${macro(c.scenario, { ...ctx, char: c.name })}`, c.mesExample && `How they talk:\n${macro(c.mesExample, { ...ctx, char: c.name }).replace(/<START>/gi, '').trim()}`, '</character>'].filter(Boolean).join('\n');
-  const before: PromptMsg[] = [{ role: 'system', src: '대화 모드 지시문', content: `<instructions>\n${mx(M.talkPrompt || TALK_DEFAULT)}${isGroup ? `\nThis is a group chat. You write only ${char.name}'s messages; ${chars.filter(c => c.id !== char.id).map(c => c.name).join(', ')} write their own, so never speak for them.` : ''}\n</instructions>` },
+  const before: PromptMsg[] = [{ role: 'system', src: '대화 모드 지시문', content: `<instructions>\n${mx(M.talkPrompt || TALK_DEFAULT)}\n\n${mx(TALK_LINES)}${isGroup ? `\nThis is a group chat. You write only ${char.name}'s messages; ${chars.filter(c => c.id !== char.id).map(c => c.name).join(', ')} write their own, so never speak for them.` : ''}\n</instructions>` },
     { role: 'system', src: '캐릭터 카드', content: [card(char), ...chars.filter(c => c.id !== char.id).map(card)].join('\n\n') }];
   if (persona?.description) before.push({ role: 'system', src: '페르소나', content: `<user name="${ctx.user}">\n${mx(persona.description)}\n</user>` });
   if (lore.length) before.push({ role: 'system', src: '로어북', content: `<lore>\n${lore.map(e => e.text).join('\n')}\n</lore>` });
@@ -716,6 +725,7 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
     Clock.line(chat),
     type === 'continue' && 'Continue your last message from exactly where it stopped. Do not restart it or repeat what is already written.',
     type === 'impersonate' && `Write ${ctx.user}'s next text message, in the voice and length their earlier messages show. Output only that message, as plain lines.`,
+    type !== 'impersonate' && TALK_LINES_CHECK,
   ].filter(Boolean).join('\n');
   const tail: PromptMsg = { role: 'user', src: '지금 상황 · 명령 안내', content: `<context>\n${situation}\n</context>${M.commands === false || type === 'impersonate' ? '' : '\n\n' + mx(TALK_COMMANDS.replace('{{clock_command}}', Clock.command(chat) ? '\n' + Clock.command(chat) : '').replace('{{call_command}}', !inCall && (S.settings as { call?: { aiCall?: boolean } }).call?.aiCall !== false ? TALK_CALL_COMMAND : ''))}` };
   const fixed = [...before, ...late, tail].reduce((n, m) => n + tokens(m.content) + 4, 0);

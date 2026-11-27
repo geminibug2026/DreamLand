@@ -1,0 +1,1 @@
+import{n as e}from"./ui-x4Wa2RMX.js";var t={name:`atlas`,Component:e};export{t as page};

@@ -183,7 +183,7 @@ export interface Conn {
 export interface Modes {
   auto?: boolean; autoConn?: string; autoDaily?: number; autoStreak?: number; autoMinutes?: number; autoBackoff?: number; autoHidden?: boolean; autoTokens?: number;
   quietFrom?: string; quietTo?: string; later?: boolean; laterMax?: number; away?: boolean; awayHours?: number; readReact?: boolean;
-  stagger?: boolean; talkTokens?: number; scenes?: boolean; sceneStart?: boolean; userActivity?: string; sched?: boolean; schedPrompt?: string;
+  stagger?: boolean; talkTokens?: number; /** 대화 모드 지문 구분: 표시대로만(marks, 기본 — *…* · (…) 만 지문) · 소설 같은 줄도 지문으로 추측(guess) */ talkProse?: 'marks' | 'guess'; scenes?: boolean; sceneStart?: boolean; userActivity?: string; sched?: boolean; schedPrompt?: string;
   [k: string]: unknown;
 }
 type Open = Record<string, unknown>;

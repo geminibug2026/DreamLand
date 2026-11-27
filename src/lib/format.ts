@@ -73,8 +73,9 @@ const isSay = (t: string) => /^["“「『]/.test(t[0]) && /["”」』]$/.test(
 /** 소설처럼 쓴 줄인지: 아주 길거나, '~다.' 로 끝나는 문장이 이어진다 (메신저 글은 짧고 마침표가 드물다) */
 /** '~았다. ~었다. ~였다.' 처럼 지난 일을 적는 끝맺음인지 (받침 ㅆ + 다.) — 짧아도 지문이다. "알았다." 같은 한마디 문자는 길이로 가른다 */
 const pastEnd = (s: string) => { const m = /([가-힣])다\.["”’']?$/.exec(s); return !!m && s.length >= 12 && (m[1].charCodeAt(0) - 0xac00) % 28 === 20; };
-const isProse = (s: string) => s.length >= 140 || (s.match(/[가-힣]다\.(?=\s|$|["”’'])/g) || []).length >= 2 || (s.length >= 60 && /[가-힣]다\.["”’']?$/.test(s)) || pastEnd(s);
-let chatProse = true;   // 긴 줄을 지문으로 볼지 (내가 쓴 글에는 적용하지 않는다)
+// 길이만으로 지문이라 보는 것은 한글 줄만: 영어 같은 말은 문자 한 통도 140자를 쉽게 넘는다 (행동은 *…* 로 따로 온다)
+const isProse = (s: string) => (s.length >= 140 && /[가-힣]/.test(s)) || (s.match(/[가-힣]다\.(?=\s|$|["”’'])/g) || []).length >= 2 || (s.length >= 60 && /[가-힣]다\.["”’']?$/.test(s)) || pastEnd(s);
+let chatProse = true;   // 표시 없는 줄도 소설 같으면 지문으로 추측할지 (대화 모드는 설정에서 고른 때만 · 내가 쓴 글에는 적용하지 않는다)
 function paragraph(line: string, style: string): string {
   if (style === 'plain' || /<[a-zA-Z/]/.test(line)) return `<p class="nar">${inline(line)}</p>`;
   if (style === 'chat') {   // 메신저: 그냥 쓴 줄 = 문자 · "…" = 소리 내어 한 말 · '…' = 속마음 · *…* 이나 소설처럼 쓴 줄 = 지문
