@@ -123,11 +123,13 @@ function QuickEdit({ m, chat, start, hold, check, used, pic, seed }: { m: Msg; c
     <div className="sb-quick-top">{pic ? <img className="sb-quick-pic" src={pic} alt="" /> : null}<p className="hint">{t('scenebook.quick.hint')}</p></div>
     <section className="sb-quick-assist"><Fld label={t('scenebook.quick.ask')}><textarea className="inp" rows={2} placeholder={t('scenebook.quick.askPh')} value={ask} onChange={e => setAsk(e.target.value)} /></Fld>
       <div className="row"><p className="hint" role="status">{status}</p><span className="sb-grow" /><Btn label={t('scenebook.quick.rewrite')} ic="sparkle" disabled={busy} onClick={rewrite} /></div></section>
-    {paged ? null : <>
+    {/* 구도: 이름 → 빠른 고르기 → 직접 쓰기 → 경고 순으로 한 묶음 */}
+    {paged ? null : <div className="field sb-quick-cam">
+      <span className="field-label">{t('scenebook.camera')}</span>
       <div className="sb-chips" role="group" aria-label={t('scenebook.quick.cameraPick')}>{CAMERA_TAGS.map(([tag, label, group]) => { const on = hasCameraTag(camera, tag);
         return <button key={tag} type="button" className={'chip' + (on ? ' on' : '')} title={tag} data-tag={tag} data-group={group} aria-pressed={on} onClick={() => setCamera(toggleCameraTag(camera, tag))}>{t(label)}</button>; })}</div>
-      <Fld label={t('scenebook.camera')}><input className="inp" placeholder={t('scenebook.quick.cameraPh')} spellCheck={false} autoComplete="off" value={camera} onChange={e => setCamera(e.target.value)} /></Fld>
-      {lint?.issue ? <CameraWarn issue={lint.issue} onFix={lint.fix ? () => setCamera(lint.fix) : undefined} /> : null}</>}
+      <input className="inp" aria-label={t('scenebook.camera')} placeholder={t('scenebook.quick.cameraPh')} spellCheck={false} autoComplete="off" value={camera} onChange={e => setCamera(e.target.value)} />
+      {lint?.issue ? <CameraWarn issue={lint.issue} onFix={lint.fix ? () => setCamera(lint.fix) : undefined} /> : null}</div>}
     {presets.length ? <Fld label={t('scenebook.quick.preset')} hint={t('scenebook.quick.presetHint')}><Sel opts={[['', used ? t('scenebook.quick.presetKeepNamed', { name: used }) : t('scenebook.quick.presetKeep')], ...presets.map((p): [string, string] => [p.name, p.name + (p.name === active ? ` · ${t('scenebook.preset.active')}` : '')])]} value={preset} onChange={v => { setPreset(v); hold.preset = v; }} /></Fld> : null}
     {paged ? null : <div className="sb-shape"><span className="field-label">{t('scenebook.ratio')}</span><Seg label={t('scenebook.ratio')} choices={[['', t('scenebook.quick.keep')], ...orientations().slice(1)]} value="" onChange={val => { hold.size = val; }} /></div>}
     {/* 같은 시드는 구도를 되도록 그대로 두고 프롬프트를 바꾼 효과만 볼 때 */}

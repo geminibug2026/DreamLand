@@ -308,8 +308,9 @@
 .sb-panels .inp { background: var(--surface); }
 .sb-panel-person { padding-left: 12px; border-left: 2px solid var(--ink-line); } .sb-panel-person .field-label { color: var(--dim); }
 /* 카메라가 자세와 어긋날 때 */
-.sb-cam-warn { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 0; padding: 6px 8px 6px 10px; border-left: 2px solid var(--bad); background: var(--surface); font-size: .86em; color: var(--bad-ink); }
-.sb-cam-warn span { flex: 1 1 180px; min-width: 0; } .sb-cam-warn .btn { min-height: 32px; padding: 3px 12px; font-size: .92em; }
+.sb-cam-warn { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 12px; border-left: 2px solid var(--bad); background: var(--surface2); font-size: .88em; line-height: 1.55; }
+.sb-cam-warn p { margin: 0; color: var(--bad-ink); } .sb-cam-warn .btn { min-height: 34px; padding: 4px 14px; font-size: .95em; background: var(--surface); }
+.sb-quick-cam .sb-cam-warn { margin-top: 2px; }
 /* 장면 수정: 고치는 그림을 작게 옆에 */
 .sb-quick-top { display: flex; align-items: flex-start; gap: 12px; } .sb-quick-top .hint { margin: 0; flex: 1 1 auto; min-width: 0; }
 .sb-quick-pic { flex: none; width: 72px; max-height: 120px; object-fit: contain; border: 1px solid var(--text); background: var(--surface2); }

@@ -45,6 +45,8 @@ small.hint.bad { color: var(--bad-ink); }
 .save-pill[data-state="dirty"] { border-style: dashed; } .save-pill[data-state="saving"] { border-color: var(--ink); color: var(--text); } .save-pill[data-state="saving"] i { animation: save-spin 1s linear infinite; display: inline-block; }
 .save-pill[data-state="saved"] { border-color: var(--ink); color: var(--text); } .save-pill[data-state="saved"] i { color: var(--accent-ink); }
 .save-pill[data-state="error"] { border-color: var(--bad); color: var(--bad-ink); opacity: 1; }
+/* 폰에서 창이 열려 있으면 창 아래쪽 글과 겹치므로 숨김 (오류만 보임) */
+@media (max-width: 820px) { body:has(.modal-wrap) .save-pill:not([data-state="error"]) { opacity: 0; } }
 @keyframes save-spin { to { transform: rotate(360deg); } }
 @media (max-width: 820px) { .save-pill { left: 8px; bottom: calc(66px + env(safe-area-inset-bottom, 0px)); font-size: .66em; padding: 4px 9px 3px; } }
 @media (prefers-reduced-motion: reduce) { .save-pill[data-state="saving"] i { animation: none; } }

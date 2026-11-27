@@ -1,1 +1,0 @@
-export{n as ChatPanel}from"./parts-C8tdoUMQ.js";

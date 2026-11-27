@@ -27,5 +27,5 @@ export function PanelEditor({ page, format, onChange }: { page: Page; format?: s
 }
 /** 카메라가 자세와 맞지 않을 때: 까닭 + (고칠 수 있으면) 바꾸기 단추 */
 export function CameraWarn({ issue, onFix }: { issue: string; onFix?: () => void }) {
-  return <p className="sb-cam-warn" role="status"><span>{t('scenebook.cam.warn.' + issue)}</span>{onFix ? <button type="button" className="btn ghost" onClick={onFix}>{t('scenebook.cam.fix')}</button> : null}</p>;
+  return <div className="sb-cam-warn" role="status"><p>{t('scenebook.cam.warn.' + issue)}</p>{onFix ? <button type="button" className="btn" onClick={onFix}>{t('scenebook.cam.fix')}</button> : null}</div>;
 }
