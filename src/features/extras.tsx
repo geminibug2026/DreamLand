@@ -43,8 +43,8 @@ async function setup() {
 
   // ── 프롬프트: 딱지 안내 · 내 반응 한 줄 · 울림 명령 · 배경 꼬리표 (모두 추가 호출 없음) ──
   X.prompt = X.prompt.filter(p => p.owner !== OWNER);
-  X.prompt.push({ owner: OWNER, fn: ({ chat, char, msgs, type, call }) => {
-    if (type === 'impersonate' || call) return [];   // 통화 · 음성 메시지는 말로만 한다 — 딱지 · 반응 · 울림 · 배경 꼬리표를 쓰라고 하지 않는다 (통화 화면에 꼬리표가 글자로 남는다)
+  X.prompt.push({ owner: OWNER, fn: ({ chat, char, msgs, type }) => {
+    if (type === 'impersonate') return [];
     const out: { where: 'end' | 'depth'; role?: string; content: string; depth?: number; src?: string }[] = [];
     const stk = stickerPrompt(chat, char.id, msgs); if (stk) out.push({ where: 'end', role: 'system', content: stk, src: '딱지' });
     const re = reactionLines(chat, msgs, type); if (re) out.push({ where: 'depth', depth: 0, role: 'system', content: re, src: '내 반응' });

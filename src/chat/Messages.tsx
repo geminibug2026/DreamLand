@@ -8,7 +8,7 @@ import { menu, openModal, promptBox, toast, type MenuItem } from '../ui';
 import { cur, ui, useCh } from './store';
 import { DiceCard } from './Dice';
 import { CallCard } from '../call/Card';
-import { bodyHtml, branch, commitEdit, holdView, redraw, delFrom, delMsg, drawScene, editTranslation, generate, msgClock, removeIllust, showMore, speakMsg, swipe, toggleHidden, togglePin, setMemo, translate } from './actions';
+import { bodyHtml, branch, commitEdit, holdView, redraw, delFrom, delMsg, drawScene, editTranslation, generate, msgClock, removeIllust, showMore, speak, swipe, toggleHidden, togglePin, setMemo, translate } from './actions';
 import { ux } from '../features/usersettings';
 import type { IllustItem, Msg, SceneSpec, Swipe } from './types';
 import { tint } from '../lib/tone';
@@ -92,7 +92,7 @@ interface MsgProps { m: Msg; idx: number; last: boolean; cont: boolean; still: b
 /** ⋯ 메뉴에서 기능 항목이 들어갈 묶음: 항목 id 가 먼저, 없으면 주인(owner). 모르는 것(확장)은 '그 밖' */
 const ACT_GROUP: Record<string, string> = {
   expr: 'look', scenebook: 'look', illust: 'look',
-  'flow-checkpoint': 'record', almanac: 'record', 'tts-save': 'record', 'alm-promise': 'record', 'alm-day': 'record', memoria: 'record', 'th-notes': 'record',
+  'flow-checkpoint': 'record', almanac: 'record', 'alm-promise': 'record', 'alm-day': 'record', memoria: 'record', 'th-notes': 'record',
   'flow-regen-why': 'rewrite', 'th-blend': 'rewrite', 'guide-why': 'rewrite',
 };
 const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: MsgProps) {
@@ -132,14 +132,14 @@ const MsgItem = memo(function MsgItem({ m, idx, last, cont, still, picked }: Msg
   const more = (e: MouseEvent<HTMLButtonElement>) => {
     const at = e.currentTarget, act = (a: (typeof X.actions)[number]) => ({ label: a.label || '', ic: a.icon || 'sparkle', onclick: () => { void a.run(m, cur.chat); } });
     const kind = (a: (typeof X.actions)[number]) => ACT_GROUP[a.id || ''] || ACT_GROUP[a.owner] || 'more';
-    const of = (k: string) => X.actions.filter(a => kind(a) === k && (typeof a.when !== 'function' || (a.when as (m: Msg, c: unknown) => boolean)(m, cur.chat))).map(act);   // when: 지금 이 메시지에 쓸 수 있을 때만
+    const of = (k: string) => X.actions.filter(a => kind(a) === k).map(act);
     const sub = (label: string, ic: string, items: MenuItem[]): MenuItem => items.length ? { label: label + '  ›', ic, onclick: () => menu(at, [{ label: '‹  ' + t('chat.msgMenu.back'), onclick: () => open() }, '-', ...items]) } : false;
     const open = () => menu(at, [
       { label: t('chat.msgMenu.branch'), ic: 'branch', hint: t('chat.msgMenu.branchHint'), onclick: () => void branch(cur.msgs.indexOf(m)) },
       { label: s.showTr ? t('chat.msgMenu.original') : (s.tr ? t('chat.msgMenu.showTr') : t('chat.msgMenu.translate')), ic: 'lang', onclick: () => void translate(m) },
       s.tr && { label: t('chat.msgMenu.retranslate'), ic: 'refresh', onclick: () => void translate(m, { again: true }) },
       s.tr && { label: t('chat.translate.edit'), ic: 'edit', onclick: () => void editTranslation(m) },
-      { label: t('chat.msgMenu.speak'), ic: 'volume', onclick: () => speakMsg(m) },
+      { label: t('chat.msgMenu.speak'), ic: 'volume', onclick: () => speak(s.text, m.charId, 'msg:' + m.id) },
       '-',
       sub(t('chat.msgMenu.gLook'), 'image', [...(X.actions.some(a => a.id === 'sb-manual') ? [] : [{ label: t('chat.illustDlg.title'), ic: 'image', onclick: () => illustDialog(m) }]), ...of('look')]),
       sub(t('chat.msgMenu.gRecord'), 'note', of('record')),

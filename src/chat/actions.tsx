@@ -13,7 +13,7 @@ import { go, route } from '../lib/router';
 import { applyRegex, macro, makeCtx, roll, tpl } from '../lib/engine';
 import { Live, cdHours, inQuietHours, mo, newLater, quietLeft } from '../lib/live';
 import { MOTIVE_ORDER, STATUS, cooldownLeft, pickMotive, planAuto, replyDelay, scheduleOf, wakeIn } from '../lib/f-schedule';
-import { X, runFilters, stripMarks, takeMarks } from '../lib/hooks';
+import { X, runFilters } from '../lib/hooks';
 import { Assets } from '../lib/assets';
 import { Memory, Auditor } from '../lib/memory';
 import { Illust, translateText } from '../lib/illust';
@@ -23,7 +23,7 @@ import { t, getLang, fmtDate, has as hasKey } from '../i18n';
 import { COMMANDS as ST_COMMANDS } from '../stscript/run';
 import '../stscript/commands';
 import { TTS } from '../tts/api';
-import { readHooks, readMessage, readMsg } from '../tts/Dock';
+import { readMessage } from '../tts/Dock';
 import { pickReply, streamReply } from '../reach/route';
 
 // ── 방 · 이름 ──
@@ -262,7 +262,7 @@ export function shownText(m: Msg, at: RoomView = cur) {
   // 화면에서도 <% … %> 템플릿은 처리한 결과만 보인다 (코드가 글자로 드러나지 않게)
   const raw = tpl(s.showTr && s.tr ? s.tr : s.text, { vars: (at.chat?.vars || {}) as Record<string, unknown> });
   const text = runFilters(applyRegex(raw, { who: m.role === 'user' ? 'user' : 'ai', target: 'display', depth, charId: m.charId, chat: at.chat }), { role: m.role, msg: m, chat: at.chat });
-  return Illust.strip(stripMarks(text));   // 받는 중인 답변의 기계 표시(목소리 연기 표시 등)는 보이지 않게 — 다 받으면 떼어 내 저장하지 않는다
+  return Illust.strip(text);
 }
 /** 메시지 본문 HTML. keep: 다 쓴 글이면 꾸민 결과를 기억해 두었다 다시 쓴다 (받는 중인 글은 매번 달라지니 켜지 않는다) */
 export function bodyHtml(m: Msg, keep = false, at: RoomView = cur) {
@@ -413,9 +413,6 @@ export async function removeIllust(m: Msg, s: Swipe, id: string) {
   const i = (s.illust || []).findIndex(x => x.id === id); if (i >= 0) s.illust!.splice(i, 1);
   await Illust.remove(id); await save(m); redraw(m);
 }
-/** 메시지를 읽어 준다: 화면 글(번역을 보이고 있으면 번역) 그대로, 목소리 연기를 켰으면 사람마다 제 목소리로 */
-export function speakMsg(m: Msg) { void readMsg(m).catch(e => toast(errMsg(e), 'err')); }
-readHooks.shown = m => shownText(m);
 export function speak(text: string, charId?: string, key = '') {   // 읽어 주기(src/tts) — 읽던 것은 멈추고 새로 읽는다. key 가 있으면 읽는 동안 그 글을 띄워 따라간다
   if (key) { void readMessage(text, { key, charId }).catch(e => toast(errMsg(e), 'err')); return; }
   TTS.stopAll();
@@ -825,7 +822,6 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
     else if (target && sw) {
       const plan = Illust.extract(E.splitThink(base + acc).text);
       const lv = Live.extract(plan.text); plan.text = lv.text;
-      plan.text = takeMarks(plan.text, { swipe: sw, type, chat });   // 기능이 단 기계 표시를 떼어 내 이 답변에 적는다 (저장 글 · 번역 · 기억 · 삽화에는 남지 않는다)
       const talked = built.talk ? E.parseTalk(plan.text) : null;
       const final = E.postFormat(E.applyRegex(talked ? talked.text : plan.text, { who: 'ai', target: 'store', charId: target.charId, ctx: built.ctx }));
       if (final && plan.scenes.length && S.settings.illust.auto && !noScene(chat, target)) for (const sc of plan.scenes) drawScene(target, sc, { chat, msgs });

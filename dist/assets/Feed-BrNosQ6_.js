@@ -1,1 +1,0 @@
-import{t as e}from"./ui-Gd5a_DhP.js";var t={name:`feed`,Component:e};export{t as page};

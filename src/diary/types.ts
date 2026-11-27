@@ -33,5 +33,5 @@ export type DSettings = Settings;
 // 장기기억 · 프롬프트 조각 (일기장이 읽는 만큼)
 export interface MemRec { id: string; summary: string; ts?: number; msgId?: string; importance?: number }
 export interface MemDoc { id: string; memories: MemRec[]; status?: { entity: string; slot: string; value?: string }[] }
-export interface PromptInfo { chat?: DChat | null; ctx?: { char?: string; user?: string }; type?: string; /** 통화 · 음성 메시지 중 */ call?: boolean }
+export interface PromptInfo { chat?: DChat | null; ctx?: { char?: string; user?: string }; type?: string }
 export type { PromptPiece } from '../lib/hooks';

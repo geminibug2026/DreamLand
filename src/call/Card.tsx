@@ -90,7 +90,6 @@ export function CallCard({ m }: { m: Msg }) {
       <b title={label(m, r)}>{label(m, r)}</b>
       <span>{[r.overheard ? '' : tt('call.result.' + r.result), r.dur ? fmtDur(r.dur) : '', r.rec && !r.overheard ? tt('call.card.rec') : '', r.cut ? tt('call.card.cut') : '', r.missedN ? tt('call.card.missedN', { count: r.missedN }) : ''].filter(Boolean).join(' · ')}</span>
       {r.voicemail ? <q>{r.voicemail}</q> : null}
-      {r.left ? <q className="left"><small>{t('call.card.left')}</small>{r.left}</q> : null}
     </div>
     <div className="call-card-do">
       {r.lines?.length || r.audio ? <button type="button" className="btn sm" onClick={() => openTranscript(m)}>{r.audio || r.overheard ? tt('call.card.play') : tt('call.card.transcript')}</button> : null}

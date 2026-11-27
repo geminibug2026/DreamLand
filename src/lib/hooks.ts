@@ -1,6 +1,6 @@
 // ── Dreamland hooks: 확장 기능이 끼어드는 지점들의 등록부 ── (옛 js/hooks.js 그대로)
 // 각 항목은 { owner, ... } 형태. owner 는 확장 id.
-import type { Char, Chat, Conn, Lore, LoreEntry, Msg, Persona, Swipe, Theme } from './types';
+import type { Char, Chat, Conn, Lore, LoreEntry, Msg, Persona, Theme } from './types';
 import type { Ctx } from './engine';
 
 export interface Owned { owner: string }
@@ -30,10 +30,7 @@ export interface Composer extends Owned { id?: string; label?: string; icon?: st
 /** where: 'top' = 프롬프트 맨 앞(메인 프롬프트보다 앞) · 'before' = 대화 기록 바로 앞 · 'depth' = 기록 사이 · 'end' = 맨 끝 */
 export interface PromptPiece { where: 'top' | 'before' | 'depth' | 'end'; role?: string; content: string; depth?: number; order?: number; src?: string }
 /** 프롬프트 조각을 만들 때 받는 것 (engine.buildPrompt 가 넘긴다) */
-export interface PromptInfo { chat: Chat; char: Char; chars: Char[]; persona: Persona; history: { role: string; content: string }[]; msgs: Msg[]; type: string; commit?: boolean; ctx: Ctx; /** 지금 통화 중이거나 음성 메시지를 남기는 중: 장면 · 글쓰기 안내는 싣지 않는다 */ call?: boolean; /** 그 가운데 어느 것인가 (call = 통화의 한 차례 · voicemail = 음성 메시지) */ callKind?: 'call' | 'voicemail'; /** 대화 프롬프트를 빌려 쓰는 보조 호출 (변수 갱신 등): 이야기 글의 꼴을 정하는 조각은 싣지 않는다 */ aux?: boolean }
-/** 답변 글에 섞인 기계 표시(사람이 볼 것이 아닌 것). strip: 화면에 그리기 전에 지운다 (받는 중인 글의 덜 쓴 표시까지) ·
- *  take: 다 받은 글에서 떼어 내고, 읽은 것은 그 답변(한 장)에 적어 둔다 — 저장되는 글에는 표시가 남지 않는다 */
-export interface MarkHook extends Owned { strip(text: string): string; take?(text: string, o: { swipe: Swipe; type: string; chat: Chat }): string }
+export interface PromptInfo { chat: Chat; char: Char; chars: Char[]; persona: Persona; history: { role: string; content: string }[]; msgs: Msg[]; type: string; commit?: boolean; ctx: Ctx; /** 지금 통화 중 (대화 모드): 장면 · 글쓰기 안내는 싣지 않는다 */ call?: boolean }
 export interface PromptHook extends Owned { fn(info: PromptInfo): PromptPiece[] | null | undefined | void }
 export interface StudioTab extends Owned { title: string; render(): Node; /** 탭 코드를 한가할 때 미리 받아 둔다 (처음 열 때 빈 화면 없이) */ preload?(): Promise<unknown>; [k: string]: unknown }
 export interface BeforeHook extends Owned { fn(o: { chat: Chat; msgs: Msg[]; type: string; signal?: AbortSignal; chars?: Char[]; persona?: Persona; /** 이번에 말할 캐릭터 */ speaker?: Char }): Promise<unknown> }
@@ -45,8 +42,6 @@ export interface Hooks {
   commands: Map<string, Command>; macros: Map<string, Macro>;
   panels: Panel[]; actions: Action[]; pages: ExtPage[]; filters: Filter[]; themes: ThemeReg[]; composer: Composer[];
   prompt: PromptHook[]; studio: StudioTab[]; before: BeforeHook[]; received: ReceivedHook[];
-  /** 답변 글의 기계 표시를 다루는 일 (화면에서 지우기 · 받은 뒤 떼어 내기) */
-  marks: MarkHook[];
   /** 프롬프트에 실을 로어북 항목을 고른다 (변수 갱신 틀의 [mvu_update] · [mvu_plot] 같은 표식) */
   loreFilter: ((books: Lore[], o: { chat: Chat; chars: Char[]; persona?: Persona | null }) => Lore[]) | null;
   /** 대화의 메시지 변수 (EJS 의 getvar 가 대화 변수에 없는 이름을 여기서 찾는다) */
@@ -73,29 +68,18 @@ export const X: Hooks = {
   studio: [],            // { owner, title, render() → Node }  기능 화면의 탭
   before: [],            // { owner, fn({ chat, msgs, type, signal }) → Promise }  프롬프트를 조립하기 직전에 기다려 주는 준비 (임베딩 왕복 등)
   received: [],          // { owner, fn({ chat, msgs, msg, type }) → Promise }  답변을 받아 저장하기 직전에 기다려 주는 일 (변수 갱신)
-  marks: [],             // { owner, strip(text), take(text, { swipe, type, chat }) }  답변 글의 기계 표시: 화면에서 지우고, 받은 뒤 떼어 내 답변에 적는다
   loreFilter: null, varsOf: null, macroLike: [],
   loreVec: null,         // (entryId) → 벡터 검색이 이번 턴에 깨운 로어북 항목인가
   translate: null,       // (text, language, { chat, context, signal }) → 번역문. 번역 기능이 등록한다
   covered: null,         // (chat) → 장기기억이 기록해 둔 턴 수
   gate: null,            // 물음(판정문)과 매크로 보강 — 없으면 ask: 조건은 거짓이다
 };
-type OwnedList = 'panels' | 'actions' | 'pages' | 'filters' | 'themes' | 'composer' | 'prompt' | 'before' | 'received' | 'marks';
+type OwnedList = 'panels' | 'actions' | 'pages' | 'filters' | 'themes' | 'composer' | 'prompt' | 'before' | 'received';
 export function dropOwner(owner: string) {
   for (const [k, v] of X.commands) if (v.owner === owner) X.commands.delete(k);
   for (const [k, v] of X.macros) if (v.owner === owner) X.macros.delete(k);
   const bag = X as unknown as Record<OwnedList, Owned[]>;
-  for (const key of ['panels', 'actions', 'pages', 'filters', 'themes', 'composer', 'prompt', 'before', 'received', 'marks'] as OwnedList[]) bag[key] = bag[key].filter(v => v.owner !== owner);
-}
-/** 화면에 그리기 전: 기능이 단 기계 표시를 지운다 */
-export function stripMarks(text: string): string {
-  for (const m of X.marks) { try { text = m.strip(text); } catch (e) { console.warn('[표시 지우기]', m.owner, e); } }
-  return text;
-}
-/** 다 받은 답변: 기계 표시를 떼어 내고 읽은 것을 답변 한 장에 적는다 */
-export function takeMarks(text: string, o: { swipe: Swipe; type: string; chat: Chat }): string {
-  for (const m of X.marks) { try { text = m.take ? m.take(text, o) : m.strip(text); } catch (e) { console.warn('[표시 떼기]', m.owner, e); } }
-  return text;
+  for (const key of ['panels', 'actions', 'pages', 'filters', 'themes', 'composer', 'prompt', 'before', 'received'] as OwnedList[]) bag[key] = bag[key].filter(v => v.owner !== owner);
 }
 export function runFilters(text: string, info?: FilterInfo) {
   for (const f of X.filters) { try { const r = f.fn(text, info); if (typeof r === 'string') text = r; } catch (e) { console.warn('[확장 필터]', f.owner, e); } }

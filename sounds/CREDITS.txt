@@ -1,36 +1,6 @@
-Sounds for read-aloud scenes and phone calls. All are public domain or CC0 (free to use, no attribution required).
-Files were trimmed, made mono, loudness-matched and re-encoded to MP3; background loops were cross-faded so they repeat without a seam.
-Sources: Wikimedia Commons (public domain) and OpenGameArt.org (CC0).
+Background sounds for phone calls. All are public domain (free to use, no attribution required).
+Source: Wikimedia Commons
 
-Background loops
-fx/cafe.mp3        - "Restaurant ambience.ogg"                         https://commons.wikimedia.org/wiki/File:Restaurant_ambience.ogg
-fx/rain.mp3        - "Rain (1).ogg"                                    https://commons.wikimedia.org/wiki/File:Rain_(1).ogg
-fx/street.mp3      - "Sunday in the city street noise1.ogg"            https://commons.wikimedia.org/wiki/File:Sunday_in_the_city_street_noise1.ogg
-fx/storm.mp3       - "Rain + Long Thunder"                             https://opengameart.org/content/rain-long-thunder
-fx/wind.mp3        - "Mild Wind Background Noise"                      https://opengameart.org/content/mild-wind-background-noise
-fx/night.mp3       - "Crickets Ambient Noise - loopable"               https://opengameart.org/content/crickets-ambient-noise-loopable
-fx/forest.mp3      - "Ambient Bird Sounds"                             https://opengameart.org/content/ambient-bird-sounds
-fx/sea.mp3         - "Beach Ocean Waves"                               https://opengameart.org/content/beach-ocean-waves
-fx/fire.mp3        - "Fire Crackling"                                  https://opengameart.org/content/fire-crackling
-
-Sound effects
-fx/knock.mp3       - "Knocking on wood or door.ogg"                    https://commons.wikimedia.org/wiki/File:Knocking_on_wood_or_door.ogg
-fx/doorbell.mp3    - "Doorbell-cheap-dingdong.ogg"                     https://commons.wikimedia.org/wiki/File:Doorbell-cheap-dingdong.ogg
-fx/door_open.mp3   - "50 RPG sound effects" (doorOpen_2)               https://opengameart.org/content/50-rpg-sound-effects
-fx/door_close.mp3  - "50 RPG sound effects" (doorClose_2)              https://opengameart.org/content/50-rpg-sound-effects
-fx/footsteps.mp3   - "50 RPG sound effects" (footstep00-05)            https://opengameart.org/content/50-rpg-sound-effects
-fx/coins.mp3       - "50 RPG sound effects" (handleCoins)              https://opengameart.org/content/50-rpg-sound-effects
-fx/blade.mp3       - "50 RPG sound effects" (drawKnife1)               https://opengameart.org/content/50-rpg-sound-effects
-fx/lock.mp3        - "50 RPG sound effects" (metalLatch)               https://opengameart.org/content/50-rpg-sound-effects
-fx/rustle.mp3      - "50 RPG sound effects" (cloth1)                   https://opengameart.org/content/50-rpg-sound-effects
-fx/page.mp3        - "10 Book Page Flips"                              https://opengameart.org/content/10-book-page-flips
-fx/sword.mp3       - "20 Sword Sound Effects (Attacks and Clashes)"    https://opengameart.org/content/20-sword-sound-effects-attacks-and-clashes
-fx/glass_break.mp3 - "Glass Break"                                     https://opengameart.org/content/glass-break
-fx/heartbeat.mp3   - "Heartbeat sounds" (heartbeat_slow)               https://opengameart.org/content/heartbeat-sounds
-fx/thunder.mp3     - "Rain + Long Thunder"                             https://opengameart.org/content/rain-long-thunder
-fx/gunshot.mp3     - "Gunshots" (22 Pistol)                            https://opengameart.org/content/gunshots
-fx/camera.mp3      - "Camera"                                          https://opengameart.org/content/camera
-fx/message.mp3     - "Alert/Notification Sound"                        https://opengameart.org/content/alertnotification-sound
-
-Sounds with no file here (phone_buzz, glass_clink, punch, room) are generated in the browser with Web Audio,
-and so is any sound whose file cannot be loaded.
+cafe.ogg   - "Restaurant ambience.ogg"                  https://commons.wikimedia.org/wiki/File:Restaurant_ambience.ogg
+rain.ogg   - "Rain (1).ogg"                             https://commons.wikimedia.org/wiki/File:Rain_(1).ogg
+street.ogg - "Sunday in the city street noise1.ogg"     https://commons.wikimedia.org/wiki/File:Sunday_in_the_city_street_noise1.ogg

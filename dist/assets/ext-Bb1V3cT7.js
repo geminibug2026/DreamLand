@@ -1,1 +1,0 @@
-export{t as APP_VERSION,n as TEMPLATE,r as catalog,i as enabled,o as initExtensions,s as install,c as installFromUrl,l as loaded,u as readCatalog,d as setEnabled,f as unload}from"./ext-BRYMShXB.js";

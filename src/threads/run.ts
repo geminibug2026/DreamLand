@@ -51,7 +51,7 @@ export const lens: HistoryLens = (source, { chat, char, chars, type }) => {
 };
 
 // ── 프롬프트 조각 ──
-export function pieces({ chat, char, chars, persona, msgs, type, ctx, call }: PromptInfo): PromptPiece[] {
+export function pieces({ chat, char, chars, persona, msgs, type, ctx }: PromptInfo): PromptPiece[] {
   const t = thPeek(chat), talk = isTalk(chat), group = chars.length > 1, out: PromptPiece[] = [], again = type === 'regen' || type === 'swipe';
   out.push(...linkPieces(chat, char));
   if (talk && cfg().about) { const a = aboutBlock(chars, persona, String(ctx.user || persona?.name || 'User')); if (a) out.push({ where: 'before', role: 'system', content: a.replace(/\{\{/g, '{ {'), src: '자기소개' }); }
@@ -70,8 +70,7 @@ export function pieces({ chat, char, chars, persona, msgs, type, ctx, call }: Pr
     if (t.stage && !chat.scene?.on && !t.origin && !shown.slice(-6).some(m => (m as ThMsg).thCard?.kind === 'invite')) g.push(STAGE_GUIDE);
     if (cfg().about && cfg().aboutSelf && !group && Date.now() - aboutAt(char) > ABOUT_REST) g.push(ABOUT_GUIDE);
   }
-  // 통화 · 음성 메시지 중에는 꼬리표 안내를 싣지 않는다: 통화 글은 받은 뒤 꼬리표를 떼는 단계를 거치지 않아 화면에 글자로 남는다
-  if (g.length && !call) out.push({ where: 'end', role: 'system', content: `<hidden_tags>\nOptional tags. They are removed before {{user}} reads your reply, so never mention them. Use one only when it truly fits — most replies need none.\n${g.join('\n')}\n</hidden_tags>`, src: '숨은 꼬리표 (이어진 방 · 속내)' });
+  if (g.length) out.push({ where: 'end', role: 'system', content: `<hidden_tags>\nOptional tags. They are removed before {{user}} reads your reply, so never mention them. Use one only when it truly fits — most replies need none.\n${g.join('\n')}\n</hidden_tags>`, src: '숨은 꼬리표 (이어진 방 · 속내)' });
   return out;
 }
 

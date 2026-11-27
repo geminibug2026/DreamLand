@@ -65,71 +65,11 @@ export interface VoiceOpt { id: string; label: string }
 export interface Clip { blob: Blob; marks?: Marks | null }
 /** 한 조각을 소리 파일로 만든다 */
 export async function synth(c: Conn, v: VoicePick, text: string, speed: number, signal?: AbortSignal): Promise<Blob> { return (await synthClip(c, v, text, speed, signal)).blob; }
-/** 보내는 글이 화면 글과 다를 때: lead = 앞에 붙인 말투 꼬리표의 길이 · map = 발음 사전으로 바꾼 글의 위치 → 원래 위치 */
-export interface Sent { lead?: number; map?: number[] | null }
-/** 한 조각을 소리 파일로 (글자별 시각을 주는 공급자면 그것도 — 원래 글의 위치로 돌려 준다) */
-export async function synthClip(c: Conn, v: VoicePick, text: string, speed: number, signal?: AbortSignal, sent: Sent = {}): Promise<Clip> {
-  if (c.provider === 'tts_eleven') {
-    const clip = await elevenClip(c, v, text, speed, signal);
-    if (clip.marks && (sent.lead || sent.map)) {
-      const at: number[] = [], tt: number[] = [];
-      clip.marks.at.forEach((p, i) => { const k = p - (sent.lead || 0); if (k < 0) return; const o = sent.map ? sent.map[Math.min(k, sent.map.length - 1)] : k; at.push(o); tt.push(clip.marks!.t[i]); });
-      clip.marks = at.length ? { at, t: tt } : null;
-    }
-    return clip;
-  }
+/** 한 조각을 소리 파일로 (글자별 시각을 주는 공급자면 그것도) */
+export async function synthClip(c: Conn, v: VoicePick, text: string, speed: number, signal?: AbortSignal): Promise<Clip> {
+  if (c.provider === 'tts_eleven') return elevenClip(c, v, text, speed, signal);
   return { blob: await synthBlob(c, v, text, speed, signal) };
 }
-
-// ── 말투: 연기 표시의 영어 낱말을 공급자마다 알맞게 옮긴다 ──
-// 꼬리표를 알아듣는 모델(ElevenLabs v3 · v4, Fish)은 글 앞에 꼬리표를, 말로 지시를 받는 모델(gpt-4o-mini-tts)은 지시문을,
-// 스타일이 있는 곳(Azure · MiniMax)은 스타일 · 감정을, 나머지는 빠르기 · 높이 · 크기만 조금.
-export interface Acted { /** 글 앞에 붙일 꼬리표 */ prefix: string; /** 목소리 설정 바꾸기 */ voice: Partial<VoicePick>; /** 크기 (dB) · 빠르기 · 높이 배율 */ gainDb: number; rate: number; pitch: number }
-type Feel = [rate: number, gainDb: number, pitch: number];
-const FEEL: [RegExp, Feel][] = [
-  [/whisper/, [0.94, -6, 1]], [/^(soft|gentle|tender|quiet|calm|hushed|murmur)/, [0.97, -3, 1]], [/shout|yell|scream/, [1.06, 2, 1.02]], [/angry|furious|annoyed|irritated/, [1.04, 1, 0.97]],
-  [/excit|cheer|happy|laugh|giggl|bright|delight/, [1.06, 0.5, 1.04]], [/sad|cry|tear|sob|grief|hurt/, [0.9, -1.5, 0.96]], [/tired|sleep|drows|exhaust|weary/, [0.88, -2, 0.97]],
-  [/nervous|scared|afraid|anxious|fear|panic|shak/, [1.04, -0.5, 1.03]], [/cold|flat|serious|stern|firm|dry/, [0.97, 0, 0.98]], [/teas|flirt|playful|sly|smug|coy/, [1, 0, 1.02]],
-  [/sigh/, [0.93, -2, 0.99]], [/breathless|pant|gasp/, [1.05, -1, 1.01]], [/drunk|slur/, [0.9, 0, 0.98]], [/thought|inner/, [0.97, -4, 1]],
-];
-const ELEVEN_TAG: [RegExp, string][] = [[/whisper/, 'whispers'], [/laugh|giggl/, 'laughs'], [/sigh/, 'sighs'], [/cry|sob|tear/, 'crying'], [/shout|yell/, 'shouting'], [/excit/, 'excited'], [/nervous|anxious/, 'nervous'], [/sad/, 'sad'], [/angry|furious/, 'angry'], [/sarcas/, 'sarcastic'], [/curious/, 'curious'], [/teas|playful/, 'playfully'], [/tired|sleep/, 'tired']];
-const AZ_STYLE: [RegExp, string][] = [[/whisper/, 'whispering'], [/shout|yell/, 'shouting'], [/angry|furious/, 'angry'], [/cheer|happy|bright|delight|laugh/, 'cheerful'], [/excit/, 'excited'], [/sad|cry|tear|sob/, 'sad'], [/scared|afraid|fear|panic/, 'terrified'], [/nervous|anxious/, 'fearful'], [/soft|gentle|tender/, 'gentle'], [/cold|stern/, 'unfriendly'], [/serious|firm/, 'serious'], [/hope/, 'hopeful'], [/embarrass|shy/, 'embarrassed'], [/calm/, 'calm'], [/friendly|warm/, 'friendly']];
-const MM_EMO: [RegExp, string][] = [[/cheer|happy|excit|laugh|teas|flirt|playful|bright/, 'happy'], [/sad|cry|tear|sob/, 'sad'], [/angry|furious|shout|yell/, 'angry'], [/scared|afraid|fear|nervous|anxious|panic/, 'fearful'], [/surpris|shock/, 'surprised'], [/disgust/, 'disgusted'], [/soft|gentle|calm|tired|sleep|whisper|thought/, 'calm']];
-const pick = (table: [RegExp, string][], how: string[]) => { for (const w of how) for (const [re, v] of table) if (re.test(w)) return v; return ''; };
-/** 말투를 이 공급자 · 모델에 맞게. power: 0 담담하게 ~ 2 크게 */
-export function actFor(provider: string, model: string, base: Partial<VoicePick>, how: string[] | undefined, power = 1): Acted {
-  const out: Acted = { prefix: '', voice: {}, gainDb: 0, rate: 1, pitch: 1 };
-  const words = (how || []).map(w => w.toLowerCase().trim()).filter(Boolean);
-  if (!words.length || power <= 0) return out;
-  // 공통: 빠르기 · 크기 · 높이를 조금 (세기에 따라). 낱말 여럿이면 가장 앞의 것부터 하나씩만
-  const seen = new Set<string>();
-  for (const w of words) for (const [re, [r, g, p]] of FEEL) if (re.test(w) && !seen.has(re.source)) { seen.add(re.source); out.rate *= 1 + (r - 1) * power; out.gainDb += g * Math.min(power, 1.5); out.pitch *= 1 + (p - 1) * power; break; }
-  const spoken = words.filter(w => w !== 'thought');
-  if (provider === 'tts_eleven' && /^eleven_v[34]/.test(model)) {
-    const tags = [...new Set(spoken.map(w => ELEVEN_TAG.find(([re]) => re.test(w))?.[1] || w))].slice(0, power >= 1.5 ? 3 : 2);
-    if (tags.length) out.prefix = tags.map(x => `[${x}]`).join(' ') + ' ';
-    out.rate = 1; out.pitch = 1;   // 꼬리표가 연기를 맡는다
-  } else if (provider === 'tts_eleven') {
-    const intense = spoken.some(w => /angry|shout|yell|cry|sob|excit|scream|panic/.test(w)), calm = spoken.some(w => /soft|gentle|calm|whisper|tired|sleep/.test(w));
-    const st = num(base.stability, 0.5), sy = num(base.style, 0);
-    if (intense) out.voice = { stability: clamp(st - 0.18 * power, 0.15, 1), style: clamp(sy + 0.25 * power, 0, 1) };
-    else if (calm) out.voice = { stability: clamp(st + 0.12 * power, 0, 0.95) };
-  } else if ((provider === 'tts_openai' || provider === 'tts_compat') && /gpt-4o.*tts/.test(model)) {
-    const deg = power >= 1.5 ? 'strongly, ' : power < 0.8 ? 'subtly, ' : '';
-    out.voice = { instructions: `${String(base.instructions || '').trim()}${base.instructions ? '\n' : ''}Deliver this line ${deg}${spoken.join(', ')}.` };
-    out.rate = 1; out.pitch = 1;
-  } else if (provider === 'tts_azure') {
-    const st = pick(AZ_STYLE, spoken);
-    if (st) out.voice = { azStyle: st, azDegree: clamp(power, 0.5, 2) };
-  } else if (provider === 'tts_minimax') {
-    const e = pick(MM_EMO, spoken); if (e) out.voice = { emotion: e };
-  } else if (provider === 'tts_fish') {
-    const w = spoken.slice(0, 2);
-    if (w.length) out.prefix = (/^(s1|speech-1)/.test(model) ? w.map(x => `(${x})`) : w.map(x => `[${x}]`)).join(' ') + ' ';
-  }
-  return out;
-}
-
 /** ElevenLabs: 글자별 시각이 함께 오는 주소(with-timestamps)로 받는다. 그 주소를 못 쓰는 곳(중계 서버 따위)이면 예전 주소로 */
 async function elevenClip(c: Conn, v: VoicePick, text: string, speed: number, signal?: AbortSignal): Promise<Clip> {
   const key = needKey(c), voice = String(v.voice || '').trim(), model = String(v.model || c.model || defOf(c).models[0] || '').trim();
@@ -181,7 +121,7 @@ async function synthBlob(c: Conn, v: VoicePick, text: string, speed: number, sig
       const name = voice || 'ko-KR-SunHiNeural', lang = langOfVoice(name, text);
       const rate = Math.round((speed - 1) * 100), pt = Math.round((pitch - 1) * 50), style = String(v.azStyle || '').trim();
       let inner = `<prosody rate="${rate >= 0 ? '+' : ''}${rate}%" pitch="${pt >= 0 ? '+' : ''}${pt}%">${xml(text)}</prosody>`;
-      if (style) inner = `<mstts:express-as style="${xml(style)}"${v.azDegree ? ` styledegree="${clamp(num(v.azDegree, 1), 0.01, 2).toFixed(2)}"` : ''}>${inner}</mstts:express-as>`;
+      if (style) inner = `<mstts:express-as style="${xml(style)}">${inner}</mstts:express-as>`;
       const ssml = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xmlns:mstts="https://www.w3.org/2001/mstts" xml:lang="${lang}"><voice name="${xml(name)}">${inner}</voice></speak>`;
       const r = await req(c, needBase(c) + '/cognitiveservices/v1', { headers: { 'Content-Type': 'application/ssml+xml', 'X-Microsoft-OutputFormat': 'audio-24khz-48kbitrate-mono-mp3', 'Ocp-Apim-Subscription-Key': key }, body: ssml, signal });
       return r.blob();

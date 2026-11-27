@@ -1,1 +1,0 @@
-export{n as openInsights}from"./insights-Be-K6Cpk.js";

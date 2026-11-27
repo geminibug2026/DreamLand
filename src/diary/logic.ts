@@ -262,7 +262,7 @@ export const memoLoaded = (chat: DChat, p: MemoPage) => { const mem0 = Memory.ge
 
 // ════════ 대화 화면과의 연결 (등록은 src/features/diary.tsx) ════════
 /** 프롬프트 조각: 약속 수첩 · 약속 태그 안내 · 교환 일기 */
-export function promptPieces({ chat, ctx, type, call }: PromptInfo): PromptPiece[] {
+export function promptPieces({ chat, ctx, type }: PromptInfo): PromptPiece[] {
   if (!chat || type === 'impersonate') return [];
   const k = K, a = A(), out: PromptPiece[] = [], today = k.dayKey(core.now()), weekday = WD_EN[k.keyDate(today).getDay()], w = { char: ctx?.char || who(chat).char, user: ctx?.user || who(chat).user };
   if (a.promiseInject !== false && (chat.promises || []).length) {
@@ -272,8 +272,7 @@ export function promptPieces({ chat, ctx, type, call }: PromptInfo): PromptPiece
     if (dg.soon.length) lines.push(`Coming up (background only — do not bring these up unless it fits): ${dg.soon.slice(0, 5).map(p => `${p.date}${p.time ? ' ' + p.time : ''} "${p.what}"`).join('; ')}`);
     if (lines.length) out.push({ where: 'end', src: '약속 수첩', content: `<promise_notebook>\nToday is ${today} (${weekday}).\n${lines.join('\n')}\n</promise_notebook>` });
   }
-  // 약속 태그 안내는 통화 · 음성 메시지에는 싣지 않는다 (통화 글은 꼬리표를 떼어 수첩에 적는 단계를 거치지 않아 화면에 글자로 남는다. 약속 수첩은 그대로 알려 준다)
-  if (!call && (a.promiseTag === 'all' || (a.promiseTag === 'talk' && chat.mode === 'talk' && !chat.scene?.on))) out.push({ where: 'end', src: '약속 태그 안내', content: `<promise_command>\n${fillT(P('promiseOffer'), { ...w, today, weekday })}\n</promise_command>` });
+  if (a.promiseTag === 'all' || (a.promiseTag === 'talk' && chat.mode === 'talk' && !chat.scene?.on)) out.push({ where: 'end', src: '약속 태그 안내', content: `<promise_command>\n${fillT(P('promiseOffer'), { ...w, today, weekday })}\n</promise_command>` });
   if (a.exchangeInject !== false) {
     const e = [...(chat.diary || [])].reverse().find(x => String(x.note || '').trim());
     if (e && core.now() - (e.noteTs || e.ts || 0) < 7 * 864e5) out.push({ where: 'depth', depth: 4, order: 90, src: '교환 일기', content: `<exchange_diary>\n${fillT(P('exchangeNote'), { ...w, title: e.title || 'untitled', note: String(e.note).trim().slice(0, 500), answer: e.answer ? ` ${w.char} answered in the margin: "${String(e.answer).slice(0, 300)}"` : '' })}\n</exchange_diary>` });
