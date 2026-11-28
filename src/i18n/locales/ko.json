@@ -1995,6 +1995,8 @@
   "cards.sum.regex": "정규식 {n}",
   "cards.sum.quick": "빠른 답장 {n}",
   "cards.sum.templates": "포맷팅 템플릿 {n}",
+  "cards.sum.profiles": "연결 프로필 {n}",
+  "cards.sum.links": "이어 준 관계 {n}",
   "cards.sum.none": "새로 가져온 항목 없음",
   "chat.deletedChar": "삭제된 캐릭터",
   "chat.roomN": "대화 {n}",

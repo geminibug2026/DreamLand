@@ -1,7 +1,9 @@
 // ── Dreamland cards: 캐릭터 카드(PNG/JSON) · 외부 형식 변환과 가져오기 (옛 js/cards.js 그대로) ──
 import { tplKind, tplImport, KINDS } from './advanced';
 import { stQrToSet, qrAddSet, type StQrSet } from './qr-data';
-import { S, uid, now, arr, bool, parseMaybe, parseDate, bytesToDataURL, dataURLToBytes, mimeOf, shrinkImage, newChar, newPersona, newLore, newEntry, newRegex, newChat, newMsg, defaultPreset, MARKERS, emit } from './core';
+import { S, uid, now, arr, bool, parseMaybe, parseDate, bytesToDataURL, dataURLToBytes, mimeOf, shrinkImage, newChar, newPersona, newLore, newEntry, newRegex, newChat, newMsg, newConn, defaultPreset, MARKERS, emit } from './core';
+import { PROVIDERS } from './engine';
+import type { Conn } from './types';
 import type { Chat, Msg, Regex } from './types';
 import { t } from '../i18n';
 import { Server } from './server';
@@ -33,17 +35,19 @@ export interface DChat {
 export interface Block { id: string; kind: string; name?: string; role?: string; content?: string; enabled?: boolean; depth?: number | string | null; [k: string]: unknown }
 export interface PVar { id: string; name: string; label: string; type: string; default: unknown; onText?: string; options?: { label: string; value: string }[] }
 export interface DPreset { id: string; name: string; params: O; blocks: Block[]; regex: DRegex[]; vars?: PVar[]; src?: string; [k: string]: unknown }
-export interface Tally { chars: number; chats: number; msgs: number; lore: number; presets: number; personas: number; regex: number; quick: number; templates: number; skipped: number; errors: string[] }
+export interface Tally { chars: number; chats: number; msgs: number; lore: number; presets: number; personas: number; regex: number; quick: number; templates: number; /** 연결 프로필 */ profiles?: number; /** 이어 준 관계 (페르소나 ↔ 캐릭터 · 캐릭터 ↔ 로어북 · 정규식 허락 · 대화의 페르소나) */ links?: number; skipped: number; errors: string[] }
 export interface FsItem { name: string; dir: boolean; size?: number; mtime?: number }
 export interface Source { label: string; kind?: string | null; list(sub: string): Promise<FsItem[]>; bytes(rel: string): Promise<Uint8Array>; text(rel: string): Promise<string> }
 export interface Found { kind: string; root: string; label: string }
 export type Want = Record<string, boolean | undefined>;
 export type Progress = (t: string) => void;
-type Coll = 'chars' | 'chats' | 'lore' | 'presets' | 'personas' | 'regex';
+type Coll = 'chars' | 'chats' | 'lore' | 'presets' | 'personas' | 'regex' | 'conns';
 interface CStore {
   chars: DChar[]; chats: DChat[]; lore: LoreBook[]; presets: DPreset[]; personas: DPersona[]; regex: DRegex[];
-  settings: { regexAllow?: Record<string, Record<string, string>>; activeLore: string[]; [k: string]: unknown };
+  settings: { regexAllow?: Record<string, Record<string, string | boolean>>; activeLore: string[]; [k: string]: unknown };
   get(coll: 'lore', id?: string): LoreBook | undefined;
+  get(coll: 'chats', id?: string): DChat | undefined;
+  conns: Conn[];
   save<T>(coll: Coll, obj: T, silent?: boolean): Promise<T>;
   saveMsgs(chat: DChat, msgs: DMsg[]): Promise<unknown>;
   avatarData(o: { avatar?: unknown } | null | undefined): Promise<string>;
@@ -54,10 +58,10 @@ interface CoreApi {
   uid(): string; now(): number; arr<T = unknown>(v: unknown): T[]; bool(v: unknown): boolean; parseMaybe<T = unknown>(v: unknown, fallback: T): T; parseDate(v: unknown): number;
   bytesToDataURL(bytes: Uint8Array, mime?: string): string; dataURLToBytes(url: string): Uint8Array; mimeOf(name: string): string; shrinkImage(src: string, max?: number): Promise<string>;
   newChar(o: O): DChar; newPersona(o: O): DPersona; newLore(o: O): LoreBook; newEntry(o: O): LoreEntry; newRegex(o: O): DRegex; newChat(o: O): DChat;
-  newMsg(role: string, text: string, o?: O): DMsg; defaultPreset(): DPreset; MARKERS: Record<string, string>; emit(ev: string, data?: unknown): void;
+  newMsg(role: string, text: string, o?: O): DMsg; newConn(o: O): Conn; defaultPreset(): DPreset; MARKERS: Record<string, string>; emit(ev: string, data?: unknown): void;
 }
 const St = S as unknown as CStore;
-const K = { uid, now, arr, bool, parseMaybe, parseDate, bytesToDataURL, dataURLToBytes, mimeOf, shrinkImage, newChar, newPersona, newLore, newEntry, newRegex, newChat, newMsg, defaultPreset, MARKERS, emit } as unknown as CoreApi;
+const K = { uid, now, arr, bool, parseMaybe, parseDate, bytesToDataURL, dataURLToBytes, mimeOf, shrinkImage, newChar, newPersona, newLore, newEntry, newRegex, newChat, newMsg, newConn, defaultPreset, MARKERS, emit } as unknown as CoreApi;
 const isObj = (v: unknown): v is O => !!v && typeof v === 'object';
 
 // ════════ PNG 메타데이터 ════════
@@ -522,6 +526,9 @@ interface StRow {
   chat_metadata?: { note_prompt?: string; note_depth?: number; note_role?: number; variables?: O }; [k: string]: unknown;
 }
 /** .jsonl 채팅 → { chat, msgs }.  resolve(m) 은 그룹 채팅에서 화자 캐릭터를 찾는다 */
+/** 대화 파일 첫 줄(chat_metadata)에 고정해 둔 페르소나의 파일 이름 */
+function chatPersonaOf(text: string): string { try { const head = JSON.parse(text.slice(0, text.indexOf('\n') >= 0 ? text.indexOf('\n') : text.length)); const p = head?.chat_metadata?.persona; return typeof p === 'string' ? p : ''; } catch { return ''; } }
+const PROVIDER_NAME = (id: string) => (PROVIDERS as Record<string, { name?: string } | undefined>)[id]?.name || id;
 export function stChatToChat(text: string, { charIds, name, resolve }: { charIds: string[]; name?: string; resolve?: (r: StRow) => string }): { chat: DChat; msgs: DMsg[] } {
   const rows = text.split(/\r?\n/).filter(l => l.trim()).map((l): StRow | null => { try { return JSON.parse(l); } catch { return null; } }).filter((x): x is StRow => !!x);
   const head: StRow = rows[0] && rows[0].mes === undefined ? rows.shift() as StRow : {};
@@ -747,8 +754,12 @@ async function saveCard(card: Card, avatar: string, src: string, T: Tally, noBoo
 export interface StInventory { chars: string[]; worlds: string[]; presets: string[]; groups: string[]; quick: string[]; chats: string[]; personas: number; regex: number }
 interface StSettings {
   world_info_settings?: { world_info_depth?: number; world_info_recursive?: boolean; world_info?: { globalSelect?: unknown } }; world_info?: { globalSelect?: unknown };
-  power_user?: { personas?: Record<string, string>; persona_descriptions?: Record<string, { description?: string }>; default_persona?: string }; extension_settings?: { regex?: unknown };
+  power_user?: { personas?: Record<string, string>; persona_descriptions?: Record<string, { description?: string; lorebook?: string; connections?: { type?: string; id?: string }[] }>; default_persona?: string };
+  extension_settings?: { regex?: unknown; character_allowed_regex?: unknown; preset_allowed_regex?: Record<string, unknown>; connectionManager?: { profiles?: unknown; selectedProfile?: string } };
 }
+/** 실리태번 연결 소스 → 드림랜드 공급자 */
+const ST_API: Record<string, string> = { openai: 'openai', claude: 'anthropic', makersuite: 'google', vertexai: 'vertexai', openrouter: 'openrouter', ai21: 'ai21', mistralai: 'mistralai', custom: 'custom', cohere: 'cohere', perplexity: 'perplexity', groq: 'groq', deepseek: 'deepseek', xai: 'xai', nanogpt: 'nanogpt', fireworks: 'fireworks', pollinations: 'pollinations', aimlapi: 'aimlapi', moonshot: 'moonshot', zai: 'zai', electronhub: 'electronhub', cometapi: 'cometapi', azure_openai: 'azure', siliconflow: 'siliconflow', chutes: 'chutes', ooba: 'ooba', tabby: 'tabby', llamacpp: 'llamacpp', koboldcpp: 'koboldcpp', vllm: 'vllm', aphrodite: 'aphrodite', ollama: 'ollama', togetherai: 'togetherai', infermaticai: 'infermaticai', featherless: 'featherless', mancer: 'mancer', dreamgen: 'dreamgen', huggingface: 'huggingface', kobold: 'koboldclassic', novel: 'novelai', horde: 'horde' };
+interface StProfile { id?: string; name?: string; mode?: string; api?: string; preset?: string; model?: string; 'api-url'?: string; instruct?: string; context?: string; sysprompt?: string; 'instruct-state'?: string; 'reasoning-template'?: string }
 export async function scanST(src: Source): Promise<StInventory> {
   const names = async (sub: string, re: RegExp) => (await src.list(sub)).filter(x => !x.dir && re.test(x.name)).map(x => x.name);
   const inv: StInventory = { chars: await names('characters', /\.png$/i), worlds: await names('worlds', /\.json$/i), presets: await names('OpenAI Settings', /\.json$/i), groups: await names('groups', /\.json$/i), quick: await names('QuickReplies', /\.json$/i), chats: [], personas: 0, regex: 0 };
@@ -780,7 +791,7 @@ export async function importST(src: Source, want: Want, progress: Progress = () 
     if (sel.length) St.set({ activeLore: [...new Set([...St.settings.activeLore, ...sel])] });
   }
 
-  const charByFile = new Map<string, DChar>();
+  const charByFile = new Map<string, DChar>(), chatLocks: [string, string][] = [];
   if (want.chars) for (const f of inv.chars) {
     progress(t('cards.progress.char', { name: f }));
     await safe(T, f, async () => {
@@ -800,9 +811,10 @@ export async function importST(src: Source, want: Want, progress: Progress = () 
       if (!ch || St.chats.some(c => c.src === key)) { T.skipped++; continue; }
       progress(t('cards.progress.chat', { name: rel }));
       await safe(T, rel, async () => {
-        const { chat, msgs } = stChatToChat(await src.text('chats/' + rel), { charIds: [ch.id], name: file.replace(/\.jsonl$/i, '') });
+        const text = await src.text('chats/' + rel), { chat, msgs } = stChatToChat(text, { charIds: [ch.id], name: file.replace(/\.jsonl$/i, '') });
         if (!msgs.length) { T.skipped++; return; }
         chat.src = key; await St.saveMsgs(chat, msgs); T.chats++; T.msgs += msgs.length;
+        const lock = chatPersonaOf(text); if (lock) chatLocks.push([chat.id, lock]);
       });
     }
     for (const gf of inv.groups) await safe(T, gf, async () => {
@@ -845,17 +857,60 @@ export async function importST(src: Source, want: Want, progress: Progress = () 
     });
   }
 
+  const personaByFile = new Map<string, string>();
   if (want.personas) {
     const pu = settings.power_user || {};
     for (const [file, name] of Object.entries(pu.personas || {})) {
       progress(t('cards.progress.persona', { name }));
       await safe(T, name, async () => {
         const avatar = await src.bytes('User Avatars/' + file).then(b => avatarFrom(b, file)).catch(() => '');
-        const p = await upsert('personas', K.newPersona({ name, avatar, description: pu.persona_descriptions?.[file]?.description || '' }), tag('persona/' + file)); T.personas++;
+        const d = pu.persona_descriptions?.[file], book = d?.lorebook ? worldIds.get(d.lorebook) || St.lore.find(l => l.name === d.lorebook)?.id : undefined;   // 페르소나에 걸어 둔 로어북
+        const p = await upsert('personas', K.newPersona({ name, avatar, description: d?.description || '', ...(book ? { loreIds: [book] } : {}) }), tag('persona/' + file)); T.personas++;
+        personaByFile.set(file, p.id);
         if (pu.default_persona === file) St.set({ activePersona: p.id });
       });
     }
+  } else for (const p of St.personas) if (p.src?.startsWith('st:persona/')) personaByFile.set(p.src.slice(11), p.id);
+  const charOf = (ref: string) => charByFile.get(ref) || charByFile.get(ref + '.png') || [...charByFile.values()].find(c => c.name === ref.replace(/\.png$/i, ''));
+  let links = 0;
+  // 페르소나 ↔ 캐릭터 연결 (실리태번의 페르소나 연결): 그 캐릭터의 연결 프로필(char.bind.personaId)로. 이미 정해 둔 것은 두고
+  for (const [file, d] of Object.entries(settings.power_user?.persona_descriptions || {})) {
+    const pid = personaByFile.get(file); if (!pid) continue;
+    for (const c of K.arr<{ type?: string; id?: string }>(d?.connections)) {
+      if (c?.type !== 'character' || !c.id) continue; const ch = charOf(c.id), bind = (ch?.bind || {}) as { connId?: string; presetId?: string; personaId?: string }; if (!ch || bind.personaId) continue;
+      ch.bind = { connId: '', presetId: '', ...bind, personaId: pid }; await St.save('chars', ch, true); links++;
+    }
   }
+  // 대화에 고정한 페르소나
+  for (const [chatId, file] of chatLocks) { const pid = personaByFile.get(file), c = St.get('chats', chatId); if (pid && c && !c.personaId) { c.personaId = pid; await St.save('chats', c, true); links++; } }
+  // 캐릭터에 더 걸어 둔 로어북 (실리태번의 "추가 로어북")
+  for (const cl of K.arr<{ name?: string; extraBooks?: unknown }>((settings.world_info_settings?.world_info as { charLore?: unknown } | undefined)?.charLore ?? (settings.world_info as { charLore?: unknown } | undefined)?.charLore)) {
+    const ch = cl?.name ? charOf(cl.name) : undefined; if (!ch) continue;
+    const ids = K.arr<string>(cl.extraBooks).map(n => worldIds.get(n) || St.lore.find(l => l.name === n)?.id).filter((x): x is string => !!x && !ch.loreIds.includes(x));
+    if (ids.length) { ch.loreIds = [...ch.loreIds, ...ids]; await St.save('chars', ch, true); links += ids.length; }
+  }
+  // 정규식 허락: 실리태번에서 허락해 둔 캐릭터 · 프리셋의 정규식은 여기서도 허락한 채로 (다시 묻지 않게)
+  const ext = settings.extension_settings || {}, allow = St.settings.regexAllow || {}, ac = { ...(allow.chars || {}) }, ap = { ...(allow.presets || {}) };
+  for (const f of K.arr<string>(ext.character_allowed_regex)) { const ch = charOf(String(f)); if (ch && ac[ch.id] !== true) { ac[ch.id] = true; links++; } }
+  for (const names of Object.values(ext.preset_allowed_regex || {})) for (const n of K.arr<string>(names)) { const p = St.presets.find(x => x.src === tag(`preset/${n}.json`) || x.name === n); if (p && ap[p.id] !== true) { ap[p.id] = true; links++; } }
+  St.set({ regexAllow: { ...allow, chars: ac, presets: ap } });
+  // 연결 프로필 (실리태번 Connection Profiles): 공급자 · 주소가 같은 연결은 하나로 (키는 실리태번의 비밀 파일에 있어 옮기지 않는다 — 연결 화면에서 넣는다)
+  const profs = K.arr<StProfile>(ext.connectionManager?.profiles).filter(p => p && p.name);
+  if (want.presets && profs.length) {
+    const mine = K.arr<{ id: string; name: string; connId: string; model: string; presetId: string; tpl: Record<string, string>; instructOn: boolean | null | string; src?: string }>(St.settings.profiles as unknown);
+    for (const sp of profs) {
+      const key = tag('profile/' + (sp.id || sp.name)); if (mine.some(p => p.src === key)) { T.skipped++; continue; }
+      const provider = ST_API[String(sp.api || '')] || (sp.mode === 'tc' ? 'textcomp' : 'custom'), base = String(sp['api-url'] || '').trim();
+      let conn = St.conns.find(c => c.provider === provider && (!base || (c.baseUrl || '').replace(/\/+$/, '') === base.replace(/\/+$/, '')));
+      if (!conn) { conn = K.newConn({ name: `${sp.name} (${PROVIDER_NAME(provider)})`, provider, baseUrl: base, model: sp.model || '' }); conn.src = tag('conn/' + provider + '|' + base); await St.save('conns', conn, true); }
+      const preset = sp.preset ? St.presets.find(x => x.src === tag(`preset/${sp.preset}.json`) || x.name === sp.preset) : undefined;
+      const tpl: Record<string, string> = {}; if (sp.context) tpl.context = sp.context; if (sp.instruct) tpl.instruct = sp.instruct; if (sp.sysprompt) tpl.sysprompt = sp.sysprompt; if (sp['reasoning-template']) tpl.reasoning = sp['reasoning-template'];
+      const st = String(sp['instruct-state'] ?? ''); mine.push({ id: K.uid(), name: sp.name!, connId: conn.id, model: sp.model || '', presetId: preset?.id || '', tpl, instructOn: st === 'true' ? true : st === 'false' ? false : null, src: key });
+      T.profiles = (T.profiles || 0) + 1;
+    }
+    St.set({ profiles: mine } as never);
+  }
+  T.links = links;
 
   if (want.regex) { let n = St.regex.reduce((m, r) => Math.max(m, +(r.order as number) || 0), 0);   // 순서를 적어 둔다: 한꺼번에 만든 것은 다시 켰을 때 차례가 뒤섞일 수 있다
     for (const r of K.arr<StRegex>(settings.extension_settings?.regex)) { const rx = stRegexToRegex(r); rx.order = ++n; await upsert('regex', rx, tag('re/' + (r.id || r.scriptName))); T.regex++; } }
@@ -1096,7 +1151,7 @@ async function importOne(f: File, T: Tally) {
   throw new Error(t('cards.err.unknown'));
 }
 
-export const summarize = (T: Tally) => ([['chars', T.chars], ['chats', T.chats], ['msgs', T.msgs], ['lore', T.lore], ['presets', T.presets], ['personas', T.personas], ['regex', T.regex], ['quick', T.quick], ['templates', T.templates]] as [string, number][]).filter(([, n]) => n).map(([k, n]) => t('cards.sum.' + k, { n })).join(' · ') || t('cards.sum.none');
+export const summarize = (T: Tally) => ([['chars', T.chars], ['chats', T.chats], ['msgs', T.msgs], ['lore', T.lore], ['presets', T.presets], ['personas', T.personas], ['regex', T.regex], ['quick', T.quick], ['templates', T.templates], ['profiles', T.profiles || 0], ['links', T.links || 0]] as [string, number][]).filter(([, n]) => n).map(([k, n]) => t('cards.sum.' + k, { n })).join(' · ') || t('cards.sum.none');
 
 // ════════ 주소에서 가져오기 ════════
 /** 주소의 파일을 받아 File 로 만든다. 브라우저에서 바로 못 받으면(CORS) 드림랜드 서버를 거친다 */

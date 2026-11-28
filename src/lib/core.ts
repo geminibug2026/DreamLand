@@ -225,6 +225,22 @@ export const DB = {
   },
 };
 
+// ── 백업 합쳐 넣기: 설정 안의 이어 주는 값 ──
+const isObj = (v: unknown): v is Plain => !!v && typeof v === 'object' && !Array.isArray(v);
+/** 목록은 id(없으면 name)로 없는 것만 더하고, 맵은 없는 열쇠만 채운다 — 지금 설정이 먼저 */
+function mergeLinks(cur: Plain, inc: Plain) {
+  const keyOf = (x: unknown) => isObj(x) ? String(x.id ?? x.name ?? '') : '';
+  const list = (a: unknown, b: unknown) => { const mine = Array.isArray(a) ? a : [], seen = new Set(mine.map(keyOf)); return [...mine, ...(Array.isArray(b) ? b : []).filter(x => keyOf(x) && !seen.has(keyOf(x)))]; };
+  const map = (a: unknown, b: unknown) => ({ ...(isObj(b) ? b : {}), ...(isObj(a) ? a : {}) });
+  const at = (o: Plain, path: string[]) => path.reduce<unknown>((v, k) => isObj(v) ? v[k] : undefined, o);
+  const put = (o: Plain, path: string[], v: unknown) => { let t = o; for (const k of path.slice(0, -1)) { if (!isObj(t[k])) t[k] = {}; t = t[k] as Plain; } t[path[path.length - 1]] = v; };
+  // 정규식 허락은 종류(chars · presets)마다 맵
+  const ra = map(cur.regexAllow, inc.regexAllow); for (const k of ['chars', 'presets']) ra[k] = map(at(cur, ['regexAllow', k]), at(inc, ['regexAllow', k])); cur.regexAllow = ra;
+  for (const p of [['regexSets'], ['profiles'], ['folders'], ['qr', 'sets']]) { const v = list(at(cur, p), at(inc, p)); if (v.length) put(cur, p, v); }
+  for (const kind of ['context', 'instruct', 'sysprompt', 'reasoning']) { const p = ['templates', kind], v = list(at(cur, p), at(inc, p)); if (v.length) put(cur, p, v); }
+  for (const p of [['feed', 'personaFor'], ['illust', 'characterVisuals'], ['assets', 'chars'], ['globalVars']]) { const v = map(at(cur, p), at(inc, p)); if (Object.keys(v).length) put(cur, p, v); }
+}
+
 // ── 기본값 ──
 export const MARKERS: Record<string, string> = {
   main: '메인 프롬프트', worldInfoBefore: '로어북 (앞)', personaDescription: '페르소나', charDescription: '캐릭터 설명',
@@ -661,6 +677,8 @@ export const S: Store = {
       await DB.bulk(c, rows);
     }
     await this.load();
+    // 합쳐 넣을 때도 백업 설정 안의 "서로 이어 주는 것"은 들인다 (지금 것이 먼저): 캐릭터 · 프리셋 정규식 허락, 정규식 묶음, 연결 프로필, 폴더, 게시판의 캐릭터별 페르소나, 삽화의 캐릭터 생김새, 캐릭터 에셋 설정, 템플릿, 빠른 답장 세트, 전역 변수
+    if (!replace) { const inc = (data.kv as Plain[] | undefined)?.find(r => r && r.id === 'settings'); if (inc) { mergeLinks(this.settings as unknown as Plain, inc); this.saveSettings(); } }
     if (Vault.key) { for (const c of this.conns) if (c.sec) { try { Object.assign(c, JSON.parse(await Vault.dec(c.sec))); } catch { } } if (this.settings.illustSec) { try { this.settings.illust.naiKey = await Vault.dec(this.settings.illustSec); } catch { } } }
     emit('data:imported');
   },

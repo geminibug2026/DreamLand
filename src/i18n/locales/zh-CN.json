@@ -1995,6 +1995,8 @@
   "cards.sum.regex": "正则 {n}",
   "cards.sum.quick": "快速回复 {n}",
   "cards.sum.templates": "格式化模板 {n}",
+  "cards.sum.profiles": "连接配置 {n}",
+  "cards.sum.links": "恢复的关联 {n}",
   "cards.sum.none": "没有新导入的项目",
   "chat.deletedChar": "已删除的角色",
   "chat.roomN": "聊天 {n}",

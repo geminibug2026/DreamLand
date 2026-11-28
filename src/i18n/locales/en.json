@@ -2034,6 +2034,8 @@
   "cards.sum.regex": "Regex {n}",
   "cards.sum.quick": "Quick Replies {n}",
   "cards.sum.templates": "Formatting templates {n}",
+  "cards.sum.profiles": "Connection profiles {n}",
+  "cards.sum.links": "Links restored {n}",
   "cards.sum.none": "Nothing new imported",
   "chat.deletedChar": "Deleted character",
   "chat.roomN": "Chat {n}",
