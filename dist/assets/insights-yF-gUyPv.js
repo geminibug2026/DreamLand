@@ -1,0 +1,1 @@
+export{Ds as openInsights}from"./boot-B6mq0KRc.js";

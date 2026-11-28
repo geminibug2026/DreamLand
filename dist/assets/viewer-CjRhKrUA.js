@@ -1,0 +1,1 @@
+export{xr as viewer}from"./boot-B6mq0KRc.js";

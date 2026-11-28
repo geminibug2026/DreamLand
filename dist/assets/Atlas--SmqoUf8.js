@@ -1,0 +1,1 @@
+import{Wa as e}from"./boot-B6mq0KRc.js";var t={name:`atlas`,Component:e};export{t as page};

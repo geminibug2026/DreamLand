@@ -1,0 +1,1 @@
+export{Ub as go,Wb as pageNames}from"./boot-B6mq0KRc.js";

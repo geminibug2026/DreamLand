@@ -1,1 +1,0 @@
-export{t as migrateVars,n as setVarsOf,r as swipesVars,i as varsOf}from"./msgVars-P0vkH71D.js";

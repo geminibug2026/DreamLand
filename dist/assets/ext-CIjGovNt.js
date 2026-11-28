@@ -1,0 +1,1 @@
+export{tc as APP_VERSION,nc as TEMPLATE,rc as catalog,ic as enabled,oc as initExtensions,sc as install,cc as installFromUrl,lc as loaded,uc as readCatalog,dc as setEnabled,fc as unload}from"./boot-B6mq0KRc.js";

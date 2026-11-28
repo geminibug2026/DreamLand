@@ -1,0 +1,1 @@
+export{E as cfg,N as translate}from"./boot-B6mq0KRc.js";

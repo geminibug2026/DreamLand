@@ -1,1 +1,0 @@
-import{x as e}from"./core-DBWrGUA6.js";import{i as t,o as n}from"./router-CQ-lq1hu.js";var r=e=>e instanceof Error?e.message:String(e),i=()=>{n.page===`home`?e(`chars`,null):t()};export{i as n,r as t};
