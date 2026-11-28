@@ -16,9 +16,11 @@ export interface Note {
   /** 어느 새로 고침에서 왔나 (되돌리기용) */ batch?: string;
   /** 대화 중 [post:] 로 올라온 글: 그 답장의 자리. 스와이프를 넘기면 off 로 거둔다 */ src?: { chatId: string; msgId: string; sw: number }; off?: boolean;
   /** 내가 숨긴 글 (프롬프트에도 싣지 않는다) */ hidden?: boolean;
+  /** 내 글 · 답글: 이 글에 쓴 페르소나 (없으면 그 캐릭터에게 보이는 페르소나 — src/feed/persona.ts) */ persona?: string;
+  /** 인용한 글 (그 글을 가져와 위에 한마디 얹은 글) */ quote?: string;
 }
 /** 나에게 온 것 */
-export interface Notice { id: string; kind: 'like' | 'reply' | 'echo' | 'vote'; by: string; note: string; ts: number; batch?: string }
+export interface Notice { id: string; kind: 'like' | 'reply' | 'echo' | 'vote' | 'quote'; by: string; note: string; ts: number; batch?: string }
 /** 한 번의 새로 고침이 남긴 자국 — 이것만 있으면 그 묶음을 통째로 되돌릴 수 있다 */
 export interface BatchLog { id: string; ts: number; notes: string[]; likes: [string, string][]; echoes: [string, string][]; votes: [string, string][]; ties: [string, string][] }
 export interface FeedState {
@@ -38,8 +40,9 @@ export interface FeedCfg {
   /** 덧붙일 지침 (비우면 없음) · 글 언어 (비우면 화면 언어) */ guide: string; lang: string;
   /** 사진 곁들인 글: 글에 붙일 휴대폰 사진의 설명을 종류(셀카 · 거울 셀카 · 사진)와 함께, 드물지 않게 쓰게 한다 (기본 꺼짐 — 지침이 그대로) */ photoPosts: boolean;
   /** 캐릭터별로 그 캐릭터에게 보일 내 페르소나 (없으면 캐릭터에 연결된 페르소나, 그것도 없으면 지금 페르소나) */ personaFor?: Record<string, string>;
+  /** 캐릭터끼리 어울리기: 서로의 글 · 답글에 답하고 인용하며 논다 (기본 켬) */ mingle: boolean;
 }
-export const FEED_DEFAULTS: FeedCfg = { n: 4, maxTokens: 2400, limit: 280, auto: 0, autoImage: false, carry: true, carryHours: 48, carryMax: 5, carryTokens: 320, chatPost: true, recall: 3, mentionLines: 6, memLines: 3, guide: '', lang: '', photoPosts: false };
+export const FEED_DEFAULTS: FeedCfg = { mingle: true, n: 4, maxTokens: 2400, limit: 280, auto: 0, autoImage: false, carry: true, carryHours: 48, carryMax: 5, carryTokens: 320, chatPost: true, recall: 3, mentionLines: 6, memLines: 3, guide: '', lang: '', photoPosts: false };
 /** 대화별 스위치 (chat.feed) */
 export interface ChatFeed { /** 게시판에서 이 대화를 언급해도 됨 (기본 꺼짐) */ mention?: boolean; /** 게시판 활동을 이 대화에 싣기 (정하지 않으면 대화 모드에서만) */ carry?: boolean }
 
@@ -50,5 +53,5 @@ export interface ChatFeed { /** 게시판에서 이 대화를 언급해도 됨 (
 export interface RawBatch { notes?: unknown; acts?: unknown; ties?: unknown; [k: string]: unknown }
 /** 걸러 낸 뒤의 묶음 — 계정 id 와 실제 글 id(또는 묶음 안 열쇠)로 풀려 있다 */
 export interface CleanNote { k: string; by: string; text: string; poll?: { q: string; opts: string[] }; image?: string }
-export interface CleanAct { by: string; do: 'like' | 'echo' | 'reply' | 'vote'; /** 묶음 안 글이면 k, 기존 글이면 id */ on: string; local: boolean; text?: string; /** 답글에 붙인 사진 설명 */ image?: string; pick?: number; k?: string; under?: string; underLocal?: boolean }
+export interface CleanAct { by: string; do: 'like' | 'echo' | 'reply' | 'vote' | 'quote'; /** 묶음 안 글이면 k, 기존 글이면 id */ on: string; local: boolean; text?: string; /** 답글에 붙인 사진 설명 */ image?: string; pick?: number; k?: string; under?: string; underLocal?: boolean }
 export interface CleanBatch { notes: CleanNote[]; acts: CleanAct[]; ties: [string, string][]; dropped: string[] }

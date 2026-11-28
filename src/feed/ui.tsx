@@ -145,7 +145,7 @@ function Notices() {
   groups.sort((a, b) => b.ts - a.ts);
   const fans = Object.keys(F.follows).filter(k => k !== ME && F.follows[k].includes(ME) && account(k));
   const who = (ids: string[]) => faceOf(ids[0]).name + (ids.length > 1 ? t('feed.andMore', { n: ids.length - 1 }) : '');
-  const icon = { like: 'fdheart', echo: 'fdecho', vote: 'fdpoll', reply: 'fdreply' } as const;
+  const icon = { like: 'fdheart', echo: 'fdecho', vote: 'fdpoll', reply: 'fdreply', quote: 'fdecho' } as const;
   return <>
     <Bar title={t('feed.notices.title')} />
     {groups.map(g => <article key={g.key} className={'fd-ntc ' + g.kind + (g.ts > from ? ' new' : '')} onClick={() => g.note && show({ k: 'note', id: g.note.root || g.note.id })}>
@@ -214,6 +214,7 @@ export function openSettings() {
   openModal({ title: t('feed.set.title'), wide: true, spec: 'div.col' }, close => <>
     <Form obj={c} onChange={apply} defs={[
       { section: t('feed.set.secRefresh') },
+      { k: 'mingle', label: t('feed.set.mingle'), type: 'check', hint: t('feed.set.mingleHint') },
       { k: 'n', label: t('feed.set.n'), type: 'num', min: 1, max: 8, third: true, hint: t('feed.set.nHint') },
       { k: 'auto', label: t('feed.set.auto'), type: 'num', min: 0, max: 12, third: true, hint: t('feed.set.autoHint') },
       { k: 'maxTokens', label: t('feed.set.maxTokens'), type: 'num', min: 600, max: 8000, step: 100, third: true },

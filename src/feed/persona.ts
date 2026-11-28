@@ -19,6 +19,8 @@ export function linkedPersona(charId: string): Persona | undefined { const id = 
 /** 따로 고른 페르소나 id ('' = 자동) */
 export const pickedPersona = (charId: string) => { const id = picks()[charId] || ''; return id && S.get('personas', id) ? id : ''; };
 
+/** 이 내 글 · 답글에 보이는 페르소나: 글에 적어 둔 것 → 그 글이 향한 캐릭터에게 보이는 것 */
+export function personaOfNote(n: Note, notes: Note[]): Persona | undefined { const own = n.persona ? S.get('personas', n.persona) : undefined; return own || personaFor(facingOf(n, notes)); }
 /** 내 글이 향한 캐릭터 (그 캐릭터에게 보이는 페르소나로 보인다): 답한 상대 → 글타래 주인. 내 새 글이면 없음 */
 export function facingOf(n: Note, notes: Note[], depth = 0): string | null {
   const re = n.re ? notes.find(x => x.id === n.re) : undefined;

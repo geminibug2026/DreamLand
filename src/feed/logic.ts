@@ -58,7 +58,7 @@ const norm = (s: unknown) => String(s ?? '').replace(/^@/, '').normalize('NFKC')
 const flat = (s: unknown) => String(s ?? '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
 const clip = (s: unknown, n: number) => { const t = String(s ?? '').replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim(); return t.length > n ? t.slice(0, n - 1).trimEnd() + '…' : t; };
 const list = (v: unknown): Record<string, unknown>[] => Array.isArray(v) ? v.filter((x): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x)) : [];
-const DO: Record<string, CleanAct['do']> = { like: 'like', heart: 'like', mark: 'like', star: 'like', echo: 'echo', repost: 'echo', share: 'echo', copy: 'echo', reply: 'reply', comment: 'reply', answer: 'reply', vote: 'vote' };
+const DO: Record<string, CleanAct['do']> = { like: 'like', heart: 'like', mark: 'like', star: 'like', echo: 'echo', repost: 'echo', share: 'echo', copy: 'echo', reply: 'reply', comment: 'reply', answer: 'reply', vote: 'vote', quote: 'quote', cite: 'quote', quote_post: 'quote', quotepost: 'quote' };
 
 /** 모델이 낸 묶음을 믿을 수 있는 모양으로. 내 이름으로 쓴 것 · 모르는 계정 · 없는 글을 가리키는 것 · 겹치는 것 · 몫을 넘는 것은 버리고 dropped 에 까닭을 적는다 */
 export function cleanBatch(raw: unknown, ctx: CleanCtx): CleanBatch {
@@ -107,6 +107,12 @@ export function cleanBatch(raw: unknown, ctx: CleanCtx): CleanBatch {
       if (k && !replyKeys.has(k) && !local.has(k)) { a.k = k; replyKeys.set(k, (loc ? 'k:' : '') + on); }
       if (text) seenText.add(flat(text)); out.acts.push(a); return;
     }
+    // 인용: 그 글(답글이면 그 답글)을 가져와 위에 한마디 얹은 새 글
+    if (kind === 'quote') {
+      const text = clip(r.text ?? r.content, max); if (!text) return drop('act:empty'); if (seenText.has(flat(text))) return drop('act:dup');
+      const qOn = loc ? loc.k : realId, qKey = `quote|${w.id}|${loc ? 'k:' : ''}${qOn}`; if (done.has(qKey)) return drop('act:twice');
+      done.add(qKey); seenText.add(flat(text)); out.acts.push({ by: w.id, do: 'quote', on: qOn, local: !!loc, text }); return;
+    }
     if (done.has(key)) return drop('act:twice');
     if (kind === 'vote') {
       const poll = loc ? loc.poll : root!.poll; if (!poll) return drop('vote:nopoll');
@@ -150,6 +156,9 @@ export function applyBatch(st: FeedState, b: CleanBatch, { id, now, rnd = Math.r
       const r: Note = { id: nid('r'), by: a.by, text: a.text || '', ts: Math.max(ts, (prev?.ts || 0) + 30e3), root: target.id, likes: [], echoes: [], batch: id }; if (re && prev) r.re = re; if (a.image) r.imagePrompt = a.image;
       st.notes.push(r); byId.set(r.id, r); log.notes.push(r.id); if (a.k) replyId.set(a.k, r.id);
       notice('reply', a.by, prev?.by === ME ? prev : target, r.ts);
+    } else if (a.do === 'quote') {
+      const q: Note = { id: nid(), by: a.by, text: a.text || '', ts, quote: target.id, likes: [], echoes: [], batch: id };
+      st.notes.push(q); byId.set(q.id, q); log.notes.push(q.id); notice('quote', a.by, target, ts);
     } else if (a.do === 'vote') { if (target.poll && !(a.by in target.poll.votes)) { target.poll.votes[a.by] = a.pick || 0; log.votes.push([target.id, a.by]); notice('vote', a.by, target, ts); } }
     else { const bag = a.do === 'like' ? target.likes : target.echoes; if (!bag.includes(a.by)) { bag.push(a.by); (a.do === 'like' ? log.likes : log.echoes).push([target.id, a.by]); notice(a.do, a.by, target, ts); } }
   });

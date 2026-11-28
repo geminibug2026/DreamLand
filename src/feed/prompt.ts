@@ -7,7 +7,7 @@ import { daysTogether } from '../lib/together';
 import { getLang } from '../i18n';
 import type { Char, Chat } from '../lib/types';
 import { ME, type ChatFeed, type FeedCfg, type FeedState, type Note } from './types';
-import { facingOf, personaFor } from './persona';
+import { personaFor, personaOfNote } from './persona';
 import { ago, carryItems, pairsFrom, quotaFor, sampleRecall, threadOf, visible, waiting, type Rnd, type Who } from './logic';
 import { FEED_IMAGE_RULE, FEED_PHOTO_RULE } from '../photos/prompt';
 
@@ -38,9 +38,10 @@ JSON shape:
          {"by":"<handle>","on":"<k or code>","do":"reply","text":"…","k":"r1","image":"…"},
          {"by":"<handle>","on":"<k or code>","do":"reply","text":"…","under":"<reply k or code>"},
          {"by":"<handle>","on":"<k or code>","do":"echo"},
+         {"by":"<handle>","on":"<k or code>","do":"quote","text":"…"},
          {"by":"<handle>","on":"<k or code>","do":"vote","pick":0}],
  "ties":[{"a":"<handle>","b":"<handle>"}]}
-"like" = a quiet mark of sympathy. "echo" = copying the note onto one's own corner so others see it. "vote" needs a note with a poll; "pick" is the option index from 0. "ties" = a member starts following another (rare). "poll" and "image" are optional. Output the JSON object only, no commentary, no code fence.`;
+"like" = a quiet mark of sympathy. "echo" = copying the note onto one's own corner so others see it. "quote" = pinning a new note of one's own that shows someone's note or reply underneath, with a comment on top (to tease, agree, argue, show it off or drag someone). "vote" needs a note with a poll; "pick" is the option index from 0. "ties" = a member starts following another (rare). "poll" and "image" are optional. Output the JSON object only, no commentary, no code fence.`;
 
 export const ANSWER_PROMPT = `You keep a small fictional bulletin board alive, where a handful of characters pin short notes for each other. The reader has just pinned or replied to something and is waiting. Decide which one or two members would actually respond, and write only their responses to that one note, each in that member's own board voice (terse members stay terse; a member who would not care stays silent).
 The voice is a tendency, not a template: answer this moment, not the member's usual line. Read what the member already wrote in this thread and change the shape — a different opener, length, rhythm and mood, a different laugh or curse or none at all. Do not repeat their last reply's pattern (same complaint, same insult, same sign-off). They can give in, dodge, change the subject, get flustered or turn it back on the reader, as the person would.
@@ -61,7 +62,12 @@ Output ONE JSON object and nothing else: {"profiles":[{"name":"<exactly as given
 export const POST_PROMPT = `{{char}} has an account on the Night Board, a small bulletin board where {{char}} and people they know pin short notes; {{user}} reads it. If, and only if, {{char}} would feel like pinning something right now, add one separate line: [post: the note text]. The note is written for the board, not addressed to {{user}}, in {{char}}'s board voice, at most 200 characters. Most replies have no such line; use it rarely.`;
 
 /** 게시판 지침: 「사진 곁들인 글」을 켜면 그림 줄만 휴대폰 사진 줄로 바꾼다 (꺼져 있으면 그대로) */
-export const boardPrompt = (c: FeedCfg) => c.photoPosts ? BOARD_PROMPT.replace(FEED_IMAGE_RULE, FEED_PHOTO_RULE) : BOARD_PROMPT;
+/** 캐릭터끼리 어울리기 (설정 mingle) */
+const MINGLE_ON = `- Members are friends, rivals and old acquaintances sharing one board, so they play with each other too: they reply to each other's notes and replies, answer back, quote each other ("do":"quote") to tease, agree, argue or show something off, and keep little threads going among themselves. With two or more members, every batch has at least one exchange between members (a reply to another member, a reply back, or a quote).`;
+const MINGLE_OFF = `- Members mostly keep to their own notes and to the reader; they only rarely answer each other.`;
+const ANSWER_MINGLE = `\nOther members may join this thread too: after someone answers the reader, another member can reply to that member's reply (give the first reply "k":"r1" and answer it with "under":"r1") or tease, back up or contradict them, and they can go back and forth for a line or two each. A member may also quote the reader's note or a reply ({"do":"quote","text":"…"}) as a new note of their own. Keep it short and in character.`;
+export const boardPrompt = (c: FeedCfg) => (c.photoPosts ? BOARD_PROMPT.replace(FEED_IMAGE_RULE, FEED_PHOTO_RULE) : BOARD_PROMPT).replace('- Old notes may be picked up again', (c.mingle !== false ? MINGLE_ON : MINGLE_OFF) + '\n- Old notes may be picked up again');
+export const answerPrompt = (c: FeedCfg) => c.mingle !== false ? ANSWER_PROMPT.replace('If the note has a poll,', ANSWER_MINGLE.trim() + ' If the note has a poll,') : ANSWER_PROMPT;
 const LANGS: Record<string, string> = { ko: 'Korean', en: 'English', 'zh-CN': 'Simplified Chinese', ja: 'Japanese' };
 const langLine = (c: FeedCfg) => `Write every note and reply in ${LANGS[c.lang] || c.lang || LANGS[getLang()] || 'the language the members use'} unless a member would clearly write in another language.`;
 
@@ -89,9 +95,10 @@ function boardLines(st: FeedState, roots: Note[], now: number, refs: Record<stri
   for (const n of roots) {
     const extra = [n.poll ? `{poll: ${n.poll.q || '(no question)'} | ${n.poll.opts.map((o, i) => `${i}) ${o} ×${Object.values(n.poll!.votes).filter(v => v === i).length}`).join(' | ')}}` : '', n.imagePrompt ? `{picture: ${one(n.imagePrompt, 90)}}` : n.image ? '{a picture is attached}' : '',
       n.likes.length ? `[marked by ${n.likes.map(short).join(', ')}]` : '', n.echoes.length ? `[echoed by ${n.echoes.map(short).join(', ')}]` : ''].filter(Boolean).join(' ');
-    out.push(`${code(n)} · ${nameOf(n.by)} · ${ago(n.ts, now)}: ${one(n.text, 260)}${extra ? ' ' + extra : ''}`);
+    const qn = n.quote ? st.notes.find(x => x.id === n.quote) : undefined, quoted = qn ? ` {quoting ${code(qn)} by ${short(qn.by)}: "${one(qn.text, 100)}"}` : '';
+    out.push(`${code(n)} · ${nameOf(n.by)} · ${ago(n.ts, now)}: ${one(n.text, 260)}${quoted}${extra ? ' ' + extra : ''}`);
     const th = threadOf(st.notes, n.id), shown = th.slice(-maxReplies); if (th.length > shown.length) out.push(`  … ${th.length - shown.length} earlier replies`);
-    for (const { n: r, depth } of shown) out.push(`${depth ? '    ' : '  '}↳ ${code(r)} · ${r.by === ME ? (personaFor(facingOf(r, st.notes))?.name || short(r.by)) : short(r.by)}${r.by === ME ? ' (the reader)' : ''} · ${ago(r.ts, now)}: ${one(r.text, 200)}${r.imagePrompt ? ` {picture: ${one(r.imagePrompt, 90)}}` : r.image ? ' {a picture is attached}' : ''}`);
+    for (const { n: r, depth } of shown) out.push(`${depth ? '    ' : '  '}↳ ${code(r)} · ${r.by === ME ? (personaOfNote(r, st.notes)?.name || short(r.by)) : short(r.by)}${r.by === ME ? ' (the reader)' : ''} · ${ago(r.ts, now)}: ${one(r.text, 200)}${r.imagePrompt ? ` {picture: ${one(r.imagePrompt, 90)}}` : r.image ? ' {a picture is attached}' : ''}`);
   }
   return out;
 }
@@ -153,7 +160,7 @@ export async function buildBoard(st: FeedState, cfg: FeedCfg, { now = Date.now()
     const q = mem.filter(m => quota[m.char.id]).map(m => `${m.char.name} ×${quota[m.char.id]}`);
     parts.push(sec('Quota for this batch', [`New notes: ${q.join(', ') || 'none'}. Nobody else pins a new note. Replies, marks, echoes and votes may come from any member.`, `It is now ${new Date(now).toLocaleString('en-GB', { weekday: 'long', hour: '2-digit', minute: '2-digit' })}.`, langLine(cfg), ...(cfg.guide.trim() ? [cfg.guide.trim()] : [])]));
   }
-  return { system: only ? ANSWER_PROMPT : boardPrompt(cfg), user: parts.filter(Boolean).join('\n\n'), refs, who: whoList(st), me: [me.handle, me.name, ME, 'reader', 'the reader', 'user'], quota };
+  return { system: only ? answerPrompt(cfg) : boardPrompt(cfg), user: parts.filter(Boolean).join('\n\n'), refs, who: whoList(st), me: [me.handle, me.name, ME, 'reader', 'the reader', 'user'], quota };
 }
 
 /** 새 계정들의 손잡이 · 소개 · 말투를 한 번에 짓게 할 글 */

@@ -45,7 +45,7 @@ export async function load() {
 export const account = (id: string): Account | undefined => F.accounts.find(a => a.id === id);
 /** 그 캐릭터에게 보일 내 페르소나를 고른다 ('' = 자동) */
 export function setPersonaFor(charId: string, personaId: string) { const c = cfg(), m = { ...(c.personaFor || {}) }; if (personaId) m[charId] = personaId; else delete m[charId]; S.set({ feed: { ...c, personaFor: m } }); changed(); }
-export { personaFor, facingOf } from './persona';
+export { personaFor, facingOf, personaOfNote } from './persona';
 /** 내 계정 (없으면 페르소나 이름으로 만든다) */
 export function myAccount(): Account {
   let a = account(ME); if (!a) { a = { id: ME, handle: uniqueHandle(S.persona(null)?.name || 'me', F.accounts.map(x => x.handle)), bio: '', voice: '', on: true, at: Date.now() }; F.accounts.push(a); }
@@ -103,7 +103,7 @@ export async function answerNow(noteId: string): Promise<number> {
   run.answering = noteId; changed();
   try {
     const now = Date.now(), id = nid('b'), built = await buildBoard(F, cfg(), { now, only: note });
-    const raw = await quickCall(built.system, built.user, { maxTokens: 500, conn: helper(), lowThink: true });
+    const raw = await quickCall(built.system, built.user, { maxTokens: cfg().mingle !== false ? 900 : 500, conn: helper(), lowThink: true });   // 캐릭터끼리 주고받으면 조금 길어진다
     const got = repairJson(raw), clean = got ? cleanBatch({ acts: (got as { acts?: unknown }).acts }, { who: built.who, me: built.me, refs: built.refs, notes: F.notes, maxText: 400 }) : null;
     if (!clean?.acts.length) { toast(t('feed.answer.none')); return 0; }
     // 작은 호출은 "방금 묶음"을 덮지 않는다 — 되돌리기는 새로 고침 것만
@@ -115,11 +115,12 @@ export async function answerNow(noteId: string): Promise<number> {
 export async function undo() { const n = F.last?.notes.length || 0; await dropImgs(undoBatch(F)); save(); return n; }
 
 // ── 내가 하는 일 ──
-export async function post(text: string, { poll, image, more, root, re }: { poll?: { q: string; opts: string[] }; image?: string; /** 둘째 그림부터 (넷까지) */ more?: string[]; root?: string; re?: string } = {}): Promise<Note | null> {
+export async function post(text: string, { poll, image, more, root, re, persona }: { poll?: { q: string; opts: string[] }; image?: string; /** 둘째 그림부터 (넷까지) */ more?: string[]; root?: string; re?: string; /** 이 글에 쓸 페르소나 (없으면 자동) */ persona?: string } = {}): Promise<Note | null> {
   const body = text.trim().slice(0, cfg().limit); if (!body && !image && !poll) return null;
   myAccount();
   const n: Note = { id: nid(root ? 'r' : 'n'), by: ME, text: body, ts: Date.now(), likes: [], echoes: [] };
   if (root) { n.root = root; if (re) n.re = re; }
+  if (persona && S.get('personas', persona)) n.persona = persona;
   if (poll && !root) n.poll = { q: poll.q.trim().slice(0, 120), opts: poll.opts.map(o => o.trim().slice(0, 40)).filter(Boolean).slice(0, 4), votes: {} };
   if (n.poll && n.poll.opts.length < 2) delete n.poll;
   if (image) n.image = await putImg(await shrinkImage(image, 1280, 'image/webp', 0.88).catch(() => image) || image, 'note');

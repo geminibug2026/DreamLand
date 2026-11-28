@@ -12,7 +12,7 @@ import { Photos, type PhotoItem } from '../../photos/api';
 import { feedPhoto } from '../../photos/prompt';
 import { ME, type Note } from '../../feed/types';
 import { threadOf, unseen, visible } from '../../feed/logic';
-import { F, account, answerNow, cfg, echo, editText, facingOf, imgOf, like, markSeen, members, myAccount, personaFor, post, redraw, refresh, remove, run, setPersonaFor } from '../../feed/store';
+import { F, account, answerNow, cfg, echo, editText, imgOf, like, markSeen, members, myAccount, personaFor, personaOfNote, post, redraw, refresh, remove, run, setPersonaFor } from '../../feed/store';
 import { linkedPersona, pickedPersona } from '../../feed/persona';
 import { openMembers, openSettings, pickMembers } from '../../feed/ui';
 import { readDataURL, shrinkImage } from '../../lib/core';
@@ -27,7 +27,7 @@ const PAGE = 30;
 function who(id: string, n?: Note) {
   const a = account(id);
   // 내 글은 그 글이 향한 캐릭터에게 보이는 페르소나로 (내 새 글은 지금 페르소나)
-  if (id === ME) { const p = personaFor(n ? facingOf(n, F.notes) : null); return { o: p || null, name: p?.name || t('feed.me'), handle: a?.handle || 'me', bio: a?.bio || '' }; }
+  if (id === ME) { const p = n ? personaOfNote(n, F.notes) : personaFor(null); return { o: p || null, name: p?.name || t('feed.me'), handle: a?.handle || 'me', bio: a?.bio || '' }; }
   const c = S.get('chars', id); return { o: c || null, name: c?.name || t('feed.gone'), handle: a?.handle || '—', bio: a?.bio || String(c?.description || '').replace(/\s+/g, ' ').trim().slice(0, 80) };
 }
 const picsOf = (n: Note) => [n.image, ...(n.images || [])].map(id => imgOf(id)).filter(Boolean);
@@ -44,6 +44,15 @@ function Pics({ n, big }: { n: Note; big?: boolean }) {
   const p = feedPhoto(n.imagePrompt), busy = run.drawing.has(n.id);
   return <button type="button" className="pn-post-photo" disabled={busy} onClick={stop(() => void Photos.generate(['f|' + n.id]))} aria-label={t('phone.ph.makeOne') + ': ' + p.alt}>
     <Fill name="camera" size={18} /><span>{p.alt}</span><small>{busy ? t('photos.state.drawing') : t('phone.ph.makeOne')}</small></button>;
+}
+/** 인용한 글: 그 글을 작게 (누르면 그 글로) */
+function Quoted({ id }: { id: string }) {
+  const P = usePhone(), q = F.notes.find(x => x.id === id);
+  if (!q || !visible(q)) return <p className="pn-quote gone">{t('phone.sns.quoteGone')}</p>;
+  const w = who(q.by, q);
+  return <button type="button" className="pn-quote" onClick={stop(() => P.open('board', { k: 'note', id: q.root || q.id } as Screen))}>
+    <span className="pn-quote-who"><Face o={w.o} size={18} /><b>{w.name}</b><small>@{w.handle}</small></span>
+    {q.text ? <span className="pn-quote-text">{q.text}</span> : null}{!q.text && (q.image || q.imagePrompt) ? <span className="pn-quote-text">{t('feed.picture')}</span> : null}</button>;
 }
 /** 답글 · 재게시 · 마음 (누른 것은 하늘색으로 찬다) */
 function Acts({ n, onReply }: { n: Note; onReply?: () => void }) {
@@ -62,6 +71,7 @@ function Post({ n }: { n: Note }) {
     <div className="pn-post-body">
       <div className="pn-post-who"><b>{w.name}</b><span>@{w.handle} · {agoText(n.ts)}</span></div>
       {n.text ? <p className="pn-post-text">{n.text}</p> : null}
+      {n.quote ? <Quoted id={n.quote} /> : null}
       <Pics n={n} />
       <Acts n={n} onReply={open} />
     </div>
@@ -119,9 +129,13 @@ const choosePic = (el: Element, fromGallery: () => void, got: (p: Pic) => void) 
 ]);
 /** 내 답글 칸 (사진 붙이기 + 한 줄 입력 + 보내기) */
 function ReplyBox({ root, re, name }: { root: string; re?: string; name: string }) {
-  const [v, setV] = useState(''), [busy, setBusy] = useState(false), [pic, setPic] = useState<Pic | null>(null), [picking, setPicking] = useState(false);
-  const send = async () => { const s = v.trim(); if ((!s && !pic) || busy) return; setBusy(true); try { await post(s, { root, re, image: pic?.data }); setV(''); setPic(null); } finally { setBusy(false); } };
+  const [v, setV] = useState(''), [busy, setBusy] = useState(false), [pic, setPic] = useState<Pic | null>(null), [picking, setPicking] = useState(false), [as, setAs] = useState('');
+  const send = async () => { const s = v.trim(); if ((!s && !pic) || busy) return; setBusy(true); try { await post(s, { root, re, image: pic?.data, persona: as || undefined }); setV(''); setPic(null); } finally { setBusy(false); } };
+  // 자동이면 답하는 상대(→ 글타래 주인) 캐릭터에게 보이는 페르소나
+  const auto = personaOfNote({ id: '', by: ME, text: '', ts: 0, likes: [], echoes: [], root, ...(re ? { re } : {}) }, F.notes);
   return <>
+    {S.personas.length > 1 ? <label className="pn-sns-as"><small>{t('phone.sns.replyAs')}</small>
+      <select value={as} onChange={e => setAs(e.target.value)}><option value="">{t('phone.sns.personaAuto', { name: auto?.name || t('feed.me') })}</option>{S.personas.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label> : null}
     {pic ? <div className="pn-sns-pic sm"><img src={pic.src} alt="" /><button type="button" className="pn-rb" aria-label={t('feed.write.dropImage')} title={t('feed.write.dropImage')} onClick={() => setPic(null)}><Glyph name="x" size={16} /></button></div> : null}
     <form className="pn-sns-reply" onSubmit={e => { e.preventDefault(); void send(); }}>
       <button type="button" className="pn-sns-addpic" aria-label={t('phone.sns.addPhoto')} title={t('phone.sns.addPhoto')} onClick={e => choosePic(e.currentTarget, () => setPicking(true), setPic)}><Glyph name="image" size={20} /></button>
@@ -145,6 +159,7 @@ function Detail({ id }: { id: string }) {
     <article className="pn-card pn-post-big">
       <button type="button" className="pn-post-head" onClick={() => P.open('board', { k: 'profile', id: n.by } as Screen)}><Face o={w.o} size={44} /><span><b>{w.name}</b><small>@{w.handle}</small></span></button>
       {n.text ? <p className="pn-post-text big">{n.text}</p> : null}
+      {n.quote ? <Quoted id={n.quote} /> : null}
       <Pics n={n} big />
       <small className="pn-post-time">{new Date(n.ts).toLocaleString(undefined, { month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</small>
       <Acts n={n} onReply={() => reTo(n)} />
