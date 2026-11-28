@@ -129,6 +129,8 @@ export function echo(id: string) { const n = F.notes.find(x => x.id === id); if 
 export function vote(id: string, pick: number) { const n = F.notes.find(x => x.id === id); if (n?.poll && pick >= 0 && pick < n.poll.opts.length) { if (n.poll.votes[ME] === pick) delete n.poll.votes[ME]; else n.poll.votes[ME] = pick; save(); } }
 export function hide(id: string, on = true) { const n = F.notes.find(x => x.id === id); if (n) { if (on) n.hidden = true; else delete n.hidden; save(); } }
 export async function remove(id: string) { await dropImgs(removeNote(F, id)); save(); }
+/** 글 · 답글의 글만 고친다 (사진 · 반응은 그대로). 사진이 있으면 글을 비워도 된다 */
+export function editText(id: string, text: string) { const n = F.notes.find(x => x.id === id), v = text.trim(); if (!n || v === n.text || (!v && !n.image && !n.imagePrompt)) return; n.text = v; save(); }
 export function follow(id: string) { flip((F.follows[ME] ||= []), id); save(); }
 export function markSeen() { if (unseen(F)) { F.seenAt = Date.now(); save(); } }
 export async function wipe() { await dropImgs([...imgs.keys()]); const keep = F.accounts; F = { ...emptyState(), accounts: keep }; save(); }

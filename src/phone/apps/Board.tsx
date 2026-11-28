@@ -6,13 +6,13 @@ import { Art, useEvents } from '../../kit';
 import { S } from '../../lib/core';
 import { Illust } from '../../lib/illust';
 import { go } from '../../lib/router';
-import { toast } from '../../ui';
+import { confirmBox, promptBox, toast } from '../../ui';
 import { t, tn } from '../../i18n';
 import { Photos, type PhotoItem } from '../../photos/api';
 import { feedPhoto } from '../../photos/prompt';
 import { ME, type Note } from '../../feed/types';
 import { threadOf, unseen, visible } from '../../feed/logic';
-import { F, account, answerNow, cfg, echo, imgOf, like, markSeen, members, myAccount, post, refresh, run } from '../../feed/store';
+import { F, account, answerNow, cfg, echo, editText, imgOf, like, markSeen, members, myAccount, post, refresh, remove, run } from '../../feed/store';
 import { Emb, Fill, Glyph } from '../art';
 import { AppHead, Empty, Face, IBtn, Seg, agoText, usePhone } from '../ui';
 import { talkChats } from '../data';
@@ -103,6 +103,9 @@ function Detail({ id }: { id: string }) {
   const w = who(n.by), thread = threadOf(F.notes, n.id), mineIn = [n, ...thread.map(x => x.n)].filter(x => x.by === ME).pop();
   const waiting = run.answering === mineIn?.id;
   const reTo = (x: Note) => { setTo(x.id); requestAnimationFrame(() => box.current?.querySelector('input')?.focus()); };
+  // 답글 고치기 · 지우기 (지우면 그 답글에 달린 답글도 함께)
+  const fix = async (x: Note) => { const v = await promptBox(t('feed.act.editReply'), x.text, { area: true }); if (v != null) editText(x.id, v); };
+  const drop = async (x: Note) => { if (await confirmBox(t('feed.act.deleteReplyAsk'), t('common.delete'), true)) { if (to === x.id) setTo(undefined); await remove(x.id); } };
   return <div className="pn-appbody">
     <AppHead title={t('phone.sns.post')} />
     <article className="pn-card pn-post-big">
@@ -115,7 +118,7 @@ function Detail({ id }: { id: string }) {
     {thread.length ? <ul className="pn-thread">{thread.map(({ n: r, depth }) => { const rw = who(r.by); return <li key={r.id} className={depth ? 'deep' : undefined}>
       <button type="button" className="pn-post-face" aria-label={rw.name} onClick={() => P.open('board', { k: 'profile', id: r.by } as Screen)}><Face o={rw.o} size={32} /></button>
       <div className="pn-post-body"><div className="pn-post-who"><b>{rw.name}</b><span>{agoText(r.ts)}</span></div>{r.text ? <p className="pn-post-text">{r.text}</p> : null}<Pics n={r} />
-        <div className="pn-thread-do"><button type="button" onClick={() => reTo(r)}>{t('feed.act.reply')}</button><button type="button" className={r.likes.includes(ME) ? 'on' : undefined} aria-pressed={r.likes.includes(ME)} onClick={() => like(r.id)}>{t('feed.act.like')}{r.likes.length ? ' ' + r.likes.length : ''}</button></div></div></li>; })}</ul>
+        <div className="pn-thread-do"><button type="button" onClick={() => reTo(r)}>{t('feed.act.reply')}</button><button type="button" className={r.likes.includes(ME) ? 'on' : undefined} aria-pressed={r.likes.includes(ME)} onClick={() => like(r.id)}>{t('feed.act.like')}{r.likes.length ? ' ' + r.likes.length : ''}</button><button type="button" className="pn-thread-own" onClick={() => void fix(r)}>{t('feed.act.edit')}</button><button type="button" onClick={() => void drop(r)}>{t('common.delete')}</button></div></div></li>; })}</ul>
       : <p className="pn-hint pn-center">{t('phone.sns.noReplies')}</p>}
     {mineIn ? <button type="button" className={'pn-sns-refresh' + (waiting ? ' busy' : '')} disabled={run.busy || !!run.answering} onClick={() => void answerNow(mineIn.id)}>
       <i className="pn-song-ic"><Glyph name={waiting ? 'clock' : 'spark'} size={18} /></i><span><b>{waiting ? t('feed.act.answering') : t('phone.sns.getReplies')}</b><small>{t('feed.cost.one')}</small></span></button> : null}

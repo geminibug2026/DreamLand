@@ -1,0 +1,1 @@
+export{n as openInsights}from"./insights-33mCY9-8.js";

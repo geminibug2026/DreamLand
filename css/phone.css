@@ -531,6 +531,7 @@ p.pn-wv, .pn-wv.dim { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-o
 .pn-thread .pn-post-text { font-size: 13.5px; line-height: 1.5; }
 .pn-thread-do { display: flex; gap: 14px; margin: 2px 0 2px; }
 .pn-thread-do button { height: 28px; font: 400 11.5px/1 var(--font); color: var(--pn-dim); } .pn-thread-do button.on { color: var(--pn-accent-ink); }
+.pn-thread-do .pn-thread-own { margin-left: auto; }
 .pn-sns-reply { display: flex; align-items: center; gap: 10px; }
 .pn-sns-reply input { flex: 1; min-width: 0; height: 46px; border: 0; border-radius: 23px; padding: 0 18px; background: var(--pn-well); box-shadow: var(--pn-press); color: var(--pn-ink); font: 14px var(--font); outline: none; }
 .pn-center { text-align: center; }
