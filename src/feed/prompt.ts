@@ -17,7 +17,8 @@ export const BOARD_PROMPT = `You keep a small fictional bulletin board alive. It
 You will receive the members, what each is doing today, what is already on the board, and a quota. Write the next batch of activity as ONE JSON object and nothing else.
 
 How members write here:
-- Each member writes the way THEY would write on a board like this, which may differ from how they speak aloud. A terse or guarded member pins little and keeps it short, sometimes a single dry line. A chatty one rambles, jokes, overshares. Follow each member's "board voice" note.
+- Each member writes the way THEY would write on a board like this, which may differ from how they speak aloud. A terse or guarded member pins little and keeps it short, sometimes a single dry line. A chatty one rambles, jokes, overshares. The "board voice" note is a tendency, not a template: the member stays recognisable, but a real person never writes the same way twice.
+- Keep each member alive from line to line. Their mood moves with the moment (tired, amused, curious, sulking, soft, distracted, pleased with themselves), and their length, rhythm, openings, punctuation and how hard they swear or tease move with it. Look at what the member already wrote above and do not reuse its opener, catchphrase, insult, laugh or sign-off ("ㅋ", "lol", an emoji, a favourite curse) in the next one. A rough member can still be dry, flustered or quietly kind for a line; a polite one can snap.
 - Notes come out of their day: something from today's schedule, a small annoyance, a thought at 2 a.m., something they will not say to anyone's face. Not every note is about the user, and most are not.
 - Members answer each other as people who know each other. They may tease, disagree, ignore, or be kind, as fits them. Close pairs answer each other more often.
 - When the reader has pinned or replied to something that is still waiting, the members who would care respond to it in their own manner. Do not have everyone pile on.
@@ -42,6 +43,7 @@ JSON shape:
 "like" = a quiet mark of sympathy. "echo" = copying the note onto one's own corner so others see it. "vote" needs a note with a poll; "pick" is the option index from 0. "ties" = a member starts following another (rare). "poll" and "image" are optional. Output the JSON object only, no commentary, no code fence.`;
 
 export const ANSWER_PROMPT = `You keep a small fictional bulletin board alive, where a handful of characters pin short notes for each other. The reader has just pinned or replied to something and is waiting. Decide which one or two members would actually respond, and write only their responses to that one note, each in that member's own board voice (terse members stay terse; a member who would not care stays silent).
+The voice is a tendency, not a template: answer this moment, not the member's usual line. Read what the member already wrote in this thread and change the shape — a different opener, length, rhythm and mood, a different laugh or curse or none at all. Do not repeat their last reply's pattern (same complaint, same insult, same sign-off). They can give in, dodge, change the subject, get flustered or turn it back on the reader, as the person would.
 
 Never write anything as the reader. Only listed members act. Output ONE JSON object and nothing else:
 {"acts":[{"by":"<handle>","on":"<code>","do":"reply","text":"…","image":"…"},{"by":"<handle>","on":"<code>","do":"like"}]}
@@ -123,7 +125,7 @@ export async function buildBoard(st: FeedState, cfg: FeedCfg, { now = Date.now()
   for (const m of mem) {
     const c = m.char, sched = scheduleOf(c as unknown as Parameters<typeof scheduleOf>[0]), days = daysTogether(c.id, now), lines = [`- ${c.name} (@${m.handle})${m.bio ? ` — "${one(m.bio, 80)}"` : ''} [${talkWord(Number.isFinite(+c.talk) ? +c.talk : 0.5)}]`];
     const desc = one([c.description, c.personality].filter(Boolean).join(' '), only ? 320 : 520); if (desc) lines.push(`  who they are: ${desc}`);
-    if (m.voice) lines.push(`  board voice: ${one(m.voice, 200)}`);
+    if (m.voice) lines.push(`  board voice (a loose tendency, vary it): ${one(m.voice, 200)}`);
     if (sched && !only) { const tl = todayLine(sched, new Date(now)); if (tl) lines.push(`  today: ${one(tl, 320)}`); }
     if (days) lines.push(`  has known the reader for ${days} day${days > 1 ? 's' : ''}`);
     // 이 캐릭터에게 보이는 내 페르소나가 기본과 다르면: 그 캐릭터는 나를 그 사람으로 안다

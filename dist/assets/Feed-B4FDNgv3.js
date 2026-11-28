@@ -1,0 +1,1 @@
+import{t as e}from"./ui-COKnk71M.js";var t={name:`feed`,Component:e};export{t as page};
