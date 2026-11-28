@@ -12065,6 +12065,8 @@
   "phone.sns.noPostsYet": "还没有发过帖子",
   "phone.sns.posted": "已发布",
   "phone.sns.fromGallery": "从照片中选择",
+  "phone.sns.editMembers": "修改参与者简介 · 语气",
+  "phone.sns.manage": "管理留言板",
   "phone.sns.redraw": "重新生成照片",
   "phone.sns.fromDevice": "从我的照片",
   "phone.sns.addPhoto": "附加照片",

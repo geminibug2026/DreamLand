@@ -1,5 +1,5 @@
 // 휴대폰 안에서 함께 쓰는 작은 부품: 휴대폰 조작 고리(PhoneApi) · 앱 머리 · 알약 스위치 · 큰 밀대 · 나눔 단추 · 빈 화면 · 얼굴
-import { createContext, useContext, useRef, useState, type ReactNode, type PointerEvent as RPE } from 'react';
+import { createContext, useContext, useRef, useState, type MouseEvent as RME, type ReactNode, type PointerEvent as RPE } from 'react';
 import { Avatar } from '../kit';
 import type { Char, Chat } from '../lib/types';
 import { ago } from '../chat/actions';
@@ -27,6 +27,8 @@ export interface PhoneApi {
   read(n: Notif): void; mute(chatId: string): void;
   setCc(open: boolean): void;
   edit: boolean; setEdit(on: boolean): void;
+  /** 휴대폰 밖, 앱의 게시판 화면으로 열렸다 (src/pages/Feed.tsx) */
+  inPage?: boolean;
 }
 export const PhoneCtx = createContext<PhoneApi | null>(null);
 export const usePhone = () => useContext(PhoneCtx) as PhoneApi;
@@ -48,7 +50,7 @@ export function AppHead({ title, big, back = true, right }: { title: string; big
     <h2>{title}</h2><div className="pn-ahead-r">{right}</div>
   </header>;
 }
-export function IBtn({ ic, label, onClick, cls = '', on }: { ic: string; label: string; onClick: () => void; cls?: string; on?: boolean }) {
+export function IBtn({ ic, label, onClick, cls = '', on }: { ic: string; label: string; onClick: (e: RME<HTMLButtonElement>) => void; cls?: string; on?: boolean }) {
   return <button type="button" className={'pn-ib ' + cls} aria-label={label} title={label} aria-pressed={on} onClick={onClick}><Glyph name={ic} /></button>;
 }
 /** 조절 센터의 알약 스위치 */

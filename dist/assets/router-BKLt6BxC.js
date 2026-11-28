@@ -1,0 +1,1 @@
+export{n as go,r as pageNames}from"./router-BC4g1r1P.js";

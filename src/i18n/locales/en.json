@@ -12175,6 +12175,8 @@
   "phone.sns.noPostsYet": "No posts yet",
   "phone.sns.posted": "Posted",
   "phone.sns.fromGallery": "Choose from Photos",
+  "phone.sns.editMembers": "Edit members' bios and voices",
+  "phone.sns.manage": "Manage board",
   "phone.sns.redraw": "Redraw photo",
   "phone.sns.fromDevice": "From my photos",
   "phone.sns.addPhoto": "Attach a photo",

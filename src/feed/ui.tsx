@@ -176,7 +176,7 @@ function Side() {
 
 // ── 창: 참여자 ──
 export function openMembers() { openModal({ title: t('feed.members.title'), wide: true, spec: 'div.fd-mem' }, () => <Members />); }
-function pickMembers() {
+export function pickMembers() {
   charPicker({ title: t('feed.members.pick'), selected: F.accounts.filter(a => a.id !== ME && a.on).map(a => a.id), multi: true, note: c => account(c.id) ? '@' + account(c.id)!.handle : '', onDone: async ids => {
     const made = setMembers(ids); if (!made.length) return;
     if (await confirmBox(t('feed.members.askProfiles', { n: made.length }), t('feed.members.makeProfiles'))) void writeProfiles(made);
@@ -209,7 +209,7 @@ function Members() {
 }
 
 // ── 창: 설정 ──
-function openSettings() {
+export function openSettings() {
   const c = cfg(), apply = () => S.set({});
   openModal({ title: t('feed.set.title'), wide: true, spec: 'div.col' }, close => <>
     <Form obj={c} onChange={apply} defs={[

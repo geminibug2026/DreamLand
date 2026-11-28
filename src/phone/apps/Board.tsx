@@ -14,6 +14,7 @@ import { ME, type Note } from '../../feed/types';
 import { threadOf, unseen, visible } from '../../feed/logic';
 import { F, account, answerNow, cfg, echo, editText, facingOf, imgOf, like, markSeen, members, myAccount, personaFor, post, redraw, refresh, remove, run, setPersonaFor } from '../../feed/store';
 import { linkedPersona, pickedPersona } from '../../feed/persona';
+import { openMembers, openSettings, pickMembers } from '../../feed/ui';
 import { readDataURL, shrinkImage } from '../../lib/core';
 import { Emb, Fill, Glyph } from '../art';
 import { AppHead, Empty, Face, IBtn, Seg, agoText, usePhone } from '../ui';
@@ -77,8 +78,13 @@ function Home() {
     <AppHead title={t('phone.app.board')} big right={<>
       <button type="button" className="pn-ib pn-bell" aria-label={news ? tn('phone.sns.noticesN', news) : t('feed.notices.title')} title={t('feed.notices.title')} onClick={() => P.open('board', { k: 'notices' } as Screen)}><Glyph name="bell" />{news ? <i className="pn-new" aria-hidden="true" /> : null}</button>
       {mem ? <IBtn ic="edit" label={t('phone.sns.write')} onClick={() => P.open('board', { k: 'compose' } as Screen)} /> : null}
-      <IBtn ic="open" label={t('phone.sns.openBoard')} onClick={() => P.leave(() => go('feed'))} /></>} />
-    {!mem ? <Empty art={<Emb kind="book" className="pn-empty-art" />} title={t('phone.sns.noMembers')} text={t('phone.sns.noMembersHint')}><button type="button" className="pn-btn" onClick={() => P.leave(() => go('feed'))}>{t('phone.sns.pickMembers')}</button></Empty> : <>
+      <IBtn ic="sliders" label={t('phone.sns.manage')} onClick={e => menu(e.currentTarget, [
+        { label: t('feed.members.pick'), ic: 'users', onclick: () => void pickMembers() },
+        { label: t('phone.sns.editMembers'), ic: 'user', onclick: () => openMembers() },
+        { label: t('feed.set.title'), ic: 'sliders', onclick: () => openSettings() },
+        ...(P.inPage ? [] : [{ label: t('phone.sns.openBoard'), ic: 'link', onclick: () => P.leave(() => go('feed')) }]),
+      ])} /></>} />
+    {!mem ? <Empty art={<Emb kind="book" className="pn-empty-art" />} title={t('phone.sns.noMembers')} text={t('phone.sns.noMembersHint')}><button type="button" className="pn-btn" onClick={() => void pickMembers()}>{t('phone.sns.pickMembers')}</button></Empty> : <>
       <Seg label={t('phone.app.board')} value={tab} onChange={k => { setTab(k); setShown(PAGE); }} opts={[['time', t('phone.sns.timeline')], ['photo', t('phone.sns.photos')]] as const} />
       <button type="button" className={'pn-sns-refresh' + (run.busy ? ' busy' : '')} disabled={run.busy} onClick={() => void doRefresh()}>
         <i className="pn-song-ic"><Glyph name={run.busy ? 'clock' : 'spark'} size={18} /></i><span><b>{run.busy ? t('feed.refresh.busy') : t('phone.sns.refresh')}</b><small>{t('feed.cost.one')}</small></span></button>
