@@ -1,6 +1,6 @@
 // 게임 화면의 배경 그림과 음악: 함께 들어 있는 것 + 사용자가 올린 것.
 // 올린 것은 이 기기의 저장소(assets, owner: 'game')에 두고, 그 장면 · 분위기에 올린 것이 있으면 그것만 쓴다
-import { DB, readDataURL, shrinkImage, uid, now } from '../lib/core';
+import { DB, on, readDataURL, shrinkImage, uid, now } from '../lib/core';
 import type { Track } from './sfx';
 import { library } from './state';
 
@@ -17,7 +17,7 @@ let mine: Media[] | null = null, loading: Promise<Media[]> | null = null;
 export const myMedia = () => mine || [];
 export function loadMedia(): Promise<Media[]> {
   if (mine) return Promise.resolve(mine);
-  return loading ||= DB.byOwner('game').then(a => { mine = (a as unknown as Media[]).filter(x => x.kind === 'gamebg' || x.kind === 'gamebgm').sort((x, y) => x.ts - y.ts); syncLibrary(); return mine; }).catch(() => (mine = []));
+  return loading ||= DB.byOwner('game', { wait: false }).then(a => { mine = (a as unknown as Media[]).filter(x => x.kind === 'gamebg' || x.kind === 'gamebgm').sort((x, y) => x.ts - y.ts); syncLibrary(); return mine; }).catch(() => (mine = []));
 }
 const hash = (s: string) => { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
 /** 그 장면에 깔 그림의 주소. seed(장소 이름)가 같으면 늘 같은 그림 */
@@ -43,3 +43,6 @@ export async function addMedia(kind: Media['kind'], label: string, file: File): 
 }
 export async function removeMedia(id: string) { await DB.del('assets', id); if (mine) mine = mine.filter(m => m.id !== id); syncLibrary(); }
 const syncLibrary = () => { library.tracks = [...new Set(myMedia().filter(m => m.kind === 'gamebgm').map(m => m.name.trim()).filter(Boolean))]; };
+
+// 빈 브라우저로 켠 뒤 그림을 뒤에서 다 가져왔으면 다시 읽는다 (그동안은 기다리지 않고 있는 것만 보였다)
+on('data:hydrated', () => { mine = null; loading = null; });

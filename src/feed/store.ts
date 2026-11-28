@@ -1,6 +1,6 @@
 // 밤의 게시판: 저장과 움직임 — 게시판 자료(kv 의 'feed' 한 줄) · 그림(assets, owner 'feed') · 새로 고침(호출 1번) · 내 글과 반응 · 대화에서 온 글
 // 자료는 kv 한 줄이라 백업 · 자료 폴더에 저절로 들어간다. 글이 500개를 넘으면 오래된 것부터 덜어 낸다.
-import { DB, S, debounce, emit, shrinkImage, uid } from '../lib/core';
+import { DB, S, debounce, emit, on, shrinkImage, uid } from '../lib/core';
 import { quickCall } from '../lib/engine';
 import type { IChat } from '../lib/illust';
 import { canDraw as canDrawPhoto, failed, queueLoose, tracked } from '../photos/queue';
@@ -35,7 +35,7 @@ export async function load() {
   const row = await DB.get('kv', 'feed') as Partial<FeedState> | undefined;
   F = { ...emptyState(), ...(row || {}), id: 'feed' } as FeedState;
   F.notes = (F.notes || []).filter(n => n && n.id && typeof n.text === 'string').map(n => ({ ...n, likes: n.likes || [], echoes: n.echoes || [] }));
-  imgs.clear(); for (const a of await DB.byOwner(OWNER)) imgs.set(a.id, a.data);
+  imgs.clear(); for (const a of await DB.byOwner(OWNER, { wait: false })) imgs.set(a.id, a.data);
   // 주인 없는 그림은 치운다 (글이 정리되며 남은 것)
   const used = new Set(F.notes.flatMap(n => [n.image, ...(n.images || [])]).filter(Boolean)); void dropImgs([...imgs.keys()].filter(id => !used.has(id)));
   run.loaded = true; changed();
@@ -194,3 +194,6 @@ export function autoTick() {
   F.auto.count++; F.auto.at = Date.now(); save(); void refresh({ auto: true });
 }
 export { meOf, members };
+
+// 빈 브라우저로 켠 뒤 그림을 뒤에서 다 가져왔으면 다시 읽는다 (그동안은 기다리지 않고 있는 것만 보였다)
+on('data:hydrated', () => { if (!run.loaded) return; void DB.byOwner(OWNER, { wait: false }).then(list => { for (const a of list) imgs.set(a.id, a.data); changed(); }); });

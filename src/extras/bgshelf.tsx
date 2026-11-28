@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Btn, Icon } from '../kit';
 import { confirmBox, menu, openModal, promptBox, toast, type ModalHandle } from '../ui';
-import { DB, S, now, pickFiles, readDataURL, shrinkImage, uid } from '../lib/core';
+import { DB, S, now, on, pickFiles, readDataURL, shrinkImage, uid } from '../lib/core';
 import { I } from '../lib/icons';
 import type { Chat, Msg } from '../lib/types';
 import { bump, cur } from '../chat/store';
@@ -20,7 +20,7 @@ const norm = (s: string) => s.toLowerCase().normalize('NFKC').replace(/[\s_\-]+/
 let mine: BgRec[] | null = null;
 
 export const BgShelf = {
-  async load() { return mine ||= ((await DB.byOwner('bg').catch(() => [])) as unknown as BgRec[]).sort((a, b) => b.ts - a.ts); },
+  async load() { return mine ||= ((await DB.byOwner('bg', { wait: false }).catch(() => [])) as unknown as BgRec[]).sort((a, b) => b.ts - a.ts); },
   drop() { mine = null; },
   mine: () => mine || [],
   builtin,
@@ -133,3 +133,6 @@ export function openBgShelf(chat: Chat) {
   const m: ModalHandle = openModal({ title: t('extras.bg.title'), wide: true, body: <Shelf chat={chat} close={() => m.close()} />, actions: [{ label: t('common.close') }] });
   m.el.classList.add('xt-bg-modal');
 }
+
+// 빈 브라우저로 켠 뒤 그림을 뒤에서 다 가져왔으면 다시 읽는다 (그동안은 기다리지 않고 있는 것만 보였다)
+on('data:hydrated', () => { mine = null; });

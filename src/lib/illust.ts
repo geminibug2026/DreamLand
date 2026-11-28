@@ -22,7 +22,7 @@ interface SApi {
   persona(chat?: IChat | null): { id?: string; name?: string; visual?: Visual } | undefined; helperConn(task: string, chat?: IChat | null): Conn | undefined;
   connFor(chat?: IChat | null): Conn | undefined; conn(): Conn | undefined; preset(): { params: Bag };
 }
-interface DbApi { byOwner(owner: string): Promise<AssetRec[]>; get(store: string, id: string): Promise<AssetRec | undefined>; put(store: string, rec: unknown): Promise<unknown>; del(store: string, id: string): Promise<unknown> }
+interface DbApi { byOwner(owner: string, o?: { wait?: boolean }): Promise<AssetRec[]>; get(store: string, id: string): Promise<AssetRec | undefined>; put(store: string, rec: unknown): Promise<unknown>; del(store: string, id: string): Promise<unknown> }
 type QuickCall = (sys: string, user: string, o: { maxTokens?: number; signal?: AbortSignal; conn?: Conn }) => Promise<string>;
 type StreamChat = (conn: Conn, params: Bag, msgs: { role: string; content: string; images?: string[] }[], o: { signal?: AbortSignal }) => Promise<{ text: string }>;
 const SS = () => S as unknown as SApi;
@@ -380,7 +380,7 @@ export const Illust = {
     return next;
   },
   /** 이 대화의 삽화를 읽어 둔다. 한 번 읽은 방은 다시 읽지 않는다 (새로 그린 것은 remember 로 들어온다) */
-  async load(chatId: string) { if (loaded.has(chatId)) return; for (const a of await db().byOwner('chat:' + chatId)) if (a.kind === 'illust') cache.set(a.id, a.data); loaded.add(chatId); },
+  async load(chatId: string) { if (loaded.has(chatId)) return; for (const a of await db().byOwner('chat:' + chatId, { wait: false })) if (a.kind === 'illust') cache.set(a.id, a.data); loaded.add(chatId); },
   ready: (chatId: string) => loaded.has(chatId),
   data: (id: string) => cache.get(id) || '',
   /** 화면에 그릴 주소. 아직 안 읽은 그림이면 그 한 장만 읽으러 가고 '' (다 읽으면 onPic 으로 알린다) */
@@ -891,3 +891,6 @@ export const Illust = {
     const blob = await (await fetch(d.url)).blob(); return new Promise<string>(res => { const fr = new FileReader(); fr.onload = () => res(fr.result as string); fr.readAsDataURL(blob); });
   },
 };
+
+// 빈 브라우저로 켠 뒤 그림을 뒤에서 다 가져왔으면 다시 읽는다 (그동안은 기다리지 않고 있는 것만 보였다)
+on('data:hydrated', () => { loaded.clear(); tell(); });

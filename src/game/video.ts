@@ -2,7 +2,7 @@
 // 워크플로는 ComfyUI 에서 "API 형식으로 내보낸" JSON 을 붙여 넣고, 값이 들어갈 자리에 아래 표시를 적어 둔다:
 //   %prompt% 움직임 묘사 · %reference_image_name% 올린 그림의 이름 · %duration_seconds% 길이(초) · %length% 길이(프레임)
 //   %fps% · %width% · %height% · %seed% · %model%
-import { DB, S, now, uid } from '../lib/core';
+import { DB, S, now, on, uid } from '../lib/core';
 import { Server } from '../lib/server';
 import { quickCall } from '../lib/engine';
 
@@ -16,7 +16,7 @@ export function videoCfg(): VideoCfg {
 export interface Clip { id: string; owner: string; kind: 'gamevid'; label: string; data: string; ts: number }
 const clips = new Map<string, Clip[]>();
 export async function loadClips(chatId: string): Promise<Clip[]> {
-  if (!clips.has(chatId)) clips.set(chatId, ((await DB.byOwner('chat:' + chatId)) as unknown as Clip[]).filter(a => a.kind === 'gamevid'));
+  if (!clips.has(chatId)) clips.set(chatId, ((await DB.byOwner('chat:' + chatId, { wait: false })) as unknown as Clip[]).filter(a => a.kind === 'gamevid'));
   return clips.get(chatId)!;
 }
 export const clipFor = (chatId: string, label: string) => (clips.get(chatId) || []).find(c => c.label === label)?.data || '';
@@ -95,3 +95,6 @@ export async function makeClip(job: ClipJob, onStep: (step: 'plan' | 'upload' | 
   return rec;
 }
 export async function removeClip(chatId: string, label: string) { const list = await loadClips(chatId), c = list.find(x => x.label === label); if (c) { await DB.del('assets', c.id); list.splice(list.indexOf(c), 1); } }
+
+// 빈 브라우저로 켠 뒤 그림을 뒤에서 다 가져왔으면 다시 읽는다 (그동안은 기다리지 않고 있는 것만 보였다)
+on('data:hydrated', () => { clips.clear(); });

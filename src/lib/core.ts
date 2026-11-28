@@ -186,20 +186,33 @@ const msgIo: MS.Io = {
   batch: fn => DB.batch('msgs', fn as Parameters<typeof DB.batch>[1]),
 };
 
+// 빈 브라우저로 켠 뒤 뒤에서 서버 자료를 가져오는 동안(src/datafolder/hydrate.ts): 아직 안 온 것을 읽거나 쓰기 전에 그것부터 가져온다
+//  · store(s): 그 저장소를 통째로 읽으려면(all · keys · byOwner) 다 올 때까지 기다린다
+//  · one(s, id): 그 한 줄(메시지는 그 방 전부 · 기억은 그 방 것)을 먼저 가져온다 — 방을 열 때 빈 방이 보이거나, 새 메시지가 옛 기록을 덮지 않게
+export interface LazyGate { store(s: string): Promise<void> | null; one(s: string, id: string): Promise<void> | null }
+let lazy: LazyGate | null = null;
+export const setLazyGate = (g: LazyGate | null) => { lazy = g; };
+const ONE = new Set(['msgs', 'mem']);
+const gateAll = <T,>(s: string, run: () => Promise<T>): Promise<T> => { const w = lazy?.store(s); return w ? w.then(run) : run(); };
+const gateOne = <T,>(s: string, id: unknown, run: () => Promise<T>): Promise<T> => { const w = lazy && ONE.has(s) ? lazy.one(s, String(id)) : null; return w ? w.then(run) : run(); };
+
 /** 저장소 이름 → 한 줄의 꼴 */
 export interface Rows extends Colls { msgs: MsgsRow; kv: KvRow; assets: Asset; mem: { id: string; [k: string]: unknown } }
+// 캐릭터(chars)는 Av 를 거친다: 메모리의 초상 꼬리표를 저장된 그림으로 바꿔 넣고, 그림을 뺀 사본도 맞춘다 (src/lib/avatars.ts)
+const putNow = (s: StoreName, v: object): Promise<IDBValidKey> => { wrote(s, (v as { id?: unknown })?.id); return s === 'chars' ? Av.put(v as Parameters<typeof Av.put>[0]) as Promise<IDBValidKey> : tx<IDBValidKey>(s, 'readwrite', o => o.put(v)); };
+const delNow = (s: StoreName, id: IDBValidKey): Promise<undefined> => { wrote(s, id); return tx<undefined>(s, 'readwrite', o => o.delete(id)).then(r => { if (s === 'chars') Av.dropped([String(id)]); return r; }); };
 export const DB = {
-  all: <K extends StoreName>(s: K) => tx<Rows[K][]>(s, 'readonly', o => o.getAll()),
-  get: <K extends StoreName>(s: K, id: IDBValidKey) => tx<Rows[K] | undefined>(s, 'readonly', o => o.get(id)),
-  // 캐릭터(chars)는 Av 를 거친다: 메모리의 초상 꼬리표를 저장된 그림으로 바꿔 넣고, 그림을 뺀 사본도 맞춘다 (src/lib/avatars.ts)
-  put: <K extends StoreName>(s: K, v: Rows[K] | object) => { wrote(s, (v as { id?: unknown })?.id); return s === 'chars' ? Av.put(v as Parameters<typeof Av.put>[0]) as Promise<IDBValidKey> : tx<IDBValidKey>(s, 'readwrite', o => o.put(v)); },
-  del: (s: StoreName, id: IDBValidKey) => { wrote(s, id); return tx<undefined>(s, 'readwrite', o => o.delete(id)).then(r => { if (s === 'chars') Av.dropped([String(id)]); return r; }); },
+  all: <K extends StoreName>(s: K) => gateAll(s, () => tx<Rows[K][]>(s, 'readonly', o => o.getAll())),
+  get: <K extends StoreName>(s: K, id: IDBValidKey) => gateOne(s, id, () => tx<Rows[K] | undefined>(s, 'readonly', o => o.get(id))),
+  put: <K extends StoreName>(s: K, v: Rows[K] | object): Promise<IDBValidKey> => lazy && ONE.has(s) ? gateOne(s, (v as { id?: unknown })?.id, () => putNow(s, v)) : putNow(s, v),
+  del: (s: StoreName, id: IDBValidKey): Promise<undefined> => lazy && ONE.has(s) ? gateOne(s, id, () => delNow(s, id)) : delNow(s, id),
   clear: (s: StoreName) => { wrote(s); return tx<undefined>(s, 'readwrite', o => o.clear()).then(r => { if (s === 'chars') Av.cleared(); return r; }); },
   /** 열쇠(id)만 */
-  keys: (s: StoreName) => tx<IDBValidKey[]>(s, 'readonly', o => o.getAllKeys()),
+  keys: (s: StoreName) => gateAll(s, () => tx<IDBValidKey[]>(s, 'readonly', o => o.getAllKeys())),
   /** 여러 줄을 한 번의 읽기로 → 없는 것은 undefined */
   many: <K extends StoreName>(s: K, ids: IDBValidKey[]) => { const out: (Rows[K] | undefined)[] = []; return tx<unknown>(s, 'readonly', o => { ids.forEach((id, i) => { const q = o.get(id); q.onsuccess = () => { out[i] = q.result as Rows[K]; }; }); }).then(() => out); },
-  byOwner: (owner: string) => tx<Asset[]>('assets', 'readonly', o => o.index('owner').getAll(owner)),
+  /** wait: false — 빈 브라우저로 켠 뒤 그림을 아직 가져오는 중이어도 기다리지 않고 지금 있는 것만 (켤 때 읽는 딱지처럼: 다 오면 'data:hydrated' 로 다시 읽는다) */
+  byOwner: (owner: string, { wait = true }: { wait?: boolean } = {}) => wait ? gateAll('assets', () => tx<Asset[]>('assets', 'readonly', o => o.index('owner').getAll(owner))) : tx<Asset[]>('assets', 'readonly', o => o.index('owner').getAll(owner)),
   /** assets 의 [id, 주인] 만 — 그림 글자를 읽지 않는다 (목록을 맞춰 볼 때) */
   owners: () => { const out: [string, string][] = []; return tx<unknown>('assets', 'readonly', o => { const q = o.index('owner').openKeyCursor(); q.onsuccess = () => { const c = q.result; if (c) { out.push([String(c.primaryKey), String(c.key)]); c.continue(); } }; }).then(() => out); },
   bulk: (s: StoreName, list: object[]) => { wrote(s); return s === 'chars' ? Av.bulk(list as Parameters<typeof Av.bulk>[0]) as Promise<undefined> : tx<undefined>(s, 'readwrite', o => { list.forEach(v => o.put(v)); }); },
@@ -528,7 +541,7 @@ export const S: Store = {
     self[coll] = self[coll].filter(x => x.id !== id);
     await DB.del(coll, id);
     if (coll === 'conns') await Secrets.del(id);
-    if (coll === 'chats') { await MS.remove(msgIo, id); await DB.del('mem', id); await DB.del('kv', 'vec:' + id).catch(() => { }); await DB.del('kv', 'memcp:' + id).catch(() => { }); emit('chat:deleted', id); }
+    if (coll === 'chats') { await lazy?.one('msgs', id); await MS.remove(msgIo, id); await DB.del('mem', id); await DB.del('kv', 'vec:' + id).catch(() => { }); await DB.del('kv', 'memcp:' + id).catch(() => { }); emit('chat:deleted', id); }
     emit(coll, null);
   },
   saveSettings: debounce(async () => DB.put('kv', await Vault.packSettings()), 200),
@@ -536,10 +549,11 @@ export const S: Store = {
   holdAvatars: ids => Av.hold(ids),
   avatarData: o => Av.data(o?.avatar),
   avatarNow: o => Av.peek(o?.avatar),
-  async msgs(chatId) { return (await MS.read(msgIo, chatId, false)).list; },
+  async msgs(chatId) { await lazy?.one('msgs', chatId); return (await MS.read(msgIo, chatId, false)).list; },
   /** 대화 화면용: 방금까지 열어 둔 방이면 메모리의 목록을 바로 돌려준다 (저장된 것과 같은 내용) */
   async msgsFast(chatId) {
     const hit = msgCache.get(chatId); if (hit) { msgKeep(chatId, hit); return hit; }
+    await lazy?.one('msgs', chatId);
     const v = msgVer, r = await MS.read(msgIo, chatId, true);
     if (r.missing) emit('msgs:partial', { chatId, missing: r.missing });   // 조각 일부를 찾지 못했다 (자료 폴더에서 아직 다 받아 오지 못했다): 있는 만큼 보여 준다
     else if (v === msgVer) msgKeep(chatId, r.list);   // 읽는 사이 누가 저장했으면 들고 있지 않는다
@@ -553,12 +567,13 @@ export const S: Store = {
     const tail = list[list.length - 1];
     chat.updatedAt = tail ? Math.max(tail.ts || 0, tail.swipes?.[tail.sw]?.ts || 0) || now() : now();
     chat.preview = last ? msgText(last).replace(/\s+/g, ' ').slice(0, 90) : '';
+    await lazy?.one('msgs', chat.id);
     const e = extVer.get(chat.id) || 0; await MS.write(msgIo, chat.id, list);
     if (e === (extVer.get(chat.id) || 0)) msgKeep(chat.id, list);   // 그사이 다른 곳에서 이 방을 썼으면 다음에 다시 읽는다
     await this.save('chats', chat, true);
   },
-  async putMsgs(chatId, list) { if (msgCache.get(chatId) !== list) msgCache.delete(chatId); await MS.write(msgIo, chatId, list); },
-  patchMsgs: (chatId, ids, fn) => MS.patch(msgIo, chatId, ids, fn),
+  async putMsgs(chatId, list) { await lazy?.one('msgs', chatId); if (msgCache.get(chatId) !== list) msgCache.delete(chatId); await MS.write(msgIo, chatId, list); },
+  patchMsgs: async (chatId, ids, fn) => { await lazy?.one('msgs', chatId); return MS.patch(msgIo, chatId, ids, fn); },
   touchMsgs: (...ms) => MS.touch(...ms),
   splitDue: chatId => MS.splitDue(chatId),
   conn() { return this.get('conns', this.settings.activeConn); },

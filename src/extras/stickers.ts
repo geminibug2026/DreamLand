@@ -1,6 +1,6 @@
 // 딱지(스티커): 묶음 · 그림 보관 · 이름으로 찾기 · 프롬프트 안내 · 답장 속 [sticker: 이름] 읽기 · 감정으로 자동 고르기
 // 메시지 글에는 [sticker: 이름 — 뜻] 한 줄이 그대로 남는다 — 모델은 그 줄로 뜻을 알고, 화면은 표시 필터가 그림으로 바꾼다 (스와이프마다 글이 따로라 어긋날 일이 없다)
-import { DB, bytesToDataURL, esc, mimeOf, now, readDataURL, shrinkImage, uid } from '../lib/core';
+import { DB, bytesToDataURL, esc, mimeOf, now, on, readDataURL, shrinkImage, uid } from '../lib/core';
 import { unzip } from '../lib/assets';
 import type { Chat, Msg } from '../lib/types';
 import { t } from '../i18n';
@@ -35,7 +35,7 @@ export const Stickers = {
     packs = Array.isArray(row?.packs) ? row.packs : [];
     if (!packs.some(p => p.id === DREAM_ID)) packs.unshift({ id: DREAM_ID, name: '', owner: '', builtin: true });
     byPack.set(DREAM_ID, dream());
-    for (const p of packs) if (!p.builtin) byPack.set(p.id, ((await DB.byOwner(ownerOf(p.id)).catch(() => [])) as unknown as Row[]).map(r => toSticker(r, p.id)).sort((a, b) => (a.ts || 0) - (b.ts || 0)));
+    for (const p of packs) if (!p.builtin) byPack.set(p.id, ((await DB.byOwner(ownerOf(p.id), { wait: false }).catch(() => [])) as unknown as Row[]).map(r => toSticker(r, p.id)).sort((a, b) => (a.ts || 0) - (b.ts || 0)));
   },
   /** 백업을 되돌린 뒤 다시 읽는다 */
   async reload() { loaded = false; byPack.clear(); await this.load(); },
@@ -80,6 +80,9 @@ export const Stickers = {
   recent(chat?: Chat | null) { const ok = new Set(this.usable(chat).map(s => s.id)); return cfg().stk.recent.filter(id => ok.has(id)).map(id => this.byId(id)!).filter(Boolean); },
   markUsed(s: Sticker) { const c = cfg().stk; c.recent = [s.id, ...c.recent.filter(x => x !== s.id)].slice(0, 16); saveCfg(); },
 };
+// 빈 브라우저로 켠 뒤 그림(딱지 그림 포함)을 뒤에서 다 가져왔으면 다시 읽는다 (켤 때는 기다리지 않고 있는 것만 읽었다)
+on('data:hydrated', () => { if (loaded) void Stickers.reload(); });
+
 
 // ── 글 속의 딱지 줄 ──
 /** [sticker: 이름] 또는 [sticker: 이름 — 뜻] */

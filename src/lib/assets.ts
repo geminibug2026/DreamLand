@@ -1,5 +1,5 @@
 // ── Dreamland assets: 이미지 보관함 (캐릭터 에셋 · 삽화) + ZIP 읽기 + 이름 찾기 ── (옛 js/assets.js 에서 이어 옴)
-import { S, DB, uid, now, esc, shrinkImage, readDataURL, bytesToDataURL, mimeOf } from './core';
+import { S, DB, uid, now, esc, shrinkImage, readDataURL, bytesToDataURL, mimeOf, on, emit } from './core';
 import { dataToBlob } from './blobUrl';
 import { ALIASES as EMO_WORDS, DEFAULT_LABELS } from '../expressions/pure';
 import { t } from '../i18n';
@@ -9,7 +9,7 @@ export interface AssetRec { id: string; owner: string; name: string; data: strin
 interface CharAssetCfg { link?: string; ver?: string; vers?: string[] }
 interface AssetSettings { random?: boolean; style?: string; maxSize?: unknown; lazy?: boolean; zoom?: boolean; show?: boolean; caption?: boolean; fuzzy?: boolean; missing?: string; sprites?: boolean; chars?: Record<string, CharAssetCfg> }
 interface SApi { settings: { assets: AssetSettings }; get(coll: string, id: unknown): unknown }
-interface DbApi { byOwner(owner: string): Promise<AssetRec[]>; put(store: string, rec: unknown): Promise<unknown>; del(store: string, id: string): Promise<unknown> }
+interface DbApi { byOwner(owner: string, o?: { wait?: boolean }): Promise<AssetRec[]>; put(store: string, rec: unknown): Promise<unknown>; del(store: string, id: string): Promise<unknown> }
 const SS = () => S as unknown as SApi;
 const db = () => DB as unknown as DbApi;
 const shrink = shrinkImage as unknown as (url: string, max?: number) => Promise<string | null>;
@@ -145,7 +145,7 @@ export const Assets = {
   /** 여러 보관함을 한꺼번에 읽는다 (멤버가 많은 방도 한 번에) */
   async load(owners: Owner[]) {
     const want = [...new Set([...owners, ...owners.map(o => this.source(o))])].filter((o): o is string => !!o && !cache.has(o));
-    await Promise.all(want.map(o => { let p = loading.get(o); if (!p) { p = db().byOwner(o).then(l => { if (!cache.has(o)) { cache.set(o, l.filter(a => a.kind !== 'illust').sort(byName)); rev++; } }).finally(() => loading.delete(o)); loading.set(o, p); } return p; }));
+    await Promise.all(want.map(o => { let p = loading.get(o); if (!p) { p = db().byOwner(o, { wait: false }).then(l => { if (!cache.has(o)) { cache.set(o, l.filter(a => a.kind !== 'illust').sort(byName)); rev++; } }).finally(() => loading.delete(o)); loading.set(o, p); } return p; }));
   },
   /** 이 보관함들을 이미 읽어 두었는지 */
   ready(owners: Owner[]) { return [...owners, ...owners.map(o => this.source(o))].every(o => !o || cache.has(o)); },
@@ -331,3 +331,6 @@ function findIn(ix: Index, k: string, fuzzy: boolean, spr: boolean): Hit | null 
 export const ASSET_PROMPT = `[Image assets]
 You can show an image of the current scene or emotion by writing {{img::keyword}} on its own line between paragraphs. Use at most {{max}} per reply, only when it fits, and never invent keywords.
 Available keywords: {{keywords}}`;
+
+// 빈 브라우저로 켠 뒤 그림을 뒤에서 다 가져왔으면 다시 읽는다 (그동안은 기다리지 않고 있는 것만 보였다)
+on('data:hydrated', () => { cache.clear(); loading.clear(); rev++; emit('assets'); });

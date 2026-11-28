@@ -13,7 +13,7 @@ const store = new Map<string, FrameRec>();   // id → { id, name, data, width, 
 let loading: Promise<void> | null = null;
 export const Frames = {
   /** 저장된 액자 그림을 읽어 둔다 (한 번만) */
-  load() { return loading ||= C.DB.byOwner(FRAME_OWNER).then(list => { for (const f of list) if (f.kind === 'illust-frame') store.set(f.id, f as unknown as FrameRec); }).catch(e => console.warn('[삽화 액자]', e)); },
+  load() { return loading ||= C.DB.byOwner(FRAME_OWNER, { wait: false }).then(list => { for (const f of list) if (f.kind === 'illust-frame') store.set(f.id, f as unknown as FrameRec); }).catch(e => console.warn('[삽화 액자]', e)); },
   list: () => [...store.values()].sort((a, b) => (a.ts || 0) - (b.ts || 0)),
   get: (id: string) => store.get(id),
   async add(file: File): Promise<FrameRec> {
@@ -88,3 +88,6 @@ export function frameLayout(width: number, height: number, config: { frame?: str
 }
 /** 선택기에 늘어놓을 액자 목록 */
 export const frameChoices = (): { id: string; label: string; custom?: FrameRec }[] => [...FRAMES.map(([id, label]) => ({ id, label: t(label) })), ...ORNAMENTS.map(([id, label]) => ({ id: `art:${id}`, label: t(label) })), ...Frames.list().map(f => ({ id: `image:${f.id}`, label: f.name, custom: f }))];
+
+// 빈 브라우저로 켠 뒤 그림을 뒤에서 다 가져왔으면 다시 읽는다 (그동안은 기다리지 않고 있는 것만 보였다)
+C.on('data:hydrated', () => { loading = null; });

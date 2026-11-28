@@ -25,7 +25,7 @@ export function songs(): Promise<Song[]> {
   if (list) return Promise.resolve(list);
   return loading ||= Promise.all([
     media().then(async g => { await g.loadMedia(); return g.myMedia().filter(m => m.kind === 'gamebgm').map((m): Song => ({ id: m.id, name: m.name || m.label, from: 'game', ts: m.ts })); }).catch(() => [] as Song[]),
-    DB.byOwner(OWNER).then(a => (a as unknown as PhoneSong[]).filter(x => x.kind === 'music').map((m): Song => ({ id: m.id, name: m.name, from: 'phone', ts: m.ts }))).catch(() => [] as Song[]),
+    DB.byOwner(OWNER, { wait: false }).then(a => (a as unknown as PhoneSong[]).filter(x => x.kind === 'music').map((m): Song => ({ id: m.id, name: m.name, from: 'phone', ts: m.ts }))).catch(() => [] as Song[]),
   ]).then(([g, p]) => { list = [...p, ...g].sort((a, b) => b.ts - a.ts); loading = null; bump(); return list; });
 }
 export const songsNow = () => list;
@@ -118,3 +118,6 @@ export async function anySongs(): Promise<boolean> {
   if (list) return list.length > 0;
   try { return (await DB.owners()).some(([, o]) => o === OWNER || o === 'game'); } catch { return false; }
 }
+
+// 빈 브라우저로 켠 뒤 그림을 뒤에서 다 가져왔으면 다시 읽는다 (그동안은 기다리지 않고 있는 것만 보였다)
+on('data:hydrated', () => { list = null; loading = null; bump(); });

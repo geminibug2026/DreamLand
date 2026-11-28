@@ -1,7 +1,7 @@
 // 표정: 설정 · 그림 보관 · 지금 표정 계산 · 기록 · 감정 판정 (화면 없음)
 import type { AssetRec, ChatX, Msg, Swipe } from '../addons/types';
 import { DEFAULT_LABELS, KO, RELATED, canonLabel, extractTag, hashStr, keywordLabel, plainText, type CustomLabel } from './pure';
-import { DB, S, msgText, now, uid } from '../lib/core';
+import { DB, S, msgText, now, on, uid } from '../lib/core';
 import { macro, makeCtx, quickCall } from '../lib/engine';
 import { chatApi } from '../chat/actions';
 import { t } from '../i18n';
@@ -56,7 +56,7 @@ export const Sprites = {
   of: (id: string, label: string) => (cache.get(id) || []).filter(a => a.label === label),
   labels: (id: string) => [...new Set((cache.get(id) || []).map(a => a.label))],
   async load(ids: string | string[] | undefined) {
-    for (const id of ([] as string[]).concat(ids || [])) if (id && !cache.has(id)) { const list = ((await DB.byOwner(ownerOf(id))) as Sprite[]).filter(a => a.kind === 'expr').sort(order); if (!cache.has(id)) cache.set(id, list); }
+    for (const id of ([] as string[]).concat(ids || [])) if (id && !cache.has(id)) { const list = ((await DB.byOwner(ownerOf(id), { wait: false })) as Sprite[]).filter(a => a.kind === 'expr').sort(order); if (!cache.has(id)) cache.set(id, list); }
   },
   note(id: string) { const n = this.list(id).length, cc = charCfg(id); if (cc.n !== n) { cc.n = n; save(); } },
   async put(id: string, label: string, name: string, data: string) {
@@ -173,3 +173,6 @@ export function tagInstruction(char: { id: string; name: string }, ctx?: Record<
   return macro(String(cfg().tagPrompt || '').trim() || TAG_PROMPT, { ...(ctx || { char: char.name }), char: char.name }).replace(/\{\{labels\}\}/gi, labels.join(', '));
 }
 export function toggleStanding(v?: boolean) { const c = cfg(); c.standing = v === undefined ? !c.standing : !!v; save(); bus.sync(); }
+
+// 빈 브라우저로 켠 뒤 그림을 뒤에서 다 가져왔으면 다시 읽는다 (그동안은 기다리지 않고 있는 것만 보였다)
+on('data:hydrated', () => { cache.clear(); });
