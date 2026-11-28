@@ -85,7 +85,7 @@ export async function refresh({ auto = false }: { auto?: boolean } = {}): Promis
     let clean = null as ReturnType<typeof cleanBatch> | null;
     for (let turn = 0; turn < 2 && !clean; turn++) {
       const raw = await quickCall(built.system, built.user, { maxTokens: c.maxTokens, conn: helper() });
-      const got = repairJson(raw), cb = got ? cleanBatch(got, { who: built.who, me: built.me, refs: built.refs, notes: F.notes, quota: built.quota, maxText: 500 }) : null;
+      const got = repairJson(raw), cb = got ? cleanBatch(got, { who: built.who, me: built.me, refs: built.refs, notes: F.notes, quota: built.quota, maxText: 500, knows: built.knows }) : null;
       if (cb && (cb.notes.length || cb.acts.length)) clean = cb; else console.warn('[게시판] 답을 읽지 못했어요', turn ? '(다시 해도)' : '(한 번 더 해 봅니다)', cb?.dropped || String(raw).slice(0, 200));
     }
     if (!clean) { if (!auto) toast(t('feed.err.parse'), 'err'); return 0; }
@@ -104,7 +104,7 @@ export async function answerNow(noteId: string): Promise<number> {
   try {
     const now = Date.now(), id = nid('b'), built = await buildBoard(F, cfg(), { now, only: note });
     const raw = await quickCall(built.system, built.user, { maxTokens: cfg().mingle !== false ? 900 : 500, conn: helper(), lowThink: true });   // 캐릭터끼리 주고받으면 조금 길어진다
-    const got = repairJson(raw), clean = got ? cleanBatch({ acts: (got as { acts?: unknown }).acts }, { who: built.who, me: built.me, refs: built.refs, notes: F.notes, maxText: 400 }) : null;
+    const got = repairJson(raw), clean = got ? cleanBatch({ acts: (got as { acts?: unknown }).acts }, { who: built.who, me: built.me, refs: built.refs, notes: F.notes, maxText: 400, knows: built.knows }) : null;
     if (!clean?.acts.length) { toast(t('feed.answer.none')); return 0; }
     // 작은 호출은 "방금 묶음"을 덮지 않는다 — 되돌리기는 새로 고침 것만
     const keep = F.last, keepAt = F.lastAt, log = applyBatch(F, clean, { id, now: now + 1000, rnd: () => 0.95 }); F.last = keep; F.lastAt = keepAt;

@@ -8,7 +8,7 @@ import { getLang } from '../i18n';
 import type { Char, Chat } from '../lib/types';
 import { ME, type ChatFeed, type FeedCfg, type FeedState, type Note } from './types';
 import { personaFor, personaOfNote } from './persona';
-import { ago, carryItems, pairsFrom, quotaFor, sampleRecall, threadOf, visible, waiting, type Rnd, type Who } from './logic';
+import { ago, carryItems, knowsFrom, pairsFrom, quotaFor, relKey, sampleRecall, threadOf, visible, waiting, type Rnd, type Who } from './logic';
 import { FEED_IMAGE_RULE, FEED_PHOTO_RULE } from '../photos/prompt';
 
 // ── 지침 ──
@@ -63,9 +63,9 @@ export const POST_PROMPT = `{{char}} has an account on the Night Board, a small 
 
 /** 게시판 지침: 「사진 곁들인 글」을 켜면 그림 줄만 휴대폰 사진 줄로 바꾼다 (꺼져 있으면 그대로) */
 /** 캐릭터끼리 어울리기 (설정 mingle) */
-const MINGLE_ON = `- Members are friends, rivals and old acquaintances sharing one board, so they play with each other too: they reply to each other's notes and replies, answer back, quote each other ("do":"quote") to tease, agree, argue or show something off, and keep little threads going among themselves. With two or more members, every batch has at least one exchange between members (a reply to another member, a reply back, or a quote).`;
+const MINGLE_ON = `- Members who know each other (see "Who knows whom") play with each other too: they reply to each other's notes and replies, answer back, quote each other ("do":"quote") to tease, agree, argue or show something off, and keep little threads going among themselves. When at least one pair knows each other, every batch has at least one exchange within such a pair (a reply to another member, a reply back, or a quote). Strangers never touch each other's notes.`;
 const MINGLE_OFF = `- Members mostly keep to their own notes and to the reader; they only rarely answer each other.`;
-const ANSWER_MINGLE = `\nOther members may join this thread too: after someone answers the reader, another member can reply to that member's reply (give the first reply "k":"r1" and answer it with "under":"r1") or tease, back up or contradict them, and they can go back and forth for a line or two each. A member may also quote the reader's note or a reply ({"do":"quote","text":"…"}) as a new note of their own. Keep it short and in character.`;
+const ANSWER_MINGLE = `\nOther members who know the people in this thread may join too: after someone answers the reader, another member who knows them can reply to that member's reply (give the first reply "k":"r1" and answer it with "under":"r1") or tease, back up or contradict them, and they can go back and forth for a line or two each. A member may also quote the reader's note or a reply ({"do":"quote","text":"…"}) as a new note of their own. Keep it short and in character.`;
 export const boardPrompt = (c: FeedCfg) => (c.photoPosts ? BOARD_PROMPT.replace(FEED_IMAGE_RULE, FEED_PHOTO_RULE) : BOARD_PROMPT).replace('- Old notes may be picked up again', (c.mingle !== false ? MINGLE_ON : MINGLE_OFF) + '\n- Old notes may be picked up again');
 export const answerPrompt = (c: FeedCfg) => c.mingle !== false ? ANSWER_PROMPT.replace('If the note has a poll,', ANSWER_MINGLE.trim() + ' If the note has a poll,') : ANSWER_PROMPT;
 const LANGS: Record<string, string> = { ko: 'Korean', en: 'English', 'zh-CN': 'Simplified Chinese', ja: 'Japanese' };
@@ -86,6 +86,16 @@ export function members(st: FeedState): { char: Char; handle: string; bio: strin
 export const whoList = (st: FeedState): Who[] => members(st).map(m => ({ id: m.char.id, handle: m.handle, name: m.char.name }));
 const talkWord = (t: number) => t >= 0.8 ? 'pins often, chatty' : t >= 0.55 ? 'pins fairly often' : t >= 0.3 ? 'pins now and then' : t >= 0.12 ? 'pins rarely, few words' : 'almost never pins; one short line when they do';
 
+/** 캐릭터 사이: 아는 사이인가(사용자가 정한 것 → 같은 대화방에 함께 있었으면 자동으로 안다) · 어떤 사이인가 */
+export function relationsOf(st: FeedState) {
+  const ids = members(st).map(m => m.char.id), shared = new Set(pairsFrom(S.chats, ids).map(([a, b]) => relKey(a, b))), knows = knowsFrom(st.rels, shared);
+  const name = (id: string) => S.get('chars', id)?.name || '?', known: string[] = [], strangers: string[] = [];
+  for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+    const a = ids[i], b = ids[j], r = st.rels?.[relKey(a, b)];
+    if (knows(a, b)) known.push(`- ${name(a)} & ${name(b)}${r?.note ? `: ${one(r.note, 120)}` : ''}`); else strangers.push(`${name(a)} & ${name(b)}`);
+  }
+  return { knows, known, strangers };
+}
 /** 게시판의 글들을 짧은 표(e1 …)와 함께 적는다. refs 에 표 → 실제 id 를 채운다 */
 function boardLines(st: FeedState, roots: Note[], now: number, refs: Record<string, string>, maxReplies = 4): string[] {
   const nameOf = (id: string) => { if (id === ME) { const m = meOf(st); return `${m.name} (@${m.handle}, the reader)`; } const a = st.accounts.find(x => x.id === id), c = S.get('chars', id); return `${c?.name || '?'} (@${a?.handle || '?'})`; };
@@ -122,7 +132,7 @@ async function privateLines(charId: string, cfg: FeedCfg): Promise<string[]> {
   return out;
 }
 
-export interface Built { system: string; user: string; refs: Record<string, string>; who: Who[]; me: string[]; quota: Record<string, number> }
+export interface Built { system: string; user: string; refs: Record<string, string>; who: Who[]; me: string[]; quota: Record<string, number>; /** 아는 사이인가 (모르는 사이끼리의 활동은 버린다) */ knows?: (a: string, b: string) => boolean }
 /** 새로 고침 한 번에 보낼 것을 짠다. only 가 있으면 그 글 하나에 대한 작은 호출이다 */
 export async function buildBoard(st: FeedState, cfg: FeedCfg, { now = Date.now(), rnd = Math.random, only }: { now?: number; rnd?: Rnd; only?: Note } = {}): Promise<Built> {
   const mem = members(st), me = meOf(st), refs: Record<string, string> = {}, parts: string[] = [];
@@ -141,6 +151,10 @@ export async function buildBoard(st: FeedState, cfg: FeedCfg, { now = Date.now()
     who.push(...fit(lines, per));
   }
   parts.push(sec('Members', who));
+  // 캐릭터 사이: 아는 사이끼리만 서로 답하고 인용한다. 모르는 사이는 서로를 건드리지 않는다
+  const rel = relationsOf(st);
+  if (rel.known.length) parts.push(sec('Who knows whom (members interact only within these pairs)', rel.known.slice(0, 30)));
+  if (rel.strangers.length) parts.push(sec('Strangers — they do not know each other: never reply to, quote, mark, copy or mention each other', [rel.strangers.join(', ')]));
   parts.push(sec('The reader (never write as them)', [`- ${me.name} (@${me.handle})${me.bio ? ` — "${one(me.bio, 80)}"` : ''}`, ...(me.desc ? [`  ${one(me.desc, 260)}`] : [])]));
   if (only) {
     const root = only.root ? st.notes.find(n => n.id === only.root) || only : only;
@@ -148,8 +162,6 @@ export async function buildBoard(st: FeedState, cfg: FeedCfg, { now = Date.now()
     const code = Object.keys(refs).find(k => refs[k] === only.id) || 'e1';
     parts.push(`The reader is waiting for a response to ${code}${only.root ? ' (their reply)' : ''}. ${langLine(cfg)}`);
   } else {
-    const pairs = pairsFrom(S.chats, mem.map(m => m.char.id)).slice(0, 6).map(([a, b]) => `- ${S.get('chars', a)?.name} & ${S.get('chars', b)?.name}`);
-    parts.push(sec('Close pairs (they share a group; more likely to answer each other)', pairs));
     const roots = st.notes.filter(n => !n.root && visible(n)), recent = roots.slice(-14), old = sampleRecall(roots.filter(n => !recent.includes(n)), { now, k: cfg.recall, rnd });
     if (old.length) parts.push(sec('Older notes that came back to mind (may be picked up again)', fit(boardLines(st, old, now, refs, 1), 500)));
     // 최근 글은 새것이 남도록 뒤에서부터 몫을 센다
@@ -160,7 +172,7 @@ export async function buildBoard(st: FeedState, cfg: FeedCfg, { now = Date.now()
     const q = mem.filter(m => quota[m.char.id]).map(m => `${m.char.name} ×${quota[m.char.id]}`);
     parts.push(sec('Quota for this batch', [`New notes: ${q.join(', ') || 'none'}. Nobody else pins a new note. Replies, marks, echoes and votes may come from any member.`, `It is now ${new Date(now).toLocaleString('en-GB', { weekday: 'long', hour: '2-digit', minute: '2-digit' })}.`, langLine(cfg), ...(cfg.guide.trim() ? [cfg.guide.trim()] : [])]));
   }
-  return { system: only ? answerPrompt(cfg) : boardPrompt(cfg), user: parts.filter(Boolean).join('\n\n'), refs, who: whoList(st), me: [me.handle, me.name, ME, 'reader', 'the reader', 'user'], quota };
+  return { system: only ? answerPrompt(cfg) : boardPrompt(cfg), user: parts.filter(Boolean).join('\n\n'), refs, who: whoList(st), me: [me.handle, me.name, ME, 'reader', 'the reader', 'user'], quota, knows: rel.knows };
 }
 
 /** 새 계정들의 손잡이 · 소개 · 말투를 한 번에 짓게 할 글 */

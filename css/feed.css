@@ -145,3 +145,8 @@ button.fd-face:hover { filter: brightness(.94); }
   .fd-mem-f { grid-template-columns: minmax(0, 1fr); gap: 4px; }
 }
 @media (prefers-reduced-motion: reduce) { .fd-progress, .fd-row.fresh, .fd-act.heart.on .fd-ic { animation: none; } }
+
+/* 캐릭터 사이 정하기 */
+.fd-rel-row { display: grid; gap: 8px; padding: 14px 0; border-top: 1px solid var(--line-3); }
+.fd-rel-who { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 15px; } .fd-rel-who b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .fd-rel-and { color: var(--dim); padding: 0 2px; }
+.fd-rel-pick { display: flex; flex-wrap: wrap; gap: 6px; }

@@ -7,7 +7,7 @@ import { Form, charPicker, confirmBox, toast } from '../ui';
 import { openModal } from '../addons/parts';
 import { fmtDate, t } from '../i18n';
 import { ME, type Note, type Notice } from './types';
-import { threadOf, unseen, visible } from './logic';
+import { pairsFrom, relKey, threadOf, unseen, visible } from './logic';
 import { F, account, cfg, follow, makeProfiles, markSeen, members, myAccount, post, refresh, run, save, setMembers, undo, wipe } from './store';
 import { Acts, Face, Ic, Media, PollView, Row, agoLabel, back, faceOf, noteMenu, picsOf, show, view } from './parts';
 import { FeedPhotosBar } from '../photos/ui';
@@ -204,6 +204,31 @@ function Members() {
           <label className="fd-mem-f"><span>{t('feed.members.bio')}</span><input className="fd-in" defaultValue={a.bio} maxLength={80} placeholder={t('feed.members.bioPh')} onChange={e => edit(a, 'bio', e.target.value)} /></label>
           {me ? null : <label className="fd-mem-f"><span>{t('feed.members.voice')}</span><input className="fd-in" defaultValue={a.voice} maxLength={240} placeholder={t('feed.members.voicePh')} onChange={e => edit(a, 'voice', e.target.value)} /></label>}
         </div>
+      </div>; })}
+  </>;
+}
+
+// ── 창: 캐릭터 사이 ── 아는 사이끼리만 서로 답하고 인용한다 (자동: 같은 대화방에 함께 있었으면 안다)
+export function openRelations() { openModal({ title: t('feed.rel.title'), wide: true, spec: 'div.fd-rel' }, () => <Relations />); }
+function Relations() {
+  useEvents('feed:changed', 'chars');
+  const ids = members(F).map(m => m.char.id), shared = new Set(pairsFrom(S.chats, ids).map(([a, b]) => relKey(a, b)));
+  const set = (k: string, patch: { known?: 'auto' | 'yes' | 'no'; note?: string }) => {
+    const rels = (F.rels ||= {}), prev = rels[k], next: { known: 'auto' | 'yes' | 'no'; note?: string } = { known: patch.known || prev?.known || 'auto', note: patch.note ?? prev?.note };
+    if (!next.note) delete next.note; if (next.known === 'auto' && !next.note) delete rels[k]; else rels[k] = next; save();
+  };
+  if (ids.length < 2) return <p className="fd-meta">{t('feed.rel.needTwo')}</p>;
+  const pairs: [string, string][] = []; for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) pairs.push([ids[i], ids[j]]);
+  return <>
+    <p className="fd-meta">{t('feed.rel.intro')}</p>
+    {pairs.map(([a, b]) => { const k = relKey(a, b), r = F.rels?.[k], known = r?.known || 'auto', auto = shared.has(k), on = known === 'yes' || (known === 'auto' && auto);
+      return <div className="fd-rel-row" key={k}>
+        <div className="fd-rel-who"><Face id={a} size={28} link={false} /><b>{faceOf(a).name}</b><span className="fd-rel-and">↔</span><Face id={b} size={28} link={false} /><b>{faceOf(b).name}</b></div>
+        <div className="fd-rel-pick" role="radiogroup" aria-label={t('feed.rel.title')}>
+          {(['auto', 'yes', 'no'] as const).map(v => <button key={v} type="button" role="radio" aria-checked={known === v} className={'fd-pill sm' + (known === v ? ' solid' : '')} onClick={() => set(k, { known: v })}>{t('feed.rel.' + v)}</button>)}
+        </div>
+        {known === 'auto' ? <small className="fd-meta">{t(auto ? 'feed.rel.autoYes' : 'feed.rel.autoNo')}</small> : null}
+        {on ? <input className="fd-in" defaultValue={r?.note || ''} maxLength={120} placeholder={t('feed.rel.notePh')} aria-label={t('feed.rel.notePh')} onChange={e => set(k, { note: e.target.value.trim() })} /> : null}
       </div>; })}
   </>;
 }

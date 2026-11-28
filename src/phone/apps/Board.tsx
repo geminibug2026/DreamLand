@@ -14,7 +14,7 @@ import { ME, type Note } from '../../feed/types';
 import { threadOf, unseen, visible } from '../../feed/logic';
 import { F, account, answerNow, cfg, echo, editText, imgOf, like, markSeen, members, myAccount, personaFor, personaOfNote, post, redraw, refresh, remove, run, setPersonaFor } from '../../feed/store';
 import { linkedPersona, pickedPersona } from '../../feed/persona';
-import { openMembers, openSettings, pickMembers } from '../../feed/ui';
+import { openMembers, openRelations, openSettings, pickMembers } from '../../feed/ui';
 import { readDataURL, shrinkImage } from '../../lib/core';
 import { Emb, Fill, Glyph } from '../art';
 import { AppHead, Empty, Face, IBtn, Seg, agoText, usePhone } from '../ui';
@@ -91,6 +91,7 @@ function Home() {
       <IBtn ic="sliders" label={t('phone.sns.manage')} onClick={e => menu(e.currentTarget, [
         { label: t('feed.members.pick'), ic: 'users', onclick: () => void pickMembers() },
         { label: t('phone.sns.editMembers'), ic: 'user', onclick: () => openMembers() },
+        { label: t('phone.sns.rels'), ic: 'users', onclick: () => openRelations() },
         { label: t('feed.set.title'), ic: 'sliders', onclick: () => openSettings() },
         ...(P.inPage ? [] : [{ label: t('phone.sns.openBoard'), ic: 'link', onclick: () => P.leave(() => go('feed')) }]),
       ])} /></>} />

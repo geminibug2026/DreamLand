@@ -53,6 +53,13 @@ export interface CleanCtx {
   /** 글을 쓸 수 있는 계정(켜진 캐릭터). 나는 넣지 않는다 */ who: Who[]; /** 내 손잡이 · 이름들 — 이 이름의 활동은 버린다 */ me: string[];
   /** 프롬프트에 적어 준 짧은 표(e1, e2 …) → 실제 글 id */ refs: Record<string, string>; /** 지금 있는 글 (투표 · 중복 확인) */ notes: Note[];
   /** 이번에 누가 몇 개까지 쓰나 (없으면 제한 없음) */ quota?: Record<string, number>; /** 글 최대 길이 */ maxText?: number;
+  /** 두 캐릭터가 아는 사이인가 (없으면 모두 안다). 모르는 사이끼리의 답글 · 인용 · 공감 · 옮겨 적기는 버린다 */ knows?: (a: string, b: string) => boolean;
+}
+/** 캐릭터 사이의 열쇠: id 차례로 */
+export const relKey = (a: string, b: string) => a < b ? a + '|' + b : b + '|' + a;
+/** 아는 사이인가: 사용자가 정한 것 → 자동(같은 대화방에 함께 있었다) */
+export function knowsFrom(rels: Record<string, { known: string }> | undefined, shared: Set<string>) {
+  return (a: string, b: string) => { if (a === b || a === ME || b === ME) return true; const r = rels?.[relKey(a, b)]; return r?.known === 'yes' ? true : r?.known === 'no' ? false : shared.has(relKey(a, b)); };
 }
 const norm = (s: unknown) => String(s ?? '').replace(/^@/, '').normalize('NFKC').trim().toLowerCase();
 const flat = (s: unknown) => String(s ?? '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -86,7 +93,7 @@ export function cleanBatch(raw: unknown, ctx: CleanCtx): CleanBatch {
   });
 
   // 답글 · 공감 · 옮겨 적기 · 투표
-  const replyKeys = new Map<string, string>(), done = new Set<string>();   // 묶음 안 답글 열쇠 → 매달린 글 · 한 번 한 일
+  const replyKeys = new Map<string, string>(), replyBy = new Map<string, string>(), done = new Set<string>();   // 묶음 안 답글 열쇠 → 매달린 글 · 한 번 한 일
   list(b.acts ?? b.interactions).forEach(r => {
     const w = whoIs(r.by ?? r.actor ?? r.actorHandle); if (w === 'me') return drop('act:me'); if (!w) return drop('act:who');
     const kind = DO[norm(r.do ?? r.type)]; if (!kind) return drop('act:kind');
@@ -96,6 +103,12 @@ export function cleanBatch(raw: unknown, ctx: CleanCtx): CleanBatch {
     // 답글을 가리켰으면 그 답글이 매달린 글로 올리고, 답글의 답글로 본다
     const rootId = old?.root || realId, root = loc ? null : existing.get(rootId) || null; if (!loc && !root) return drop('act:target');
     const on = loc ? loc.k : rootId, author = loc ? loc.by : root!.by, key = `${kind}|${w.id}|${loc ? 'k:' : ''}${on}`;
+    // 모르는 사이: 그 사람의 글 · 답글에는 답하지도 · 인용하지도 · 공감하지도 않는다 (사용자가 정한 캐릭터 사이)
+    if (ctx.knows) {
+      const direct = loc ? loc.by : old ? old.by : author;   // 가리킨 바로 그 글 · 답글의 주인
+      const underBy = (() => { const u = String(r.under ?? r.parent ?? r.parentInteractionId ?? '').trim().replace(/^#/, ''); if (!u) return ''; if (replyBy.has(u)) return replyBy.get(u)!; const e = existing.get(ctx.refs[u] || u); return e ? e.by : ''; })();
+      if (!ctx.knows(w.id, direct) || (kind !== 'quote' && !ctx.knows(w.id, author)) || (underBy && !ctx.knows(w.id, underBy))) return drop('act:stranger');
+    }
     if (kind === 'reply') {
       // 답글에도 사진을 붙일 수 있다: "image" 칸, 또는 글 안에 적은 [사진: …] 표시 (표시는 글에서 빼고 사진으로)
       const raw0 = clip(r.text ?? r.content, max), img = clip(r.image ?? r.imagePrompt ?? '', 300) || inlinePic(raw0), text = img ? dropPics(raw0) : raw0;
@@ -104,7 +117,7 @@ export function cleanBatch(raw: unknown, ctx: CleanCtx): CleanBatch {
       let under = String(r.under ?? r.parent ?? r.parentInteractionId ?? '').trim().replace(/^#/, '');
       if (!under && old?.root) under = realId;   // 기존 답글을 바로 가리킨 경우
       if (under) { if (replyKeys.get(under) === (loc ? 'k:' : '') + on) { a.under = under; a.underLocal = true; } else { const u = existing.get(ctx.refs[under] || under); if (u && u.root === on && !loc) a.under = u.id; } }
-      if (k && !replyKeys.has(k) && !local.has(k)) { a.k = k; replyKeys.set(k, (loc ? 'k:' : '') + on); }
+      if (k && !replyKeys.has(k) && !local.has(k)) { a.k = k; replyKeys.set(k, (loc ? 'k:' : '') + on); replyBy.set(k, w.id); }
       if (text) seenText.add(flat(text)); out.acts.push(a); return;
     }
     // 인용: 그 글(답글이면 그 답글)을 가져와 위에 한마디 얹은 새 글

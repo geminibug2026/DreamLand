@@ -27,7 +27,10 @@ export interface FeedState {
   id: 'feed'; accounts: Account[]; notes: Note[]; /** 따르는 사이: 계정 → 따르는 계정들 */ follows: Record<string, string[]>;
   notices: Notice[]; seenAt: number; last: BatchLog | null; lastAt: number;
   /** 자동 새로 고침 장부 */ auto: { day: string; count: number; at: number };
+  /** 캐릭터 사이 (사용자가 정한 것): "a|b"(id 차례) → 아는 사이인가 · 어떤 사이인가. 없으면 자동(같은 대화방에 함께 있으면 아는 사이) */
+  rels?: Record<string, Rel>;
 }
+export interface Rel { known: 'auto' | 'yes' | 'no'; note?: string }
 export const emptyState = (): FeedState => ({ id: 'feed', accounts: [], notes: [], follows: {}, notices: [], seenAt: 0, last: null, lastAt: 0, auto: { day: '', count: 0, at: 0 } });
 
 /** 설정 (S.settings.feed) */
