@@ -170,6 +170,11 @@
 .mode-rp .msg.user { flex-direction: row; } .mode-rp .msg.user .msg-main { align-items: stretch; } .mode-rp .msg.user .msg-head { flex-direction: row; }
 .mode-rp .msg-head { gap: 10px; align-items: center; } .mode-rp .msg-head b { font: 700 .8em var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
 .mode-rp .msg-head::after { content: ""; flex: 1; height: 1px; background: var(--line); order: 5; } .mode-rp .msg-head time { order: 6; } .mode-rp .msg-head .msg-no { order: 7; }
+/* 이름이 길면: 이름은 다 보이고(넘치면 줄을 바꿔서), 시각 · 모델 · 토큰 줄이 먼저 줄어들며 … 로 잘린다. 차례 번호는 첫 줄에 그대로 (아래로 밀려나지 않게) */
+.mode-rp .msg-head b { min-width: 0; overflow-wrap: anywhere; }
+.mode-rp .msg-head::after { min-width: 12px; }
+.mode-rp .msg-head time { flex: 1000 1 0%; min-width: 0; max-width: max-content; }
+.mode-rp .msg-head .msg-no { flex: none; }
 .mode-rp .msg-body { font-size: calc(var(--fs) + 1px); line-height: calc(var(--lh) + .1); } .mode-rp .msg-body p.nar { margin: 1em 0; }
 .mode-rp .msg.user .msg-body { max-width: none; padding: 0; border: 0; color: color-mix(in srgb, var(--nar) 90%, var(--bg)); } .mode-rp .msg.user .msg-head b { padding: 1px 7px; border: 1px solid var(--ink-line); color: var(--text); } .mode-rp .msg.user .nar { text-align: left; }
 .q { color: var(--text); font-weight: 600; } .t { color: var(--think); font-style: italic; }
