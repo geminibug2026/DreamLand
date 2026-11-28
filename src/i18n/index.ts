@@ -40,7 +40,8 @@ const fb = (code: string): Dict => dicts.get(code) || {};
 /** 앱을 켤 때 한 번: 지금 언어를 읽어 둔다 (그 전에는 t() 가 빈 글자를 준다) */
 export async function initLang() {
   dict = await loadDict(lang);
-  const rest = () => { for (const c of ['en', 'ko']) if (c !== lang) void loadDict(c); };
+  // 한국어는 원본이라 빠진 키가 없다 (영어에만 있는 키는 한국어가 쓰지 않는 단수형 .one 뿐): 메울 사전을 읽지 않는다 — 켠 뒤 영어 사전(700KB)을 읽느라 잠깐 버벅이던 것
+  const rest = () => { if (lang !== 'ko') for (const c of ['en', 'ko']) if (c !== lang) void loadDict(c); };
   if (typeof window !== 'undefined') setTimeout(rest, 4000); else rest();
 }
 const subs = new Set<() => void>();

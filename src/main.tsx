@@ -5,8 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { DB, emit, on } from './lib/core';
 import { registerPage, route } from './lib/router';
-import { X } from './lib/hooks';
-import { start } from './lib/boot';
+import { start, NAV } from './lib/boot';
 import { installMirror, type MirrorDb } from './datafolder/mirror';
 import { setMirror } from './datafolder/instance';
 import { hydrateFromServer } from './datafolder/hydrate';
@@ -75,10 +74,12 @@ await start({
         }).catch(e => { console.error('[화면]', name, e); if (ticket === opening) toast(t('shell.pageLoadFail'), 'err'); });
       });
     }
-    // 켠 뒤 한가할 때 화면 코드를 미리 받아 둔다 (처음 열 때 기다리지 않게) — 하나씩, 화면이 바쁘지 않을 때만
-    // 화면 코드 뒤에는 기능 화면 탭들의 코드도 (처음 여는 탭이 빈 채로 기다리지 않게)
-    const rest: (() => Promise<unknown>)[] = [...Object.values(lazyPages), ...X.studio.filter(x => x.preload).map(x => () => x.preload!())], idle = (f: () => void) => { const w = window as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }; if (w.requestIdleCallback) w.requestIdleCallback(f, { timeout: 4000 }); else setTimeout(f, 200); };
-    const warm = () => { const next = rest.shift(); if (next) idle(() => { next().catch(() => { }).finally(warm); }); };
+    // 켠 뒤 한가할 때 아래 탭(프리셋 · 기능) 화면 코드만 미리 받아 둔다 (처음 열 때 기다리지 않게). 나머지 화면은 처음 열 때 받는다 —
+    // 모든 화면 · 기능 탭 코드를 켠 뒤에 다 읽으면 휴대폰에서는 그동안 누르는 것이 굼떴다. 누른 지 2초 안이면 미룬다
+    const tabs = new Set(NAV.filter(n => n[3]).map(n => n[0]));
+    const rest = Object.entries(lazyPages).filter(([f]) => tabs.has(pageName(f))).map(([, load]) => load), idle = (f: () => void) => { const w = window as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }; if (w.requestIdleCallback) w.requestIdleCallback(f, { timeout: 4000 }); else setTimeout(f, 200); };
+    let touched = 0; addEventListener('pointerdown', () => { touched = performance.now(); }, { capture: true, passive: true });
+    const warm = () => { const next = rest.shift(); if (next) idle(() => { if (performance.now() - touched < 2000) { rest.unshift(next); setTimeout(warm, 2000); return; } next().catch(() => { }).finally(warm); }); };
     setTimeout(warm, 4000);
   },
 });

@@ -45,7 +45,7 @@ const idle = (f: () => void) => { const w = window as unknown as { requestIdleCa
 function Studio() {
   const [, bump] = useState(0), re = () => bump(x => x + 1);
   // 탭마다: 몇 번째로 새로 그렸나(n) · 미리 그리는 중인가 · 마지막으로 보인 뒤의 설정 판(ver)
-  const panes = useRef(new Map<string, { n: number; warm: boolean; ver: number }>()).current, ver = useRef(0), order = useRef<string[]>([]);
+  const panes = useRef(new Map<string, { n: number; warm: boolean; ver: number }>()).current, ver = useRef(0);
   /** 탭을 연다. again: 같은 탭을 다시 누름(새로 그리기). 숨어 있는 동안 설정이 바뀐 탭도 새로 그린다 (다른 탭에서 같은 설정을 고쳤을 수 있다) */
   const show = (n: string, again = false) => {
     const p = panes.get(n);
@@ -102,30 +102,14 @@ function Studio() {
   const rank = (t: string) => { const i = TAB_ORDER.indexOf(t); return i < 0 ? TAB_ORDER.length : i; };
   const names = Object.keys(views).map((t, i) => [t, i] as const).sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1]).map(x => x[0]);
   if (!views[tab]) tab = names[0];
-  order.current = names;
   if (!panes.has(tab)) panes.set(tab, { n: 0, warm: false, ver: ver.current });
 
   useEffect(() => {
-    let alive = true, touched = 0;
-    const mark = () => { touched = performance.now(); };
-    addEventListener('pointerdown', mark, true); addEventListener('keydown', mark, true);
     // 보이는 탭에서 고친 설정은 그 탭에는 이미 반영돼 있다. 숨은 탭만 다음에 열 때 새로 그린다
     const off = on('settings', () => { ver.current++; const a = panes.get(tab); if (a && !a.warm) a.ver = ver.current; });
-    // 1) 탭 코드를 먼저 받아 둔다 (네트워크 · 해석만). 2) 한가할 때 한 탭씩 미리 그려 둔다 — 누르고 있거나 막 누른 때는 비켜 간다
-    for (const x of libHooks.X.studio) void x.preload?.();
-    const next = () => idle(() => {
-      if (!alive) return;
-      if (performance.now() - touched < 700) { setTimeout(next, 700); return; }
-      const n = order.current.find(x => !panes.has(x)); if (!n) return;
-      const ext = libHooks.X.studio.find(x => x.title === n);
-      void Promise.resolve(ext?.preload?.()).then(() => {
-        if (!alive || panes.has(n)) { next(); return; }
-        panes.set(n, { n: 0, warm: true, ver: ver.current }); re();
-        requestAnimationFrame(() => requestAnimationFrame(() => { const p = panes.get(n); if (alive && p?.warm) { p.warm = false; re(); } next(); }));
-      });
-    });
-    const start = setTimeout(next, 500);   // 보이는 탭이 먼저 다 뜨게
-    return () => { alive = false; clearTimeout(start); off(); removeEventListener('pointerdown', mark, true); removeEventListener('keydown', mark, true); };
+    // 탭 코드만 한가할 때 받아 둔다 (네트워크 · 해석만). 숨은 탭을 미리 그려 두지는 않는다 — 이 화면에 올 때마다 모든 탭을 그리느라 몇 초씩 버벅였다. 탭은 누를 때 그린다
+    let alive = true; idle(() => { if (alive) for (const x of libHooks.X.studio) void x.preload?.(); });
+    return () => { alive = false; off(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -21,7 +21,7 @@ import { Memory } from '../../lib/memory';
 import { S } from '../../lib/core';
 import { chatApi } from '../../chat/actions';
 import { toast } from '../../ui';
-import { t, getLang, fmtDate } from '../../i18n';
+import { t, fmtDate } from '../../i18n';
 import * as core from '../../lib/core';
 
 /** [id, 이름 키, 아이콘] — 이름은 그릴 때 t() */
@@ -50,7 +50,7 @@ function wire() {
 // ════════ 머리: 상태 · 대화방 고르기 · 기록 · 갱신 ════════
 /** 볼 대화방 고르기: 캐릭터별로 묶고, 방마다 분량·날짜를 붙여 구분한다. 지금 열어 둔 방이 기본 */
 function RoomPick({ chats, st }: { chats: ChatM[]; st: St }) {
-  const api = chatApi, hereId = cur()?.chat?.id || S.settings.lastChat, day = (at?: number) => getLang() === 'ko' ? new Date(at || 0).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' }) : fmtDate(at || 0, { month: 'numeric', day: 'numeric' });
+  const api = chatApi, hereId = cur()?.chat?.id || S.settings.lastChat, day = (at?: number) => fmtDate(at || 0, { month: 'numeric', day: 'numeric' });   // 만들어 둔 날짜 꼴을 다시 쓴다 (방마다 새로 만들면 목록 하나에 0.1초)
   const groups = new Map<string, ChatM[]>(); for (const c of chats) { const g = api.groupTitle(c); if (!groups.has(g)) groups.set(g, []); groups.get(g)!.push(c); }
   const label = (c: ChatM) => `${c.id === hereId ? t('memoria.archive.room.herePrefix') : ''}${t('memoria.archive.room.label', { name: api.roomName(c).slice(0, 28), count: c.count || 0, date: day(c.updatedAt) })}${c.parent ? t('memoria.archive.room.branch') : ''}`;
   const away = hereId && st.chat?.id !== hereId && S.get('chats', hereId);

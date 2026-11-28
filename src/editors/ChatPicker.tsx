@@ -5,17 +5,17 @@ import { openModal, type ModalHandle } from '../ui';
 import type { XChar, XChat } from './types';
 import { useBump } from './parts';
 import { S } from '../lib/core';
-import { t as tr, tn, locale } from '../i18n';
+import { t as tr, tn, fmtDate } from '../i18n';
 
 const charName = (c: XChat) => c.charIds.map(i => S.get('chars', i)?.name).filter(Boolean).join(', ');
 /** 대화방 이름: 가져온 이름 앞의 캐릭터 이름은 떼고, 이름이 없으면 날짜로 */
 export const roomLabel = (c: XChat) => {
   const t = charName(c), n = String(c.name || '').trim();
   const cut = t && n.toLowerCase().startsWith(t.toLowerCase()) ? n.slice(t.length).replace(/^[\s\-–—·:@]+/, '') : n;
-  return cut || tr('editors.picker.dated', { date: new Date(c.createdAt || 0).toLocaleDateString(locale(), { year: '2-digit', month: 'numeric', day: 'numeric' }) });
+  return cut || tr('editors.picker.dated', { date: fmtDate(c.createdAt || 0, { year: '2-digit', month: 'numeric', day: 'numeric' }) });
 };
 const keyOf = (c: XChat) => [...c.charIds].sort().join('+') || '-', titleOf = (c: XChat) => charName(c) || tr('editors.picker.deletedChar');
-const day = (t?: number) => new Date(t || 0).toLocaleDateString(locale(), { month: 'numeric', day: 'numeric' });
+const day = (t?: number) => fmtDate(t || 0, { month: 'numeric', day: 'numeric' });   // 만들어 둔 날짜 꼴을 다시 쓴다 (방마다 새로 만들면 목록이 길 때 느리다)
 
 function Picker({ picked, note }: { picked: Set<string>; note: (c: XChat) => string }) {
   const redraw = useBump(), open = useRef(new Set<string>()).current, [q, setQ] = useState('');

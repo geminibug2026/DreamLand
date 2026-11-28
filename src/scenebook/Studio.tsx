@@ -26,7 +26,7 @@ import { dataToBlob } from '../lib/blobUrl';
 import { blankScene, clone, configLine, cur, errText, guard, lastReply, pickKeys, when } from './util';
 import { PhotosView, TalkTiles } from '../photos/ui';
 import { Illust } from './illust';
-import { locale, t, tn } from '../i18n';
+import { fmtDate, locale, t, tn } from '../i18n';
 
 type TabId = 'gen' | 'cast' | 'refs' | 'gallery' | 'queue';
 let studioTab: TabId = 'gen', castScope: string | null = null;
@@ -471,12 +471,12 @@ function GalleryPage({ reopen, all }: { reopen: () => void; all: Card[] }) {
   const countLine = folders ? t('scenebook.studio.gal.chatsLine', { chats: groups.length, n: pics.length, size: sizeText(bytes) }) : tn('scenebook.studio.gal.count', total, { scope: scopeLabel }) + (!off && bytes ? ` · ${t('scenebook.studio.gal.sizeAbout', { size: sizeText(bytes) })}` : '');
   // 날짜 머리줄 (그날 그린 장 수와 함께) — 지금 대화 안에서는 대화 이름 대신 시각을 적는다
   const dayCount = new Map<string, number>(); if (!folders && !off) for (const a of pics) { const k = dayKey(a.ts); dayCount.set(k, (dayCount.get(k) || 0) + 1); }
-  const thisYear = new Date().getFullYear(), dayLabel = (ts: number) => new Date(ts).toLocaleDateString(locale(), { ...(new Date(ts).getFullYear() !== thisYear ? { year: 'numeric' } : {}), month: 'long', day: 'numeric', weekday: 'short' });
+  const thisYear = new Date().getFullYear(), dayLabel = (ts: number) => fmtDate(ts, { ...(new Date(ts).getFullYear() !== thisYear ? { year: 'numeric' } : {}), month: 'long', day: 'numeric', weekday: 'short' });
   const oneChat = !!inChat || scope === 'chat' || scope === 'loose';
   const tile = (a: Card) => { const picked = sel.has(a.id);
     return <button key={a.id} type="button" className={'sb-shot' + (picked ? ' picked' : '')} title={a.hint || sceneLabel(a) || undefined} aria-label={t('scenebook.studio.gal.view', { title: sceneLabel(a) || chatName(a) })} {...(picking ? { 'aria-pressed': picked } : {})} onClick={() => (picking ? flip(a.id) : void open(a))}>
       <Thumb id={a.id} />{picking ? <i className="sb-shot-pick" aria-hidden="true">{picked ? <Icon name="check" size={13} /> : null}</i> : null}{a.review ? <em className="sb-shot-mark" title={t('scenebook.studio.gal.hasReview')}>{t('scenebook.studio.gal.reviewMark')}</em> : null}
-      {sceneLabel(a) ? <span>{sceneLabel(a)}</span> : null}<small>{oneChat ? new Date(a.ts).toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' }) : chatName(a)}</small></button>; };   // 제목은 사람이 직접 붙였을 때만 (「삽화」 · 「장면 1」 같은 자리표시는 안 보인다)   // 날짜는 머리줄에 있다
+      {sceneLabel(a) ? <span>{sceneLabel(a)}</span> : null}<small>{oneChat ? fmtDate(a.ts, { hour: 'numeric', minute: '2-digit' }) : chatName(a)}</small></button>; };   // 제목은 사람이 직접 붙였을 때만 (「삽화」 · 「장면 1」 같은 자리표시는 안 보인다)   // 날짜는 머리줄에 있다
   const body: ReactNode[] = []; let lastDay = '';
   if (off) for (const j of jobs.slice(0, limit)) body.push(<button key={j.id} type="button" className="sb-shot" title={j.label || undefined} aria-label={t('scenebook.studio.gal.checkJob', { title: j.label || jobOff()[j.state] })} onClick={() => openJob(j)}><i className={`sb-shot-off ${j.state}`}>{jobOff()[j.state]}</i>{j.label ? <span>{j.label}</span> : null}<small>{j.error || configLine(j.config)}</small></button>);
   else if (folders) for (const g of groups.slice(0, limit)) body.push(<button key={g.id} type="button" className="sb-shot sb-folder" title={chatName({ owner: 'chat:' + g.id })} onClick={() => setScope('in:' + g.id)}><Thumb id={g.top.id} /><em className="sb-folder-n">{t('scenebook.studio.gal.picsN', { n: g.n })}</em><span>{chatName({ owner: 'chat:' + g.id })}</span><small>{[new Date(g.top.ts).toLocaleDateString(locale(), { ...(new Date(g.top.ts).getFullYear() !== thisYear ? { year: '2-digit' } : {}), month: 'numeric', day: 'numeric' }), g.size ? sizeText(g.size) : ''].filter(Boolean).join(' · ')}</small></button>);
