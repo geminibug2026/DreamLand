@@ -12065,6 +12065,11 @@
   "phone.sns.noPostsYet": "还没有发过帖子",
   "phone.sns.posted": "已发布",
   "phone.sns.fromGallery": "从照片中选择",
+  "phone.sns.fromDevice": "从我的照片",
+  "phone.sns.addPhoto": "附加照片",
+  "phone.sns.photoFail": "无法读取照片",
+  "phone.sns.personaFor": "对此角色显示的我的资料",
+  "phone.sns.personaAuto": "自动 · {name}",
   "phone.sns.noGallery": "照片里还没有画好的照片。",
   "phone.sns.view": "查看"
 }

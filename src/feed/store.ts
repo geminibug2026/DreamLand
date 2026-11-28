@@ -43,6 +43,9 @@ export async function load() {
 
 // ── 계정 ──
 export const account = (id: string): Account | undefined => F.accounts.find(a => a.id === id);
+/** 그 캐릭터에게 보일 내 페르소나를 고른다 ('' = 자동) */
+export function setPersonaFor(charId: string, personaId: string) { const c = cfg(), m = { ...(c.personaFor || {}) }; if (personaId) m[charId] = personaId; else delete m[charId]; S.set({ feed: { ...c, personaFor: m } }); changed(); }
+export { personaFor, facingOf } from './persona';
 /** 내 계정 (없으면 페르소나 이름으로 만든다) */
 export function myAccount(): Account {
   let a = account(ME); if (!a) { a = { id: ME, handle: uniqueHandle(S.persona(null)?.name || 'me', F.accounts.map(x => x.handle)), bio: '', voice: '', on: true, at: Date.now() }; F.accounts.push(a); }

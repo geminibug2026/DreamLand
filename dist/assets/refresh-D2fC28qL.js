@@ -1,0 +1,1 @@
+import{b as e}from"./core-BTP2JlOJ.js";import{i as t,o as n}from"./router-C3tZXYcT.js";var r=e=>e instanceof Error?e.message:String(e),i=()=>{n.page===`home`?e(`chars`,null):t()};export{i as n,r as t};

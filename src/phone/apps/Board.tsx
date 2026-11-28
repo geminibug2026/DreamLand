@@ -6,13 +6,15 @@ import { Art, useEvents } from '../../kit';
 import { S } from '../../lib/core';
 import { Illust } from '../../lib/illust';
 import { go } from '../../lib/router';
-import { confirmBox, promptBox, toast } from '../../ui';
+import { confirmBox, menu, promptBox, toast } from '../../ui';
 import { t, tn } from '../../i18n';
 import { Photos, type PhotoItem } from '../../photos/api';
 import { feedPhoto } from '../../photos/prompt';
 import { ME, type Note } from '../../feed/types';
 import { threadOf, unseen, visible } from '../../feed/logic';
-import { F, account, answerNow, cfg, echo, editText, imgOf, like, markSeen, members, myAccount, post, refresh, remove, run } from '../../feed/store';
+import { F, account, answerNow, cfg, echo, editText, facingOf, imgOf, like, markSeen, members, myAccount, personaFor, post, refresh, remove, run, setPersonaFor } from '../../feed/store';
+import { linkedPersona, pickedPersona } from '../../feed/persona';
+import { readDataURL, shrinkImage } from '../../lib/core';
 import { Emb, Fill, Glyph } from '../art';
 import { AppHead, Empty, Face, IBtn, Seg, agoText, usePhone } from '../ui';
 import { talkChats } from '../data';
@@ -21,9 +23,10 @@ type Screen = { k: 'note'; id: string } | { k: 'profile'; id: string } | { k: 'c
 const PAGE = 30;
 
 /** 계정의 얼굴 · 이름 · 손잡이 · 소개 (나는 페르소나, 캐릭터는 그 카드) */
-function who(id: string) {
+function who(id: string, n?: Note) {
   const a = account(id);
-  if (id === ME) { const p = S.persona(null); return { o: p || null, name: p?.name || t('feed.me'), handle: a?.handle || 'me', bio: a?.bio || '' }; }
+  // 내 글은 그 글이 향한 캐릭터에게 보이는 페르소나로 (내 새 글은 지금 페르소나)
+  if (id === ME) { const p = personaFor(n ? facingOf(n, F.notes) : null); return { o: p || null, name: p?.name || t('feed.me'), handle: a?.handle || 'me', bio: a?.bio || '' }; }
   const c = S.get('chars', id); return { o: c || null, name: c?.name || t('feed.gone'), handle: a?.handle || '—', bio: a?.bio || String(c?.description || '').replace(/\s+/g, ' ').trim().slice(0, 80) };
 }
 const picsOf = (n: Note) => [n.image, ...(n.images || [])].map(id => imgOf(id)).filter(Boolean);
@@ -50,7 +53,7 @@ function Acts({ n, onReply }: { n: Note; onReply?: () => void }) {
 }
 /** 글 한 줄 (타임라인 · 프로필) */
 function Post({ n }: { n: Note }) {
-  const P = usePhone(), w = who(n.by), open = () => P.open('board', { k: 'note', id: n.root || n.id } as Screen);
+  const P = usePhone(), w = who(n.by, n), open = () => P.open('board', { k: 'note', id: n.root || n.id } as Screen);
   return <li><article className="pn-post" onClick={open}>
     <button type="button" className="pn-post-face" aria-label={w.name} onClick={stop(() => P.open('board', { k: 'profile', id: n.by } as Screen))}><Face o={w.o} size={40} /></button>
     <div className="pn-post-body">
@@ -88,19 +91,42 @@ function Home() {
   </div>;
 }
 
-/** 내 답글 칸 (한 줄 입력 + 보내기) */
+/** 휴대폰(기기)에 있는 사진 한 장을 고른다 → 게시판에 붙일 크기로 줄여서 */
+function pickDevice(): Promise<Pic | null> {
+  return new Promise(res => {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+    inp.onchange = async () => {
+      const f = inp.files?.[0]; if (!f) return res(null);
+      try { const raw = await readDataURL(f), data = (await shrinkImage(raw, 1600, 'image/jpeg', 0.86)) || raw; res({ src: data, data }); }
+      catch { toast(t('phone.sns.photoFail'), 'err'); res(null); }
+    };
+    inp.click();
+  });
+}
+type Pic = { src: string; data: string };
+/** 붙일 사진 고르기: 사진 앱(이야기 속 사진) · 기기(내 휴대폰의 사진) */
+const choosePic = (el: Element, fromGallery: () => void, got: (p: Pic) => void) => menu(el, [
+  { label: t('phone.sns.fromGallery'), ic: 'image', onclick: fromGallery },
+  { label: t('phone.sns.fromDevice'), ic: 'upload', onclick: () => void pickDevice().then(p => { if (p) got(p); }) },
+]);
+/** 내 답글 칸 (사진 붙이기 + 한 줄 입력 + 보내기) */
 function ReplyBox({ root, re, name }: { root: string; re?: string; name: string }) {
-  const [v, setV] = useState(''), [busy, setBusy] = useState(false);
-  const send = async () => { const s = v.trim(); if (!s || busy) return; setBusy(true); try { await post(s, { root, re }); setV(''); } finally { setBusy(false); } };
-  return <form className="pn-sns-reply" onSubmit={e => { e.preventDefault(); void send(); }}>
-    <input value={v} maxLength={cfg().limit} placeholder={t('feed.replyingTo', { name: '@' + name })} aria-label={t('feed.act.reply')} enterKeyHint="send" onChange={e => setV(e.target.value)} />
-    <button type="submit" className="pn-mbtn" disabled={!v.trim() || busy} aria-label={t('phone.notif.send')} title={t('phone.notif.send')}><Glyph name="next" size={18} /></button></form>;
+  const [v, setV] = useState(''), [busy, setBusy] = useState(false), [pic, setPic] = useState<Pic | null>(null), [picking, setPicking] = useState(false);
+  const send = async () => { const s = v.trim(); if ((!s && !pic) || busy) return; setBusy(true); try { await post(s, { root, re, image: pic?.data }); setV(''); setPic(null); } finally { setBusy(false); } };
+  return <>
+    {pic ? <div className="pn-sns-pic sm"><img src={pic.src} alt="" /><button type="button" className="pn-rb" aria-label={t('feed.write.dropImage')} title={t('feed.write.dropImage')} onClick={() => setPic(null)}><Glyph name="x" size={16} /></button></div> : null}
+    <form className="pn-sns-reply" onSubmit={e => { e.preventDefault(); void send(); }}>
+      <button type="button" className="pn-sns-addpic" aria-label={t('phone.sns.addPhoto')} title={t('phone.sns.addPhoto')} onClick={e => choosePic(e.currentTarget, () => setPicking(true), setPic)}><Glyph name="image" size={20} /></button>
+      <input value={v} maxLength={cfg().limit} placeholder={t('feed.replyingTo', { name: '@' + name })} aria-label={t('feed.act.reply')} enterKeyHint="send" onChange={e => setV(e.target.value)} />
+      <button type="submit" className="pn-mbtn" disabled={(!v.trim() && !pic) || busy} aria-label={t('phone.notif.send')} title={t('phone.notif.send')}><Glyph name="next" size={18} /></button></form>
+    {picking ? <PickPhoto onPick={p => { setPic(p); setPicking(false); }} onClose={() => setPicking(false)} /> : null}
+  </>;
 }
 /** 게시물 하나와 답글 타래 */
 function Detail({ id }: { id: string }) {
   const P = usePhone(), n = F.notes.find(x => x.id === id), [to, setTo] = useState<string | undefined>(undefined), box = useRef<HTMLDivElement>(null);
   if (!n) return <div className="pn-appbody"><AppHead title={t('phone.sns.post')} /><Empty title={t('phone.sns.gone')} /></div>;
-  const w = who(n.by), thread = threadOf(F.notes, n.id), mineIn = [n, ...thread.map(x => x.n)].filter(x => x.by === ME).pop();
+  const w = who(n.by, n), thread = threadOf(F.notes, n.id), mineIn = [n, ...thread.map(x => x.n)].filter(x => x.by === ME).pop();
   const waiting = run.answering === mineIn?.id;
   const reTo = (x: Note) => { setTo(x.id); requestAnimationFrame(() => box.current?.querySelector('input')?.focus()); };
   // 답글 고치기 · 지우기 (지우면 그 답글에 달린 답글도 함께)
@@ -115,7 +141,7 @@ function Detail({ id }: { id: string }) {
       <small className="pn-post-time">{new Date(n.ts).toLocaleString(undefined, { month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</small>
       <Acts n={n} onReply={() => reTo(n)} />
     </article>
-    {thread.length ? <ul className="pn-thread">{thread.map(({ n: r, depth }) => { const rw = who(r.by); return <li key={r.id} className={depth ? 'deep' : undefined}>
+    {thread.length ? <ul className="pn-thread">{thread.map(({ n: r, depth }) => { const rw = who(r.by, r); return <li key={r.id} className={depth ? 'deep' : undefined}>
       <button type="button" className="pn-post-face" aria-label={rw.name} onClick={() => P.open('board', { k: 'profile', id: r.by } as Screen)}><Face o={rw.o} size={32} /></button>
       <div className="pn-post-body"><div className="pn-post-who"><b>{rw.name}</b><span>{agoText(r.ts)}</span></div>{r.text ? <p className="pn-post-text">{r.text}</p> : null}<Pics n={r} />
         <div className="pn-thread-do"><button type="button" onClick={() => reTo(r)}>{t('feed.act.reply')}</button><button type="button" className={r.likes.includes(ME) ? 'on' : undefined} aria-pressed={r.likes.includes(ME)} onClick={() => like(r.id)}>{t('feed.act.like')}{r.likes.length ? ' ' + r.likes.length : ''}</button><button type="button" className="pn-thread-own" onClick={() => void fix(r)}>{t('feed.act.edit')}</button><button type="button" onClick={() => void drop(r)}>{t('common.delete')}</button></div></div></li>; })}</ul>
@@ -138,6 +164,11 @@ function Profile({ id }: { id: string }) {
     {w.bio ? <p className="pn-sns-bio">{w.bio}</p> : null}
     <div className="pn-sns-stats"><span><b>{list.length}</b><small>{t('phone.sns.posts')}</small></span><span><b>{hearts}</b><small>{t('phone.sns.hearts')}</small></span>
       {chat ? <button type="button" onClick={() => P.toChat(chat)}><b><Fill name="messages" size={18} /></b><small>{t('phone.app.messages')}</small></button> : null}</div>
+    {id !== ME && S.personas.length > 1 ? <label className="pn-sns-persona"><small>{t('phone.sns.personaFor')}</small>
+      <select className="pn-select" value={pickedPersona(id)} onChange={e => setPersonaFor(id, e.target.value)}>
+        <option value="">{t('phone.sns.personaAuto', { name: linkedPersona(id)?.name || t('feed.me') })}</option>
+        {S.personas.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+      </select></label> : null}
     {list.length ? <ul className="pn-posts">{list.slice(0, 40).map(n => <Post key={n.id} n={n} />)}</ul> : <p className="pn-hint pn-center">{t('phone.sns.noPostsYet')}</p>}
   </div>;
 }
@@ -154,7 +185,8 @@ function Compose() {
       <textarea autoFocus rows={5} value={text} maxLength={limit + 40} placeholder={t('feed.write.ph')} aria-label={t('phone.sns.write')} onChange={e => setText(e.target.value)} />
     </div>
     {pic ? <div className="pn-sns-pic"><img src={pic.src} alt="" /><button type="button" className="pn-rb" aria-label={t('feed.write.dropImage')} title={t('feed.write.dropImage')} onClick={() => setPic(null)}><Glyph name="x" size={16} /></button></div> : null}
-    <div className="pn-pair"><button type="button" className="pn-btn ghost" onClick={() => setPicking(true)}><Fill name="photos" size={17} />{t('phone.sns.fromGallery')}</button><span className={'pn-sns-count' + (text.length > limit ? ' over' : '')}>{text.length} / {limit}</span></div>
+    <div className="pn-pair"><button type="button" className="pn-btn ghost" onClick={() => setPicking(true)}><Fill name="photos" size={17} />{t('phone.sns.fromGallery')}</button><button type="button" className="pn-btn ghost" onClick={() => void pickDevice().then(p => { if (p) setPic(p); })}><Glyph name="image" size={17} />{t('phone.sns.fromDevice')}</button></div>
+    <span className={'pn-sns-count' + (text.length > limit ? ' over' : '')}>{text.length} / {limit}</span>
     {picking ? <PickPhoto onPick={p => { setPic(p); setPicking(false); }} onClose={() => setPicking(false)} /> : null}
   </div>;
 }

@@ -12175,6 +12175,11 @@
   "phone.sns.noPostsYet": "No posts yet",
   "phone.sns.posted": "Posted",
   "phone.sns.fromGallery": "Choose from Photos",
+  "phone.sns.fromDevice": "From my photos",
+  "phone.sns.addPhoto": "Attach a photo",
+  "phone.sns.photoFail": "Couldn't read the photo",
+  "phone.sns.personaFor": "My profile for this character",
+  "phone.sns.personaAuto": "Auto · {name}",
   "phone.sns.noGallery": "No finished photos in Photos yet.",
   "phone.sns.view": "View"
 }

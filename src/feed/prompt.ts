@@ -7,6 +7,7 @@ import { daysTogether } from '../lib/together';
 import { getLang } from '../i18n';
 import type { Char, Chat } from '../lib/types';
 import { ME, type ChatFeed, type FeedCfg, type FeedState, type Note } from './types';
+import { facingOf, personaFor } from './persona';
 import { ago, carryItems, pairsFrom, quotaFor, sampleRecall, threadOf, visible, waiting, type Rnd, type Who } from './logic';
 import { FEED_IMAGE_RULE, FEED_PHOTO_RULE } from '../photos/prompt';
 
@@ -88,7 +89,7 @@ function boardLines(st: FeedState, roots: Note[], now: number, refs: Record<stri
       n.likes.length ? `[marked by ${n.likes.map(short).join(', ')}]` : '', n.echoes.length ? `[echoed by ${n.echoes.map(short).join(', ')}]` : ''].filter(Boolean).join(' ');
     out.push(`${code(n)} · ${nameOf(n.by)} · ${ago(n.ts, now)}: ${one(n.text, 260)}${extra ? ' ' + extra : ''}`);
     const th = threadOf(st.notes, n.id), shown = th.slice(-maxReplies); if (th.length > shown.length) out.push(`  … ${th.length - shown.length} earlier replies`);
-    for (const { n: r, depth } of shown) out.push(`${depth ? '    ' : '  '}↳ ${code(r)} · ${short(r.by)}${r.by === ME ? ' (the reader)' : ''} · ${ago(r.ts, now)}: ${one(r.text, 200)}`);
+    for (const { n: r, depth } of shown) out.push(`${depth ? '    ' : '  '}↳ ${code(r)} · ${r.by === ME ? (personaFor(facingOf(r, st.notes))?.name || short(r.by)) : short(r.by)}${r.by === ME ? ' (the reader)' : ''} · ${ago(r.ts, now)}: ${one(r.text, 200)}${r.imagePrompt ? ` {picture: ${one(r.imagePrompt, 90)}}` : r.image ? ' {a picture is attached}' : ''}`);
   }
   return out;
 }
@@ -125,6 +126,8 @@ export async function buildBoard(st: FeedState, cfg: FeedCfg, { now = Date.now()
     if (m.voice) lines.push(`  board voice: ${one(m.voice, 200)}`);
     if (sched && !only) { const tl = todayLine(sched, new Date(now)); if (tl) lines.push(`  today: ${one(tl, 320)}`); }
     if (days) lines.push(`  has known the reader for ${days} day${days > 1 ? 's' : ''}`);
+    // 이 캐릭터에게 보이는 내 페르소나가 기본과 다르면: 그 캐릭터는 나를 그 사람으로 안다
+    const pf = personaFor(c.id); if (pf && pf.id !== S.persona(null)?.id) lines.push(`  knows the reader as ${pf.name}${pf.description ? ` — ${one(String(pf.description), 220)}` : ''} (address and treat the reader as this person)`);
     if (!only) lines.push(...await privateLines(c.id, cfg));
     who.push(...fit(lines, per));
   }

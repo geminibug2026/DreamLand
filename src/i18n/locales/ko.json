@@ -12065,6 +12065,11 @@
   "phone.sns.noPostsYet": "아직 올린 글이 없어요",
   "phone.sns.posted": "글을 올렸어요",
   "phone.sns.fromGallery": "사진 앱에서 고르기",
+  "phone.sns.fromDevice": "내 사진에서",
+  "phone.sns.addPhoto": "사진 붙이기",
+  "phone.sns.photoFail": "사진을 읽지 못했어요",
+  "phone.sns.personaFor": "이 캐릭터에게 보일 내 프로필",
+  "phone.sns.personaAuto": "자동 · {name}",
   "phone.sns.noGallery": "사진 앱에 다 그린 사진이 아직 없어요.",
   "phone.sns.view": "보기"
 }
