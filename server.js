@@ -326,6 +326,30 @@ async function delRec(store, id, { dev = '', base } = {}) {
   await moveAside('_trash', store, id, base !== undefined && cur.hash !== base && cur.dev !== dev ? '다른 기기에서 고친 뒤 지워짐' : ''); lastWrite = clock();
   return { ok: true };
 }
+// 밀려난 판(_conflicts · _trash) 가운데 한 레코드의 것: 새것부터. 덮이거나 지워지기 전 판을 되살릴 때 고른다
+const ASIDE_KINDS = ['_conflicts', '_trash'];
+async function asideList(store, id) {
+  const out = [], want = fileOf(id);
+  for (const kind of ASIDE_KINDS) {
+    const dir = path.join(STORE_DIR, kind, store); let names = [];
+    try { names = await fsp.readdir(dir); } catch { continue; }
+    for (const f of names) {
+      if (f.replace(/^\d+-[0-9a-z]{1,8}-/, '') !== want || f === want) continue;   // 이름: <시각>-<글자 몇>-<레코드 파일 이름>
+      try {
+        const rec = await readRec(path.join(dir, f)); if (!rec || rec.meta.id !== id) continue;
+        let sum = null;   // 설정이면 무엇이 들어 있는지 조금 (고를 때 알아보게)
+        if (store === 'kv' && id === 'settings') { try { const v = JSON.parse(rec.raw); sum = { theme: String(v.theme || ''), themes: Array.isArray(v.customThemes) ? v.customThemes.length : 0, qr: Array.isArray(v.qr?.sets) ? v.qr.sets.length : 0 }; } catch { } }
+        out.push({ name: kind + '/' + store + '/' + f, kind: kind.slice(1), at: rec.meta.asideAt || rec.meta.deletedAt || rec.meta.at || 0, savedAt: rec.meta.at || 0, note: rec.meta.note || '', size: rec.meta.size || rec.raw.length, sum });
+      } catch { }
+    }
+  }
+  return out.sort((a, b) => b.at - a.at).slice(0, 60);
+}
+const asideOk = name => typeof name === 'string' && /^_(conflicts|trash)\/[a-z][a-z0-9_]{0,31}\/\d+-[0-9a-z]{1,8}-[a-z0-9_~.-]+\.json$/.test(name) && !name.includes('..');
+async function asideGet(name) {
+  const rec = await readRec(path.join(STORE_DIR, ...name.split('/'))); if (!rec) return null;
+  return { store: rec.meta.store, id: rec.meta.id, value: await resolveBins(JSON.parse(rec.raw), readBin) };
+}
 async function getRec(store, id) {
   const rec = await readRec(recPath(store, id)); if (!rec) return null;
   return { store, id: rec.meta.id, hash: rec.meta.hash, at: rec.meta.at, value: await resolveBins(JSON.parse(rec.raw), readBin) };
@@ -467,6 +491,8 @@ async function storeApi(req, res, url) {
       return res.end();
     }
     if (p === 'backups') return send(res, 200, await listBackups());
+    if (p === 'aside') { const st = url.searchParams.get('store'), id = url.searchParams.get('id'); if (!storeOk(st) || !idOk(id)) return send(res, 400, { error: '잘못된 레코드' }); return send(res, 200, await asideList(st, id)); }
+    if (p === 'aside-get') { const name = url.searchParams.get('name'); if (!asideOk(name)) return send(res, 400, { error: '잘못된 이름' }); const r = await asideGet(name); return r ? send(res, 200, r) : send(res, 404, { error: 'not found' }); }
     if (p === 'backup-file') {
       const name = url.searchParams.get('name') || ''; if (!parseBk(name) || !(await exists(path.join(BACKUP_DIR, name)))) return send(res, 404, { error: 'not found' });
       const st = await fsp.stat(path.join(BACKUP_DIR, name));
@@ -765,13 +791,17 @@ async function sendStatic(req, res, file) {
   const st = await fsp.stat(file), type = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
   const rel = path.relative(ROOT, file).split(path.sep).join('/'), fixed = rel.startsWith('dist/assets/');
   const etag = `W/"${st.size.toString(36)}-${Math.floor(st.mtimeMs).toString(36)}"`;
-  const head = { 'Content-Type': type, 'Cache-Control': fixed ? 'public, max-age=31536000, immutable' : 'no-cache', ETag: etag, Vary: 'Accept-Encoding', ...SEC_HEADERS };
+  // 막 바뀐 파일은 오래 들고 있게 하지 않는다: 업데이트(git pull)가 파일을 쓰는 도중에 앱을 열면 반만 쓰인 파일이 나갈 수 있고,
+  // 그것을 브라우저가 1년 동안 들고 있으면 켤 때마다 빈 화면으로 멈춘다. 잠시 뒤 다시 물을 때(ETag) 온전한 파일로 바뀐다
+  const settled = Date.now() - st.mtimeMs > 30000;
+  const head = { 'Content-Type': type, 'Cache-Control': fixed && settled ? 'public, max-age=31536000, immutable' : 'no-cache', ETag: etag, Vary: 'Accept-Encoding', ...SEC_HEADERS };
   if (req.headers['if-none-match'] === etag) { res.writeHead(304, head); return res.end(); }
   let body = await fsp.readFile(file);
+  if (body.length !== st.size) { head['Cache-Control'] = 'no-store'; delete head.ETag; }   // 읽는 사이에 바뀌었다 (쓰는 중): 들고 있지 않게
   if (/^(text\/|application\/(json|javascript)|image\/svg)/.test(type) && body.length > 1024 && body.length < 16 * 1024 * 1024 && /\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) {
     const memo = gzMemo.get(file);
     if (memo && memo.etag === etag) body = memo.gz;
-    else { const gz = await new Promise((ok, no) => zlib.gzip(body, { level: 6 }, (e, b) => e ? no(e) : ok(b))); gzMemo.set(file, { etag, gz }); body = gz; }
+    else { const gz = await new Promise((ok, no) => zlib.gzip(body, { level: 6 }, (e, b) => e ? no(e) : ok(b))); if (body.length === st.size) gzMemo.set(file, { etag, gz }); body = gz; }
     head['Content-Encoding'] = 'gzip';
   }
   head['Content-Length'] = body.length;

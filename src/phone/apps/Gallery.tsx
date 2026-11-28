@@ -79,7 +79,9 @@ export function Gallery({ arg }: { arg?: unknown }) {
       const out: GItem[] = [];
       for (const c of chats.slice(0, rooms)) { try { out.push(...(await Photos.list(c.id)).map(toItem)); } catch (e) { console.warn('[휴대폰 사진]', e); } if (!live) return; }
       out.push(...Photos.feed().map(toItem));
-      if (live) setItems(out.sort((a, b) => b.ts - a.ts));
+      // 같은 사진은 한 장만: 갈래로 나눈 · 복사한 대화방에는 같은 메시지와 그 사진이 그대로 들어 있어 방마다 한 번씩 잡힌다 — 같은 그림이거나 같은 메시지의 같은 사진이면 최근 것 하나만
+      const seen = new Set<string>(), uniq = out.sort((a, b) => b.ts - a.ts).filter(x => { const img = imageOf(x), k = img ? 'img:' + img : x.p?.msgId ? `msg:${x.p.msgId}|${x.p.kind}|${x.p.shows}` : x.id; if (seen.has(k)) return false; seen.add(k); return true; });
+      if (live) setItems(uniq);
     };
     void load();
     const off = Photos.subscribe(() => { if (timer || document.hidden) return; timer = window.setTimeout(() => { timer = 0; void load(); }, 300); });

@@ -8,6 +8,7 @@ import { Server } from '../lib/server';
 import type { MirrorState } from './mirror';
 
 interface Backup { name: string; at: number; kind: string; size: number }
+interface Aside { name: string; at: number; note: string; size: number; sum: { theme: string; themes: number; qr: number } | null }
 const KINDS = ['daily', 'manual', 'pre-import', 'pre-delete', 'pre-restore'];
 const OFF: MirrorState = { server: 'off', enabled: false, phase: 'idle', pending: 0, lastSync: 0, error: '', dir: '', pulled: 0, pushed: 0, conflicts: 0 };
 const noop = () => () => { };
@@ -20,11 +21,14 @@ export function DataFolderCard() {
   useLang();
   const m = getMirror();
   const st = useSyncExternalStore(m ? m.subscribe : noop, m ? m.state : () => OFF);
+  const [aside, setAside] = useState<Aside[]>([]), [allAside, setAllAside] = useState(false);
   const [list, setList] = useState<Backup[] | null>(null), [info, setInfo] = useState<{ bytes: number; records: number; backups: { bytes: number } } | null>(null), [busy, setBusy] = useState(false);
   const load = useCallback(async () => {
     try {
       const [a, b] = await Promise.all([Server.get('store/backups', { cache: 'no-store' }), Server.get('store/status', { cache: 'no-store' })]);
       if (!a.ok || !b.ok) throw new Error(); setList(await a.json() as Backup[]); setInfo(await b.json() as { bytes: number; records: number; backups: { bytes: number } });
+      // 덮이기 전의 설정(꾸미기 · 빠른 답장이 들어 있다)이 서버 _conflicts 에 남아 있으면 되살릴 수 있게 보여 준다
+      try { const c = await Server.get('store/aside?store=kv&id=settings', { cache: 'no-store' }); setAside(c.ok ? (await c.json() as Aside[]) : []); } catch { setAside([]); }
     } catch { setList(null); setInfo(null); }
   }, []);
   useEffect(() => { let alive = true; void load().then(() => { if (!alive) return; }); const iv = window.setInterval(() => { if (alive) void load(); }, 15000); return () => { alive = false; clearInterval(iv); }; }, [load, st.server]);
@@ -50,6 +54,17 @@ export function DataFolderCard() {
           <Btn label={t('datafolder.download')} cls="ghost" onClick={() => { const a = document.createElement('a'); a.href = Server.url('store/backup-file?name=' + encodeURIComponent(b.name)); a.download = 'dreamland-' + b.name; document.body.append(a); a.click(); a.remove(); }} />
           <Btn label={t('datafolder.restore')} cls="ghost" onClick={() => run(async () => { if (!(await confirmBox(t('datafolder.restoreConfirm', { when: when(b.at) }), t('datafolder.restore'), true))) return; await m.restore(b.name); })} />
         </span></li>)}</ul>}
+      {aside.length > 0 && <>
+        <h3 className="form-sec">{t('datafolder.revive.title')}</h3>
+        <p className="hint">{t('datafolder.revive.help')}</p>
+        <ul className="dl-bk">{(allAside ? aside : aside.slice(0, 5)).map(a => <li key={a.name}>
+          <span className="dl-bk-at">{when(a.at)}</span>
+          {a.sum && <span className="dl-bk-size">{t('datafolder.revive.sum', { themes: a.sum.themes, qr: a.sum.qr })}</span>}
+          <span className="dl-bk-act">
+            <Btn label={t('datafolder.revive.btn')} cls="ghost" onClick={() => run(async () => { if (!(await confirmBox(t('datafolder.revive.confirm', { when: when(a.at) }), t('datafolder.revive.btn'), true))) return; await m.revive(a.name); toast(t('datafolder.revive.done'), 'ok'); setTimeout(() => location.reload(), 600); })} />
+          </span></li>)}</ul>
+        {!allAside && aside.length > 5 && <Btn label={t('datafolder.revive.more', { count: aside.length })} cls="ghost" onClick={() => setAllAside(true)} />}
+      </>}
       <p className="hint">{t('datafolder.help')}</p>
     </>}
   </div>;

@@ -9,6 +9,8 @@ export const cacheDb = () => dbp ||= new Promise<IDBDatabase | null>(res => {
     const r = indexedDB.open('dreamland-lite', 2);
     r.onupgradeneeded = () => { for (const s of STORES) if (!r.result.objectStoreNames.contains(s)) r.result.createObjectStore(s, { keyPath: 'id' }); };
     r.onsuccess = () => { r.result.onversionchange = () => { r.result.close(); dbp = null; }; res(STORES.every(s => r.result.objectStoreNames.contains(s)) ? r.result : null); }; r.onerror = () => res(null); r.onblocked = () => res(null);   // 새 판이 열리려 하면 비켜 준다 (다른 탭의 판 올리기를 막지 않게)
+    // 다른 탭이 옛 판을 붙들고 있으면 열기가 끝없이 기다릴 수 있다: 캐시 없이 켠다 (켜기가 이것을 기다리다 빈 화면으로 멈추지 않게)
+    setTimeout(() => res(null), 4000);
   } catch { res(null); }
 });
 /** 한 트랜잭션. 저장소를 못 쓰거나 실패하면 undefined (캐시라서 실패해도 앱은 그대로 돈다) */

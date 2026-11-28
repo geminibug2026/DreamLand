@@ -1,0 +1,1 @@
+import{n as e}from"./ui-CegFhrs1.js";var t={name:`atlas`,Component:e};export{t as page};

@@ -1,7 +1,7 @@
 // ── Dreamland boot: 시작 절차 · 내비게이션 목록 · 빠른 이동 단축키 ── (옛 js/boot.js 의 화면 밖 부분)
 // start(shell) 로 시작한다. 옆 내비 · 빠른 이동 · 화면 등록은 React 판(src/Shell.tsx · src/main.tsx)이 shell 로 건넨다
 // 기능은 src/features/*.tsx 가 shell.pages 안에서 등록한다
-import { S, h, on, Vault, Secrets, debounce, isNetFail } from './core';
+import { S, h, on, Vault, Secrets, debounce, isNetFail, hasStoredSettings } from './core';
 import { PROVIDERS } from './engine';
 import { go, route } from './router';
 import { applyTheme, initFx } from './theme';
@@ -50,7 +50,7 @@ export async function start(opts: Shell = {}) {
     // 프리셋의 옛 '요약 메모리' 칸은 이제 장기기억이 들어가는 자리다
     for (const p of S.presets || []) { let ch = false; for (const b of p.blocks || []) if (b.kind === 'summary' && (b.name === '요약 메모리' || b.content === '[Story so far]\n{{slot}}')) { b.name = '장기기억 자리'; if (b.content === '[Story so far]\n{{slot}}') b.content = '{{slot}}'; ch = true; } if (ch) await S.save('presets', p, true); }
     // RP 는 소설처럼 보이는 것이 기본: 예전 판의 기본값(말풍선)이 저장돼 남아 있으면 한 번만 되돌린다. 꾸미기에서 다시 켤 수 있다
-    if (!S.settings.migr?.rpNovel) { S.set({ rpBubbles: false, migr: { ...(S.settings.migr || {}), rpNovel: 1 } }); }
+    if (!S.settings.migr?.rpNovel) { const patch = { rpBubbles: false, migr: { ...(S.settings.migr || {}), rpNovel: 1 } }; if (hasStoredSettings()) S.set(patch); else Object.assign(S.settings, patch); }   // 비운 브라우저는 저장하지 않는다 (서버의 설정을 덮지 않게)
     applyTheme(); initFx();
     on<Record<string, unknown>>('settings', p => { if ('motion' in p || 'theme' in p) { applyTheme(); buildRail(); } });
     buildRail();

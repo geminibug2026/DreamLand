@@ -139,6 +139,9 @@ const listeners: Record<string, Set<Listener>> = {};
 export const on = <T = unknown>(ev: string, fn: (data: T) => void) => { const f = fn as Listener; (listeners[ev] ||= new Set()).add(f); return () => { listeners[ev].delete(f); }; };
 export const emit = (ev: string, data?: unknown) => { (listeners[ev] || []).forEach(fn => { try { fn(data); } catch (e) { console.error(e); } }); };
 
+/** 이 브라우저에 저장된 설정이 있었는가 (없으면 처음 켠 · 비운 브라우저: 켜면서 기본 설정을 저장하지 않는다 — 서버 자료 폴더의 설정을 받아 오기 전에 덮지 않게) */
+let settingsStored = false;
+export const hasStoredSettings = () => settingsStored;
 // ── IndexedDB ──
 // assets: 캐릭터 에셋·삽화 이미지,  mem: 대화별 장기기억
 const STORES: StoreName[] = ['chars', 'chats', 'msgs', 'personas', 'lore', 'presets', 'conns', 'regex', 'kv', 'assets', 'mem'];
@@ -481,6 +484,7 @@ export const S: Store = {
     LISTS.forEach((c, i) => { self[c] = rows[i] as unknown[]; }); this._ix = {};
     const d = defaultSettings() as unknown as Plain;
     this.settings = { ...d, ...(s || {}) } as unknown as Settings;
+    settingsStored = !!s;
     const set = this.settings as unknown as Plain;
     const plain = (v: unknown): v is Plain => !!v && typeof v === 'object' && !Array.isArray(v);
     for (const k of Object.keys(d)) { const dk = d[k]; if (plain(dk)) {

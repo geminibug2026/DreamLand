@@ -70,6 +70,8 @@ export interface Mirror {
   flush(): Promise<void>;
   sync(): Promise<void>;
   restore(name: string): Promise<void>;
+  /** 밀려난 판 하나를 되살린다 (부른 쪽이 새로 연다) */
+  revive(name: string): Promise<void>;
   backupNow(): Promise<unknown>;
   ready: Promise<void>;
 }
@@ -322,7 +324,10 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
         await sleep(0);
       }
       const empty = ['chars', 'chats', 'msgs', 'lore', 'assets', 'mem'].every(s => ![...local.values()].some(l => l.store === s));
-      const fresh = !base.size && empty && server.size > 0;   // 브라우저가 비었다 (지워졌거나 다른 기기): 서버 것을 따른다
+      // 브라우저가 비었다 (지워졌거나 다른 기기): 서버 것을 따른다. 첫 맞추기가 도중에 끊겨(새로 열기 · 창 닫기) 일부만 받았어도
+      // 끝까지 맞출 때까지는 빈 브라우저로 본다 — 그 사이 켜면서 저절로 만든 기본 설정이 서버의 설정 · 꾸미기 · 빠른 답장을 덮지 않게
+      const fresh = !base.size && server.size > 0 && (empty || lsGet('dl-datafolder-fresh') === '1');
+      if (fresh) lsSet('dl-datafolder-fresh', '1');
       const later: { store: string; id: unknown; base?: string | null }[] = [];
       const pulls: Meta[] = [], pushes: Op[] = [], asides: { store: string; id: unknown; value: Json; note: string }[] = [], decide: string[] = [], nb: [string, string | null][] = [];
       for (const k of new Set([...local.keys(), ...server.keys()])) {
@@ -353,7 +358,8 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
           if (L.json === undefined) { const v = await raw.get(L.store, L.id); if (v === undefined) continue; L.v = v; L.json = (await pack(L.store, v)).json; }   // 해시만 들고 있던 그림: 견줄 때만 읽는다
           if (!got) { pushes.push({ op: 'put', store: L.store, id: L.id, value: L.json as Json }); continue; }
           const tl = timeOf(L.store, L.v), tr = timeOf(R.store, decode(got.value));
-          const serverWins = fresh ? true : tl != null && tr != null && tr > tl;
+          // 고친 시각을 모르는 것(설정 등)을 이 브라우저가 한 번도 서버와 맞춘 적 없으면(base 없음) 서버 판을 따른다: 브라우저 것은 켜면서 만든 기본값일 수 있다
+          const serverWins = fresh ? true : tl != null && tr != null ? tr > tl : !base.has(k);
           if (serverWins) { asides.push({ store: L.store, id: L.id, value: L.json as Json, note: '서버 판이 더 새로워 브라우저 판을 남겨 둠' }); pulls.push(R); }
           else pushes.push({ op: 'put', store: L.store, id: L.id, value: L.json as Json, keep: true });   // 서버 판은 서버가 _conflicts 로 옮긴다
         }
@@ -381,7 +387,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
       for (let i = rest.length - 1; i >= 0; i--) { const p = rest[i]; if (p.op !== 'put' || p.value !== undefined) continue; const v = await raw.get(p.store, p.id); if (v === undefined) { rest.splice(i, 1); continue; } p.value = (await pack(p.store, v)).json; }
       const res = await sendOps(rest);
       res.forEach((r, i) => { const p = rest[i]; if (r.ok) nb.push([keyOf(p.store, p.id), p.op === 'del' ? null : r.hash || null]); });
-      await setBases(nb);
+      await setBases(nb); lsSet('dl-datafolder-fresh', '0');
       // 맞추기 전에 쌓여 있던 줄은 이제 처리했다 (그 사이 다시 바뀐 것은 남긴다)
       await mtx(qdb, 'q', 'readwrite', o => { for (const e of queued) { const g = o.get(e.k); g.onsuccess = () => { const cur = g.result as QEntry | undefined; if (cur && cur.t === e.t) o.delete(e.k); }; } });
       for (const e of queued) live.delete(e.k);
@@ -395,6 +401,16 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
       }
     } catch (e) { st.error = e instanceof Error ? e.message : String(e); schedule(5000); }
     finally { st.phase = 'idle'; await count(); }
+  }
+
+  /** 밀려난 판(서버 _conflicts · _trash) 하나를 되살린다: 브라우저의 지금 판은 서버 _conflicts 에 남기고, 고른 판을 브라우저에 쓴 뒤(키는 브라우저 것을 지킨다) 서버로 보낸다 */
+  async function revive(name: string) {
+    const r = await getJson<{ store: string; id: unknown; value: Json } | null>('aside-get?name=' + encodeURIComponent(name));
+    if (!r || !STORES.includes(r.store) || skip(r.store, r.id)) throw new Error('not found');
+    const cur = await raw.get(r.store, r.id);
+    if (cur !== undefined) await post('conflict', { store: r.store, id: r.id, value: (await pack(r.store, cur)).json, note: '되살리기 전 판', dev });
+    await DB.put(r.store, keepSecrets(r.store, decode(r.value), cur));
+    await flush();
   }
 
   /** 백업으로 되돌린다: 서버가 지금 상태를 먼저 백업하고 되돌린 뒤, 브라우저도 서버와 똑같이 맞춘다 */
@@ -451,7 +467,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
     state: () => snap,
     subscribe(fn) { subs.add(fn); return () => { subs.delete(fn); }; },
     setEnabled(on) { st.enabled = on; lsSet('dl-datafolder', on ? 'on' : 'off'); emit(); if (on) void reconcile(); },
-    flush, sync: () => reconcile(true), restore,
+    flush, sync: () => reconcile(true), restore, revive,
     backupNow: () => post('backup', { reason: 'manual' }),
     ready,
   };
