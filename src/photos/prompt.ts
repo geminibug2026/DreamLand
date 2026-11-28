@@ -71,7 +71,9 @@ export function photoScene(chat: IChat | null | undefined, p: { kind: PhotoKind;
   if (p.kind === 'selfie') return scene('upper body', [count, lead('selfie, holding phone, reaching towards viewer'), 'foreshortening', others.length ? 'faces close together' : '', shows, 'casual snapshot',
     v5 ? `A casual phone selfie taken at arm's length${others.length ? ', everyone squeezed into the frame' : ''}; ${n > 1 ? 'everyone looks' : 'looking'} straight into the front camera.` : ''], cast('holding phone, outstretched arm, looking at viewer'), away);
   if (p.kind === 'mirror') return scene('straight-on, full body', [count, lead('mirror selfie, reflection, holding phone'), 'mirror, smartphone', shows, 'casual snapshot', v5 ? 'A mirror selfie: the phone is visible in the reflection.' : ''], cast('holding smartphone, looking at phone screen', 'standing close, looking at mirror'), 'looking at another');
-  return scene('', [shows, 'casual snapshot', v5 ? 'A casual phone photo of what the photographer wants to show; the photographer stays out of frame.' : '']);
+  // 아무도 없는 사진(no humans): 사람이 그려지지 않게 (그림체 설정에 인물 태그가 있어도)
+  const empty = /\bno humans\b/i.test(p.shows);
+  return scene('', [shows, 'casual snapshot', v5 ? 'A casual phone photo of what the photographer wants to show; the photographer stays out of frame.' : ''], [], empty ? 'human, person, people, 1boy, 1girl, 2boys, 2girls, multiple boys, multiple girls, couple, face, hands' : '');
 }
 
 // ── 앨범 채우기 (호출 1번) ──
@@ -80,7 +82,12 @@ Output ONE JSON object and nothing else:
 {"photos":[{"by":"<character name exactly as given>","kind":"selfie|mirror|shot","shows":"English, short comma-separated tags or phrases: what is in the frame, then place, time and light; begin a shot with no humans when nobody is in it; no names","alt":"a few words in {{lang}}","outfit":"optional English tags, only when dressed differently from usual"}]}`;
 
 // ── 밤의 게시판: 글에 붙이는 사진 (설정에서 켰을 때만 게시판 지침의 그림 줄을 바꾼다) ──
-export const FEED_IMAGE_RULE = '- "image" is optional and rare: one or two sentences describing a picture the member would attach (what is in the frame, no text overlay). Leave it out unless a picture truly belongs. A reply may carry one too (for example when someone asks for a picture). Describe the picture only in "image", never inside "text".';
+export const FEED_IMAGE_RULE = '- "image" is optional and rare: a phone photo the member attaches. Leave it out unless a picture truly belongs. A reply may carry one too (for example when someone asks for a picture). Write its kind, what is in the frame in short English phrases, then " | " and the same in a few words in the language of the notes: "selfie: … | …", "mirror: … | …" or "shot: … | …" (a shot shows a thing or a place with the photographer out of frame and begins with no humans when nobody is in it). Only what the photo shows: if they were asked for a picture of a shirt, it is the shirt, not people. Describe the picture only in "image", never inside "text".';
+/** 게시판 사진 설명이 그림 모델이 못 읽는 말(한국어 등)로만 적혔을 때, 그리기 전에 한 번 그림용 한 줄로 옮긴다 */
+export const PHOTO_FIX_PROMPT = `Rewrite the description of a phone photo posted on a small bulletin board as ONE line for an image model: kind, a colon, then what is in the frame as short English phrases.
+kind is one of: selfie (the poster's own face, front camera), mirror (a mirror selfie, the phone visible), shot (the poster shows a thing or a place; the poster is out of frame).
+Pick shot unless the description is clearly of the poster themselves. For a shot with nobody in it, begin the phrases with "no humans". Describe only what is in the frame (object, state, place, light), nothing else. No people who are not described.
+Output the one line only, e.g. "shot: no humans, white school shirt, yellow stains on collar, crumpled on floor, dim room".`;
 export const FEED_PHOTO_RULE = '- "image" is optional: a phone photo the member attaches, when they would really post one (a selfie, a mirror selfie before going out, food, a view, something they made or found). About one note in three may carry one. Write its kind, what is in the frame in short English phrases, then " | " and the same in a few words in the language of the notes: "selfie: … | …", "mirror: … | …" or "shot: … | …" (a shot begins with no humans when nobody is in it). No text overlay.';
 /** 사람에게 보일 설명: 그림 엔진용 인원수 태그(no humans 따위)는 빼고 */
 export const readable = (s: unknown) => String(s ?? '').split(',').map(x => x.trim()).filter(x => x && !/^(no humans|solo|\d+(girls?|boys?|others?))$/i.test(x)).join(', ');

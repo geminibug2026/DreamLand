@@ -4,7 +4,7 @@ import { DB, S, debounce, emit, on, shrinkImage, uid } from '../lib/core';
 import { quickCall } from '../lib/engine';
 import type { IChat } from '../lib/illust';
 import { canDraw as canDrawPhoto, failed, queueLoose, tracked } from '../photos/queue';
-import { feedPhoto, photoScene } from '../photos/prompt';
+import { PHOTO_FIX_PROMPT, feedPhoto, photoScene } from '../photos/prompt';
 import { go } from '../lib/router';
 import { startChat } from '../chat/start';
 import { chatApi } from '../chat/actions';
@@ -147,6 +147,13 @@ export async function draw(noteId: string, quiet = false) {
   try {
     // 삽화 엔진은 대화 하나를 받는다 — 글쓴이만 있는 빈 방을 건네 그 캐릭터의 생김새 설정이 쓰이게 한다. 그린 뒤 보관 주인을 게시판으로 옮긴다
     // 그림 설명은 휴대폰 사진으로 그린다: "selfie: …" 처럼 종류가 앞에 있으면 그 종류로, 없으면 보여 주는 사진(찍은 사람 없이)으로 — 예전처럼 글쓴이 없이 그 장면만
+    // 설명이 그림 모델이 못 읽는 말로만 적혔으면(한국어 · 글 안의 [사진: …]) 그리기 전에 한 번 그림용 한 줄로 옮겨 적어 둔다 (보조 모델 짧은 호출 1번)
+    if (!/[a-z]{3}/i.test(feedPhoto(n.imagePrompt).shows)) {
+      try {
+        const line = String(await quickCall(PHOTO_FIX_PROMPT, n.imagePrompt, { maxTokens: 200, conn: helper(), lowThink: true })).trim().split('\n').map(x => x.trim().replace(/^["'`]|["'`]$/g, '')).find(x => /^(selfie|mirror|shot)\s*:/i.test(x));
+        if (line) { n.imagePrompt = line.replace(/\s*\|.*$/, '') + ' | ' + (n.imagePrompt.includes('|') ? n.imagePrompt.split('|').pop()!.trim() : n.imagePrompt); save(); }
+      } catch (e) { console.warn('[게시판 사진] 설명 옮기기', e); }
+    }
     const room = { id: OWNER, charIds: n.by === ME ? [] : [n.by] } as IChat, p = feedPhoto(n.imagePrompt);
     const rec = await queueLoose(room, photoScene(room, { ...p, ...(n.by === ME ? {} : { by: n.by }) }) as unknown as Record<string, unknown>, j => { if (j) { tracked.set(key, j); changed(); } });
     await DB.put('assets', { ...rec, owner: OWNER, kind: 'feed' }); imgs.set(rec.id, rec.data); n.image = rec.id; save();

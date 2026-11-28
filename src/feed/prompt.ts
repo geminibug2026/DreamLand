@@ -47,7 +47,7 @@ The voice is a tendency, not a template: answer this moment, not the member's us
 
 Never write anything as the reader. Only listed members act. Output ONE JSON object and nothing else:
 {"acts":[{"by":"<handle>","on":"<code>","do":"reply","text":"…","image":"…"},{"by":"<handle>","on":"<code>","do":"like"}]}
-"on" is the short code shown for the note. "image" is optional: put it on a reply only when the member really attaches a picture (for example when asked to post one) — what is in the frame, in one or two sentences. Describe the picture there, never inside "text" (no "[photo: …]" in the text). Use "under":"<code>" when answering a specific reply. If the note has a poll, a member may add {"do":"vote","pick":<index from 0>}.`;
+"on" is the short code shown for the note. "image" is optional: put it on a reply only when the member really attaches a picture (for example when asked to post one). Write its kind, what is in the frame in short English phrases, then " | " and the same in a few words in the language of the board: "selfie: … | …", "mirror: … | …" or "shot: … | …" (a shot shows a thing or a place with the poster out of frame and begins with no humans when nobody is in it). Only what the photo shows: asked for a picture of a shirt, it is the shirt, not people. Describe the picture there, never inside "text" (no "[photo: …]" in the text). Use "under":"<code>" when answering a specific reply. If the note has a poll, a member may add {"do":"vote","pick":<index from 0>}.`;
 
 export const PROFILE_PROMPT = `These characters are joining a small fictional bulletin board where they pin short notes for each other. For each one, invent the account they would set up themselves.
 
