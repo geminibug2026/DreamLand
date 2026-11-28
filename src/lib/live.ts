@@ -123,7 +123,8 @@ A status window follows this story. When something in it changed during your rep
 key: new value
 </state>
 - Write ONLY the lines whose value actually changed in this reply; leave out everything that stayed the same. If nothing changed, write no state block at all.
-- A key that is still "(not set yet)" counts as changed: fill it in.
+- Before you close the block, go through EVERY key below against what happened in your reply (time, place, mood, clothes, condition, numbers, relationships …) and include every one that moved — not just the first one or two. Everything goes in this one block; never save some for a later reply.
+- A key that is still "(not set yet)" counts as changed: fill ALL such keys in this same block, all at once, from what the story already shows (make a sensible start if it shows nothing yet).
 - One line per key, "key: value", short, in the language of the story. Keys with a range take a number only.
 - Lines marked (locked) were fixed by {{user}}. Never write them.
 Keys:
@@ -134,11 +135,11 @@ Current values:
 </state_rules>`;
 export const CAST_INLINE = `People cards — one small card per person in the scene, with these fields:
 {{fields}}
-A card line goes inside the same state block as "Name / field: value" (for example "{{char}} / {{first}}: …"). The same rules apply: only lines that changed, only people who are actually present. A field about inner thoughts holds what that person is privately thinking right now, one short sentence in their own voice; nobody else in the scene knows it. When someone has left for good, write "Name / gone: yes".
+A card line goes inside the same state block as "Name / field: value" (for example "{{char}} / {{first}}: …"). The same rules apply: only lines that changed, only people who are actually present — but check every field of every present person, and fill all of a new person's fields at once. A field about inner thoughts holds what that person is privately thinking right now, one short sentence in their own voice; nobody else in the scene knows it. When someone has left for good, write "Name / gone: yes".
 Current cards:
 {{cards}}`;
 export const TRACK_CALL = `You keep the status window of an ongoing story up to date. Read the previous state and the latest messages, then report only what changed.
-Reply with ONLY one JSON object. Include a key only when its value changed or is still empty; leave out everything that stayed the same; reply {} when nothing changed. Values are short strings in the story's language; keys with a range take digits only. Never include a key marked (locked).
+Reply with ONLY one JSON object. Include a key only when its value changed or is still empty; leave out everything that stayed the same; reply {} when nothing changed. Check every key against the latest messages and include every one that moved, not just the first one or two. Fill ALL empty keys at once in this reply (make a sensible start from the story when it does not say). Values are short strings in the story's language; keys with a range take digits only. Never include a key marked (locked).
 Scene keys:
 {{fields}}
 {{cast}}`;
