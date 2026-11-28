@@ -1,0 +1,1 @@
+export{a as openArchive}from"./Archive-D-1l5ofB.js";

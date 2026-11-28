@@ -2,7 +2,8 @@
 import { S, msgText } from '../lib/core';
 import type { Char, Chat, Msg } from '../lib/types';
 import { cur } from '../chat/store';
-import { modeOf, titleOf } from '../chat/actions';
+import { modeOf, roomName, titleOf } from '../chat/actions';
+import { t, locale } from '../i18n';
 import { Live } from '../lib/live';
 import { Stickers } from '../extras/stickers';
 import { daysTogether } from '../lib/together';
@@ -13,6 +14,19 @@ import { F } from '../feed/store';
 export const talkChats = (): Chat[] => S.chats.filter(c => modeOf(c) === 'talk' && !c.temp).sort((a, b) => b.updatedAt - a.updatedAt);
 export const charsIn = (c: Chat): Char[] => c.charIds.map(id => S.get('chars', id)).filter((x): x is Char => !!x);
 export const nameOf = (c: Chat) => titleOf(c);
+/** 사람마다 한 묶음: 1:1 방은 그 캐릭터로, 단체방은 방마다. 묶음과 그 안의 방은 최근 순 (같은 캐릭터가 방 수만큼 여러 번 뜨지 않게) */
+export interface Person { key: string; rooms: Chat[] }
+export function people(list: Chat[]): Person[] {
+  const m = new Map<string, Chat[]>();
+  for (const c of list) { const k = c.charIds.length === 1 ? 'c:' + c.charIds[0] : 'g:' + c.id; const a = m.get(k); if (a) a.push(c); else m.set(k, [c]); }
+  return [...m.entries()].map(([key, rooms]) => ({ key, rooms: rooms.sort((a, b) => b.updatedAt - a.updatedAt) }));
+}
+/** 같은 사람의 방을 가르는 이름: 방 이름 — 가져온 대화의 날짜 꼴 이름(2026-10-03@21h…)이나 빈 이름이면 「10월 3일부터」 */
+export function roomLabel(c: Chat): string {
+  const n = (roomName(c) || '').trim();
+  if (n && !/^\d{4}-\d{2}-\d{2}[@ T]/.test(n)) return n;
+  return t('phone.room.since', { date: new Date(c.createdAt || c.updatedAt || Date.now()).toLocaleDateString(locale(), { month: 'long', day: 'numeric' }) });
+}
 /** 휴대폰의 바탕이 되는 방: 연 자리의 대화(대화 모드면) → 가장 최근 대화 모드 방 */
 export function homeChat(from: Chat | null): Chat | null {
   const c = from || cur.chat; if (c && modeOf(c) === 'talk' && S.get('chats', c.id)) return c;

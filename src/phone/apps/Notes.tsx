@@ -7,7 +7,7 @@ import { emit } from '../../lib/core';
 import { t, locale } from '../../i18n';
 import { Emb } from '../art';
 import { AppHead, Empty, Seg, usePhone } from '../ui';
-import { nameOf, talkChats } from '../data';
+import { nameOf, people, roomLabel, talkChats } from '../data';
 
 type Tab = 'mem' | 'diary';
 interface MemRow { id: string; text: string; kind: string; ts: number; star: boolean }
@@ -35,19 +35,23 @@ function Mems({ chat }: { chat: Chat | null }) {
 function Diary() {
   const P = usePhone(), [open, setOpen] = useState<{ d: DiaryEntry; c: Chat } | null>(null);
   const all = talkChats().flatMap(c => (c.diary || []).map(d => ({ d, c }))).sort((a, b) => b.d.ts - a.d.ts).slice(0, 40);
+  const many = new Set(people(talkChats()).filter(g => g.rooms.length > 1).flatMap(g => g.rooms.map(r => r.id)));   // 방이 여럿인 사람의 일기는 방 이름도 붙인다
   if (open) return <article className="pn-diary-read"><button type="button" className="pn-btn ghost sm" onClick={() => setOpen(null)}>{t('phone.back')}</button>
     <h3>{open.d.title || day(open.d.ts)}</h3><small>{[nameOf(open.c), open.d.storyDate || day(open.d.ts), open.d.mood].filter(Boolean).join(' · ')}</small><p>{open.d.text}</p>
     <button type="button" className="pn-btn wide" onClick={() => { const c = open.c; P.leave(() => emit('diary:open', c)); }}>{t('phone.note.openDiary')}</button></article>;
   if (!all.length) return <Empty art={<Emb kind="book" className="pn-empty-art" />} title={t('phone.note.noDiary')} text={t('phone.note.noDiaryHint')}>{P.home ? <button type="button" className="pn-btn" onClick={() => { const c = P.home!; P.leave(() => emit('diary:open', c)); }}>{t('phone.note.openDiary')}</button> : null}</Empty>;
-  return <ul className="pn-memos diary">{all.map(({ d, c }) => <li key={c.id + d.id}><button type="button" onClick={() => setOpen({ d, c })}><b>{d.title || day(d.ts)}</b><p>{d.text}</p><small>{[nameOf(c), day(d.ts)].join(' · ')}</small></button></li>)}</ul>;
+  return <ul className="pn-memos diary">{all.map(({ d, c }) => <li key={c.id + d.id}><button type="button" onClick={() => setOpen({ d, c })}><b>{d.title || day(d.ts)}</b><p>{d.text}</p><small>{[nameOf(c), many.has(c.id) ? roomLabel(c) : '', day(d.ts)].filter(Boolean).join(' · ')}</small></button></li>)}</ul>;
 }
 
 export function Notes() {
-  const P = usePhone(), [tab, setTab] = useState<Tab>('mem'), [cid, setCid] = useState(P.home?.id || ''), rooms = talkChats().slice(0, 8), chat = (cid && S.get('chats', cid)) || P.home;
+  const P = usePhone(), [tab, setTab] = useState<Tab>('mem'), [cid, setCid] = useState(P.home?.id || ''), rooms = talkChats().slice(0, 40), chat = (cid && S.get('chats', cid)) || P.home;
   return <div className="pn-appbody">
     <AppHead title={t('phone.app.notes')} big />
     <Seg label={t('phone.app.notes')} value={tab} onChange={setTab} opts={[['mem', t('phone.note.mem')], ['diary', t('phone.note.diary')]] as const} />
-    {tab === 'mem' && rooms.length > 1 && S.settings.memory?.enabled ? <div className="pn-chips" role="tablist" aria-label={t('phone.note.room')}>{rooms.map(c => <button key={c.id} type="button" role="tab" aria-selected={chat?.id === c.id} className={chat?.id === c.id ? 'on' : undefined} onClick={() => setCid(c.id)}>{nameOf(c)}</button>)}</div> : null}
+    {/* 어느 대화의 기억: 사람마다 묶고(같은 캐릭터가 방 수만큼 되풀이되지 않게) 방이 여럿이면 그 안에서 고른다 */}
+    {tab === 'mem' && rooms.length > 1 && S.settings.memory?.enabled ? <label className="pn-select"><span>{t('phone.note.room')}</span><select value={chat?.id || ''} onChange={e => setCid(e.target.value)}>
+      {people(rooms).map(g => g.rooms.length > 1 ? <optgroup key={g.key} label={nameOf(g.rooms[0])}>{g.rooms.map(r => <option key={r.id} value={r.id}>{roomLabel(r)}</option>)}</optgroup> : <option key={g.key} value={g.rooms[0].id}>{nameOf(g.rooms[0])}</option>)}
+    </select></label> : null}
     {tab === 'mem' ? <Mems key={chat?.id || ''} chat={chat || null} /> : <Diary />}
   </div>;
 }

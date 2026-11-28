@@ -1,0 +1,1 @@
+import{n as e}from"./ui-D0GzG9-x.js";var t={name:`atlas`,Component:e};export{t as page};
