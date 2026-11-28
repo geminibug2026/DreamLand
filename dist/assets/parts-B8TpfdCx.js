@@ -1,1 +1,0 @@
-export{n as ChatPanel}from"./parts-Cofja0yl.js";

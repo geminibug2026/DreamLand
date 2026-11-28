@@ -80,7 +80,9 @@ export function Gallery({ arg }: { arg?: unknown }) {
       for (const c of chats.slice(0, rooms)) { try { out.push(...(await Photos.list(c.id)).map(toItem)); } catch (e) { console.warn('[휴대폰 사진]', e); } if (!live) return; }
       out.push(...Photos.feed().map(toItem));
       // 같은 사진은 한 장만: 갈래로 나눈 · 복사한 대화방에는 같은 메시지와 그 사진이 그대로 들어 있어 방마다 한 번씩 잡힌다 — 같은 그림이거나 같은 메시지의 같은 사진이면 최근 것 하나만
-      const seen = new Set<string>(), uniq = out.sort((a, b) => b.ts - a.ts).filter(x => { const img = imageOf(x), k = img ? 'img:' + img : x.p?.msgId ? `msg:${x.p.msgId}|${x.p.kind}|${x.p.shows}` : x.id; if (seen.has(k)) return false; seen.add(k); return true; });
+      // 갈라 낸 방은 그림을 새 id 로 복사하므로 그림 id 만으로는 못 거른다: 사진 자체의 id(복사해도 그대로)로 먼저 거르고, 그림 id 로 한 번 더
+      const seen = new Set<string>(), photoKey = (x: GItem) => { const parts = x.p?.id.split('|') || []; return x.p?.source === 'sent' && parts[3] ? 'sp:' + parts[3] : x.p?.source === 'album' && parts[2] ? 'ap:' + parts[2] : x.id; };
+      const uniq = out.sort((a, b) => b.ts - a.ts).filter(x => { const img = imageOf(x), ks = [photoKey(x), img ? 'img:' + img : '']; if (ks.some(k => k && seen.has(k))) return false; ks.forEach(k => { if (k) seen.add(k); }); return true; });
       if (live) setItems(uniq);
     };
     void load();

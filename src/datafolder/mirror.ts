@@ -46,6 +46,9 @@ const idOf = (v: unknown) => (v && typeof v === 'object' ? (v as { id?: unknown 
 const skip = (store: string, id: unknown) => id == null || (store === 'kv' && SKIP_KV.test(String(id)));
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const EPOCH_KEY = 'dl-datafolder-epoch';
+// 켜기 전에 서버에서 그대로 가져온 것(src/datafolder/hydrate.ts)의 서버 해시: 처음 맞출 때 기준(base)으로 삼는다 — 같은 것을 다시 받거나 새로 열지 않게
+let primed: [string, unknown, string][] | null = null;
+export const primeBases = (list: [string, unknown, string][]) => { primed = list; };
 const lsGet = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const lsSet = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* 저장소를 못 쓰는 창 */ } };
 
@@ -287,6 +290,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
     st.phase = 'sync'; emit();
     try {
       await loadGen();
+      if (primed) { const p = primed; primed = null; await setBases(p.map(([s, id, h]): [string, string | null] => [keyOf(s, id), h])); }
       // 줄에 남은 것은 먼저 보내지 않는다 (비어 있는 새 브라우저의 기본값이 서버 자료를 덮지 않게). 지우기 표시만 아래에서 따른다
       await Promise.all([...qWrites]);
       const qdb = await mirrorDb(); const queued = await mtx<QEntry[]>(qdb, 'q', 'readonly', o => o.getAll());

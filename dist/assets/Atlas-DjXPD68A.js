@@ -1,0 +1,1 @@
+import{n as e}from"./ui-BEm3PfGR.js";var t={name:`atlas`,Component:e};export{t as page};

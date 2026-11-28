@@ -18,7 +18,7 @@ export const NAV: NavItem[] = [['home', 'nav.home', 'home', true, 'HOME', true],
 /** 그릴 목록: 기본 화면은 지금 언어로, 확장이 더한 화면(X.pages)의 이름은 그대로 */
 export const navItems = (): NavItem[] => [...NAV.map((n): NavItem => { const c = [...n] as NavItem; c[1] = t(n[1]); return c; }), ...X.pages.map((p): NavItem => [p.id, p.label || t('nav.extPage'), p.icon || 'sparkle', false, (p.label || 'EXT').toUpperCase()])];
 
-export interface Shell { loaded?: () => void; rail?: () => void; palette?: () => void; pages?: () => void | Promise<void> }
+export interface Shell { before?: () => Promise<unknown>; loaded?: () => void; rail?: () => void; palette?: () => void; pages?: () => void | Promise<void> }
 let shell: Shell = {};
 const buildRail = () => shell.rail?.();
 const palette = () => shell.palette?.();
@@ -45,6 +45,7 @@ addEventListener('unhandledrejection', e => {
 export async function start(opts: Shell = {}) {
   shell = opts;
   try {
+    await shell.before?.();   // 비어 있는 브라우저면 서버 자료 폴더의 자료를 먼저 가져온다 (src/datafolder/hydrate.ts)
     await S.load();
     shell.loaded?.();
     // 프리셋의 옛 '요약 메모리' 칸은 이제 장기기억이 들어가는 자리다

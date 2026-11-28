@@ -9,6 +9,7 @@ import { X } from './lib/hooks';
 import { start } from './lib/boot';
 import { installMirror, type MirrorDb } from './datafolder/mirror';
 import { setMirror } from './datafolder/instance';
+import { hydrateFromServer } from './datafolder/hydrate';
 import { toast } from './ui';
 import { Rail, openPalette } from './Shell';
 import { t, initLang } from './i18n';
@@ -51,6 +52,8 @@ let railUp = false;
 await initLang();
 
 await start({
+  // 비어 있는 브라우저(처음 열었거나 브라우저 데이터를 지웠을 때): 앱을 그리기 전에 서버 자료 폴더의 자료를 그대로 가져온다 — 같은 서버면 같은 자료
+  before: () => hydrateFromServer(),
   // 자료 폴더 거울: 브라우저 저장소에 쓰는 모든 것을 서버의 data/store 에도 보낸다. 불러온 직후, 무엇이든 저장하기 전에 한 번 (파일로 열었으면 감싸지 않는다)
   loaded: () => { if (/^https?:$/.test(location.protocol)) setMirror(installMirror(DB as unknown as MirrorDb, { toast: (m, k) => toast(m, k) })); },
   rail: () => { if (!railUp) { railUp = true; flushSync(() => railRoot.render(<Rail />)); } else emit('rail'); },

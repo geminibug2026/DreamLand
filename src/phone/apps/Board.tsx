@@ -158,7 +158,7 @@ function Compose() {
 /** 사진 앱에서 그린 사진 한 장 고르기 (대화 모드 방들의 최근 사진) */
 function PickPhoto({ onPick, onClose }: { onPick: (p: { src: string; data: string }) => void; onClose: () => void }) {
   const [list, setList] = useState<PhotoItem[] | null>(null);
-  useEffect(() => { let live = true; void (async () => { const out: PhotoItem[] = []; for (const c of talkChats().slice(0, 8)) { out.push(...(await Photos.list(c.id).catch(() => [] as PhotoItem[])).filter(x => x.state === 'done' && x.image)); if (!live) return; } setList(out.sort((a, b) => b.ts - a.ts).slice(0, 30)); })(); return () => { live = false; }; }, []);
+  useEffect(() => { let live = true; void (async () => { const out: PhotoItem[] = []; for (const c of talkChats().slice(0, 8)) { out.push(...(await Photos.list(c.id).catch(() => [] as PhotoItem[])).filter(x => x.state === 'done' && x.image)); if (!live) return; } const seen = new Set<string>(); setList(out.sort((a, b) => b.ts - a.ts).filter(x => { const parts = x.id.split('|'), ks = [x.source === 'sent' && parts[3] ? 'sp:' + parts[3] : x.source === 'album' && parts[2] ? 'ap:' + parts[2] : x.id, 'img:' + x.image]; if (ks.some(k => seen.has(k))) return false; ks.forEach(k => seen.add(k)); return true; }).slice(0, 30));   /* 갈라 낸 방에 복사된 같은 사진은 한 장만 */ })(); return () => { live = false; }; }, []);
   const take = async (p: PhotoItem) => { const data = await Illust.dataOf(p.image); if (data) onPick({ src: Photos.thumb(p) || data, data }); else toast(t('phone.ph.gone')); };
   return <div className="pn-sheet-veil" onClick={onClose}><div className="pn-sheet" role="dialog" aria-label={t('phone.sns.fromGallery')} onClick={e => e.stopPropagation()}>
     <i className="pn-sheet-grab" aria-hidden="true" /><h3>{t('phone.sns.fromGallery')}</h3>

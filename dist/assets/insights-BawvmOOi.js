@@ -1,0 +1,1 @@
+export{n as openInsights}from"./insights-DPN2T8gL.js";
