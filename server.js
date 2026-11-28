@@ -188,6 +188,12 @@ async function detect() {
 // 지우기 · 덮어쓰기는 조용히 버리지 않는다: 지운 것은 _trash/ 로, 다른 기기의 것과 부딪친 것은 _conflicts/ 로 옮긴다.
 const STORE_DIR = path.join(DATA_DIR, 'store');
 const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+// 복원 차례: 복원할 때마다 바뀐다. 창(탭 · 기기)은 켤 때 이것을 받아 저장할 때마다 함께 보낸다.
+// 복원 전에 열린 창은 옛 자료를 메모리에 들고 있으므로, 그 창의 저장은 지금 자료를 덮지 않고 _conflicts 에 남긴다 (복원한 것이 시간이 지나 옛 판으로 되돌아가지 않게)
+const EPOCH_FILE = path.join(STORE_DIR, '.epoch');
+let storeEpoch = (() => { try { return fs.readFileSync(EPOCH_FILE, 'utf8').trim(); } catch { return ''; } })();
+function newEpoch() { storeEpoch = Date.now().toString(36) + Math.random().toString(36).slice(2, 8); fs.mkdirSync(STORE_DIR, { recursive: true }); fs.writeFileSync(EPOCH_FILE, storeEpoch); return storeEpoch; }
+if (!storeEpoch) { try { newEpoch(); } catch (e) { console.error('복원 차례를 저장하지 못함', e); } }
 const BIN_MIN = 8192;
 const DAY = 86400000;
 let clockShift = Number(process.env.DL_CLOCK_SHIFT || 0);   // 시험용: 시계를 앞뒤로 돌린다
@@ -438,7 +444,7 @@ async function restoreBackup(name) {
   let trashed = 0;
   for (const m of await listMetas()) if (!keepKeys.has(recPath(m.store, m.id).toLowerCase())) { await moveAside('_trash', m.store, m.id, '복원: ' + name); trashed++; }
   lastWrite = clock();
-  return { records: n, written, trashed, pre: pre?.name || '' };
+  return { records: n, written, trashed, pre: pre?.name || '', epoch: newEpoch() };
 }
 let lastDaily = '', lastBig = 0;
 async function dailyCheck() {   // 오늘 백업이 없으면 하나 만든다 (serial 안에서)
@@ -452,8 +458,23 @@ async function bigBackup(reason) { if (clock() - lastBig < 120000) return null; 
 async function dirSize(dir) { let n = 0; for (const d of await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])) { const p = path.join(dir, d.name); n += d.isDirectory() ? await dirSize(p) : (await fsp.stat(p).catch(() => ({ size: 0 }))).size; } return n; }
 async function cleanTmp(dir) { for (const d of await fsp.readdir(dir, { withFileTypes: true }).catch(() => [])) { const p = path.join(dir, d.name); if (d.isDirectory()) await cleanTmp(p); else if (d.name.startsWith('.tmp-')) await fsp.unlink(p).catch(() => { }); } }
 
+/** 값 하나를 _conflicts 에 남긴다 (지금 자료는 건드리지 않는다) */
+async function asideValue(store, id, value, dev, note) {
+  const str = scrubSecrets(JSON.stringify(value ?? null)); const bins = new Map(); const packed = await extractBins(JSON.parse(str), bins); await writeBins(bins);
+  await atomicWrite(path.join(STORE_DIR, '_conflicts', store, clock() + '-' + Math.random().toString(36).slice(2, 6) + '-' + fileOf(id)), JSON.stringify({ v: 1, store, id, hash: dlHash(str), at: clock(), dev: String(dev || ''), note: String(note || '').slice(0, 200) }) + '\n' + JSON.stringify(packed));
+}
+const staleSeen = new Set();
 async function storeOps(body) {
   const ops = Array.isArray(body.ops) ? body.ops : []; const dev = String(body.dev || '').slice(0, 64);
+  // 복원 전에 열린 창(또는 옛 판 앱)의 저장: 덮지 않고 남겨 둔 뒤 "낡았다"고 알린다 — 그 창은 서버 자료로 다시 맞추고 새로 연다
+  if (storeEpoch && String(body.epoch || '') !== storeEpoch) {
+    return serial(async () => {
+      for (const o of ops) if (o && o.op === 'put' && storeOk(o.store) && idOk(o.id) && o.value !== undefined) { try {
+        const k = o.store + '|' + o.id + '|' + dlHash(JSON.stringify(o.value)); if (staleSeen.has(k)) continue; if (staleSeen.size > 5000) staleSeen.clear(); staleSeen.add(k);   // 옛 창이 같은 것을 되풀이해 보내도 한 번만 남긴다
+        await asideValue(o.store, o.id, o.value, dev, '복원 전에 열린 창에서 온 저장 (덮지 않고 남겨 둠)'); } catch (e) { console.error(e); } }
+      return { stale: true, epoch: storeEpoch, results: ops.map(() => ({ ok: false, stale: true, error: 'stale' })) };
+    });
+  }
   return serial(async () => {
     await dailyCheck().catch(e => console.error('하루 백업 실패', e));
     if (ops.filter(o => o && o.op === 'del').length >= 20) await bigBackup('pre-delete').catch(e => console.error('백업 실패', e));
@@ -473,7 +494,7 @@ async function storeApi(req, res, url) {
   if (req.method === 'GET') {
     if (p === 'status') {
       const backups = await listBackups();
-      return send(res, 200, { on: true, dir: STORE_DIR, backupDir: BACKUP_DIR, records: await countRecords(), bytes: await dirSize(STORE_DIR), lastWrite, scrubbed, backups: { count: backups.length, bytes: backups.reduce((n, b) => n + b.size, 0), last: backups[0]?.at || 0 }, now: clock() });
+      return send(res, 200, { on: true, epoch: storeEpoch, dir: STORE_DIR, backupDir: BACKUP_DIR, records: await countRecords(), bytes: await dirSize(STORE_DIR), lastWrite, scrubbed, backups: { count: backups.length, bytes: backups.reduce((n, b) => n + b.size, 0), last: backups[0]?.at || 0 }, now: clock() });
     }
     if (p === 'list') { const s = url.searchParams.get('store'); return send(res, 200, await listMetas(s && storeOk(s) ? s : '')); }
     if (p === 'dump') {   // 한꺼번에 받기: 줄 단위 JSON 으로 흘려 보낸다
@@ -513,8 +534,7 @@ async function storeApi(req, res, url) {
   }
   if (p === 'conflict') {   // 브라우저 쪽에서 밀려난 판을 남겨 둔다
     if (!storeOk(body.store) || !idOk(body.id)) return send(res, 400, { error: '잘못된 레코드' });
-    await serial(async () => { const str = scrubSecrets(JSON.stringify(body.value ?? null)); const bins = new Map(); const packed = await extractBins(JSON.parse(str), bins); await writeBins(bins);
-      await atomicWrite(path.join(STORE_DIR, '_conflicts', body.store, clock() + '-' + Math.random().toString(36).slice(2, 6) + '-' + fileOf(body.id)), JSON.stringify({ v: 1, store: body.store, id: body.id, hash: dlHash(str), at: clock(), dev: String(body.dev || ''), note: String(body.note || '').slice(0, 200) }) + '\n' + JSON.stringify(packed)); });
+    await serial(() => asideValue(body.store, body.id, body.value, body.dev, body.note));
     return send(res, 200, { ok: true });
   }
   if (p === 'backup') { const r = await serial(() => body.reason && body.reason !== 'manual' ? bigBackup(String(body.reason).replace(/[^a-z-]/g, '').slice(0, 20) || 'manual') : makeBackup('manual')); return send(res, 200, { ok: true, backup: r }); }

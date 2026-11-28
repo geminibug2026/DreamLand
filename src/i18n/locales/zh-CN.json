@@ -5734,6 +5734,7 @@
   "datafolder.download": "下载",
   "datafolder.restore": "恢复",
   "datafolder.restoreConfirm": "要恢复到 {when} 的备份吗？恢复前会自动备份当前状态。",
+  "datafolder.stale": "其他地方已恢复数据，此窗口的数据已过时。正在与服务器同步并重新打开。",
   "datafolder.revive.title": "恢复设置 · 外观 · 快捷回复",
   "datafolder.revive.help": "被覆盖之前的设置仍保留在服务器文件夹中。恢复时也会另存当前设置。",
   "datafolder.revive.sum": "主题 {themes} 个 · 快捷回复组 {qr} 个",

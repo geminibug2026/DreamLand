@@ -36,7 +36,7 @@ export interface MirrorState {
 interface QEntry { k: string; store: string; id: unknown; del: boolean; t: number }
 interface BaseEntry { k: string; h: string | null; gen: string }
 interface Meta { store: string; id: unknown; hash: string; at: number }
-interface WorkerReply { gone?: boolean; same?: boolean; error?: string; hash?: string; result?: { ok: boolean; hash?: string; error?: string }; hashes?: [unknown, string][] }
+interface WorkerReply { gone?: boolean; same?: boolean; error?: string; hash?: string; result?: { ok: boolean; hash?: string; error?: string; stale?: boolean }; hashes?: [unknown, string][] }
 interface Op { op: 'put' | 'del'; store: string; id: unknown; value?: Json; base?: string | null; keep?: boolean }
 /** 보낼 값의 JSON 길이 (pack 이 이미 만든 글자에서) — 묶음 크기를 재려고 한 번 더 JSON 으로 바꾸지 않게 */
 const sizes = new WeakMap<Op, number>();
@@ -45,6 +45,7 @@ const keyOf = (store: string, id: unknown) => store + '\u0001' + JSON.stringify(
 const idOf = (v: unknown) => (v && typeof v === 'object' ? (v as { id?: unknown }).id : undefined);
 const skip = (store: string, id: unknown) => id == null || (store === 'kv' && SKIP_KV.test(String(id)));
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const EPOCH_KEY = 'dl-datafolder-epoch';
 const lsGet = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const lsSet = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* 저장소를 못 쓰는 창 */ } };
 
@@ -112,11 +113,17 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
   // ── 감싸기 ──
   // frozen: 서버 자료를 받아 와 화면을 새로 열기 직전. 이 창의 메모리 상태는 낡았으므로 그 사이의 쓰기는 버린다 (받아 온 것을 덮지 않게)
   let frozen = false; const idle = () => Promise.resolve(undefined);
-  DB.put = (s: string, v: unknown) => { if (frozen) return idle(); const p = raw.put(s, v); note(s, idOf(v), false, v); return p; };
-  DB.del = (s: string, id: unknown) => { if (frozen) return idle(); const p = raw.del(s, id); note(s, id, true); return p; };
-  DB.bulk = (s: string, list: unknown[]) => { if (frozen) return idle(); if (list.length >= 20) needBackup ||= 'pre-import'; const p = raw.bulk(s, list); for (const v of list) note(s, idOf(v), false, v); return p; };
-  if (typeof DB.batch === 'function') { const rawBatch = DB.batch.bind(DB); DB.batch = ((s: string, fn: (...a: never[]) => void) => { if (frozen) return Promise.resolve({ put: [], del: [] }); return rawBatch(s, fn).then(r => { for (const v of r.put) note(s, idOf(v), false, v); for (const id of r.del) note(s, id, true); return r; }); }) as MirrorDb['batch']; }
-  DB.clear = (s: string) => frozen ? idle() : (async () => {
+  // 복원 차례 (서버가 복원할 때마다 바꾼다). 이 창이 본 차례와 브라우저에 적힌 차례가 다르면 같은 브라우저의 다른 창이 복원한 것:
+  // 이 창의 메모리 자료는 복원 전의 것이므로 쓰지 않고 새로 연다 (복원한 것을 옛 판으로 되돌리지 않게)
+  let epoch = lsGet(EPOCH_KEY) || '', staleHit = false;
+  const staleLocal = () => !!epoch && (lsGet(EPOCH_KEY) || '') !== epoch;
+  const reloadSoon = () => { if (staleHit) return; staleHit = true; frozen = true; opts.toast?.(t('datafolder.stale')); setTimeout(() => (opts.reload || (() => location.reload()))(), 900); };
+  const blocked = () => { if (frozen) return true; if (staleLocal()) { reloadSoon(); return true; } return false; };
+  DB.put = (s: string, v: unknown) => { if (blocked()) return idle(); const p = raw.put(s, v); note(s, idOf(v), false, v); return p; };
+  DB.del = (s: string, id: unknown) => { if (blocked()) return idle(); const p = raw.del(s, id); note(s, id, true); return p; };
+  DB.bulk = (s: string, list: unknown[]) => { if (blocked()) return idle(); if (list.length >= 20) needBackup ||= 'pre-import'; const p = raw.bulk(s, list); for (const v of list) note(s, idOf(v), false, v); return p; };
+  if (typeof DB.batch === 'function') { const rawBatch = DB.batch.bind(DB); DB.batch = ((s: string, fn: (...a: never[]) => void) => { if (blocked()) return Promise.resolve({ put: [], del: [] }); return rawBatch(s, fn).then(r => { for (const v of r.put) note(s, idOf(v), false, v); for (const id of r.del) note(s, id, true); return r; }); }) as MirrorDb['batch']; }
+  DB.clear = (s: string) => blocked() ? idle() : (async () => {
     needBackup ||= 'pre-delete';
     let rows: unknown[] = []; try { rows = (await raw.all(s)) as unknown[] || []; } catch { /* 없는 저장소 */ }
     const r = await raw.clear(s); for (const v of rows) note(s, idOf(v), true); return r;
@@ -131,7 +138,13 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
     const j = await r.json().catch(() => ({})) as T & { error?: string }; if (!r.ok) throw new Error(j.error || t('datafolder.err.status', { status: r.status })); return j;
   }
   async function ping() {
-    try { const s = await getJson<{ on: boolean; dir: string }>('status'); st.server = s.on ? 'on' : 'off'; st.dir = s.dir || ''; }
+    try {
+      const s = await getJson<{ on: boolean; dir: string; epoch?: string }>('status'); st.server = s.on ? 'on' : 'off'; st.dir = s.dir || '';
+      if (s.epoch) {
+        if (!epoch) { epoch = s.epoch; lsSet(EPOCH_KEY, epoch); }
+        else if (s.epoch !== epoch) { outdated(s.epoch); emit(); return false; }   // 다른 기기 · 창에서 복원했다: 이 브라우저 자료를 서버에 맞춘 뒤 새로 연다
+      }
+    }
     catch { st.server = 'off'; }
     emit(); return st.server === 'on';
   }
@@ -154,7 +167,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
   async function sendOps(ops: Op[]): Promise<{ ok: boolean; hash?: string; error?: string }[]> {
     const out: { ok: boolean; hash?: string; error?: string }[] = [];
     let batch: Op[] = [], size = 0;
-    const go = async () => { if (!batch.length) return; const r = await post<{ results: { ok: boolean; hash?: string; error?: string }[] }>('put', { dev, ops: batch }); out.push(...r.results); batch = []; size = 0; };
+    const go = async () => { if (!batch.length) return; const r = await post<{ results: { ok: boolean; hash?: string; error?: string }[]; stale?: boolean; epoch?: string }>('put', { dev, epoch, ops: batch }); if (r.stale) { outdated(r.epoch || ''); throw new Error(t('datafolder.stale')); } out.push(...r.results); batch = []; size = 0; };
     for (const op of ops) { const n = op.value === undefined ? 100 : sizes.get(op) ?? JSON.stringify(op.value).length; if (size && size + n > BATCH) await go(); batch.push(op); size += n; }
     await go(); return out;
   }
@@ -172,7 +185,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
     } catch { worker = null; }
     return worker;
   };
-  const viaWorker = (job: Record<string, unknown>) => new Promise<WorkerReply>(res => { const w = pusher(); if (!w) return res({ error: 'worker' }); const n = ++wn; waits.set(n, res); w.postMessage({ ...job, n }); });
+  const viaWorker = (job: Record<string, unknown>) => new Promise<WorkerReply>(res => { const w = pusher(); if (!w) return res({ error: 'worker' }); const n = ++wn; waits.set(n, r => { if (r.result?.stale) outdated(''); res(r); }); w.postMessage({ ...job, epoch, n }); });
 
   let flushing: Promise<void> | null = null, again = false, timer = 0, backoff = 1000;
   function schedule(ms: number) { clearTimeout(timer); timer = window.setTimeout(() => { const w = window as unknown as { requestIdleCallback?: (f: () => void, o?: { timeout: number }) => number }; if (w.requestIdleCallback) w.requestIdleCallback(() => void flush(), { timeout: 3000 }); else void flush(); }, ms); }
@@ -418,21 +431,44 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
     st.phase = 'restore'; emit();
     try {
       await flush(); if (st.pending) await flushOnce();
-      await post('restore', { name });
-      await locked(async () => {
-        const all = await dump(); const nb: [string, string | null][] = [];
-        for (const s of STORES) {
-          const rows = await localRows(s); if (!rows) continue;
-          const mine = new Map(rows.map(v => [keyOf(s, idOf(v)), v]));
-          for (const [k, o] of all) if (o.store === s) { const lv = mine.get(k); if (!lv || (await pack(s, lv)).hash !== o.hash) await writeLocal(s, o.value, lv); nb.push([k, o.hash]); }
-          for (const [k, v] of mine) if (!all.has(k) && !skip(s, idOf(v))) { await raw.del(s, idOf(v)); nb.push([k, null]); }   // 지우기 전 상태는 방금 서버가 백업했다
-        }
-        await setBases(nb);
-        const db = await mirrorDb(); await mtx(db, 'q', 'readwrite', o => o.clear()); live.clear();
-      });
+      const r = await post<{ epoch?: string }>('restore', { name });
+      if (r.epoch) { epoch = r.epoch; lsSet(EPOCH_KEY, epoch); }   // 이 브라우저의 다른 창은 이제 낡았다: 쓰려 하면 새로 연다
+      frozen = true;
+      await adoptServer();
       try { new BroadcastChannel('dl-mirror').postMessage('restored'); } catch { /* 없음 */ }
       (opts.reload || (() => location.reload()))();
     } finally { st.phase = 'idle'; await count(); }
+  }
+  /** 브라우저 자료를 서버와 똑같이 맞춘다 (복원 직후 · 다른 곳에서 복원한 뒤 낡은 창) */
+  async function adoptServer() {
+    await locked(async () => {
+      const all = await dump(); const nb: [string, string | null][] = [];
+      for (const s of STORES) {
+        const rows = await localRows(s); if (!rows) continue;
+        const mine = new Map(rows.map(v => [keyOf(s, idOf(v)), v]));
+        for (const [k, o] of all) if (o.store === s) { const lv = mine.get(k); if (!lv || (await pack(s, lv)).hash !== o.hash) await writeLocal(s, o.value, lv); nb.push([k, o.hash]); }
+        for (const [k, v] of mine) if (!all.has(k) && !skip(s, idOf(v))) { await raw.del(s, idOf(v)); nb.push([k, null]); }   // 지우기 전 상태는 서버 백업에 있다
+      }
+      await setBases(nb);
+      const db = await mirrorDb(); await mtx(db, 'q', 'readwrite', o => o.clear()); live.clear();
+    });
+  }
+  /** 서버에서 복원이 있었다 (다른 기기 · 다른 브라우저): 이 창의 쓰기를 멈추고, 이 브라우저 자료를 서버에 맞춘 뒤 새로 연다.
+   *  이 창이 보내려던 것은 서버가 _conflicts 에 남겼다 */
+  let outdating = false;
+  function outdated(next: string) {
+    if (outdating) return; outdating = true; frozen = true;
+    // 같은 브라우저의 다른 창이 복원했으면 자료는 이미 맞춰져 있다: 새로 열기만
+    if (staleLocal()) { reloadSoon(); return; }
+    setTimeout(() => void (async () => {
+      try {
+        let e = next; if (!e) { try { e = (await getJson<{ epoch?: string }>('status')).epoch || ''; } catch { /* 아래에서 그대로 새로 연다 */ } }
+        st.phase = 'restore'; emit(); opts.toast?.(t('datafolder.stale'));
+        await adoptServer();
+        if (e) { epoch = e; lsSet(EPOCH_KEY, e); }
+      } catch (err) { console.warn('[자료 폴더] 서버에 맞추지 못함', err); }
+      (opts.reload || (() => location.reload()))();
+    })(), 0);
   }
 
   // 창을 닫기 전에: 들고 있는 작은 것들을 sendBeacon 으로 (나머지는 줄에 남아 다음에 보낸다)
@@ -452,7 +488,9 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
     if (msgsLeft) ops = ops.filter(o => o.store !== 'msgs');
     ops.sort((a, b) => (a.op === 'del' ? 1 : 0) - (b.op === 'del' ? 1 : 0));
     if (!ops.length) return;
-    const blob = new Blob([JSON.stringify({ dev, ops })], { type: 'text/plain' });
+    // 서버 자료를 받아 와 새로 여는 중(frozen) · 복원 뒤 낡은 창: 메모리에 들고 있던 값은 옛것이다 — 보내면 방금 받은 것을 덮는다
+    if (frozen || staleHit || staleLocal()) return;
+    const blob = new Blob([JSON.stringify({ dev, epoch, ops })], { type: 'text/plain' });
     if (opts.base) navigator.sendBeacon(opts.base + Server.url('store/beacon'), blob); else Server.beacon('store/beacon', blob);
   }
   addEventListener('pagehide', beacon);

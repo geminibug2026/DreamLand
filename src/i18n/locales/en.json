@@ -5793,6 +5793,7 @@
   "datafolder.download": "Download",
   "datafolder.restore": "Restore",
   "datafolder.restoreConfirm": "Restore the backup from {when}? The current state is backed up automatically first.",
+  "datafolder.stale": "Data was restored elsewhere, so this window is out of date. Matching the server and reopening.",
   "datafolder.revive.title": "Restore settings · looks · quick replies",
   "datafolder.revive.help": "Earlier versions of your settings were kept in the server folder. Restoring one also keeps your current settings aside.",
   "datafolder.revive.sum": "{themes} themes · {qr} quick reply sets",

@@ -1,1 +1,0 @@
-export{t as shelf}from"./shelf-BHcWN2XL.js";
