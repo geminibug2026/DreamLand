@@ -114,7 +114,7 @@ function Detail({ id }: { id: string }) {
     </article>
     {thread.length ? <ul className="pn-thread">{thread.map(({ n: r, depth }) => { const rw = who(r.by); return <li key={r.id} className={depth ? 'deep' : undefined}>
       <button type="button" className="pn-post-face" aria-label={rw.name} onClick={() => P.open('board', { k: 'profile', id: r.by } as Screen)}><Face o={rw.o} size={32} /></button>
-      <div className="pn-post-body"><div className="pn-post-who"><b>{rw.name}</b><span>{agoText(r.ts)}</span></div><p className="pn-post-text">{r.text}</p>
+      <div className="pn-post-body"><div className="pn-post-who"><b>{rw.name}</b><span>{agoText(r.ts)}</span></div>{r.text ? <p className="pn-post-text">{r.text}</p> : null}<Pics n={r} />
         <div className="pn-thread-do"><button type="button" onClick={() => reTo(r)}>{t('feed.act.reply')}</button><button type="button" className={r.likes.includes(ME) ? 'on' : undefined} aria-pressed={r.likes.includes(ME)} onClick={() => like(r.id)}>{t('feed.act.like')}{r.likes.length ? ' ' + r.likes.length : ''}</button></div></div></li>; })}</ul>
       : <p className="pn-hint pn-center">{t('phone.sns.noReplies')}</p>}
     {mineIn ? <button type="button" className={'pn-sns-refresh' + (waiting ? ' busy' : '')} disabled={run.busy || !!run.answering} onClick={() => void answerNow(mineIn.id)}>

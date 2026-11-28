@@ -395,7 +395,7 @@ async function pruneBackups() {
   for (const s of await fsp.readdir(tdir).catch(() => [])) for (const f of await fsp.readdir(path.join(tdir, s)).catch(() => [])) { const t = Number(f.split('-')[0]); if (t && t < clock() - 30 * DAY) await fsp.unlink(path.join(tdir, s, f)).catch(() => { }); }
   return drop.length;
 }
-async function countRecords() { let n = 0; for (const s of await storeNames()) n += (await fsp.readdir(path.join(STORE_DIR, s))).filter(f => f.endsWith('.json') && !f.startsWith('.')).length; return n; }
+async function countRecords(per) { let n = 0; for (const s of await storeNames()) { const c = (await fsp.readdir(path.join(STORE_DIR, s))).filter(f => f.endsWith('.json') && !f.startsWith('.')).length; n += c; if (per) per[s] = c; } return n; }
 /** 전체 스냅숏을 만든다 (serial 안에서 부른다). 자료가 없으면 만들지 않는다 */
 async function makeBackup(reason) {
   if (!(await countRecords())) return null;
@@ -494,14 +494,15 @@ async function storeApi(req, res, url) {
   if (req.method === 'GET') {
     if (p === 'status') {
       const backups = await listBackups();
-      return send(res, 200, { on: true, epoch: storeEpoch, dir: STORE_DIR, backupDir: BACKUP_DIR, records: await countRecords(), bytes: await dirSize(STORE_DIR), lastWrite, scrubbed, backups: { count: backups.length, bytes: backups.reduce((n, b) => n + b.size, 0), last: backups[0]?.at || 0 }, now: clock() });
+      const perStore = {};
+      return send(res, 200, { on: true, epoch: storeEpoch, perStore, dir: STORE_DIR, backupDir: BACKUP_DIR, records: await countRecords(perStore), bytes: await dirSize(STORE_DIR), lastWrite, scrubbed, backups: { count: backups.length, bytes: backups.reduce((n, b) => n + b.size, 0), last: backups[0]?.at || 0 }, now: clock() });
     }
     if (p === 'list') { const s = url.searchParams.get('store'); return send(res, 200, await listMetas(s && storeOk(s) ? s : '')); }
     if (p === 'dump') {   // 한꺼번에 받기: 줄 단위 JSON 으로 흘려 보낸다
-      const only = url.searchParams.get('store');
+      const only = url.searchParams.get('store'), except = new Set(String(url.searchParams.get('except') || '').split(',').filter(Boolean));
       res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store', ...SEC_HEADERS });
       for (const s of await storeNames()) {
-        if (only && s !== only) continue;
+        if ((only && s !== only) || except.has(s)) continue;
         for (const f of await fsp.readdir(path.join(STORE_DIR, s))) {
           if (!f.endsWith('.json') || f.startsWith('.')) continue;
           const rec = await readRec(path.join(STORE_DIR, s, f)).catch(() => null); if (!rec) continue;

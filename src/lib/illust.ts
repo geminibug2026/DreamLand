@@ -288,6 +288,8 @@ function want(id: string) {
   if (!askTimer) askTimer = window.setTimeout(fetchAsked, 0);
 }
 const tell = () => { for (const f of [...picSubs]) try { f(); } catch (e) { console.warn('[삽화]', e); } };
+/** 서버에서 그림이 막 도착했다 (빈 브라우저로 켠 뒤 뒤에서 가져오는 중 — src/datafolder/hydrate.ts): 없다고 표시해 둔 것을 다시 찾게 한다 */
+export function assetsArrived() { if (!gone.size) return; gone.clear(); tell(); }
 // ── 작은 그림 (갤러리 · 참조 목록) ──
 // 목록에 원본을 그대로 깔면 한 장에 1~2MB 씩 풀어야 한다. 긴 변 480 의 WebP 를 그림 상자에 't:<id>' 로 넣어 두고 그것만 띄운다.
 // 없으면 화면용 사본(없으면 원본)에서 한 장씩 만든다 — 한 번 만든 뒤로는 원본을 읽지 않는다.

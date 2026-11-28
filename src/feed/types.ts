@@ -49,5 +49,5 @@ export interface ChatFeed { /** 게시판에서 이 대화를 언급해도 됨 (
 export interface RawBatch { notes?: unknown; acts?: unknown; ties?: unknown; [k: string]: unknown }
 /** 걸러 낸 뒤의 묶음 — 계정 id 와 실제 글 id(또는 묶음 안 열쇠)로 풀려 있다 */
 export interface CleanNote { k: string; by: string; text: string; poll?: { q: string; opts: string[] }; image?: string }
-export interface CleanAct { by: string; do: 'like' | 'echo' | 'reply' | 'vote'; /** 묶음 안 글이면 k, 기존 글이면 id */ on: string; local: boolean; text?: string; pick?: number; k?: string; under?: string; underLocal?: boolean }
+export interface CleanAct { by: string; do: 'like' | 'echo' | 'reply' | 'vote'; /** 묶음 안 글이면 k, 기존 글이면 id */ on: string; local: boolean; text?: string; /** 답글에 붙인 사진 설명 */ image?: string; pick?: number; k?: string; under?: string; underLocal?: boolean }
 export interface CleanBatch { notes: CleanNote[]; acts: CleanAct[]; ties: [string, string][]; dropped: string[] }

@@ -80,7 +80,7 @@ Output ONE JSON object and nothing else:
 {"photos":[{"by":"<character name exactly as given>","kind":"selfie|mirror|shot","shows":"English, short comma-separated tags or phrases: what is in the frame, then place, time and light; begin a shot with no humans when nobody is in it; no names","alt":"a few words in {{lang}}","outfit":"optional English tags, only when dressed differently from usual"}]}`;
 
 // ── 밤의 게시판: 글에 붙이는 사진 (설정에서 켰을 때만 게시판 지침의 그림 줄을 바꾼다) ──
-export const FEED_IMAGE_RULE = '- "image" is optional and rare: one or two sentences describing a picture the member would attach (what is in the frame, no text overlay). Leave it out unless a picture truly belongs.';
+export const FEED_IMAGE_RULE = '- "image" is optional and rare: one or two sentences describing a picture the member would attach (what is in the frame, no text overlay). Leave it out unless a picture truly belongs. A reply may carry one too (for example when someone asks for a picture). Describe the picture only in "image", never inside "text".';
 export const FEED_PHOTO_RULE = '- "image" is optional: a phone photo the member attaches, when they would really post one (a selfie, a mirror selfie before going out, food, a view, something they made or found). About one note in three may carry one. Write its kind, what is in the frame in short English phrases, then " | " and the same in a few words in the language of the notes: "selfie: … | …", "mirror: … | …" or "shot: … | …" (a shot begins with no humans when nobody is in it). No text overlay.';
 /** 사람에게 보일 설명: 그림 엔진용 인원수 태그(no humans 따위)는 빼고 */
 export const readable = (s: unknown) => String(s ?? '').split(',').map(x => x.trim()).filter(x => x && !/^(no humans|solo|\d+(girls?|boys?|others?))$/i.test(x)).join(', ');

@@ -16,6 +16,11 @@ export const uniqueHandle = (base: string, taken: Iterable<string>) => { const u
 
 // ── 깨진 JSON 복구 ──
 /** 모델 답에서 JSON 을 꺼낸다. 코드 울타리 · 앞뒤 군말을 걷고, 잘렸으면 마지막으로 온전했던 자리까지만 살려 괄호를 닫는다. 끝내 못 읽으면 null */
+// 글 안에 적은 사진 표시: [사진: …] · [photo: …] · (사진: …) — 모델이 "image" 칸 대신 글에 적었을 때 사진으로 옮긴다
+const PIC_MARK = /[\[［(（]\s*(?:사진|셀카|이미지|photo|picture|image|selfie|pic)\s*[:：]\s*([^\]］)）\n]{2,300}?)\s*[\]］)）]/gi;
+const inlinePic = (text: string) => { PIC_MARK.lastIndex = 0; const m = PIC_MARK.exec(text); PIC_MARK.lastIndex = 0; return m ? m[1].trim() : ''; };
+const dropPics = (text: string) => text.replace(PIC_MARK, ' ').replace(/[ \t]{2,}/g, ' ').replace(/ *\n */g, '\n').trim();
+
 export function repairJson(text: unknown): unknown | null {
   let s = String(text ?? '').replace(/<think(ing)?>[\s\S]*?<\/think(ing)?>/gi, '').replace(/```[a-z]*\s*/gi, '').replace(/```/g, '');
   const at = s.search(/[{[]/); if (at < 0) return null; s = s.slice(at);
@@ -76,7 +81,7 @@ export function cleanBatch(raw: unknown, ctx: CleanCtx): CleanBatch {
     const k = String(r.k ?? r.tempId ?? r.id ?? `n${i + 1}`).trim() || `n${i + 1}`; if (local.has(k)) return drop('note:key');
     const n: CleanNote = { k, by: w.id, text }, p = r.poll as Record<string, unknown> | undefined;
     if (p && typeof p === 'object') { const opts = (Array.isArray(p.opts ?? p.options) ? (p.opts ?? p.options) as unknown[] : []).map(o => clip(o, 40)).filter(Boolean).slice(0, 4), q = clip(p.q ?? p.question ?? '', 120); if (opts.length >= 2) n.poll = { q, opts }; }
-    const img = clip(r.image ?? r.imagePrompt ?? '', 300); if (img) n.image = img;
+    const img = clip(r.image ?? r.imagePrompt ?? '', 300) || inlinePic(String(r.text ?? r.content ?? '')); if (img) { n.image = img; n.text = dropPics(n.text) || n.text; }
     seenText.add(tkey); wrote[w.id] = (wrote[w.id] || 0) + 1; local.set(k, n); out.notes.push(n);
   });
 
@@ -92,13 +97,15 @@ export function cleanBatch(raw: unknown, ctx: CleanCtx): CleanBatch {
     const rootId = old?.root || realId, root = loc ? null : existing.get(rootId) || null; if (!loc && !root) return drop('act:target');
     const on = loc ? loc.k : rootId, author = loc ? loc.by : root!.by, key = `${kind}|${w.id}|${loc ? 'k:' : ''}${on}`;
     if (kind === 'reply') {
-      const text = clip(r.text ?? r.content, max); if (!text) return drop('act:empty'); if (seenText.has(flat(text))) return drop('act:dup');
-      const a: CleanAct = { by: w.id, do: 'reply', on, local: !!loc, text }, k = String(r.k ?? r.tempId ?? '').trim();
+      // 답글에도 사진을 붙일 수 있다: "image" 칸, 또는 글 안에 적은 [사진: …] 표시 (표시는 글에서 빼고 사진으로)
+      const raw0 = clip(r.text ?? r.content, max), img = clip(r.image ?? r.imagePrompt ?? '', 300) || inlinePic(raw0), text = img ? dropPics(raw0) : raw0;
+      if (!text && !img) return drop('act:empty'); if (text && seenText.has(flat(text))) return drop('act:dup');
+      const a: CleanAct = { by: w.id, do: 'reply', on, local: !!loc, text }, k = String(r.k ?? r.tempId ?? '').trim(); if (img) a.image = img;
       let under = String(r.under ?? r.parent ?? r.parentInteractionId ?? '').trim().replace(/^#/, '');
       if (!under && old?.root) under = realId;   // 기존 답글을 바로 가리킨 경우
       if (under) { if (replyKeys.get(under) === (loc ? 'k:' : '') + on) { a.under = under; a.underLocal = true; } else { const u = existing.get(ctx.refs[under] || under); if (u && u.root === on && !loc) a.under = u.id; } }
       if (k && !replyKeys.has(k) && !local.has(k)) { a.k = k; replyKeys.set(k, (loc ? 'k:' : '') + on); }
-      seenText.add(flat(text)); out.acts.push(a); return;
+      if (text) seenText.add(flat(text)); out.acts.push(a); return;
     }
     if (done.has(key)) return drop('act:twice');
     if (kind === 'vote') {
@@ -140,7 +147,7 @@ export function applyBatch(st: FeedState, b: CleanBatch, { id, now, rnd = Math.r
     const ts = Math.round(Math.min(now - 1e3, Math.max(target.ts + 60e3, target.ts + (now - target.ts) * (0.2 + 0.7 * rnd()))) + i);
     if (a.do === 'reply') {
       const re = a.under ? (a.underLocal ? replyId.get(a.under) : a.under) : undefined, prev = re ? byId.get(re) : undefined;
-      const r: Note = { id: nid('r'), by: a.by, text: a.text || '', ts: Math.max(ts, (prev?.ts || 0) + 30e3), root: target.id, likes: [], echoes: [], batch: id }; if (re && prev) r.re = re;
+      const r: Note = { id: nid('r'), by: a.by, text: a.text || '', ts: Math.max(ts, (prev?.ts || 0) + 30e3), root: target.id, likes: [], echoes: [], batch: id }; if (re && prev) r.re = re; if (a.image) r.imagePrompt = a.image;
       st.notes.push(r); byId.set(r.id, r); log.notes.push(r.id); if (a.k) replyId.set(a.k, r.id);
       notice('reply', a.by, prev?.by === ME ? prev : target, r.ts);
     } else if (a.do === 'vote') { if (target.poll && !(a.by in target.poll.votes)) { target.poll.votes[a.by] = a.pick || 0; log.votes.push([target.id, a.by]); notice('vote', a.by, target, ts); } }

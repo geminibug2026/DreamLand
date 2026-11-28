@@ -33,7 +33,7 @@ Hard rules:
 JSON shape:
 {"notes":[{"k":"n1","by":"<handle>","text":"…","poll":{"q":"…","opts":["…","…"]},"image":"…"}],
  "acts":[{"by":"<handle>","on":"<k or code>","do":"like"},
-         {"by":"<handle>","on":"<k or code>","do":"reply","text":"…","k":"r1"},
+         {"by":"<handle>","on":"<k or code>","do":"reply","text":"…","k":"r1","image":"…"},
          {"by":"<handle>","on":"<k or code>","do":"reply","text":"…","under":"<reply k or code>"},
          {"by":"<handle>","on":"<k or code>","do":"echo"},
          {"by":"<handle>","on":"<k or code>","do":"vote","pick":0}],
@@ -43,8 +43,8 @@ JSON shape:
 export const ANSWER_PROMPT = `You keep a small fictional bulletin board alive, where a handful of characters pin short notes for each other. The reader has just pinned or replied to something and is waiting. Decide which one or two members would actually respond, and write only their responses to that one note, each in that member's own board voice (terse members stay terse; a member who would not care stays silent).
 
 Never write anything as the reader. Only listed members act. Output ONE JSON object and nothing else:
-{"acts":[{"by":"<handle>","on":"<code>","do":"reply","text":"…"},{"by":"<handle>","on":"<code>","do":"like"}]}
-"on" is the short code shown for the note. Use "under":"<code>" when answering a specific reply. If the note has a poll, a member may add {"do":"vote","pick":<index from 0>}.`;
+{"acts":[{"by":"<handle>","on":"<code>","do":"reply","text":"…","image":"…"},{"by":"<handle>","on":"<code>","do":"like"}]}
+"on" is the short code shown for the note. "image" is optional: put it on a reply only when the member really attaches a picture (for example when asked to post one) — what is in the frame, in one or two sentences. Describe the picture there, never inside "text" (no "[photo: …]" in the text). Use "under":"<code>" when answering a specific reply. If the note has a poll, a member may add {"do":"vote","pick":<index from 0>}.`;
 
 export const PROFILE_PROMPT = `These characters are joining a small fictional bulletin board where they pin short notes for each other. For each one, invent the account they would set up themselves.
 

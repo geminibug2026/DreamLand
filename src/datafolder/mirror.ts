@@ -49,6 +49,9 @@ const EPOCH_KEY = 'dl-datafolder-epoch';
 // 켜기 전에 서버에서 그대로 가져온 것(src/datafolder/hydrate.ts)의 서버 해시: 처음 맞출 때 기준(base)으로 삼는다 — 같은 것을 다시 받거나 새로 열지 않게
 let primed: [string, unknown, string][] | null = null;
 export const primeBases = (list: [string, unknown, string][]) => { primed = list; };
+// 켠 뒤 뒤에서 그림을 가져오는 동안(hydrate.ts)은 처음 맞추기를 미룬다 — 아직 안 온 그림을 따로 또 받아 오지 않게
+let hold: Promise<unknown> | null = null;
+export const holdReconcile = (p: Promise<unknown>) => { hold = p; };
 const lsGet = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const lsSet = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* 저장소를 못 쓰는 창 */ } };
 
@@ -286,6 +289,7 @@ export function installMirror(DB: MirrorDb, opts: MirrorOpts = {}): Mirror {
   };
   function reconcile(full = false): Promise<void> { if (full) wantFull = true; return syncing ||= locked(reconcileOnce).finally(() => { syncing = null; }); }
   async function reconcileOnce() {
+    if (hold) { const h = hold; await h.catch(() => { }); if (hold === h) hold = null; }
     if (!st.enabled || !(await ping())) return;
     st.phase = 'sync'; emit();
     try {
