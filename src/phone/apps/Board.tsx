@@ -12,7 +12,7 @@ import { Photos, type PhotoItem } from '../../photos/api';
 import { feedPhoto } from '../../photos/prompt';
 import { ME, type Note } from '../../feed/types';
 import { threadOf, unseen, visible } from '../../feed/logic';
-import { F, account, answerNow, cfg, echo, editText, facingOf, imgOf, like, markSeen, members, myAccount, personaFor, post, refresh, remove, run, setPersonaFor } from '../../feed/store';
+import { F, account, answerNow, cfg, echo, editText, facingOf, imgOf, like, markSeen, members, myAccount, personaFor, post, redraw, refresh, remove, run, setPersonaFor } from '../../feed/store';
 import { linkedPersona, pickedPersona } from '../../feed/persona';
 import { readDataURL, shrinkImage } from '../../lib/core';
 import { Emb, Fill, Glyph } from '../art';
@@ -36,7 +36,9 @@ const repliesOf = (id: string) => F.notes.filter(x => x.root === id && visible(x
 /** 그림: 그린 것은 격자로, 그림 설명만 있으면 글로만 있는 사진 카드 (누르면 사진 입구가 그린다) */
 function Pics({ n, big }: { n: Note; big?: boolean }) {
   const pics = picsOf(n);
-  if (pics.length) return <div className={'pn-post-pics n' + Math.min(4, pics.length) + (big ? ' big' : '')}>{pics.slice(0, 4).map((src, i) => <img key={i} src={src} alt="" decoding="async" />)}</div>;
+  const busyNow = run.drawing.has(n.id);
+  if (pics.length) return <div className={'pn-post-pics n' + Math.min(4, pics.length) + (big ? ' big' : '')}>{pics.slice(0, 4).map((src, i) => <img key={i} src={src} alt="" decoding="async" />)}
+    {n.imagePrompt ? <button type="button" className={'pn-pic-redo' + (busyNow ? ' busy' : '')} disabled={busyNow} aria-label={t('phone.sns.redraw')} title={t('phone.sns.redraw')} onClick={stop(() => void redraw(n.id))}><Glyph name={busyNow ? 'clock' : 'redo'} size={16} />{busyNow ? <span>{t('photos.state.drawing')}</span> : null}</button> : null}</div>;
   if (!n.imagePrompt) return null;
   const p = feedPhoto(n.imagePrompt), busy = run.drawing.has(n.id);
   return <button type="button" className="pn-post-photo" disabled={busy} onClick={stop(() => void Photos.generate(['f|' + n.id]))} aria-label={t('phone.ph.makeOne') + ': ' + p.alt}>

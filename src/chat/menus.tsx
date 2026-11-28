@@ -101,7 +101,7 @@ const pad = (n: number) => String(n).padStart(2, '0');
 const local = (t: number) => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 function ClockDlg({ chat }: { chat: Room }) {
   const [gen, redraw] = useReducer((x: number) => x + 1, 0);
-    const set = async (patch: ClockCfg) => { chat.clock = { mode: 'real', at: Date.now(), setAt: Date.now(), flow: 'real', step: 5, ai: false, ...(chat.clock || {}), ...patch }; await S.save('chats', chat, true); emit('clock', chat); redraw(); };
+    const set = async (patch: ClockCfg) => { chat.clock = { mode: 'real', at: Date.now(), setAt: Date.now(), flow: 'real', step: 5, ...(chat.clock || {}), ...patch }; await S.save('chats', chat, true); emit('clock', chat); redraw(); };
   const c: ClockCfg = chat.clock || { mode: 'real' }, mode = c.mode || 'real';
   const card = (k: 'real' | 'story' | 'none', title: string, desc: string) => <button type="button" className={'clock-opt' + (mode === k ? ' on' : '')} onClick={() => void set(k === 'story' && mode !== 'story' ? { mode: k, at: Clock.ms(chat), setAt: Date.now() } : { mode: k })}><i /><b>{title}</b><small>{desc}</small></button>;
   const jump = (min: number) => { const now = Clock.ms(chat); let t = now + min * 60000; if (!min) { const d = new Date(now); t = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 8, 0).getTime(); } void set({ at: t, setAt: Date.now() }); };
@@ -117,7 +117,7 @@ function ClockDlg({ chat }: { chat: Room }) {
       <label className="field"><span className="field-label">{t('chat.clock.flow')}</span><select className="inp" value={c.flow || 'real'} onChange={e => void set({ at: Clock.ms(chat), setAt: Date.now(), flow: e.target.value as ClockCfg['flow'] })}>
         <option value="real">{t('chat.clock.flowReal')}</option><option value="step">{t('chat.clock.flowStep')}</option><option value="hold">{t('chat.clock.flowHold')}</option></select></label>
       {c.flow === 'step' ? <label className="field"><span className="field-label">{t('chat.clock.step')}</span><input className="inp" type="number" min={0} max={1440} defaultValue={c.step ?? 5} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} onBlur={e => { const v = Math.max(0, +e.target.value || 0); if (v !== (c.step ?? 5)) void set({ step: v }); }} /></label> : null}
-      <label className="check"><input type="checkbox" checked={!!c.ai} onChange={e => void set({ ai: e.target.checked })} /><i /><span>{t('chat.clock.ai')}</span><small>{t('chat.clock.aiHint')}</small></label>
+      <label className="check"><input type="checkbox" checked={!c.aiOff} onChange={e => void set({ aiOff: !e.target.checked })} /><i /><span>{t('chat.clock.ai')}</span><small>{t('chat.clock.aiHint')}</small></label>
       <small className="hint">{t('chat.clock.hint')}</small>
     </div> : null}
   </div>;

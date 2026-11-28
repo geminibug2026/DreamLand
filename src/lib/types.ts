@@ -66,7 +66,7 @@ export interface Persona { id: string; name: string; avatar: string; description
 export interface Presence { status: string; activity?: string; until?: number; hold?: boolean }
 export interface Later { id: string; at: number; about: string; made: number }
 export interface AutoState { day: string; count: number; streak: number; chime?: number; lastAt?: number; awayAt?: number; cd?: Record<string, Record<string, number>>; last?: { kind: string; at: number; charId: string } | null }
-export interface ClockCfg { mode?: 'real' | 'story' | 'none'; at?: number; setAt?: number; flow?: 'real' | 'step' | 'hold'; step?: number; ai?: boolean }
+export interface ClockCfg { mode?: 'real' | 'story' | 'none'; at?: number; setAt?: number; flow?: 'real' | 'step' | 'hold'; step?: number; /** 예전 칸 (쓰지 않음) */ ai?: boolean; /** 캐릭터가 시계를 옮기지 못하게 (기본은 옮긴다) */ aiOff?: boolean }
 export interface Diff { from: string; d?: number | null; at: number }
 /** 작가 노트. freq: 내 메시지 몇 번마다 넣나 (1 = 매번 · 0 = 넣지 않음) · pos: 넣는 자리 (chat = 대화 안 depth 자리 · before = 프롬프트 맨 앞 · after = 캐릭터 정의 뒤, 대화 기록 앞) */
 export interface Note { text: string; depth: number; role: string; freq?: number; pos?: 'chat' | 'before' | 'after' }

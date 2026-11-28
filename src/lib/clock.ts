@@ -68,7 +68,7 @@ export const Clock = {
     return `The current time and date inside this story: ${text}. This is story time, not the real-world clock — never refer to the real date.${c.flow === 'hold' ? ' Time stands still until someone moves it.' : ''}`;
   },
   /** 캐릭터에게 알려 줄 시계 명령 (허락했을 때만) */
-  command(chat: ClockChat | null | undefined) { const c = cfg(chat); return c?.mode === 'story' && c.ai ? '[time: advance="2h"] or [time: set="YYYY-MM-DD HH:MM"] — when story time moves on (a time skip, falling asleep, the next morning). Use it sparingly.' : ''; },
+  command(chat: ClockChat | null | undefined) { const c = cfg(chat); return c?.mode === 'story' && !c.aiOff ? '[time: advance="30m"] or [time: set="YYYY-MM-DD HH:MM"] — keep the story clock moving with the story. Whenever time passes in your reply or since the last message (waiting, travelling, eating, a class or shift, getting ready, sleeping, a time skip, "later that night", the next morning), add one: advance for how long it took ("15m", "2h", "1d"), set to jump to a known moment. Small passages count too. Leave it out only when no time passes.' : ''; },
 };
 
 // 메시지가 생길 때 이야기 시각을 적어 둔다. '메시지마다' 흐름이면 여기서 시계를 민다

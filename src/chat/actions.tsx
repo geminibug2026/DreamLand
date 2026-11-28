@@ -537,7 +537,7 @@ async function runTalkCommands(chat: Room, msgs: Msg[], target: Msg, cmds: engin
     if (c.name === 'react' && c.args.emoji) { const u = [...msgs].reverse().find(m => m.role === 'user'); if (u) { const rs = (u.reactions ||= []), e = String(c.args.emoji); if (!rs.some(r => r.from === target.id && r.sw === target.sw && r.emoji === e)) rs.push({ emoji: e, by: target.name, from: target.id, sw: target.sw }); if (cur.chat === chat) redraw(u); } }
     else if (c.name === 'status') { const st = STATUS[c.args.state || c.args.status] ? (c.args.state || c.args.status) : 'online'; const dur = String(c.args.duration || '').match(/([\d.]+)\s*(m|h)/i); Live.setPresence(chat, S.get('chars', target.charId), { status: st, activity: c.args.activity || '', durMs: dur ? +dur[1] * (dur[2].toLowerCase() === 'h' ? 3600000 : 60000) : 0 }); }
     else if (c.name === 'call') emit('talk:call', { chat, reason: c.args.reason || '', charId: target.charId, lines: msgText(target).split('\n').filter(l => l.trim()).length });   // 전화는 src/call 이 받는다 (말풍선이 다 나온 뒤에 울린다)
-    else if (c.name === 'time') { if (chat.clock?.ai) await Clock.move(chat, { set: c.args.set, advance: c.args.advance }); }
+    else if (c.name === 'time') { if (!chat.clock?.aiOff) await Clock.move(chat, { set: c.args.set, advance: c.args.advance }); }
     else if (c.name === 'memory' && c.args.summary && S.settings.memory.enabled) await Memory.add(chat.id, { summary: c.args.summary, kind: 'fact', importance: 0.7, entities: [target.name] }).catch(() => { });
     else if (c.name === 'selfie' || c.name === 'photo') {   // 사진 기능이 받으면 메신저로 보낸 사진이 되고, 아니면 예전처럼 셀카 장면을 그린다 (자리표시 제목은 붙이지 않는다)
       let took = false; try { took = !!photoHook.take?.(chat, msgs, target, c); } catch (e) { console.warn('[사진]', e); }
@@ -647,7 +647,8 @@ export async function catchUp(chat: Room, awayFor: number) {
   if (inQuietHours() || chat.owed) return false;                                         // 답하지 못한 말이 있으면 그쪽(복귀)이 먼저다
   if (!M.auto || M.away === false || !last || awayFor < (M.awayHours || 3) * 3600000 || a.count >= capOf(ch) || (a.awayAt || 0) > (last.ts || 0) || presenceOf(chat, ch).status === 'offline') return false;
   a.awayAt = now(); a.count++; a.lastAt = now(); a.last = { kind: 'away', at: now(), charId: ch.id }; await S.save('chats', chat, true);
-  const base = Math.max(last.ts || 0, now() - awayFor), stamp = Math.round(base + (now() - base) * (0.35 + Math.random() * 0.5));
+  // 비운 때부터 지금(포함) 사이 아무 때나: 비우고 30분 뒤에 보냈을 수도, 방금 보냈을 수도 있다 (비운 직후 몇 분은 빼고)
+  const base = Math.max(last.ts || 0, now() - awayFor), from = base + Math.min(10 * 60000, (now() - base) * 0.1), stamp = Math.round(from + (now() - from) * Math.random());
   await generate('normal', { proactive: true, speaker: ch, live: { kind: 'away', hours: Math.max(1, Math.round(awayFor / 3600000)) }, stamp });
   return true;
 }
@@ -757,7 +758,13 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
 
   let target: Msg | null = null, sw: Swipe | null = null, base = '';
   const stick = shown() && nearBottom();
-  if (type === 'normal') { target = newMsg('assistant', '', { charId: speaker.id, name: speaker.name, ...(inScene ? { scene: true } : {}) }); msgs.push(target); if (shown()) appendMsg(target); }
+  if (type === 'normal') {
+    target = newMsg('assistant', '', { charId: speaker.id, name: speaker.name, ...(inScene ? { scene: true } : {}) });
+    // 자리를 비운 사이에 온 연락: 그 사이의 시각으로 적는다 (앞 메시지보다 뒤, 지금보다 앞) — 돌아온 시각에 몰려 온 것처럼 보이지 않게
+    const prevTs = msgs[msgs.length - 1]?.ts || 0;
+    if (opt.stamp && Number.isFinite(opt.stamp) && opt.stamp > prevTs && opt.stamp < now()) { target.ts = Math.round(opt.stamp); if (target.swipes[0]) target.swipes[0].ts = target.ts; }
+    msgs.push(target); if (shown()) appendMsg(target);
+  }
   else if (type === 'regen') {
     target = last; target.swipes.push({ text: '', ts: now() }); target.sw = target.swipes.length - 1; if (shown()) redraw(target);
     // 새 버전에는 아직 반응이 없다: 앞 버전이 내 메시지에 단 반응을 걷는다 (다시 그려 숨김)

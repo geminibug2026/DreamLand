@@ -161,6 +161,15 @@ export async function draw(noteId: string, quiet = false) {
   finally { tracked.delete(key); run.drawing.delete(noteId); changed(); }
 }
 
+/** 그린 사진을 다시 그린다: 새 그림이 나오면 옛 그림을 치우고, 실패하면 옛 그림을 그대로 둔다 */
+export async function redraw(noteId: string) {
+  const n = F.notes.find(x => x.id === noteId); if (!n?.imagePrompt || !n.image || run.drawing.has(noteId)) return;
+  const old = n.image; delete n.image;
+  await draw(noteId);
+  const cur = F.notes.find(x => x.id === noteId); if (!cur) return;
+  if (cur.image && cur.image !== old) await dropImgs([old]); else { cur.image = old; save(); }
+}
+
 // ── 대화에서 온 글 ── ([post: …]) 스와이프마다 따로 기억해, 넘기면 거두고 돌아오면 되살린다
 export function chatPost(chat: Chat, msg: Msg, texts: string[]): string[] {
   const a = account(msg.charId); if (!a?.on || !texts.length) return [];
