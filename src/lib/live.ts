@@ -1,6 +1,7 @@
 // ── Dreamland live: 대화 모드의 살아 있는 부분 ── (옛 js/live.js 의 로직, 동작 그대로)
 // 장면 전환 · 약속한 연락 · 선톡 동기 · 캐릭터/사용자 상태 · 상태창 계산 · 프롬프트 조각 · 설정 기본값
 // 화면(상태창 띠 hud · 고치기 창 editState · 설정 창 settings)은 src/chat/{Hud,LiveSettings}.tsx 에 있다. 그 셋은 옛것처럼 빈 칸으로 두고 화면 쪽이 채운다.
+import { ADULT_RULES, FLOW_RULES, SEX_PACING } from './default-prompts';
 import { S, now, uid, on } from './core';
 import { X } from './hooks';
 import { Clock } from './clock';
@@ -114,10 +115,6 @@ The messenger chat has moved into a live scene: "{{title}}"{{place}}. You and {{
 - Keep continuity with the messages above: what was said and promised, the mood you were both in, the time of day.
 - Each reply moves the scene one step — something is done, said or noticed. A few short paragraphs, not a chapter.
 - Never echo yourself: do not reuse sentences, images or sentence patterns from your earlier replies (above all the last one), and do not describe again what was already described. Pick up from the new moment with new actions, sensations and words.
-- Know where the scene stands — what already happened, which line was already crossed, what is still open — and never replay a finished beat as new. Every reply changes something: position, pace, who leads, what is said, a decision, an outcome.
-- Let it build and pay off: do not rush from first touch to the end in one reply, but do not circle the same motion either. When the build-up over the last replies has clearly peaked (in sex, when release is clearly at hand), let it happen in this reply and stop at the immediate aftermath.
-- If {{user}}'s message adds nothing new, take the scene forward yourself from your last reply.
-- Intimate scenes between adults are written plainly and explicitly: the direct everyday words for body parts and acts, crude ones when {{char}} would use them — no clinical terms (like 성기), no euphemisms (like 그곳, 중심), no fade-outs or mood paragraphs in place of what happens.
 - When the scene has naturally ended (you part ways, someone leaves or falls asleep), finish your reply and add one last line: [scene_end: summary="one sentence about what happened"]. After that you two go back to texting. Do not end it early.
 </scene>`;
 export const LATER_OFFER = `[later: in="2h", about="what you will text about"] — when you promise to get back to {{user}} later ("I'll text you after class", "tell you tomorrow"), add this so that you really do. in= accepts m, h or d.`;
@@ -340,6 +337,8 @@ const promptFn = ({ chat, char, chars = [], ctx, type, msgs = [], call = false }
   const talk = chat.mode === 'talk', scene = chat.scene?.on && (talk || chat.sceneLive) && !call;
   if (type === 'impersonate') return out;
   if (scene) {
+    // 장면(만나서 함께 있는 동안)은 소설처럼 쓰므로 RP 기본 프리셋과 같은 전개 · 정사 완급 · 성인 · 비순화 지침을 함께 싣는다 (src/lib/default-prompts.ts)
+    out.push({ where: 'end', src: '장면: 전개 · 성인 지침', content: [FLOW_RULES, SEX_PACING, ADULT_RULES].join('\n\n') });
     out.push({ where: 'end', src: '장면 안내', content: mx(get('modes.sceneRules', SCENE_RULES)).replace('{{title}}', chat.scene!.title || 'untitled').replace('{{place}}', chat.scene!.place ? ` at ${chat.scene!.place}` : '') });
     const lastSaid = [...msgs].reverse().find(m => !m.hidden && (m.role === 'user' || m.role === 'assistant'));
     if (type === 'normal' && lastSaid?.role === 'assistant') out.push({ where: 'end', src: '장면 잇기', content: mx(SCENE_GO_ON) });

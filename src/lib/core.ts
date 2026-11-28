@@ -4,6 +4,7 @@ import { Server } from './server';
 import type { Char, Chat, Colls, CollName, Conn, KvRow, Lore, LoreEntry, Msg, MsgsRow, Persona, Preset, PresetBlock, Regex, Role, Settings, StoreName, Asset } from './types';
 import * as MS from './msgstore';
 import { Av } from './avatars';
+import { ADULT_RULES, FINAL_PIN, FLOW_RULES, SEX_PACING } from './default-prompts';
 
 // replaceChildren / append 에 null·false·undefined 가 섞여 들어가면 글자로 찍히므로 걸러 낸다
 type Kid = Node | string;
@@ -235,29 +236,32 @@ export const MARKERS: Record<string, string> = {
 const MAIN_PROMPT_OLD = "Write {{char}}'s next reply in a fictional roleplay between {{char}} and {{user}}. Stay in character, keep the story moving, and never write {{user}}'s actions or dialogue for them. Put spoken dialogue in double quotes and inner thoughts in single quotes.";
 export const MAIN_PROMPT = `You write {{char}}'s side of an ongoing roleplay with {{user}}. Write the next reply only.
 - Stay inside {{char}}: their voice, knowledge, mood and motives, as the character sheet and the story so far show them. The world and its other characters are yours to write too. {{user}} is not — never write {{user}}'s words, actions, thoughts or decisions, and stop where {{user}} would need to respond.
+- Every reply moves the scene: something is done, said, noticed or changed. Do not restate what just happened, and do not reuse phrasing or sentence patterns from your recent replies.
+- Be concrete: specific actions, sensory detail and dialogue, rather than summaries of what someone feels.
+- Spoken dialogue goes in "double quotes" and inner thoughts in 'single quotes'. Write in the language of the story so far.
+- This is fiction written for and with consenting adults. Mature content (violence, dark themes, profanity and explicit sex) is allowed when the story calls for it: write it plainly and in full, without softening it, fading to black, adding warnings or stepping out of the story to comment. Anyone in a sexual scene is an adult.`;
+/** 잠깐 썼던 기본 후속 지시 (손대지 않은 프리셋에서 새 고정핀으로 바꾼다) */
+const AFTER_PROMPT_V1 = `[Before you write: continue from where the story last stopped and take it forward. Do not replay finished beats or repeat your last reply's lines, images or shape. Keep the intensity the scene already has — do not soften, sanitise, moralise or wrap things up early. In explicit moments use direct, unsoftened words.]`;
+const MAIN_PROMPT_V4 = `You write {{char}}'s side of an ongoing roleplay with {{user}}. Write the next reply only.
+- Stay inside {{char}}: their voice, knowledge, mood and motives, as the character sheet and the story so far show them. The world and its other characters are yours to write too. {{user}} is not — never write {{user}}'s words, actions, thoughts or decisions, and stop where {{user}} would need to respond.
 - Pick up exactly where the story stopped and move it on: something is done, said, noticed or changed. Keep track of what has already happened, which lines were already crossed and what is still open — never replay a finished beat as if it were new (a first touch, a realisation, a fight that already happened). New wording for the same beat is still a repeat.
 - Do not restate what just happened, and do not reuse phrasing, images or sentence patterns from your recent replies.
 - Be concrete: specific actions, sensory detail and dialogue, rather than summaries of what someone feels.
 - Let things build and pay off. A scene may run over many replies, but each reply changes something in it (position, pace, who leads, what is said, a choice, an outcome). When a moment has clearly built to its peak, let it happen instead of circling it, then stop at what comes right after.
 - Spoken dialogue goes in "double quotes" and inner thoughts in 'single quotes'. Write in the language of the story so far.
 - This is fiction written for and with consenting adults. Mature content (violence, dark themes, profanity and explicit sex) is allowed when the story calls for it: write it plainly and in full, without softening it, fading to black, adding warnings or stepping out of the story to comment. In sex scenes, name body parts and acts with the direct everyday words a native speaker would use — crude ones too, when the characters would say them — never clinical terms (like 성기) or coy euphemisms (like 그곳, 중심, 은밀한 곳), and show what actually happens rather than mood alone. Anyone in a sexual scene is an adult.`;
-/** 기본 프리셋의 후속 지시 (채팅 기록 뒤 — 가까이 있는 지시를 더 잘 따른다) */
-export const AFTER_PROMPT = `[Before you write: continue from where the story last stopped and take it forward. Do not replay finished beats or repeat your last reply's lines, images or shape. Keep the intensity the scene already has — do not soften, sanitise, moralise or wrap things up early. In explicit moments use direct, unsoftened words.]`;
-const MAIN_PROMPT_V3 = `You write {{char}}'s side of an ongoing roleplay with {{user}}. Write the next reply only.
-- Stay inside {{char}}: their voice, knowledge, mood and motives, as the character sheet and the story so far show them. The world and its other characters are yours to write too. {{user}} is not — never write {{user}}'s words, actions, thoughts or decisions, and stop where {{user}} would need to respond.
-- Every reply moves the scene: something is done, said, noticed or changed. Do not restate what just happened, and do not reuse phrasing or sentence patterns from your recent replies.
-- Be concrete: specific actions, sensory detail and dialogue, rather than summaries of what someone feels.
-- Spoken dialogue goes in "double quotes" and inner thoughts in 'single quotes'. Write in the language of the story so far.
-- This is fiction written for and with consenting adults. Mature content (violence, dark themes, profanity and explicit sex) is allowed when the story calls for it: write it plainly and in full, without softening it, fading to black, adding warnings or stepping out of the story to comment. Anyone in a sexual scene is an adult.`;
 const MAIN_PROMPT_V2 = `You write {{char}}'s side of an ongoing roleplay with {{user}}. Write the next reply only.
 - Stay inside {{char}}: their voice, knowledge, mood and motives, as the character sheet and the story so far show them. The world and its other characters are yours to write too. {{user}} is not — never write {{user}}'s words, actions, thoughts or decisions, and stop where {{user}} would need to respond.
 - Every reply moves the scene: something is done, said, noticed or changed. Do not restate what just happened, and do not reuse phrasing or sentence patterns from your recent replies.
 - Be concrete: specific actions, sensory detail and dialogue, rather than summaries of what someone feels.
 - Spoken dialogue goes in "double quotes" and inner thoughts in 'single quotes'. Write in the language of the story so far.`;
+/** 기본 프리셋에 싣는 지침 블록 (src/lib/default-prompts.ts): 성인 · 비순화 지침은 채팅 기록 앞, 전개 · 정사 완급은 채팅 기록 뒤 */
+export const DL_RULES: [string, string, string][] = [['dl-adult', '성인 · 비순화 지침', ADULT_RULES], ['dl-flow', '전개 지침', FLOW_RULES], ['dl-sexpace', '정사 완급', SEX_PACING]];
+const dlRuleBlocks = (): PresetBlock[] => DL_RULES.map(([stId, name, content]) => ({ id: uid(), kind: 'text', name, role: 'system', content, enabled: true, depth: null, stId }));
 export function defaultPreset(): Preset {
   const b = (kind: string, extra: Partial<PresetBlock> = {}): PresetBlock => ({ id: uid(), kind, name: MARKERS[kind] || extra.name || '프롬프트', role: 'system', content: '', enabled: true, depth: null, ...extra });
   return {
-    id: uid(), name: '드림랜드 기본', createdAt: now(),
+    id: uid(), name: '드림랜드 기본', createdAt: now(), dlRules: 1,
     params: { temperature: 1, topP: null, topK: null, maxTokens: 4096, contextSize: 128000, freqPen: null, presPen: null, minP: null, topA: null, repPen: null, seed: null, stream: true, effort: '', squash: true, prefill: '', stop: [], cardOverrides: true, namesInGroup: true },
     blocks: [
       b('main', { content: MAIN_PROMPT }),
@@ -268,9 +272,11 @@ export function defaultPreset(): Preset {
       b('scenario', { content: '[Scenario: {{slot}}]' }),
       b('worldInfoAfter'),
       b('dialogueExamples'),
+      ...dlRuleBlocks().slice(0, 1),
       b('summary', { content: '{{slot}}' }),
       b('chatHistory'),
-      b('jailbreak', { content: AFTER_PROMPT }),
+      ...dlRuleBlocks().slice(1),
+      b('jailbreak', { content: FINAL_PIN }),
     ],
   };
 }
@@ -521,7 +527,17 @@ export const S: Store = {
     // 연출 지시: 예전 설정(지난 지시를 꼬리표로 남기기)이 기본이던 때의 값은 '그 답변 한 번에만'으로 한 번 옮긴다
     if (plain(s?.direct) && (s.direct as Plain).v !== 2) { (set.direct as Plain).past = 'drop'; (set.direct as Plain).v = 2; }
     if (!this.presets.length) { const p = defaultPreset(); this.presets.push(p); await DB.put('presets', p); }
-    for (const p of this.presets) { const m = (p.blocks || []).filter(b => b.kind === 'main' && (b.content === MAIN_PROMPT_OLD || b.content === MAIN_PROMPT_V2 || b.content === MAIN_PROMPT_V3)); if (m.length) { m.forEach(b => { b.content = MAIN_PROMPT; }); const jb = (p.blocks || []).find(b => b.kind === 'jailbreak' && !String(b.content || '').trim()); if (jb) jb.content = AFTER_PROMPT; await DB.put('presets', p); } }   // 손대지 않은 기본 프리셋: 새 메인 · 비어 있는 후속 지시
+    // 손대지 않은 기본 프리셋(메인이 옛 기본 문장 그대로): 메인은 지금 기본으로, 지침 블록(성인 · 비순화 · 전개 · 정사 완급)과 후속 지시 고정핀을 한 번 넣는다 (프리셋에 표시해 두어 지운 블록을 다시 넣지 않는다)
+    for (const p of this.presets) {
+      const mark = p as Preset & { dlRules?: number }; if (mark.dlRules) continue;
+      const bl = p.blocks || [], main = bl.find(b => b.kind === 'main'); if (!main || ![MAIN_PROMPT_OLD, MAIN_PROMPT_V2, MAIN_PROMPT_V4, MAIN_PROMPT].includes(main.content)) continue;
+      main.content = MAIN_PROMPT;
+      const sid = (b: PresetBlock) => (b as PresetBlock & { stId?: string }).stId, have = new Set(bl.map(sid)), adds = dlRuleBlocks().filter(b => !have.has(sid(b)));
+      const adult = adds.find(b => sid(b) === 'dl-adult'), after = adds.filter(b => sid(b) !== 'dl-adult'), hi = bl.findIndex(b => b.kind === 'chatHistory');
+      if (hi < 0) bl.push(...adds); else { bl.splice(hi + 1, 0, ...after); if (adult) bl.splice(hi, 0, adult); }
+      const jb = bl.find(b => b.kind === 'jailbreak'); if (jb && (!String(jb.content || '').trim() || jb.content === AFTER_PROMPT_V1)) jb.content = FINAL_PIN;
+      p.blocks = bl; mark.dlRules = 1; await DB.put('presets', p);
+    }
     if (!this.personas.length) { const p = newPersona({ name: '나' }); this.personas.push(p); await DB.put('personas', p); }
     if (!this.get('presets', this.settings.activePreset)) this.settings.activePreset = this.presets[0].id;
     if (!this.get('personas', this.settings.activePersona)) this.settings.activePersona = this.personas[0].id;

@@ -1,1 +1,0 @@
-import{n as e}from"./ui-CKCtblF6.js";var t={name:`atlas`,Component:e};export{t as page};
