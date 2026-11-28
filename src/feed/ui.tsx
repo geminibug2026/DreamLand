@@ -188,7 +188,7 @@ async function writeProfiles(ids: string[]) {
 }
 function Members() {
   useEvents('feed:changed', 'chars');
-  const mine = myAccount(), rows = [mine, ...F.accounts.filter(a => a.id !== ME && S.get('chars', a.id))], fresh = rows.filter(a => a.fresh && a.on).map(a => a.id);
+  const mine = myAccount(), rows = F.accounts.filter(a => a.id !== ME && S.get('chars', a.id))   /* 나는 페르소나 이름 · 얼굴로 보인다 (캐릭터마다 다른 페르소나) — 아이디 · 소개를 따로 두지 않는다 */, fresh = rows.filter(a => a.fresh && a.on).map(a => a.id);
   const edit = (a: typeof mine, k: 'handle' | 'bio' | 'voice', v: string) => { a[k] = k === 'handle' ? v.replace(/^@/, '').replace(/\s+/g, '_').slice(0, 18) : v; delete a.fresh; save(); };
   return <>
     <p className="fd-meta">{t('feed.members.intro')}</p>

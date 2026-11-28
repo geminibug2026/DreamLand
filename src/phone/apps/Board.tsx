@@ -27,7 +27,7 @@ const PAGE = 30;
 function who(id: string, n?: Note) {
   const a = account(id);
   // 내 글은 그 글이 향한 캐릭터에게 보이는 페르소나로 (내 새 글은 지금 페르소나)
-  if (id === ME) { const p = n ? personaOfNote(n, F.notes) : personaFor(null); return { o: p || null, name: p?.name || t('feed.me'), handle: a?.handle || 'me', bio: a?.bio || '' }; }
+  if (id === ME) { const p = n ? personaOfNote(n, F.notes) : personaFor(null); return { o: p || null, name: p?.name || t('feed.me'), handle: '', bio: '' }; }   // 나는 페르소나 이름 · 얼굴로만 (아이디 · 소개 없이)
   const c = S.get('chars', id); return { o: c || null, name: c?.name || t('feed.gone'), handle: a?.handle || '—', bio: a?.bio || String(c?.description || '').replace(/\s+/g, ' ').trim().slice(0, 80) };
 }
 const picsOf = (n: Note) => [n.image, ...(n.images || [])].map(id => imgOf(id)).filter(Boolean);
@@ -51,7 +51,7 @@ function Quoted({ id }: { id: string }) {
   if (!q || !visible(q)) return <p className="pn-quote gone">{t('phone.sns.quoteGone')}</p>;
   const w = who(q.by, q);
   return <button type="button" className="pn-quote" onClick={stop(() => P.open('board', { k: 'note', id: q.root || q.id } as Screen))}>
-    <span className="pn-quote-who"><Face o={w.o} size={18} /><b>{w.name}</b><small>@{w.handle}</small></span>
+    <span className="pn-quote-who"><Face o={w.o} size={18} /><b>{w.name}</b>{w.handle ? <small>@{w.handle}</small> : null}</span>
     {q.text ? <span className="pn-quote-text">{q.text}</span> : null}{!q.text && (q.image || q.imagePrompt) ? <span className="pn-quote-text">{t('feed.picture')}</span> : null}</button>;
 }
 /** 답글 · 재게시 · 마음 (누른 것은 하늘색으로 찬다) */
@@ -69,7 +69,7 @@ function Post({ n }: { n: Note }) {
   return <li><article className="pn-post" onClick={open}>
     <button type="button" className="pn-post-face" aria-label={w.name} onClick={stop(() => P.open('board', { k: 'profile', id: n.by } as Screen))}><Face o={w.o} size={40} /></button>
     <div className="pn-post-body">
-      <div className="pn-post-who"><b>{w.name}</b><span>@{w.handle} · {agoText(n.ts)}</span></div>
+      <div className="pn-post-who"><b>{w.name}</b><span>{w.handle ? `@${w.handle} · ` : ''}{agoText(n.ts)}</span></div>
       {n.text ? <p className="pn-post-text">{n.text}</p> : null}
       {n.quote ? <Quoted id={n.quote} /> : null}
       <Pics n={n} />
@@ -158,7 +158,7 @@ function Detail({ id }: { id: string }) {
   return <div className="pn-appbody">
     <AppHead title={t('phone.sns.post')} />
     <article className="pn-card pn-post-big">
-      <button type="button" className="pn-post-head" onClick={() => P.open('board', { k: 'profile', id: n.by } as Screen)}><Face o={w.o} size={44} /><span><b>{w.name}</b><small>@{w.handle}</small></span></button>
+      <button type="button" className="pn-post-head" onClick={() => P.open('board', { k: 'profile', id: n.by } as Screen)}><Face o={w.o} size={44} /><span><b>{w.name}</b>{w.handle ? <small>@{w.handle}</small> : null}</span></button>
       {n.text ? <p className="pn-post-text big">{n.text}</p> : null}
       {n.quote ? <Quoted id={n.quote} /> : null}
       <Pics n={n} big />
@@ -184,7 +184,7 @@ function Profile({ id }: { id: string }) {
     <AppHead title="" right={id === ME ? <IBtn ic="edit" label={t('phone.sns.write')} onClick={() => P.open('board', { k: 'compose' } as Screen)} /> : null} />
     <Art o={w.o} className="pn-contact-art">{!w.o?.avatar ? <Emb kind={id === ME ? 'window' : 'teacup'} /> : null}</Art>
     <h2 className="pn-contact-name">{w.name}</h2>
-    <p className="pn-contact-st">@{w.handle}</p>
+    {w.handle ? <p className="pn-contact-st">@{w.handle}</p> : null}
     {w.bio ? <p className="pn-sns-bio">{w.bio}</p> : null}
     <div className="pn-sns-stats"><span><b>{list.length}</b><small>{t('phone.sns.posts')}</small></span><span><b>{hearts}</b><small>{t('phone.sns.hearts')}</small></span>
       {chat ? <button type="button" onClick={() => P.toChat(chat)}><b><Fill name="messages" size={18} /></b><small>{t('phone.app.messages')}</small></button> : null}</div>

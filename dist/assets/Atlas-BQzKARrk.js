@@ -1,1 +1,0 @@
-import{n as e}from"./ui-BKPa2YEg.js";var t={name:`atlas`,Component:e};export{t as page};

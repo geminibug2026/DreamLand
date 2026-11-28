@@ -256,12 +256,16 @@ const MAIN_PROMPT_V2 = `You write {{char}}'s side of an ongoing roleplay with {{
 - Be concrete: specific actions, sensory detail and dialogue, rather than summaries of what someone feels.
 - Spoken dialogue goes in "double quotes" and inner thoughts in 'single quotes'. Write in the language of the story so far.`;
 /** 기본 프리셋에 싣는 지침 블록 (src/lib/default-prompts.ts): 성인 · 비순화 지침은 채팅 기록 앞, 전개 · 정사 완급은 채팅 기록 뒤 */
+/** 내용 지문 (FNV-1a + 길이) — 손대지 않은 옛 기본 문장인지 견줄 때만 */
+const fp = (t: string) => { let h = 0x811c9dc5; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(36) + t.length.toString(36); };
+/** 잠깐 실렸던 한국어판의 지문 */
+const KO_V1: Record<string, string> = { 'dl-adult': '1tnjlix2i5', 'dl-flow': 'x687302yp', 'dl-sexpace': 'is5yyl1h3', pin: '1ipvyrhee' };
 export const DL_RULES: [string, string, string][] = [['dl-adult', '성인 · 비순화 지침', ADULT_RULES], ['dl-flow', '전개 지침', FLOW_RULES], ['dl-sexpace', '정사 완급', SEX_PACING]];
 const dlRuleBlocks = (): PresetBlock[] => DL_RULES.map(([stId, name, content]) => ({ id: uid(), kind: 'text', name, role: 'system', content, enabled: true, depth: null, stId }));
 export function defaultPreset(): Preset {
   const b = (kind: string, extra: Partial<PresetBlock> = {}): PresetBlock => ({ id: uid(), kind, name: MARKERS[kind] || extra.name || '프롬프트', role: 'system', content: '', enabled: true, depth: null, ...extra });
   return {
-    id: uid(), name: '드림랜드 기본', createdAt: now(), dlRules: 1,
+    id: uid(), name: '드림랜드 기본', createdAt: now(), dlRules: 2,
     params: { temperature: 1, topP: null, topK: null, maxTokens: 4096, contextSize: 128000, freqPen: null, presPen: null, minP: null, topA: null, repPen: null, seed: null, stream: true, effort: '', squash: true, prefill: '', stop: [], cardOverrides: true, namesInGroup: true },
     blocks: [
       b('main', { content: MAIN_PROMPT }),
@@ -537,6 +541,15 @@ export const S: Store = {
       if (hi < 0) bl.push(...adds); else { bl.splice(hi + 1, 0, ...after); if (adult) bl.splice(hi, 0, adult); }
       const jb = bl.find(b => b.kind === 'jailbreak'); if (jb && (!String(jb.content || '').trim() || jb.content === AFTER_PROMPT_V1)) jb.content = FINAL_PIN;
       p.blocks = bl; mark.dlRules = 1; await DB.put('presets', p);
+    }
+    // 잠깐 한국어로 실렸던 지침 블록 · 고정핀: 손대지 않았으면(내용 지문이 같으면) 영어판으로
+    for (const p of this.presets) {
+      const mark = p as Preset & { dlRules?: number }; if (mark.dlRules !== 1) continue;
+      let ch = false;
+      for (const b of p.blocks || []) { const id = (b as PresetBlock & { stId?: string }).stId, f = fp(String(b.content || ''));
+        const next = id && KO_V1[id] === f ? DL_RULES.find(r => r[0] === id)?.[2] : b.kind === 'jailbreak' && KO_V1.pin === f ? FINAL_PIN : undefined;
+        if (next) { b.content = next; ch = true; } }
+      mark.dlRules = 2; await DB.put('presets', p); void ch;
     }
     if (!this.personas.length) { const p = newPersona({ name: '나' }); this.personas.push(p); await DB.put('personas', p); }
     if (!this.get('presets', this.settings.activePreset)) this.settings.activePreset = this.presets[0].id;

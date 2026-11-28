@@ -1,0 +1,1 @@
+export{n as openInsights}from"./insights-DrNFin5G.js";
