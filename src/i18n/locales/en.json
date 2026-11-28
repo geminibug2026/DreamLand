@@ -9385,6 +9385,7 @@
   "gate.m.model": "The model in use",
   "gate.m.input": "Text in the input box",
   "gate.m.lastmessage": "The last message",
+  "gate.m.lastchatmessage": "Last message (same as {{lastMessage}})",
   "gate.m.lastusermessage": "Your last message",
   "gate.m.lastcharmessage": "The character's last message",
   "gate.m.idle": "Time since the last message, in words (e.g. 3 hours)",

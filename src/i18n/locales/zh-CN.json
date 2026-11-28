@@ -9305,6 +9305,7 @@
   "gate.m.model": "当前模型名",
   "gate.m.input": "输入框里的文字",
   "gate.m.lastmessage": "最后一条消息",
+  "gate.m.lastchatmessage": "最后一条消息（与 {{lastMessage}} 相同）",
   "gate.m.lastusermessage": "你的最后一条消息",
   "gate.m.lastcharmessage": "角色的最后一条消息",
   "gate.m.idle": "距上一条消息过去的时间（如 3 hours）",

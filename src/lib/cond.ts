@@ -90,7 +90,7 @@ function lex(src: unknown): Tok[] {
   return merged;
 }
 const KEYWORDS: Record<string, string> = { char: 'char', user: 'user', group: 'group', persona: 'persona', description: 'description', personality: 'personality', scenario: 'scenario', input: 'input', model: 'model', character: 'char',
-  lastmessage: 'lastMessage', lastusermessage: 'lastUserMessage', lastcharmessage: 'lastCharMessage', mode: 'mode', type: 'type' };
+  lastmessage: 'lastMessage', lastchatmessage: 'lastMessage', lastusermessage: 'lastUserMessage', lastcharmessage: 'lastCharMessage', mode: 'mode', type: 'type' };
 interface Val { v: string; alt?: string[]; known: boolean; lit?: boolean; bool?: boolean }
 /** env: { pv, vars, gvars, scope, kw } → 이름을 값으로. { v: 글, alt: 같다고 볼 다른 글들, known } */
 function lookup(name: string, env: CondEnv): Val {

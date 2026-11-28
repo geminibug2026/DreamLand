@@ -1,1 +1,0 @@
-export{t as shelf}from"./shelf-CGgfR4j_.js";

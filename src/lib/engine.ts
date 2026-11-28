@@ -153,7 +153,7 @@ export function macro(textIn: string | null | undefined, c: Ctx = {}): string {
   const simple: Record<string, unknown> = {
     user: c.user, char: c.char, charifnotgroup: c.char, group: c.group || c.char, groupnotmuted: notMuted(c) || c.group || c.char, persona: c.persona, description: c.description,
     personality: c.personality, scenario: c.scenario, mesexamples: c.mesExamples, model: c.model, input: c.input,
-    lastmessage: c.lastMessage, lastusermessage: c.lastUserMessage, lastcharmessage: c.lastCharMessage,
+    lastmessage: c.lastMessage, lastchatmessage: c.lastMessage, lastusermessage: c.lastUserMessage, lastcharmessage: c.lastCharMessage,   // lastChatMessage 는 lastMessage 와 같은 말 (다른 앱의 프리셋에서 그대로 쓰는 이름)
     get time() { return DTF.time.format(day()); }, get date() { return DTF.date.format(day()); },
     get weekday() { return DTF.weekday.format(day()); }, get isotime() { return day().toTimeString().slice(0, 5); }, get isodate() { return day().toISOString().slice(0, 10); },
     newline: '\n', noop: '', trim: '\u0000TRIM\u0000',

@@ -8,7 +8,7 @@ const d = (group: string, id: string, sig: string, ex?: string, names?: string[]
 export const MACRO_DOCS: MacroDoc[] = [
   d('who', 'user', '{{user}}'), d('who', 'char', '{{char}}'), d('who', 'group', '{{group}}'), d('who', 'groupnotmuted', '{{groupNotMuted}}'),
   d('who', 'persona', '{{persona}}'), d('who', 'description', '{{description}}'), d('who', 'personality', '{{personality}}'), d('who', 'scenario', '{{scenario}}'), d('who', 'mesexamples', '{{mesExamples}}'), d('who', 'model', '{{model}}'),
-  d('chat', 'input', '{{input}}'), d('chat', 'lastmessage', '{{lastMessage}}'), d('chat', 'lastusermessage', '{{lastUserMessage}}'), d('chat', 'lastcharmessage', '{{lastCharMessage}}'),
+  d('chat', 'input', '{{input}}'), d('chat', 'lastmessage', '{{lastMessage}}', undefined, ['lastchatmessage']), d('chat', 'lastchatmessage', '{{lastChatMessage}}'), d('chat', 'lastusermessage', '{{lastUserMessage}}'), d('chat', 'lastcharmessage', '{{lastCharMessage}}'),
   d('chat', 'idle', '{{idle_duration}}', '[{{user}} has been away for {{idle_duration}}.]', ['idle_duration']), d('chat', 'lastgen', '{{lastGenerationType}}', '{{#if {{lastGenerationType}} == "continue"}}…{{/if}}', ['lastgenerationtype']), d('chat', 'chatid', '{{chatId}}', undefined, ['chatid']),
   d('time', 'time', '{{time}}'), d('time', 'date', '{{date}}'), d('time', 'weekday', '{{weekday}}'), d('time', 'isotime', '{{isotime}}'), d('time', 'isodate', '{{isodate}}'), d('time', 'datetime', '{{datetime}}', undefined, ['datetime']),
   d('random', 'random', '{{random::A::B::C}}', '{{random::sunny::rainy::foggy}}'), d('random', 'weighted', '{{random::A@3::B@1::C@0.5}}', 'The stranger is {{random::friendly@3::wary@1::hostile@0.5}}.'),

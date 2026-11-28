@@ -6,7 +6,7 @@ import type { Char, Persona, Preset } from '../lib/types';
 /** 한 가지 지적. code 는 화면 글의 열쇠(guide.chk.<code>), where 는 어느 칸인지, n 은 숫자(있으면) */
 export interface Finding { level: 'warn' | 'note'; code: string; where: string; n?: number; detail?: string }
 
-const KNOWN = new Set(['user', 'char', 'group', 'persona', 'description', 'personality', 'scenario', 'mesexamples', 'model', 'input', 'lastmessage', 'lastusermessage', 'lastcharmessage', 'time', 'date', 'weekday', 'isotime', 'isodate',
+const KNOWN = new Set(['user', 'char', 'group', 'persona', 'description', 'personality', 'scenario', 'mesexamples', 'model', 'input', 'lastmessage', 'lastchatmessage', 'lastusermessage', 'lastcharmessage', 'time', 'date', 'weekday', 'isotime', 'isodate',
   'random', 'pick', 'roll', 'getvar', 'setvar', 'addvar', 'incvar', 'decvar', 'getglobalvar', 'setglobalvar', 'addglobalvar', 'incglobalvar', 'decglobalvar', 'hasvar', 'deletevar', 'hasglobalvar', 'deleteglobalvar', 'getvarkey', 'setvarkey', 'getvarindex', 'setvarindex', 'getglobalvarkey', 'setglobalvarkey', 'getglobalvarindex', 'setglobalvarindex', 'outlet', 'original', 'var', 'pvar', 'pipe', 'trim', 'slot', 'newline', 'noop', 'img', 'idle_duration', 'bot', 'charifnotgroup',
   'if', 'unless', 'else', 'charprompt', 'charjailbreak', 'chardepthprompt', 'creatornotes', 'charversion', 'char_version', 'mesexamplesraw', 'worldinfo', 'lorebook', 'banned', 'timediff', 'datetimeformat', 'currentswipeid', 'lastswipeid', 'lastmessageid', 'firstincludedmessageid', 'maxprompt', 'exampleseparator', 'chatstart', 'systemprompt', 'instructsystem', 'reverse']);
 
