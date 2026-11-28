@@ -1,0 +1,1 @@
+export{t as shelf}from"./shelf-Cln_I9kx.js";

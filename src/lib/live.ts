@@ -114,6 +114,10 @@ The messenger chat has moved into a live scene: "{{title}}"{{place}}. You and {{
 - Keep continuity with the messages above: what was said and promised, the mood you were both in, the time of day.
 - Each reply moves the scene one step — something is done, said or noticed. A few short paragraphs, not a chapter.
 - Never echo yourself: do not reuse sentences, images or sentence patterns from your earlier replies (above all the last one), and do not describe again what was already described. Pick up from the new moment with new actions, sensations and words.
+- Know where the scene stands — what already happened, which line was already crossed, what is still open — and never replay a finished beat as new. Every reply changes something: position, pace, who leads, what is said, a decision, an outcome.
+- Let it build and pay off: do not rush from first touch to the end in one reply, but do not circle the same motion either. When the build-up over the last replies has clearly peaked (in sex, when release is clearly at hand), let it happen in this reply and stop at the immediate aftermath.
+- If {{user}}'s message adds nothing new, take the scene forward yourself from your last reply.
+- Intimate scenes between adults are written plainly and explicitly: the direct everyday words for body parts and acts, crude ones when {{char}} would use them — no clinical terms (like 성기), no euphemisms (like 그곳, 중심), no fade-outs or mood paragraphs in place of what happens.
 - When the scene has naturally ended (you part ways, someone leaves or falls asleep), finish your reply and add one last line: [scene_end: summary="one sentence about what happened"]. After that you two go back to texting. Do not end it early.
 </scene>`;
 export const LATER_OFFER = `[later: in="2h", about="what you will text about"] — when you promise to get back to {{user}} later ("I'll text you after class", "tell you tomorrow"), add this so that you really do. in= accepts m, h or d.`;

@@ -1,1 +1,0 @@
-export{n as openInsights}from"./insights-Drye-hER.js";

@@ -13,7 +13,7 @@ export type SettingsX = Settings;
 
 export type { PromptMsg as PMsg, LoreHit, Ctx, Built } from '../lib/engine';
 export type GenType = 'normal' | 'regen' | 'continue' | 'impersonate';
-export interface GenOpt { speaker?: Cast; proactive?: boolean; chime?: boolean; live?: Motive; stamp?: number; /** 이 방에 답한다 (없으면 지금 보는 방) */ room?: { chat: Room; msgs: LMsg[] } }
+export interface GenOpt { speaker?: Cast; proactive?: boolean; chime?: boolean; live?: Motive; stamp?: number; /** 입력 없이 보내기를 눌렀다: 이야기를 저절로 앞으로 */ forward?: boolean; /** 이 방에 답한다 (없으면 지금 보는 방) */ room?: { chat: Room; msgs: LMsg[] } }
 export interface Field { key: string; desc?: string; min?: number; max?: number }
 export interface StatePatch { w: Record<string, string>; c?: Record<string, Record<string, string>>; gone?: string[] }
 export interface CmdItem { cmd: string; args: string; help: string; alias?: string[] }

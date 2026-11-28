@@ -437,7 +437,7 @@ export async function send() {
     return;
   }
   // 보낼 방을 먼저 붙잡는다 — 입력 번역을 기다리는 사이 다른 방으로 가도 메시지와 답변은 이 방에 들어간다
-  const chat = cur.chat, msgs = cur.msgs;
+  const chat = cur.chat, msgs = cur.msgs, typed = !!raw || cur.attach.length > 0;
   if (raw || cur.attach.length) {
     const chars = charsOf(chat), persona = S.persona(chat);
     const ctx = makeCtx({ chat, char: chars[0], chars, persona, msgs, input: raw });
@@ -456,7 +456,7 @@ export async function send() {
   groupAutoRun = 0; clearTimeout(groupAutoTimer);
   // 수동 순서인 그룹 방: 내가 보낸 뒤 아무도 저절로 답하지 않는다 — 입력창의 "다음에 말할 사람"으로 고른다
   if (chat.groupOrder === 'manual' && charsOf(chat).length > 1 && (raw || msgs[msgs.length - 1]?.role === 'user')) return;
-  void generate('normal', { room: { chat, msgs } });
+  void generate('normal', { room: { chat, msgs }, ...(typed ? {} : { forward: true }) });
 }
 // ── 그룹 자동 진행: 답이 끝나면 잠시 뒤 다음 사람이 이어서 말한다 (입력 중이거나 연속 횟수를 채우면 멈춘다) ──
 let groupAutoTimer = 0, groupAutoRun = 0;
@@ -751,7 +751,7 @@ export async function generate(type: GenType = 'normal', opt: GenOpt = {}): Prom
   Live.pending = opt.live || null;
   if (pres) chat.presence = { status: pres.status, activity: pres.activity };   // 엔진이 읽는 자리에 지금의 실제 상태(일정 포함)를 잠깐 올려 둔다
   let built;
-  try { built = E.buildPrompt({ chat: pchat, char: speaker, chars, persona, preset, msgs, type, commit: true, proactive: !!opt.proactive }); } catch (e) { console.error(e); return toast(t('chat.gen.buildFail', { err: errMsg(e) }), 'err'); }
+  try { built = E.buildPrompt({ chat: pchat, char: speaker, chars, persona, preset, msgs, type, commit: true, proactive: !!opt.proactive, forward: !!opt.forward }); } catch (e) { console.error(e); return toast(t('chat.gen.buildFail', { err: errMsg(e) }), 'err'); }
   finally { Live.pending = null; if (pres) { if (keepPresence === undefined) delete chat.presence; else chat.presence = keepPresence; } }
   emit('prompt:ready', { messages: built.messages, chat, type, speaker });
   if (shown()) { cur.lastPrompt = built; drawGauge(); }

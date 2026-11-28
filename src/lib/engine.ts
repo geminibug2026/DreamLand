@@ -583,6 +583,8 @@ export function scanLore(books: LoreBook[], history: { content?: string | null }
 // ── 프롬프트 조립 ──
 export const GROUP_NUDGE = '[Write the next reply only as {{char}}. Do not write for the other characters or for {{user}}.]';
 export const CONTINUE_NUDGE = '[Continue your last message exactly from where it stopped. Do not repeat or restart it; write only the continuation.]';
+/** 입력 없이 보냈다 (마지막 메시지가 캐릭터 것): 사용자는 이야기가 저절로 나아가길 바란다 */
+export const FORWARD_NUDGE = "[{{user}} sent nothing new this time: they want the story to move on by itself. Continue from where the last reply ended with the next beat — new action, words or developments. Do not answer or react again to {{user}}'s earlier message, do not restate or repeat the last reply, and do not stall in the same moment.]";
 export const IMPERSONATE_NUDGE = "[Write the next message from {{user}}'s point of view, in {{user}}'s voice, based on the story so far. Write only {{user}}'s message and do not write for {{char}}.]";
 
 /** 이번 생성의 프롬프트에 실을 로어북들 (기능이 항목을 거를 수 있다: X.loreFilter) */
@@ -641,6 +643,8 @@ export const TALK_DEFAULT = `You are {{char}}, texting {{user}} in a private mes
 - Feeling shows in word choice, pace and what is left unsaid, not in explaining it.
 - Answer what {{user}} just said, then add something of your own: a reaction, an opinion, a piece of your day, a question you actually want answered. Do not hand their words back to them, and do not open or close the way your recent messages did.
 - {{char}}'s tone toward {{user}} follows the relationship as the chat shows it. It warms or cools only when something in this conversation gives a reason. Being brief, distracted, teasing or slow to open up is fine if that is who {{char}} is.
+- Do not repeat yourself: no message, phrase, emoji habit or tease from your last few replies again, and do not keep circling the same topic — take it somewhere.
+- If the chat turns sexual, {{char}} texts about it the way they really would, with direct and even crude words when that is them — no prim euphemisms.
 - Do not end the chat for {{user}} — no sending them off to bed or to eat, no goodbyes — unless {{char}} has a real reason to go. Do not suddenly turn up where {{user}} is either; you meet only when the two of you have arranged it.
 - The [HH:MM] marks on messages are only for your sense of time. Never write timestamps or your own name at the start of a message.`;
 /**
@@ -671,7 +675,7 @@ export const talkPhotos: { line: ((chat: Chat) => string) | null; history: ((m: 
 export const TALK_CALL_COMMAND = `\n[call: reason="why you are calling"] — phone {{user}} right now instead of texting. Only when {{char}} really would call at this moment: {{user}} asked you to call or to pick up, something urgent or emotional that texting cannot carry, or {{char}} simply needs to hear their voice. Not for routine replies. Write your messages first, then put this on the last line.`;
 const hhmm = (t: number) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
 export interface BuildInput {
-  chat: Chat; char: Char; chars: Char[]; persona?: Persona | null; preset: Preset; msgs: Msg[]; type?: string; commit?: boolean; proactive?: boolean;
+  chat: Chat; char: Char; chars: Char[]; persona?: Persona | null; preset: Preset; msgs: Msg[]; type?: string; commit?: boolean; /** 입력 없이 보내기를 눌렀다 (이야기를 저절로 앞으로) */ forward?: boolean; proactive?: boolean;
   /** 대화 프롬프트를 빌려 쓰는 보조 호출 (변수 갱신 등) — 이야기 글의 꼴을 정하는 조각은 빠진다 */ aux?: boolean;
   /** 통화 프롬프트 (src/call 이 넘긴다): call = 통화 중의 한 차례 · voicemail = 받지 않은 상대에게 남기는 음성 메시지. 둘 다 말로만 — 줄 표시 약속 · 명령 안내 · 장면 안내가 빠진다 */ call?: 'call' | 'voicemail';
 }
@@ -693,7 +697,7 @@ export type HistoryLens = (source: Msg[], o: { chat: Chat; char: Char; chars: Ch
 let historyLens: HistoryLens | null = null;
 export const setHistoryLens = (fn: HistoryLens | null) => { historyLens = fn; };
 const lensed = (source: Msg[], o: Parameters<HistoryLens>[1]): Msg[] => { if (!historyLens) return source; try { return historyLens(source, o) || source; } catch (e) { console.warn('[기록 가공]', e); return source; } };
-function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'normal', commit = false, proactive = false, aux = false, call }: BuildInput): Built {
+function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'normal', commit = false, proactive = false, forward = false, aux = false, call }: BuildInput): Built {
   const P: Params = preset.params || {}, M = S.settings.modes || {};
   const ctx = makeCtx({ chat, char, chars, persona, msgs }); ctx.type = type;
   const mx = (t?: string) => macro(tpl(t, ctx), ctx);   // 프리셋 · 카드 글: 템플릿(<% %>) 다음에 매크로
@@ -738,6 +742,10 @@ function buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type = 'nor
     proactive && `There is no new message from ${ctx.user}: they have been quiet for about ${quiet} minutes, and you are the one texting first. Start from your own side — your mood, what you are doing, or something the two of you left open. Do not answer for them, and do not repeat or rephrase your previous message.`,
     Clock.line(chat),
     type === 'continue' && 'Continue your last message from exactly where it stopped. Do not restart it or repeat what is already written.',
+    // 입력 없이 보냈다: 마지막이 내 답이다 — 앞 메시지에 또 답하지 말고 이어서 나아간다
+    type === 'normal' && forward && source[source.length - 1]?.role === 'assistant' && (inScene
+      ? `${ctx.user} sent nothing new: they want the scene to move on by itself. Continue from where your last reply ended with the next beat — new action, words or a development. Do not answer or react again to their earlier message, and do not restate or repeat your last reply.`
+      : `${ctx.user} sent nothing new and is waiting for you to go on. Send what ${char.name} would send next — a follow-up, a new thought, what happens next on your side — not another reply to their earlier message, and nothing that repeats your last messages.`),
     type === 'impersonate' && `Write ${ctx.user}'s next text message, in the voice and length their earlier messages show. Output only that message, as plain lines.`,
     type !== 'impersonate' && !inCall && !inScene && TALK_LINES_CHECK,   // 통화 중에는 말만 한다 (따옴표 · 별표 없이 — 통화 지시문을 따른다) · 장면 중에는 소설처럼 쓴다 (장면 안내를 따른다)
   ].filter(Boolean).join('\n');
@@ -789,8 +797,8 @@ export function postFormat(textIn: string): string {
   return text;
 }
 
-export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = 'normal', commit = false, proactive = false, aux = false, call }: BuildInput): Built {
-  if (chat.mode === 'talk') { if (commit) gen = { type }; return buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type, commit, proactive, aux, call }); }
+export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = 'normal', commit = false, proactive = false, forward = false, aux = false, call }: BuildInput): Built {
+  if (chat.mode === 'talk') { if (commit) gen = { type }; return buildTalkPrompt({ chat, char, chars, persona, preset, msgs, type, commit, proactive, forward, aux, call }); }
   const inCall = !!call || inCallMsgs(msgs), callKind = call || (inCall ? 'call' : undefined);   // RP 방에서 건 전화 · 음성 메시지도 통화다 (기능 조각이 통화 중인지 알게)
   const P: Params = preset.params || {}, F = AF();
   const ctx = makeCtx({ chat, char, chars, persona, msgs }); ctx.type = type;
@@ -947,6 +955,7 @@ export function buildPrompt({ chat, char, chars, persona, preset, msgs, type = '
   let out: PromptMsg[] = [...before, ...hist, ...after, ...tail];
   if (isGroup) out.push({ role: 'system', content: mx(P.groupNudge || GROUP_NUDGE), src: '그룹 지시' });
   if (type === 'continue') out.push({ role: 'system', content: mx(P.continueNudge || CONTINUE_NUDGE), src: '이어쓰기 지시' });
+  if (type === 'normal' && forward && hist[hist.length - 1]?.role === 'assistant') out.push({ role: 'system', content: mx(FORWARD_NUDGE), src: '빈 입력: 이야기 진행' });
   if (type === 'impersonate') out.push({ role: 'system', content: mx(P.impersonatePrompt || IMPERSONATE_NUDGE), src: '대필 지시' });
   if (bias) out.push({ role: 'assistant', content: bias, src: '응답 시작 문구', prefill: true });
 
